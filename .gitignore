@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+.next
+dist
+out
+build
+.expo
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Turbo
+.turbo
+
+# Supabase
+supabase/.temp
+supabase/.branches
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Types (generated — uncomment if using supabase gen types)
+# packages/shared/src/types/database.ts
+
+.vercel
+
+# Claude Code local settings (may contain API keys/tokens)
+.claude/settings.local.json
+
+# Claude memory files (personal user data)
+memory/
+
+# Seed scripts with personal data / hardcoded keys
+scripts/seed-user-data.mjs
+
+# Build info
+*.tsbuildinfo

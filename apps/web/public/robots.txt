@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /#features
+Allow: /#pricing
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://lifeos.tr/sitemap.xml

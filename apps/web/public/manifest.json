@@ -1,0 +1,25 @@
+{
+  "name": "LifeOS",
+  "short_name": "LifeOS",
+  "description": "AI-powered personal life OS — task management, time blocking, nutrition and workout tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B101C",
+  "theme_color": "#6366F1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "lifestyle", "health", "fitness"]
+}

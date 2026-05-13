@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ─── CSS COLOR TOKENS ─── */
+  :root {
+    --font-inter: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Light mode tokens (RGB values for Tailwind opacity modifier) */
+    --color-primary:       15  23  41;   /* #0F1729 */
+    --color-muted:        100 116 139;   /* #64748B */
+    --color-subtle:       148 163 184;   /* #94A3B8 */
+    --color-accent:        99 102 241;   /* #6366F1 */
+    --color-accent-blue:   59 130 246;   /* #3B82F6 */
+    --color-accent-violet: 139  92 246;  /* #8B5CF6 */
+    --color-success:        5 150 105;   /* #059669 */
+    --color-warning:      217 119   6;   /* #D97706 */
+    --color-danger:       220  38  38;   /* #DC2626 */
+    --color-background:   238 242 255;   /* #EEF2FF */
+    --color-surface:      255 255 255;   /* #FFFFFF */
+    --color-border:       226 232 240;   /* #E2E8F0 */
+  }
+
+  /* ─── DARK MODE TOKENS ─── */
+  .dark {
+    --color-primary:       226 232 240;  /* #E2E8F0 — açık metin */
+    --color-muted:         148 163 184;  /* #94A3B8 */
+    --color-subtle:        100 116 139;  /* #64748B */
+    --color-accent:        129 140 248;  /* #818CF8 — biraz daha açık */
+    --color-accent-blue:   96 165 250;   /* #60A5FA */
+    --color-accent-violet: 167 139 250;  /* #A78BFA */
+    --color-success:       52  211 153;  /* #34D399 */
+    --color-warning:       251 191  36;  /* #FBBF24 */
+    --color-danger:        252 165 165;  /* #FCA5A5 */
+    --color-background:     11  16  28;  /* #0B101C */
+    --color-surface:        18  24  38;  /* #121826 */
+    --color-border:         30  41  59;  /* #1E293B */
+  }
+
+  html { height: 100%; }
+
+  body {
+    @apply antialiased;
+    color: rgb(var(--color-primary));
+    min-height: 100%;
+  }
+
+  /* ─── LIGHT MODE BACKGROUND ─── */
+  body {
+    background:
+      radial-gradient(ellipse 1100px 700px at -5%   5%, rgba(139, 92, 246, 0.10) 0%, transparent 60%),
+      radial-gradient(ellipse  900px 800px at 105%  15%, rgba(59, 130, 246, 0.09) 0%, transparent 60%),
+      radial-gradient(ellipse  700px 900px at  50% 110%, rgba(16, 185, 129, 0.06) 0%, transparent 55%),
+      radial-gradient(ellipse  800px 500px at  80%  60%, rgba(147,197,253, 0.08) 0%, transparent 55%),
+      linear-gradient(160deg, #EEF2FF 0%, #F5F3FF 40%, #EFF6FF 70%, #F0FDF4 100%);
+    background-attachment: fixed;
+  }
+
+  /* ─── DARK MODE BACKGROUND ─── */
+  .dark body {
+    background:
+      radial-gradient(ellipse 1100px 700px at -5%   5%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse  900px 800px at 105%  15%, rgba(139, 92, 246, 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse  700px 900px at  50% 110%, rgba(16, 185, 129, 0.03) 0%, transparent 55%),
+      linear-gradient(160deg, #0B101C 0%, #0D1220 40%, #0B101C 100%);
+    background-attachment: fixed;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.20); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.35); }
+
+  /* Landing page — kendi dark background'ı var */
+  body:has(.landing-page-root) {
+    background: #080B14 !important;
+  }
+}
+
+@layer components {
+  /* ══════════════════════════════════════════
+     GLASS — Light Mode
+  ══════════════════════════════════════════ */
+  .glass {
+    background: linear-gradient(145deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.78) 100%);
+    backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+    -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.02);
+    border: 1px solid rgba(255,255,255,0.95);
+    box-shadow:
+      inset 0  1px 0  rgba(255,255,255,1.00),
+      inset 1px 0 0   rgba(255,255,255,0.70),
+      inset 0 -1px 0  rgba(15, 23, 42, 0.04),
+      0  8px 32px rgba(99,102,241,0.08),
+      0  2px  8px rgba(15, 23, 42, 0.05),
+      0  0   0  0.5px rgba(255,255,255,0.80);
+  }
+
+  /* GLASS — Dark Mode */
+  .dark .glass {
+    background: linear-gradient(145deg, rgba(30,41,59,0.90) 0%, rgba(18,24,38,0.85) 100%);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid rgba(99,102,241,0.15);
+    box-shadow:
+      inset 0  1px 0  rgba(255,255,255,0.06),
+      inset 1px 0 0   rgba(255,255,255,0.04),
+      inset 0 -1px 0  rgba(0, 0, 0, 0.20),
+      0  8px 32px rgba(0,0,0,0.30),
+      0  2px  8px rgba(0,0,0,0.20),
+      0  0   0  0.5px rgba(99,102,241,0.20);
+  }
+
+  /* glass-sm */
+  .glass-sm {
+    background: linear-gradient(150deg, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.68) 100%);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.90);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 4px 16px rgba(99,102,241,0.07), 0 1px 4px rgba(15,23,42,0.04);
+  }
+  .dark .glass-sm {
+    background: linear-gradient(150deg, rgba(30,41,59,0.85) 0%, rgba(18,24,38,0.80) 100%);
+    border: 1px solid rgba(99,102,241,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 16px rgba(0,0,0,0.25);
+  }
+
+  /* glass-sidebar */
+  .glass-sidebar {
+    background: linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(248,250,255,0.80) 100%);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border-right: 1px solid rgba(255,255,255,0.90);
+    box-shadow: inset -1px 0 0 rgba(99,102,241,0.06), 2px 0 24px rgba(15,23,42,0.04);
+  }
+  .dark .glass-sidebar {
+    background: linear-gradient(180deg, rgba(15,20,35,0.95) 0%, rgba(11,16,28,0.92) 100%);
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border-right: 1px solid rgba(99,102,241,0.12);
+    box-shadow: inset -1px 0 0 rgba(99,102,241,0.08), 2px 0 24px rgba(0,0,0,0.30);
+  }
+
+  /* glass-modal */
+  .glass-modal {
+    background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,255,0.90) 100%);
+    backdrop-filter: blur(48px) saturate(220%);
+    -webkit-backdrop-filter: blur(48px) saturate(220%);
+    border: 1px solid rgba(255,255,255,0.98);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 24px 64px rgba(15,23,42,0.12), 0 4px 16px rgba(15,23,42,0.06), 0 0 0 1px rgba(99,102,241,0.06);
+  }
+  .dark .glass-modal {
+    background: linear-gradient(135deg, rgba(22,30,46,0.97) 0%, rgba(15,20,35,0.95) 100%);
+    border: 1px solid rgba(99,102,241,0.20);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.50), 0 4px 16px rgba(0,0,0,0.30), 0 0 0 1px rgba(99,102,241,0.10);
+  }
+
+  /* glass-accent */
+  .glass-accent {
+    background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(59,130,246,0.10) 100%);
+    backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(99,102,241,0.25);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.60), 0 4px 16px rgba(99,102,241,0.12);
+  }
+  .dark .glass-accent {
+    background: linear-gradient(135deg, rgba(99,102,241,0.20) 0%, rgba(129,140,248,0.12) 100%);
+    border: 1px solid rgba(129,140,248,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(99,102,241,0.20);
+  }
+
+  /* glass-input */
+  .glass-input {
+    background: rgba(255,255,255,0.80);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(15,23,42,0.10);
+    transition: all 0.15s ease;
+    color: rgb(var(--color-primary));
+  }
+  .dark .glass-input {
+    background: rgba(18,24,38,0.80);
+    border: 1px solid rgba(99,102,241,0.15);
+  }
+  .glass-input::placeholder { color: rgb(var(--color-subtle)); }
+  .glass-input:focus {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(99,102,241,0.40);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.10), inset 0 1px 0 rgba(255,255,255,0.90);
+    outline: none;
+  }
+  .dark .glass-input:focus {
+    background: rgba(22,30,46,0.95);
+    box-shadow: 0 0 0 3px rgba(129,140,248,0.15), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+}

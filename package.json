@@ -1,0 +1,39 @@
+{
+  "name": "lifeos",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@lifeos/web",
+    "dev:mobile": "turbo run dev --filter=@lifeos/mobile",
+    "build": "turbo run build",
+    "build:web": "turbo run build --filter=@lifeos/web",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rimraf node_modules",
+    "db:migrate": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:types": "supabase gen types typescript --linked > packages/shared/src/types/database.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "~5.9.2",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "next": "^15.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0",
+      "@types/react": "~19.1.10",
+      "@types/react-dom": "~19.1.6",
+      "lightningcss": "1.30.1"
+    }
+  }
+}
