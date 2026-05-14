@@ -1,755 +1,347 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native'
-import {
-  BLOCK_TYPE_COLORS,
-  BLOCK_TYPE_LABELS,
-  fromDateString,
-  relativeDateLabel,
-  shiftIsoDate,
-  todayDate,
-  toDateString,
-  type BlockType,
-  type TimeBlock,
-  usePlanningStore,
-  useTaskStore,
-  weekStart,
-} from '@lifeos/shared'
+import { useEffect, useState, useCallback } from 'react'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
-import {
-  getCalendarIntegrationState,
-  importCalendarEventsForDate,
-  type CalendarIntegrationState,
-} from '@/src/lib/calendarIntegration'
-import { GlassCard } from '@/src/components/GlassCard'
-import { GradientBackground } from '@/src/components/GradientBackground'
-import { HEADER_BTN, MODAL_SHEET, T } from '@/src/theme'
+import { callAiSuggest } from '@/src/lib/ai'
+import { usePlanningStore } from '@lifeos/shared'
+import type { TimeBlock } from '@lifeos/shared'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { getCalendarIntegrationState, importCalendarEventsForDate } from '@/src/lib/calendarIntegration'
 
-const BLOCK_TYPES: BlockType[] = ['task', 'routine', 'break', 'focus', 'meal', 'workout']
-const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
-const HOUR_HEIGHT = 56
-const ENERGY_EMOJIS = ['', '😴', '😕', '😐', '😊', '🚀']
-const ENERGY_LABELS = ['', 'Düşük', 'Az', 'Orta', 'İyi', 'Yüksek']
-const ENERGY_COLORS = ['', '#EF4444', '#F97316', '#F59E0B', '#10B981', '#6366F1']
+type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
+const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
+const BLOCK_LABELS: Record<BlockType, string> = { task: 'Görev', routine: 'Rutin', break: 'Mola', focus: 'Odak', meal: 'Yemek', workout: 'Antrenman' }
+const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
-interface WeekDayPlan {
-  date: string
-  dayLabel: string
-  blocksCount: number
-  plannedMinutes: number
-  doneTasks: number
-  allTasks: number
+const ENERGY_LEVELS = [
+  { level: 1 as const, emoji: '😴', label: 'Bitkin' },
+  { level: 2 as const, emoji: '😑', label: 'Düşük' },
+  { level: 3 as const, emoji: '😐', label: 'Orta' },
+  { level: 4 as const, emoji: '😊', label: 'İyi' },
+  { level: 5 as const, emoji: '🔥', label: 'Harika' },
+]
+
+function localIsoDate(date = new Date()): string {
+  const tzOffsetMs = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
 }
 
-interface ReplanAction {
-  action: 'add' | 'remove' | 'move'
-  block_id?: string
-  block?: {
-    start_time?: string
-    end_time?: string
-    block_type?: BlockType
-    label?: string
-    task_id?: string
-  }
+function getWeekDays(anchor: Date): Date[] {
+  const start = new Date(anchor)
+  const day = anchor.getDay()
+  start.setDate(anchor.getDate() - (day === 0 ? 6 : day - 1))
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d })
 }
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  text: string
-  actions?: ReplanAction[]
-}
-
-function timeToMinutes(t: string): number {
-  const [h = 0, m = 0] = t.slice(0, 5).split(':').map(Number)
-  return h * 60 + m
-}
-
-function getNextHour(offset = 0): string {
-  const now = new Date()
-  const base = now.getMinutes() > 0 ? now.getHours() + 1 : now.getHours()
-  return `${String(Math.min(base + offset, 23)).padStart(2, '0')}:00`
-}
-
-function buildWeekDates(dateIso: string): string[] {
-  const start = toDateString(weekStart(fromDateString(dateIso)))
-  return Array.from({ length: 7 }, (_, i) => shiftIsoDate(start, i))
-}
-
-interface DayTimelineProps {
-  timeBlocks: TimeBlock[]
-  currentTime: string
-  showNow: boolean
-}
-
-function DayTimeline({ timeBlocks, currentTime, showNow }: DayTimelineProps) {
-  const startHour = 7
-  const endHour = 23
-  const totalHeight = (endHour - startHour) * HOUR_HEIGHT
-  const nowMin = timeToMinutes(currentTime)
-  const nowTop = ((nowMin - startHour * 60) / 60) * HOUR_HEIGHT
-
-  return (
-    <View style={{ position: 'relative', height: totalHeight + 12 }}>
-      {Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i).map((h) => (
-        <View key={h} style={{ position: 'absolute', top: (h - startHour) * HOUR_HEIGHT, left: 0, right: 0, height: 1 }}>
-          <Text style={{ position: 'absolute', width: 32, top: -7, fontSize: 10, textAlign: 'right', color: T.text.subtle, fontWeight: '500' }}>
-            {String(h).padStart(2, '0')}
-          </Text>
-          <View style={{ position: 'absolute', left: 40, right: 0, top: 0, height: 0.5, backgroundColor: 'rgba(15,23,42,0.07)' }} />
-        </View>
-      ))}
-
-      {timeBlocks.map((block) => {
-        const sMin = timeToMinutes(block.start_time)
-        const eMin = timeToMinutes(block.end_time)
-        const top = ((sMin - startHour * 60) / 60) * HOUR_HEIGHT
-        const height = Math.max(((eMin - sMin) / 60) * HOUR_HEIGHT - 2, 26)
-        const color = BLOCK_TYPE_COLORS[block.block_type]
-        const isNowBlock = sMin <= nowMin && eMin > nowMin
-
-        return (
-          <View
-            key={block.id}
-            style={{
-              position: 'absolute',
-              left: 46,
-              right: 0,
-              top,
-              height,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: isNowBlock ? `${color}3A` : `${color}20`,
-              borderLeftWidth: 3,
-              borderLeftColor: color,
-              backgroundColor: isNowBlock ? `${color}18` : `${color}0E`,
-              paddingHorizontal: 10,
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: T.text.primary }} numberOfLines={1}>
-              {block.label ?? BLOCK_TYPE_LABELS[block.block_type]}
-            </Text>
-            {height > 36 && (
-              <Text style={{ marginTop: 2, fontSize: 10, color: T.text.subtle }}>
-                {block.start_time.slice(0, 5)} - {block.end_time.slice(0, 5)}
-              </Text>
-            )}
-          </View>
-        )
-      })}
-
-      {showNow && nowMin >= startHour * 60 && nowMin <= endHour * 60 && (
-        <View style={{ position: 'absolute', top: nowTop, left: 40, right: 0, flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />
-          <View style={{ flex: 1, height: 1.5, backgroundColor: '#EF4444', opacity: 0.65 }} />
-        </View>
-      )}
-    </View>
-  )
-}
+interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> }
 
 export default function PlanningScreen() {
+  const { colors } = useTheme()
+  const { t } = useLang()
+  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
   const [userId, setUserId] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState(todayDate())
+  const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
+  const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
+  const [draft, setDraft] = useState({ label: '', start_time: '09:00', end_time: '10:00', block_type: 'focus' as BlockType })
+  const [adding, setAdding] = useState(false)
+  const [showAiChat, setShowAiChat] = useState(false)
+  const [aiInput, setAiInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiMessage, setAiMessage] = useState<string | null>(null)
 
-  const [showAddBlock, setShowAddBlock] = useState(false)
-  const [blockStartTime, setBlockStartTime] = useState('')
-  const [blockEndTime, setBlockEndTime] = useState('')
-  const [blockType, setBlockType] = useState<BlockType>('focus')
-  const [blockLabel, setBlockLabel] = useState('')
-  const [addingBlock, setAddingBlock] = useState(false)
+  const todayStr = localIsoDate()
+  const weekDays = getWeekDays(weekAnchor)
+  const weekStart = weekDays[0]
+  const weekEnd = weekDays[6]
 
-  const [chatLoading, setChatLoading] = useState(false)
-  const [weekLoading, setWeekLoading] = useState(false)
-  const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [pendingActions, setPendingActions] = useState<ReplanAction[] | null>(null)
-  const [weekData, setWeekData] = useState<WeekDayPlan[]>([])
-  const [calendarState, setCalendarState] = useState<CalendarIntegrationState>({
-    autoImportEnabled: false,
-    selectedLocalCalendarIds: [],
-    localPermission: 'undetermined',
-    googleConnected: false,
-    outlookConnected: false,
-  })
-  const autoImportKeyRef = useRef('')
-
-  const {
-    timeBlocks,
-    dailyPlan,
-    loading: planLoading,
-    fetchDayData,
-    setEnergyLevel,
-    addTimeBlock,
-    removeTimeBlock,
-  } = usePlanningStore()
-  const { tasks, fetchTasks, setStatus } = useTaskStore()
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id)
-    })
-  }, [])
-
-  useEffect(() => {
-    void getCalendarIntegrationState().then(setCalendarState)
-  }, [])
-
-  const loadDay = useCallback(async (uid: string, date: string) => {
-    await Promise.all([
-      fetchDayData(supabase, uid, date),
-      fetchTasks(supabase, uid, { scheduled_date: date }),
-    ])
-  }, [fetchDayData, fetchTasks])
-
-  const loadWeek = useCallback(async (uid: string, date: string) => {
-    setWeekLoading(true)
+  const load = useCallback(async (uid: string, date: string) => {
+    await fetchDayData(supabase, uid, date)
     try {
-      const weekDates = buildWeekDates(date)
-      const from = weekDates[0]
-      const to = weekDates[6]
-
-      const [{ data: weekBlocks, error: weekBlocksError }, { data: weekTasks, error: weekTasksError }] = await Promise.all([
-        supabase
-          .from('time_blocks')
-          .select('id, date, start_time, end_time')
-          .eq('user_id', uid)
-          .gte('date', from)
-          .lte('date', to),
-        supabase
-          .from('tasks')
-          .select('scheduled_date, status')
-          .eq('user_id', uid)
-          .gte('scheduled_date', from)
-          .lte('scheduled_date', to),
-      ])
-
-      if (weekBlocksError) throw weekBlocksError
-      if (weekTasksError) throw weekTasksError
-
-      const mapped: WeekDayPlan[] = weekDates.map((d) => {
-        const blocks = (weekBlocks ?? []).filter((b) => b.date === d)
-        const tasksInDay = (weekTasks ?? []).filter((t) => t.scheduled_date === d)
-        return {
-          date: d,
-          dayLabel: new Intl.DateTimeFormat('tr-TR', { weekday: 'short' }).format(fromDateString(d)),
-          blocksCount: blocks.length,
-          plannedMinutes: blocks.reduce((sum, b) => sum + Math.max(0, timeToMinutes(b.end_time) - timeToMinutes(b.start_time)), 0),
-          doneTasks: tasksInDay.filter((t) => t.status === 'done').length,
-          allTasks: tasksInDay.length,
+      const state = await getCalendarIntegrationState()
+      // Local calendar: run whenever permission is granted (no toggle required)
+      // Provider calendars: respect autoImportEnabled toggle
+      const shouldImport = state.localPermission === 'granted'
+        || ((state.googleConnected || state.outlookConnected) && state.autoImportEnabled)
+      if (shouldImport) {
+        const result = await importCalendarEventsForDate(supabase, uid, date)
+        if (result.imported > 0) {
+          await fetchDayData(supabase, uid, date)
         }
-      })
-
-      setWeekData(mapped)
+      }
     } catch {
-      setWeekData([])
-    } finally {
-      setWeekLoading(false)
+      // Calendar sync errors should not block the planning screen.
     }
-  }, [])
+  }, [fetchDayData])
 
   useEffect(() => {
-    if (!userId) return
-    void loadDay(userId, selectedDate)
-    void loadWeek(userId, selectedDate)
-  }, [userId, selectedDate, loadDay, loadWeek])
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) { setUserId(data.user.id); void load(data.user.id, selectedDate) }
+    })
+  }, [load, selectedDate])
 
-  const onRefresh = useCallback(async () => {
+  async function handleRefresh() {
     if (!userId) return
     setRefreshing(true)
-    const nextCalendarState = await getCalendarIntegrationState()
-    setCalendarState(nextCalendarState)
-    await Promise.all([loadDay(userId, selectedDate), loadWeek(userId, selectedDate)])
+    await load(userId, selectedDate)
     setRefreshing(false)
-  }, [loadDay, loadWeek, selectedDate, userId])
+  }
 
-  const runAutoImport = useCallback(async () => {
+  async function handleManualCalendarImport() {
     if (!userId) return
     try {
-      const nextCalendarState = await getCalendarIntegrationState()
-      setCalendarState(nextCalendarState)
-      if (!nextCalendarState.autoImportEnabled) return
-      const hasAnySource = nextCalendarState.localPermission === 'granted' || nextCalendarState.googleConnected || nextCalendarState.outlookConnected
-      if (!hasAnySource) return
-      await importCalendarEventsForDate(supabase, userId, selectedDate)
-      await Promise.all([loadDay(userId, selectedDate), loadWeek(userId, selectedDate)])
-    } catch {
-      // silent auto-import — do not show errors to user
+      const result = await importCalendarEventsForDate(supabase, userId, selectedDate)
+      if (result.imported > 0) {
+        await fetchDayData(supabase, userId, selectedDate)
+      }
+      Alert.alert('Takvim Senkronu', `${result.imported} etkinlik eklendi, ${result.skipped} etkinlik atlandı.`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Takvim içe aktarma başarısız'
+      Alert.alert('Takvim Senkronu', message)
     }
-  }, [loadDay, loadWeek, selectedDate, userId])
+  }
 
-  useEffect(() => {
-    if (!userId || !calendarState.autoImportEnabled) return
-    const key = `${userId}:${selectedDate}`
-    if (autoImportKeyRef.current === key) return
-    autoImportKeyRef.current = key
-    void runAutoImport()
-  }, [calendarState.autoImportEnabled, runAutoImport, selectedDate, userId])
-
-  const handleAddBlock = useCallback(async () => {
-    if (!TIME_RE.test(blockStartTime) || !TIME_RE.test(blockEndTime)) {
-      Alert.alert('Hata', 'Geçerli saat formatı girin (örn: 09:00)')
-      return
-    }
-    if (!userId || blockEndTime <= blockStartTime) {
-      Alert.alert('Hata', 'Bitiş saati başlangıçtan sonra olmalı')
-      return
-    }
-
-    setAddingBlock(true)
+  async function handleAdd() {
+    if (!userId || !draft.label.trim()) return
+    setAdding(true)
     try {
       await addTimeBlock(supabase, userId, {
         date: selectedDate,
-        start_time: blockStartTime,
-        end_time: blockEndTime,
-        block_type: blockType,
-        ...(blockLabel.trim() && { label: blockLabel.trim() }),
+        label: draft.label.trim(),
+        start_time: draft.start_time + ':00',
+        end_time: draft.end_time + ':00',
+        block_type: draft.block_type,
       })
-      setShowAddBlock(false)
-      setBlockLabel('')
-      await Promise.all([loadDay(userId, selectedDate), loadWeek(userId, selectedDate)])
-    } catch {
-      Alert.alert('Hata', 'Zaman bloğu eklenemedi')
-    } finally {
-      setAddingBlock(false)
-    }
-  }, [addTimeBlock, blockEndTime, blockLabel, blockStartTime, blockType, loadDay, loadWeek, selectedDate, userId])
-
-  const handleEnergyChange = useCallback(async (level: number) => {
-    if (!dailyPlan) return
-    await setEnergyLevel(supabase, level as 1 | 2 | 3 | 4 | 5)
-  }, [dailyPlan, setEnergyLevel])
-
-  const handleMarkTaskDone = useCallback(async (taskId: string) => {
-    try {
-      await setStatus(supabase, taskId, 'done')
-      if (userId) {
-        await Promise.all([loadDay(userId, selectedDate), loadWeek(userId, selectedDate)])
-      }
-    } catch {
-      Alert.alert('Hata', 'Görev tamamlanamadı')
-    }
-  }, [loadDay, loadWeek, selectedDate, setStatus, userId])
-
-  const handleSendChat = useCallback(async () => {
-    const userMessage = chatInput.trim()
-    if (!userMessage || chatLoading || !userId) return
-
-    setChatInput('')
-    setChatMessages((prev) => [...prev, { role: 'user', text: userMessage }])
-    setChatLoading(true)
-
-    try {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        const { data: refreshed } = await supabase.auth.refreshSession()
-        session = refreshed.session
-      }
-      if (!session) throw new Error('No session')
-
-      const { data, error } = await supabase.functions.invoke('ai-suggest', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: {
-          type: 'replan',
-          date: selectedDate,
-          user_message: userMessage,
-          current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-          existing_blocks: timeBlocks.map((b) => ({
-            id: b.id,
-            start: b.start_time.slice(0, 5),
-            end: b.end_time.slice(0, 5),
-            label: b.label ?? b.block_type,
-          })),
-        },
-      })
-
-      if (error) throw error
-      const result = data as { message: string; actions?: ReplanAction[] }
-      const actions = result.actions?.filter((a) =>
-        (a.action === 'add' && a.block?.start_time && a.block?.end_time) ||
-        (a.action === 'remove' && a.block_id) ||
-        (a.action === 'move' && a.block_id && a.block?.start_time && a.block?.end_time),
-      ) ?? []
-
-      setChatMessages((prev) => [...prev, { role: 'assistant', text: result.message, actions }])
-      if (actions.length > 0) {
-        setPendingActions(actions)
-      }
-    } catch {
-      setChatMessages((prev) => [...prev, { role: 'assistant', text: 'Bir hata oluştu, tekrar dene.' }])
-    } finally {
-      setChatLoading(false)
-    }
-  }, [chatInput, chatLoading, selectedDate, timeBlocks, userId])
-
-  const handleApplyPendingActions = useCallback(async () => {
-    if (!pendingActions || !userId) return
-    let added = 0
-    let removed = 0
-    let moved = 0
-    const removedIds = new Set<string>()
-
-    try {
-      for (const action of pendingActions) {
-        if (action.action === 'remove' && action.block_id && !removedIds.has(action.block_id)) {
-          await removeTimeBlock(supabase, action.block_id)
-          removedIds.add(action.block_id)
-          removed++
-        } else if (action.action === 'move' && action.block_id && action.block?.start_time && action.block?.end_time) {
-          await usePlanningStore.getState().updateTimeBlock(supabase, action.block_id, {
-            start_time: action.block.start_time,
-            end_time: action.block.end_time,
-          })
-          moved++
-        }
-      }
-
-      for (const action of pendingActions) {
-        if (action.action !== 'add' || !action.block?.start_time || !action.block?.end_time) continue
-
-        const latestBlocks = usePlanningStore.getState().timeBlocks
-        const conflicts = latestBlocks.filter(
-          (b) => !removedIds.has(b.id) && b.start_time.slice(0, 5) < action.block!.end_time! && b.end_time.slice(0, 5) > action.block!.start_time!,
-        )
-        for (const conflict of conflicts) {
-          await removeTimeBlock(supabase, conflict.id)
-          removedIds.add(conflict.id)
-          removed++
-        }
-
-        await addTimeBlock(supabase, userId, {
-          date: selectedDate,
-          start_time: action.block.start_time,
-          end_time: action.block.end_time,
-          block_type: action.block.block_type ?? 'task',
-          label: action.block.label,
-          ...(action.block.task_id && { task_id: action.block.task_id }),
-        })
-        added++
-      }
-
-      await Promise.all([loadDay(userId, selectedDate), loadWeek(userId, selectedDate)])
-      setPendingActions(null)
-      Alert.alert('Tamam', `${added} blok eklendi, ${removed} blok değiştirildi, ${moved} blok taşındı`)
-    } catch {
-      Alert.alert('Hata', 'AI değişiklikleri uygulanamadı')
-    }
-  }, [addTimeBlock, loadDay, loadWeek, pendingActions, removeTimeBlock, selectedDate, userId])
-
-  const currentDate = todayDate()
-  const isTodaySelected = selectedDate === currentDate
-  const selectedDateLabel = relativeDateLabel(selectedDate)
-  const nowTime = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
-
-  const openTasks = useMemo(
-    () => tasks.filter((t) => t.status !== 'done' && t.status !== 'deferred'),
-    [tasks],
-  )
-  const firstTasks = openTasks.slice(0, 4)
-  const plannedHours = useMemo(
-    () => Math.round((timeBlocks.reduce((sum, b) => sum + Math.max(0, timeToMinutes(b.end_time) - timeToMinutes(b.start_time)), 0) / 60) * 10) / 10,
-    [timeBlocks],
-  )
-  const inputStyle = {
-    borderWidth: 1,
-    borderColor: T.input.border,
-    borderRadius: T.input.radius,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: T.input.text,
-    backgroundColor: T.input.bg,
+      setDraft({ label: '', start_time: '09:00', end_time: '10:00', block_type: 'focus' })
+      setShowAdd(false)
+    } catch { Alert.alert('Hata', 'Blok eklenemedi') }
+    finally { setAdding(false) }
   }
 
+  async function handleAiReplan() {
+    if (!userId || !aiInput.trim()) return
+    setAiLoading(true)
+    setAiMessage(null)
+    try {
+      const dayBlocks = timeBlocks.filter((b) => b.date === selectedDate)
+      const data = await callAiSuggest<{ message?: string; actions?: AiAction[] }>({
+        type: 'replan',
+        current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+        date: selectedDate,
+        existing_blocks: dayBlocks.map((b) => ({ id: b.id, start: b.start_time, end: b.end_time, label: b.label })),
+        user_message: aiInput.trim(),
+      })
+      setAiMessage(data.message ?? null)
+      // Apply AI actions
+      if (data.actions && userId) {
+        for (const action of data.actions) {
+          if (action.action === 'remove' && action.block_id) {
+            await removeTimeBlock(supabase, action.block_id)
+          } else if (action.action === 'add' && action.block) {
+            const b = action.block
+            if (b.label && b.start_time && b.end_time && b.block_type) {
+              await addTimeBlock(supabase, userId, {
+                date: selectedDate,
+                label: b.label,
+                start_time: b.start_time,
+                end_time: b.end_time,
+                block_type: b.block_type as BlockType,
+              })
+            }
+          }
+        }
+        await load(userId, selectedDate)
+      }
+      setAiInput('')
+    } catch { Alert.alert('Hata', 'AI planlama başarısız') }
+    finally { setAiLoading(false) }
+  }
+
+  async function handleEnergyLevel(level: 1 | 2 | 3 | 4 | 5) {
+    if (!userId) return
+    try { await setEnergyLevel(supabase, level) }
+    catch { Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi') }
+  }
+
+  const dayBlocks = timeBlocks.filter((b) => b.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time))
+
   return (
-    <GradientBackground>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-
-      <View style={{ paddingHorizontal: 18, paddingTop: 56, paddingBottom: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View>
-            <Text style={{ fontSize: 28, fontWeight: '800', color: T.text.primary, letterSpacing: -0.6 }}>Planlama</Text>
-            <Text style={{ marginTop: 2, fontSize: 13, color: T.text.muted }}>{selectedDateLabel} · {selectedDate}</Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              setBlockStartTime(getNextHour(0))
-              setBlockEndTime(getNextHour(1))
-              setShowAddBlock(true)
-            }}
-            style={HEADER_BTN}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>+ Blok</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={{ paddingHorizontal: 18, paddingBottom: 10 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity onPress={() => setSelectedDate((d) => shiftIsoDate(d, -7))} style={{ flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: T.btn.secondary.bg }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary }}>{'<'} Hafta</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setSelectedDate(todayDate())} style={{ flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: isTodaySelected ? T.btn.secondary.bg : 'rgba(15,23,42,0.05)' }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: isTodaySelected ? T.text.accent : T.text.secondary }}>Bugun</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setSelectedDate((d) => shiftIsoDate(d, 7))} style={{ flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: T.btn.secondary.bg }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary }}>Hafta {'>'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
+    <ScreenBackground>
       <ScrollView
-        style={{ flex: 1, paddingHorizontal: 18 }}
-        contentContainerStyle={{ paddingTop: 2, paddingBottom: 110 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.accent} />}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
       >
-        <GlassCard padding={16}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: T.text.primary }}>Hafta Şeridi</Text>
-            {weekLoading ? <ActivityIndicator size="small" color={T.accent} /> : null}
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-            {weekData.map((day) => {
-              const selected = day.date === selectedDate
-              const hours = Math.round((day.plannedMinutes / 60) * 10) / 10
-              return (
-                <TouchableOpacity
-                  key={day.date}
-                  onPress={() => setSelectedDate(day.date)}
-                  style={{
-                    width: 92,
-                    marginRight: 8,
-                    borderRadius: 14,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    backgroundColor: selected ? 'rgba(79,70,229,0.12)' : 'rgba(15,23,42,0.03)',
-                    borderWidth: 1,
-                    borderColor: selected ? 'rgba(79,70,229,0.30)' : 'rgba(15,23,42,0.09)',
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: selected ? '#4F46E5' : T.text.primary }}>{day.dayLabel}</Text>
-                  <Text style={{ marginTop: 1, fontSize: 10, color: T.text.subtle }}>{day.date.slice(5)}</Text>
-                  <Text style={{ marginTop: 7, fontSize: 16, fontWeight: '800', color: T.text.primary }}>{hours}h</Text>
-                  <Text style={{ fontSize: 10, color: T.text.muted }}>{day.blocksCount} blok</Text>
-                  <Text style={{ fontSize: 10, color: T.text.muted }}>{day.doneTasks}/{day.allTasks} görev</Text>
-                </TouchableOpacity>
-              )
-            })}
-          </ScrollView>
-        </GlassCard>
-
-        <GlassCard padding={16}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: T.text.primary }}>Günün Çizelgesi</Text>
-            <Text style={{ fontSize: 11, color: T.text.muted }}>{plannedHours}h planlı</Text>
-          </View>
-          {timeBlocks.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 22 }}>
-              <Text style={{ fontSize: 36 }}>📭</Text>
-              <Text style={{ marginTop: 6, fontSize: 13, color: T.text.muted }}>Bu gün planlı blok yok</Text>
-            </View>
-          ) : (
-            <ScrollView style={{ maxHeight: 430 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
-              <DayTimeline timeBlocks={timeBlocks} currentTime={nowTime} showNow={isTodaySelected} />
-            </ScrollView>
-          )}
-          {planLoading && <ActivityIndicator style={{ marginTop: 8 }} size="small" color={T.accent} />}
-        </GlassCard>
-
-        <GlassCard padding={16}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: T.text.primary }}>AI Planlama Asistanı</Text>
-          </View>
-
-          {chatMessages.length > 0 ? (
-            <View style={{ marginTop: 10 }}>
-              {chatMessages.map((msg, i) => (
-                <View
-                  key={`${msg.role}-${i}`}
-                  style={{
-                    marginBottom: 8,
-                    alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '92%',
-                    borderRadius: 12,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    backgroundColor: msg.role === 'user' ? 'rgba(79,70,229,0.12)' : 'rgba(15,23,42,0.05)',
-                  }}
-                >
-                  <Text style={{ fontSize: 12, color: T.text.primary }}>{msg.text}</Text>
-                  {msg.actions && msg.actions.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      {msg.actions.map((a, ai) => (
-                        <Text key={`${a.action}-${ai}`} style={{ fontSize: 10, color: T.text.muted }}>
-                          {a.action === 'remove' ? 'Sil: ' : a.action === 'move' ? 'Taşı: ' : 'Ekle: '}
-                          {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}-${a.block.end_time} ` : ''}
-                          {a.block?.label ?? a.block?.block_type ?? ''}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))}
-              {chatLoading && <Text style={{ marginBottom: 8, fontSize: 11, color: T.text.subtle }}>AI düşünüyor...</Text>}
-            </View>
-          ) : (
-            <Text style={{ marginTop: 10, fontSize: 12, color: T.text.muted }}>Örn: "15:00 sonrası odağı artır, çakışanları yeniden planla"</Text>
-          )}
-
-          {pendingActions && pendingActions.length > 0 && (
-            <View style={{ marginTop: 8, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(16,185,129,0.35)', backgroundColor: 'rgba(16,185,129,0.08)', padding: 10 }}>
-              <Text style={{ marginBottom: 8, fontSize: 11, fontWeight: '700', color: '#059669' }}>{pendingActions.length} değişiklik önerildi</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity onPress={() => void handleApplyPendingActions()} style={{ flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: 'center', backgroundColor: '#10B981' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>Uygula</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setPendingActions(null)} style={{ flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: 'center', backgroundColor: 'rgba(15,23,42,0.08)' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: T.text.secondary }}>İptal</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
-            <TextInput
-              value={chatInput}
-              onChangeText={setChatInput}
-              placeholder="Planı düzenle..."
-              placeholderTextColor={T.input.placeholder}
-              style={{ ...inputStyle, flex: 1 }}
-              onSubmitEditing={() => void handleSendChat()}
-            />
-            <TouchableOpacity onPress={() => void handleSendChat()} disabled={chatLoading || !chatInput.trim()} style={{ borderRadius: 12, paddingHorizontal: 14, justifyContent: 'center', backgroundColor: T.accent, opacity: chatLoading || !chatInput.trim() ? 0.45 : 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Gönder</Text>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
+          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity onPress={() => void handleManualCalendarImport()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="download-outline" size={18} color={palette.info} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowAiChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
-        </GlassCard>
+        </View>
 
-        <GlassCard padding={16}>
-          <Text style={{ marginBottom: 10, fontSize: 13, fontWeight: '700', color: T.text.primary }}>Enerji Seviyesi</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {[1, 2, 3, 4, 5].map((level) => {
-              const selected = dailyPlan?.energy_level === level
+        {/* Energy level */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.plan_energy}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            {ENERGY_LEVELS.map(({ level, emoji, label }) => {
+              const active = dailyPlan?.energy_level === level
               return (
                 <TouchableOpacity
                   key={level}
-                  onPress={() => void handleEnergyChange(level)}
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    borderRadius: 12,
-                    paddingVertical: 9,
-                    backgroundColor: selected ? `${ENERGY_COLORS[level]}17` : 'rgba(15,23,42,0.03)',
-                    borderWidth: selected ? 1.5 : 1,
-                    borderColor: selected ? `${ENERGY_COLORS[level]}58` : 'rgba(15,23,42,0.08)',
-                  }}
+                  onPress={() => handleEnergyLevel(level)}
+                  style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: spacing[3], marginHorizontal: 2, borderRadius: radius.lg, backgroundColor: active ? `${palette.accent}18` : 'transparent', borderWidth: active ? 1 : 0, borderColor: palette.accent }}
                 >
-                  <Text style={{ fontSize: 20 }}>{ENERGY_EMOJIS[level]}</Text>
-                  <Text style={{ marginTop: 3, fontSize: 10, fontWeight: selected ? '700' : '500', color: selected ? ENERGY_COLORS[level] : T.text.subtle }}>
-                    {ENERGY_LABELS[level]}
-                  </Text>
+                  <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                  <Text style={{ fontSize: fontSize.xs, color: active ? palette.accent : colors.textSubtle, fontWeight: active ? fontWeight.semibold : fontWeight.regular }}>{label}</Text>
                 </TouchableOpacity>
               )
             })}
           </View>
         </GlassCard>
 
-        <GlassCard padding={16}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: T.text.primary }}>Esnek Görevler</Text>
-            <Text style={{ fontSize: 11, color: T.text.muted }}>{openTasks.length} acik</Text>
-          </View>
-          {firstTasks.length === 0 ? (
-            <Text style={{ fontSize: 12, color: T.text.muted }}>Seçili günde açık görev yok.</Text>
-          ) : (
-            firstTasks.map((task) => (
-              <View key={task.id} style={{ marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(15,23,42,0.02)' }}>
-                <View style={{ marginRight: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: task.priority_score >= 1.5 ? '#EF4444' : task.priority_score >= 1 ? '#F59E0B' : '#94A3B8' }} />
-                <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: T.text.primary }} numberOfLines={1}>{task.title}</Text>
-                <TouchableOpacity onPress={() => void handleMarkTaskDone(task.id)} style={{ borderRadius: 9, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(16,185,129,0.12)' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>Bitti</Text>
+        {/* Week navigation */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
+          <TouchableOpacity onPress={() => { const d = new Date(weekAnchor); d.setDate(d.getDate() - 7); setWeekAnchor(d) }}>
+            <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary }}>
+            {weekStart?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''} – {weekEnd?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''}
+          </Text>
+          <TouchableOpacity onPress={() => { const d = new Date(weekAnchor); d.setDate(d.getDate() + 7); setWeekAnchor(d) }}>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Week days */}
+        <GlassCard style={{ marginBottom: spacing[5] }} padding={spacing[3]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            {weekDays.map((day, i) => {
+              const dateStr = localIsoDate(day)
+              const isSelected = dateStr === selectedDate
+              const isToday = dateStr === todayStr
+              const hasBlocks = timeBlocks.some((b) => b.date === dateStr)
+              return (
+                <TouchableOpacity key={dateStr} onPress={() => setSelectedDate(dateStr)} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontWeight: fontWeight.medium }}>{DAY_LABELS[i]}</Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? palette.accent : isToday ? `${palette.accent}18` : 'transparent', borderWidth: isToday && !isSelected ? 1 : 0, borderColor: palette.accent }}>
+                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: isSelected ? '#fff' : isToday ? palette.accent : colors.textSecondary }}>{day.getDate()}</Text>
+                  </View>
+                  {hasBlocks && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? palette.accent : colors.textSubtle }} />}
                 </TouchableOpacity>
-              </View>
-            ))
-          )}
+              )
+            })}
+          </View>
         </GlassCard>
+
+        {/* AI message */}
+        {aiMessage && (
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[3] }}>
+              <Ionicons name="sparkles" size={16} color={palette.accent} style={{ marginTop: 2 }} />
+              <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiMessage}</Text>
+            </View>
+          </GlassCard>
+        )}
+
+        {/* Day blocks */}
+        {dayBlocks.length === 0 ? (
+          <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+            <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
+            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
+            <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+              <Button label={t.plan_add_block_btn} onPress={() => setShowAdd(true)} variant="secondary" />
+              <Button label={t.plan_ai_plan} onPress={() => setShowAiChat(true)} variant="secondary" />
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: spacing[3] }}>
+            {dayBlocks.map((block) => <BlockRow key={block.id} block={block} onDelete={() => removeTimeBlock(supabase, block.id)} />)}
+          </View>
+        )}
       </ScrollView>
 
-      <Modal visible={showAddBlock} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.36)' }}>
-          <View style={MODAL_SHEET}>
-            <View style={{ width: 38, height: 4, borderRadius: 2, alignSelf: 'center', backgroundColor: 'rgba(15,23,42,0.14)', marginBottom: 20 }} />
-            <Text style={{ fontSize: 18, fontWeight: '700', color: T.text.primary, marginBottom: 20 }}>Zaman Bloğu Ekle</Text>
-
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-              {['Başlangıç', 'Bitiş'].map((label, idx) => (
-                <View key={label} style={{ flex: 1 }}>
-                  <Text style={{ marginBottom: 6, fontSize: 11, fontWeight: '600', color: T.text.muted }}>{label}</Text>
-                  <TextInput
-                    value={idx === 0 ? blockStartTime : blockEndTime}
-                    onChangeText={idx === 0 ? setBlockStartTime : setBlockEndTime}
-                    placeholder={idx === 0 ? '09:00' : '10:00'}
-                    placeholderTextColor={T.input.placeholder}
-                    keyboardType="numbers-and-punctuation"
-                    maxLength={5}
-                    style={inputStyle}
-                  />
-                </View>
-              ))}
-            </View>
-
-            <Text style={{ marginBottom: 8, fontSize: 11, fontWeight: '600', color: T.text.muted }}>Blok Tipi</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {BLOCK_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => setBlockType(type)}
-                  style={{
-                    marginRight: 8,
-                    borderRadius: 14,
-                    paddingHorizontal: 14,
-                    paddingVertical: 9,
-                    backgroundColor: blockType === type ? BLOCK_TYPE_COLORS[type] : `${BLOCK_TYPE_COLORS[type]}12`,
-                    borderWidth: 1,
-                    borderColor: blockType === type ? 'transparent' : `${BLOCK_TYPE_COLORS[type]}25`,
-                  }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: blockType === type ? 'white' : BLOCK_TYPE_COLORS[type] }}>
-                    {BLOCK_TYPE_LABELS[type]}
-                  </Text>
+      {/* Add block modal */}
+      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.plan_new_block} scrollable>
+        <View style={{ gap: spacing[3] }}>
+          <Input label="Başlık" value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="Odak çalışması" autoFocus />
+          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+            <Input label="Başlangıç" value={draft.start_time} onChangeText={(v) => setDraft((d) => ({ ...d, start_time: v }))} placeholder="09:00" containerStyle={{ flex: 1 }} />
+            <Input label="Bitiş" value={draft.end_time} onChangeText={(v) => setDraft((d) => ({ ...d, end_time: v }))} placeholder="10:00" containerStyle={{ flex: 1 }} />
+          </View>
+          <View>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Tür</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+              {(Object.keys(BLOCK_LABELS) as BlockType[]).map((type) => (
+                <TouchableOpacity key={type} onPress={() => setDraft((d) => ({ ...d, block_type: type }))} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.md, backgroundColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.glassInner, borderWidth: 1, borderColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.border }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.block_type === type ? '#fff' : colors.textMuted }}>{BLOCK_LABELS[type]}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-
-            <Text style={{ marginBottom: 6, fontSize: 11, fontWeight: '600', color: T.text.muted }}>Etiket (opsiyonel)</Text>
-            <TextInput value={blockLabel} onChangeText={setBlockLabel} placeholder="Orn: Derin calisma" placeholderTextColor={T.input.placeholder} style={{ ...inputStyle, marginBottom: 20 }} />
-
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity onPress={() => { setShowAddBlock(false); setBlockLabel('') }} style={{ flex: 1, borderRadius: T.btn.radius, borderWidth: 1, borderColor: T.btn.secondary.border, paddingVertical: T.btn.secondary.paddingVertical + 2, alignItems: 'center' }}>
-                <Text style={{ fontWeight: '600', color: T.text.muted }}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => void handleAddBlock()}
-                disabled={addingBlock || !blockStartTime || !blockEndTime}
-                style={{ flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center', backgroundColor: T.accent, opacity: addingBlock || !blockStartTime || !blockEndTime ? 0.4 : 1 }}
-              >
-                {addingBlock ? <ActivityIndicator size="small" color="white" /> : <Text style={{ fontWeight: '700', color: 'white' }}>Ekle</Text>}
-              </TouchableOpacity>
             </View>
           </View>
+          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
         </View>
-      </Modal>
-    </GradientBackground>
+      </BottomSheet>
+
+      {/* AI Chat modal */}
+      <BottomSheet visible={showAiChat} onClose={() => setShowAiChat(false)} title={t.plan_ai_planning}>
+        <View style={{ gap: spacing[4] }}>
+          <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
+              Mevcut blokların ve görevlerin bağlamında planlama yap. Örnek: "Bugünü yeniden düzenle", "Öğleden sonra 2 saatlik odak bloğu ekle", "Akşam 8'den sonra tüm blokları kaldır"
+            </Text>
+          </View>
+          <Input
+            label="Ne yapmak istiyorsun?"
+            value={aiInput}
+            onChangeText={setAiInput}
+            placeholder="Bugünü yeniden planla..."
+            multiline
+            numberOfLines={3}
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+            autoFocus
+          />
+          <Button label={aiLoading ? 'Planlanıyor...' : '✦ Planla'} onPress={handleAiReplan} loading={aiLoading} fullWidth />
+        </View>
+      </BottomSheet>
+    </ScreenBackground>
+  )
+}
+
+function BlockRow({ block, onDelete }: { block: TimeBlock; onDelete: () => void }) {
+  const { colors } = useTheme()
+  const color = BLOCK_COLORS[block.block_type as BlockType] ?? palette.accent
+  return (
+    <GlassCard padding={spacing[4]} noShadow>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+        <View style={{ width: 3, height: 44, borderRadius: 2, backgroundColor: color }} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }} numberOfLines={1}>{block.label}</Text>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}</Text>
+          <View style={{ marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: `${color}18` }}>
+            <Text style={{ fontSize: fontSize.xs, color, fontWeight: fontWeight.medium }}>{BLOCK_LABELS[block.block_type as BlockType] ?? block.block_type}</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
+        </TouchableOpacity>
+      </View>
+    </GlassCard>
   )
 }

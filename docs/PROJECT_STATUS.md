@@ -1,7 +1,17 @@
 # LifeOS — Proje Durum Raporu
 
-> Son güncelleme: 29 Nisan 2026 — Checkpoint 12  
+> Son güncelleme: 14 Mayıs 2026 — Checkpoint 17  
 > Aşama: MVP Faz 2 — %90 tamamlandı
+
+### Checkpoint 17 — 14 Mayıs 2026
+**Vercel build hatası düzeltildi:**
+- Login sayfasında prerendering hatası: `TypeError: Cannot read properties of undefined (reading 'trim')`
+- Root cause: LoginForm (Client Component) Server Component olan login/page.tsx tarafından import ediliyordu; prerendering sırasında LoginForm sunucu-tarafında execute ediliyordu
+- LoginForm `useLang()` hook'unu çağırıyor ve bu Context sunucu-tarafında initialize edilmiyordu
+- İlk çözüm denemesi `ssr: false` kullandi ama Next.js hata verdi: `ssr: false` is not allowed with `next/dynamic` in Server Components
+- Nihai çözüm: Yeni wrapper component [apps/web/app/(auth)/login/LoginFormClient.tsx](apps/web/app/(auth)/login/LoginFormClient.tsx) oluşturuldu (`'use client'` marked)
+- LoginFormClient wrapper'ında dynamic import `{ ssr: false }` kullanıldı; page.tsx (Server Component) tarafından wrapper import edildi
+- Vercel build başarılı hale geldi ✅
 
 ### Checkpoint 15 — 30 Nisan 2026
 **Dumbbell ve makine egzersizleri ciddi şekilde genişletildi:**

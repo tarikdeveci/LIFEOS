@@ -197,10 +197,19 @@ export async function searchFoodItems(
     .order('is_verified', { ascending: false })
     .limit(10)
 
-  // Birleştir, tekrarları çıkar, name'e göre sırala
+  // English name ile arama (ilike)
+  const { data: byNameEn } = await supabase
+    .from('food_items')
+    .select('*')
+    .or(userFilter)
+    .ilike('name_en', `%${q}%`)
+    .order('is_verified', { ascending: false })
+    .limit(10)
+
+  // Birleştir, tekrarları çıkar
   const seen = new Set<string>()
   const results: FoodItem[] = []
-  for (const item of [...(byName ?? []), ...(byAlias ?? [])]) {
+  for (const item of [...(byName ?? []), ...(byAlias ?? []), ...(byNameEn ?? [])]) {
     if (!seen.has(item.id)) {
       seen.add(item.id)
       results.push(item as unknown as FoodItem)

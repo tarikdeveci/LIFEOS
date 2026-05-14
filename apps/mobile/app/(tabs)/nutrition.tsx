@@ -1,596 +1,477 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert } from 'react-native'
-import { useNutritionStore, MEAL_TYPE_LABELS, MEAL_TYPE_ICONS, useWorkoutStore, WORKOUT_STATUS_LABELS } from '@lifeos/shared'
-import type { MealType, MealItem, Meal } from '@lifeos/shared'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
-import { todayDate } from '@lifeos/shared'
-import { T, HEADER_BTN } from '@/src/theme'
-import { GradientBackground } from '@/src/components/GradientBackground'
+import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
+import type { ParsedItem } from '@/src/lib/ai'
+import { useNutritionStore } from '@lifeos/shared'
+import type { MealType, Meal, MealItem } from '@lifeos/shared'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { ProgressBar } from '@/src/components/ui/ProgressBar'
+import { StatCard } from '@/src/components/ui/StatCard'
+import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-const MACRO_CONFIG = [
-  { key: 'protein' as const, label: 'Protein', color: T.blockType.workout, unit: 'g' },
-  { key: 'carbs'   as const, label: 'Karb',    color: T.warning, unit: 'g' },
-  { key: 'fat'     as const, label: 'Yağ',     color: T.danger,  unit: 'g' },
-  { key: 'fiber'   as const, label: 'Lif',     color: T.success, unit: 'g' },
-]
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
-
-interface MacroRate { calories: number; protein: number; carbs: number; fat: number; fiber: number }
-function calcRate(item: MealItem): MacroRate {
-  const a = item.amount || 1
-  return { calories: item.calories / a, protein: item.protein / a, carbs: item.carbs / a, fat: item.fat / a, fiber: item.fiber / a }
-}
-function applyRate(rate: MacroRate, amount: number): Partial<MealItem> {
-  return {
-    amount,
-    calories: Math.round(rate.calories * amount),
-    protein:  Math.round(rate.protein  * amount * 10) / 10,
-    carbs:    Math.round(rate.carbs    * amount * 10) / 10,
-    fat:      Math.round(rate.fat      * amount * 10) / 10,
-    fiber:    Math.round(rate.fiber    * amount * 10) / 10,
-  }
-}
-
-type FoodResult = { name: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; serving_size: number; serving_unit: string }
+interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
 export default function NutritionScreen() {
-  const today = todayDate()
-  const [userId, setUserId]   = useState<string | null>(null)
+  const { colors } = useTheme()
+  const { t, lang } = useLang()
+  const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
+
+  const MEAL_TYPES: { key: MealType; label: string }[] = [
+    { key: 'breakfast', label: t.nutr_breakfast },
+    { key: 'lunch',     label: t.nutr_lunch },
+    { key: 'dinner',    label: t.nutr_dinner },
+    { key: 'snack',     label: t.nutr_snack },
+  ]
+  const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [rawInput, setRawInput]         = useState('')
-  const [selectedMealType, setSelectedMealType] = useState<MealType>('lunch')
-  const [adding, setAdding]   = useState(false)
-  // AI hesaplama sonucu önizleme
-  const [preview, setPreview] = useState<{ calories: number; protein: number; carbs: number; fat: number; fiber: number } | null>(null)
-  const [previewItems, setPreviewItems] = useState<MealItem[]>([])
 
-  const [editingMeal, setEditingMeal]   = useState<Meal | null>(null)
-  const [editItems, setEditItems]       = useState<MealItem[]>([])
-  const [editRates, setEditRates]       = useState<MacroRate[]>([])
-  const [editMealType, setEditMealType] = useState<MealType>('lunch')
-  const [saving, setSaving]             = useState(false)
+  // Add modal
+  const [showAdd, setShowAdd] = useState(false)
+  const [rawInput, setRawInput] = useState('')
+  const [mealType, setMealType] = useState<MealType>('lunch')
+  const [parsing, setParsing] = useState(false)
+  const [parsedItems, setParsedItems] = useState<ParsedItem[] | null>(null)
+  const [adding, setAdding] = useState(false)
 
-  const [foodSearch, setFoodSearch]   = useState('')
-  const [foodResults, setFoodResults] = useState<FoodResult[]>([])
-  const [quickAdd, setQuickAdd]       = useState<{ food: FoodResult; qty: number; mealType: MealType } | null>(null)
-  const [quickAdding, setQuickAdding] = useState(false)
-  const foodSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Food search
+  const [foodSearch, setFoodSearch] = useState('')
+  const [foodResults, setFoodResults] = useState<Array<{ id: string; name: string; name_en: string | null; calories: number; protein: number; serving_size: number; serving_unit: string }>>([])
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // AI Nutrition Chat
-  interface ChatMsg { role: 'user' | 'assistant'; text: string }
-  const [chatMsgs, setChatMsgs]       = useState<ChatMsg[]>([])
-  const [chatInput, setChatInput]     = useState('')
+  // Edit modal
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
+  const [editRawInput, setEditRawInput] = useState('')
+  const [editItems, setEditItems] = useState<MealItem[]>([])
+  const [editLoading, setEditLoading] = useState(false)
+
+  // AI Chat
+  const [showChat, setShowChat] = useState(false)
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([])
+  const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
-  const [chatOpen, setChatOpen]       = useState(false)
 
-  const { meals, dailySummary, target: nutritionTarget, loading, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
-  const { todayWorkout, fetchTodayWorkout } = useWorkoutStore()
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  const load = useCallback(async (uid: string) => {
+    await fetchDayNutrition(supabase, uid, todayStr)
+  }, [todayStr, fetchDayNutrition])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUserId(user.id) })
-  }, [])
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) { setUserId(data.user.id); void load(data.user.id) }
+    })
+  }, [load])
 
-  const loadData = useCallback(async (uid: string) => {
-    await Promise.all([fetchDayNutrition(supabase, uid, today), fetchTodayWorkout(supabase, uid, today)])
-  }, [today, fetchDayNutrition, fetchTodayWorkout])
+  async function handleRefresh() {
+    if (!userId) return
+    setRefreshing(true)
+    await load(userId)
+    setRefreshing(false)
+  }
 
-  useEffect(() => { if (userId) void loadData(userId) }, [userId, loadData])
-
-  const onRefresh = useCallback(async () => {
-    if (!userId) return; setRefreshing(true); await loadData(userId); setRefreshing(false)
-  }, [userId, loadData])
-
-  const handleFoodSearch = useCallback((q: string) => {
+  function handleFoodSearch(q: string) {
     setFoodSearch(q)
-    if (foodSearchTimer.current) clearTimeout(foodSearchTimer.current)
-    if (!q.trim() || q.length < 2) { setFoodResults([]); return }
-    foodSearchTimer.current = setTimeout(async () => {
-      try {
-        const qLower = q.toLowerCase().trim()
-        const userFilter = userId ? `user_id.is.null,user_id.eq.${userId}` : 'user_id.is.null'
-        const cols = 'name, calories, protein, carbs, fat, fiber, serving_size, serving_unit'
-        const [{ data: byName }, { data: byAlias }] = await Promise.all([
-          supabase.from('food_items').select(cols).or(userFilter)
-            .ilike('name', `%${qLower}%`).order('is_verified', { ascending: false }).limit(15),
-          supabase.from('food_items').select(cols).or(userFilter)
-            .contains('aliases', [qLower]).order('is_verified', { ascending: false }).limit(10),
-        ])
-        const seen = new Set<string>()
-        const merged: FoodResult[] = []
-        for (const item of [...(byName ?? []), ...(byAlias ?? [])]) {
-          const key = (item as FoodResult).name.toLowerCase()
-          if (!seen.has(key)) { seen.add(key); merged.push(item as FoodResult) }
-        }
-        setFoodResults(merged.slice(0, 8))
-      } catch { /* sessiz hata — search UI'ı bozulmasın */ }
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!q.trim()) { setFoodResults([]); return }
+    searchTimer.current = setTimeout(async () => {
+      const term = q.trim()
+      const { data } = await supabase
+        .from('food_items')
+        .select('id, name, name_en, calories, protein, serving_size, serving_unit')
+        .or(`name.ilike.%${term}%,name_en.ilike.%${term}%`)
+        .limit(6)
+      setFoodResults((data ?? []) as unknown as typeof foodResults)
     }, 300)
-  }, [userId])
+  }
 
-  const handleQuickAdd = useCallback(async () => {
-    if (!quickAdd || !userId) return
-    setQuickAdding(true)
-    const ratio = quickAdd.qty / quickAdd.food.serving_size
+  function openEditMeal(meal: Meal) {
+    setEditingMeal(meal)
+    setEditRawInput(meal.raw_input ?? '')
+    setEditItems(meal.items ?? [])
+  }
+
+  function updateEditItemAmount(index: number, amountRaw: string) {
+    const nextAmount = Number(amountRaw)
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return
+
+    setEditItems((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      const baseAmount = item.amount > 0 ? item.amount : 1
+      const ratio = nextAmount / baseAmount
+      return {
+        ...item,
+        amount: nextAmount,
+        calories: Math.round(item.calories * ratio),
+        protein: Math.round(item.protein * ratio * 10) / 10,
+        carbs: Math.round(item.carbs * ratio * 10) / 10,
+        fat: Math.round(item.fat * ratio * 10) / 10,
+        fiber: Math.round(item.fiber * ratio * 10) / 10,
+      }
+    }))
+  }
+
+  async function handleSaveMealEdit() {
+    if (!editingMeal) return
+    setEditLoading(true)
     try {
-      await addMeal(supabase, userId, {
-        meal_type: quickAdd.mealType,
-        raw_input: `${quickAdd.qty}${quickAdd.food.serving_unit} ${quickAdd.food.name}`,
-        date: today,
-        items: [{
-          name: quickAdd.food.name, amount: quickAdd.qty, unit: quickAdd.food.serving_unit,
-          calories: Math.round(quickAdd.food.calories * ratio),
-          protein:  Math.round(quickAdd.food.protein  * ratio * 10) / 10,
-          carbs:    Math.round(quickAdd.food.carbs    * ratio * 10) / 10,
-          fat:      Math.round(quickAdd.food.fat      * ratio * 10) / 10,
-          fiber:    Math.round((quickAdd.food.fiber ?? 0) * ratio * 10) / 10,
-        }],
+      await editMeal(supabase, editingMeal.id, {
+        raw_input: editRawInput.trim(),
+        items: editItems,
       })
-      setQuickAdd(null); setFoodSearch(''); setFoodResults([])
-    } catch { Alert.alert('Hata', 'Eklenemedi') }
-    finally { setQuickAdding(false) }
-  }, [quickAdd, userId, today, addMeal])
+      setEditingMeal(null)
+      setEditItems([])
+      setEditRawInput('')
+      if (userId) await load(userId)
+    } catch {
+      Alert.alert('Hata', 'Öğün güncellenemedi')
+    } finally {
+      setEditLoading(false)
+    }
+  }
 
-  // AI ile kalori hesapla, önizle
-  const handleCalculate = useCallback(async () => {
-    if (!userId || !rawInput.trim()) return
-    setAdding(true)
-    setPreview(null)
+  async function handleReparseEditMeal() {
+    if (!editingMeal || !userId || !editRawInput.trim()) return
+    setEditLoading(true)
     try {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session) { const { data: r } = await supabase.auth.refreshSession(); session = r.session }
-      if (!session?.access_token) throw new Error('Oturum bulunamadı')
+      const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
+      setEditItems(result.items as MealItem[])
+    } catch {
+      Alert.alert('Hata', 'Öğün yeniden analiz edilemedi')
+    } finally {
+      setEditLoading(false)
+    }
+  }
 
-      const response = await fetch(
-        `${process.env['EXPO_PUBLIC_SUPABASE_URL']}/functions/v1/parse-meal`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ raw_input: rawInput.trim(), user_id: userId }),
-        },
-      )
-      if (!response.ok) throw new Error()
-      const data = await response.json()
-      const items = (data.items ?? []) as MealItem[]
-      setPreviewItems(items)
-      const totals = items.reduce(
-        (s, i) => ({ calories: s.calories + i.calories, protein: s.protein + i.protein, carbs: s.carbs + i.carbs, fat: s.fat + i.fat, fiber: s.fiber + i.fiber }),
-        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
-      )
-      setPreview(totals)
-    } catch { Alert.alert('Hata', 'Hesaplama yapılamadı') }
-    finally { setAdding(false) }
-  }, [userId, rawInput])
+  async function handleParse() {
+    if (!rawInput.trim()) return
+    setParsing(true)
+    setParsedItems(null)
+    try {
+      const result = await callParseMeal({ raw_input: rawInput, user_id: userId })
+      setParsedItems(result.items)
+    } catch {
+      Alert.alert('Hata', 'Öğün analiz edilemedi')
+    } finally {
+      setParsing(false)
+    }
+  }
 
-  const handleAddMeal = useCallback(async () => {
-    if (!userId || !rawInput.trim()) return
+  async function handleAddMeal() {
+    if (!userId) return
     setAdding(true)
     try {
-      const items = previewItems.length > 0 ? previewItems : []
-      await addMeal(supabase, userId, { meal_type: selectedMealType, raw_input: rawInput.trim(), items, date: today })
-      setRawInput(''); setPreview(null); setPreviewItems([]); setShowAddModal(false)
+      const items = parsedItems ?? []
+      await addMeal(supabase, userId, {
+        date: todayStr, meal_type: mealType, raw_input: rawInput.trim(),
+        items: items as never[],
+      })
+      setRawInput(''); setParsedItems(null); setShowAdd(false)
     } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
     finally { setAdding(false) }
-  }, [userId, rawInput, selectedMealType, previewItems, addMeal, today])
+  }
 
-  const openEdit = useCallback((meal: Meal) => {
-    setEditingMeal(meal); setEditMealType(meal.meal_type)
-    setEditItems(meal.items); setEditRates(meal.items.map(calcRate))
-  }, [])
-
-  const handleEditAmount = useCallback((idx: number, newAmt: number) => {
-    const rate = editRates[idx]
-    if (!rate || !newAmt) return
-    setEditItems((items) => items.map((item, i) => i === idx ? { ...item, ...applyRate(rate, newAmt) } : item))
-  }, [editRates])
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!editingMeal) return
-    setSaving(true)
-    try { await editMeal(supabase, editingMeal.id, { meal_type: editMealType, items: editItems }); setEditingMeal(null) }
-    catch { Alert.alert('Hata', 'Güncellenemedi') }
-    finally { setSaving(false) }
-  }, [editingMeal, editMealType, editItems, editMeal])
-
-  const handleDeleteMeal = useCallback((mealId: string) => {
-    Alert.alert('Öğün Sil', 'Bu öğünü silmek istediğinize emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => void removeMeal(supabase, mealId) },
-    ])
-  }, [removeMeal])
-
-  const handleSendChat = useCallback(async (overrideMsg?: string) => {
-    const msg = overrideMsg ?? chatInput.trim()
-    if (!msg || chatLoading || !userId) return
+  async function handleChat() {
+    if (!chatInput.trim() || !userId) return
+    const userMsg: ChatMsg = { role: 'user', content: chatInput.trim() }
+    setChatMsgs((m) => [...m, userMsg])
     setChatInput('')
-    setChatMsgs((p) => [...p, { role: 'user', text: msg }])
     setChatLoading(true)
     try {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session) { const { data: r } = await supabase.auth.refreshSession(); session = r.session }
-      if (!session) throw new Error()
-
-      const consumed = {
-        calories: dailySummary?.calories ?? 0, protein: dailySummary?.protein ?? 0,
-        carbs: dailySummary?.carbs ?? 0, fat: dailySummary?.fat ?? 0, fiber: dailySummary?.fiber ?? 0,
-      }
-      const tgt = {
-        calories: nutritionTarget?.calories ?? 2000, protein: nutritionTarget?.protein ?? 150,
-        carbs: nutritionTarget?.carbs ?? 250, fat: nutritionTarget?.fat ?? 70, fiber: nutritionTarget?.fiber ?? 25,
-      }
-      const meals_today = meals.map((m) => ({
-        meal_type: m.meal_type,
-        items: m.items.map((i) => ({ name: i.name, amount: i.amount, unit: i.unit, calories: i.calories })),
-      }))
-
-      const { data, error } = await supabase.functions.invoke('ai-suggest', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: {
-          type: 'nutrition_chat',
-          user_message: msg,
-          nutrition_context: { target: tgt, consumed, meals_today, history: chatMsgs.slice(-8) },
+      const todayMeals = meals.filter((m) => m.date === todayStr)
+      const data = await callAiSuggest<{ message?: string }>({
+        type: 'nutrition_chat',
+        target,
+        consumed: {
+          cal:   dailySummary?.calories ?? 0,
+          prot:  dailySummary?.protein  ?? 0,
+          carbs: dailySummary?.carbs    ?? 0,
+          fat:   dailySummary?.fat      ?? 0,
         },
+        meals_today: todayMeals.map((m) => ({ meal_type: m.meal_type, items: m.items })),
+        history: chatMsgs.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+        user_message: userMsg.content,
       })
-      if (error) throw error
-      setChatMsgs((p) => [...p, { role: 'assistant', text: (data as { message: string }).message }])
+      setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? 'Yanıt alınamadı' }])
     } catch {
-      setChatMsgs((p) => [...p, { role: 'assistant', text: 'Bir hata oluştu.' }])
+      setChatMsgs((m) => [...m, { role: 'assistant', content: 'Hata oluştu, tekrar dene.' }])
     } finally { setChatLoading(false) }
-  }, [userId, dailySummary, nutritionTarget, meals, chatMsgs])
+  }
 
-  const caloriePercent = dailySummary && nutritionTarget
-    ? Math.min(100, Math.round((dailySummary.calories / nutritionTarget.calories) * 100)) : 0
+  const todayMeals = meals.filter((m) => m.date === todayStr)
+  const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const totalProt  = dailySummary?.protein  ?? todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  const totalCarbs = dailySummary?.carbs    ?? todayMeals.reduce((s, m) => s + (m.total_carbs ?? 0), 0)
+  const totalFat   = dailySummary?.fat      ?? todayMeals.reduce((s, m) => s + (m.total_fat ?? 0), 0)
+  const totalFiber = dailySummary?.fiber    ?? todayMeals.reduce((s, m) => s + (m.total_fiber ?? 0), 0)
 
   return (
-    <GradientBackground>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, paddingTop: 56 }}>
-        <Text style={{ fontSize: 28, fontWeight: '800', color: T.text.primary, letterSpacing: -0.5 }}>Beslenme</Text>
-        <TouchableOpacity onPress={() => setShowAddModal(true)} style={HEADER_BTN}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: T.btn.primary.text }}>+ Ögün</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={{ flex: 1, paddingHorizontal: 20 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.accent} />}>
-        {/* Kalori Özeti */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-surface p-5">
-          {loading && !refreshing ? <ActivityIndicator color={T.accent} /> : (
-            <>
-              <View className="mb-2 flex-row items-end justify-between">
-                <View>
-                  <Text className="text-3xl font-bold text-primary">{dailySummary ? Math.round(dailySummary.calories) : 0}</Text>
-                  <Text className="text-xs text-muted">kcal tüketildi</Text>
-                </View>
-                <View className="items-end">
-                  <Text className="text-lg font-semibold text-muted">{nutritionTarget ? `/ ${nutritionTarget.calories}` : '/ —'}</Text>
-                  <Text className="text-xs text-muted">hedef</Text>
-                </View>
-              </View>
-              <View className="mb-4 h-3 overflow-hidden rounded-full bg-gray-100">
-                <View className="h-3 rounded-full" style={{ width: `${caloriePercent}%`, backgroundColor: caloriePercent >= 100 ? T.danger : T.accent }} />
-              </View>
-              <View className="flex-row justify-between">
-                {MACRO_CONFIG.map((m) => {
-                  const current = dailySummary?.[m.key] ?? 0
-                  const tgt = nutritionTarget?.[`${m.key}_g` as keyof typeof nutritionTarget] as number | undefined
-                  const pct = tgt ? Math.min(100, Math.round((current / tgt) * 100)) : 0
-                  return (
-                    <View key={m.key} className="flex-1 items-center px-1">
-                      <Text className="text-base font-bold text-primary">{Math.round(current)}<Text className="text-xs font-normal text-muted">{m.unit}</Text></Text>
-                      <View className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-                        <View className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: m.color }} />
-                      </View>
-                      <Text className="mt-0.5 text-xs text-muted">{m.label}</Text>
-                    </View>
-                  )
-                })}
-              </View>
-            </>
-          )}
+    <ScreenBackground>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
+          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_title}</Text>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity onPress={() => setShowChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {todayWorkout?.total_calories_burned && (
-          <View style={{ marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 16, borderWidth: 1, borderColor: `${T.blockType.workout}25`, backgroundColor: `${T.blockType.workout}08`, paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 20 }}>💪</Text>
-              <View>
-                <Text style={{ fontSize: 14, fontWeight: '500', color: T.blockType.workout }}>{todayWorkout.name ?? 'Antrenman'}</Text>
-                <Text style={{ fontSize: 12, color: T.text.muted }}>{todayWorkout.total_calories_burned} kcal yakıldı</Text>
-              </View>
+        {/* Summary */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>{t.today}</Text>
+
+          {/* 2x2 macro grid */}
+          <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label={t.nutr_calories} value={`${totalCal}`} color={palette.warning} />
+              <StatCard label={t.nutr_protein} value={`${Math.round(totalProt)}g`} color={palette.info} />
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: T.blockType.workout }}>Net: {Math.round((dailySummary?.calories ?? 0) - todayWorkout.total_calories_burned)} kcal</Text>
-              <Text style={{ fontSize: 12, color: T.text.muted }}>{WORKOUT_STATUS_LABELS[todayWorkout.status]}</Text>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label={t.nutr_carbs} value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+              <StatCard label={t.nutr_fat} value={`${Math.round(totalFat)}g`} color={palette.danger} />
             </View>
           </View>
-        )}
 
-        {/* Yiyecek Ara & Ekle */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-surface p-4">
-          <Text className="mb-2 text-sm font-semibold text-primary">🔍 Yiyecek Ara & Ekle</Text>
-          <TextInput value={foodSearch} onChangeText={handleFoodSearch} placeholder="Yumurta, tavuk, ekmek..."
-            placeholderTextColor="#9CA3AF" className="rounded-xl border border-gray-200 px-3 py-2 text-primary" />
-          {foodResults.map((food, i) => (
-            <View key={i}>
-              <View className="mt-2 flex-row items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                <View className="flex-1">
-                  <Text className="text-xs font-medium text-primary">{food.name}</Text>
-                  <Text className="text-[10px] text-muted">{food.serving_size}{food.serving_unit} · P:{Math.round(food.protein)}g K:{Math.round(food.carbs)}g Y:{Math.round(food.fat)}g</Text>
-                </View>
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-xs font-semibold text-accent">{Math.round(food.calories)} kcal</Text>
-                  <TouchableOpacity onPress={() => setQuickAdd(quickAdd?.food.name === food.name ? null : { food, qty: food.serving_size, mealType: 'lunch' })}
-                    className="rounded-full px-2 py-1" style={{ backgroundColor: quickAdd?.food.name === food.name ? T.danger : T.btn.secondary.bg }}>
-                    <Text className="text-xs font-bold" style={{ color: quickAdd?.food.name === food.name ? 'white' : T.text.accent }}>
-                      {quickAdd?.food.name === food.name ? '✕' : '+'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {quickAdd?.food.name === food.name && (
-                <View style={{ marginHorizontal: 4, marginBottom: 8, marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: T.btn.secondary.border, backgroundColor: T.btn.secondary.bg, padding: 12 }}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                    {MEAL_TYPES.map((type) => (
-                      <TouchableOpacity key={type} onPress={() => setQuickAdd((q) => q ? { ...q, mealType: type } : q)}
-                        style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: quickAdd.mealType === type ? T.accent : T.card.bg }}>
-                        <Text style={{ marginRight: 4, fontSize: 12 }}>{MEAL_TYPE_ICONS[type]}</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '500', color: quickAdd.mealType === type ? 'white' : T.text.muted }}>{MEAL_TYPE_LABELS[type]}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <View className="flex-row items-center gap-2">
-                    <TextInput value={String(quickAdd.qty)} onChangeText={(v) => setQuickAdd((q) => q ? { ...q, qty: parseFloat(v) || q.food.serving_size } : q)}
-                      keyboardType="decimal-pad" className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-primary" />
-                    <Text className="text-xs text-muted">{food.serving_unit}</Text>
-                    <Text className="flex-1 text-center text-xs font-semibold text-accent">≈{Math.round(food.calories * quickAdd.qty / food.serving_size)} kcal</Text>
-                    <TouchableOpacity onPress={() => void handleQuickAdd()} disabled={quickAdding} className="rounded-xl bg-accent px-3 py-2" style={{ opacity: quickAdding ? 0.6 : 1 }}>
-                      <Text className="text-xs font-semibold text-white">{quickAdding ? '…' : 'Ekle'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+          {/* Progress bars against targets */}
+          {target ? (
+            <View style={{ gap: spacing[3] }}>
+              {(target.calories ?? 0) > 0 && (
+                <ProgressBar label={t.nutr_calories} value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
               )}
-            </View>
-          ))}
-          {foodSearch.length >= 2 && foodResults.length === 0 && <Text className="mt-2 text-center text-xs text-muted">Sonuç bulunamadı</Text>}
-        </View>
-
-        {/* Öğün Listesi */}
-        <View className="mb-8">
-          <Text className="mb-2 text-sm font-semibold text-muted">Bugünün Öğünleri</Text>
-          {meals.length === 0 ? (
-            <View className="items-center rounded-2xl border border-gray-100 bg-surface py-8">
-              <Text className="text-3xl">🍽️</Text>
-              <Text className="mt-2 text-muted">Henüz öğün eklenmedi</Text>
+              {(target.protein ?? 0) > 0 && (
+                <ProgressBar label={t.nutr_protein} value={totalProt} target={target.protein} color={palette.info} />
+              )}
+              {(target.carbs ?? 0) > 0 && (
+                <ProgressBar label={t.nutr_carbs} value={totalCarbs} target={target.carbs} color={palette.success} />
+              )}
+              {(target.fat ?? 0) > 0 && (
+                <ProgressBar label={t.nutr_fat} value={totalFat} target={target.fat} color={palette.danger} />
+              )}
+              {(target.fiber ?? 0) > 0 && (
+                <ProgressBar label={t.nutr_fiber} value={totalFiber} target={target.fiber} color="#10B981" />
+              )}
             </View>
           ) : (
-            meals.map((meal) => (
-              <View key={meal.id} className="mb-2 rounded-2xl border border-gray-100 bg-surface px-4 py-3">
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center flex-1">
-                    <Text className="mr-2 text-xl">{MEAL_TYPE_ICONS[meal.meal_type]}</Text>
-                    <View className="flex-1">
-                      <Text className="font-medium text-primary">{MEAL_TYPE_LABELS[meal.meal_type]}</Text>
-                      {meal.raw_input && <Text className="text-xs text-muted" numberOfLines={1}>{meal.raw_input}</Text>}
-                    </View>
-                  </View>
-                  <View className="flex-row items-center gap-2">
-                    <Text className="font-semibold text-accent">{Math.round(meal.total_calories)} kcal</Text>
-                    <TouchableOpacity onPress={() => openEdit(meal)} className="rounded-lg border border-gray-200 px-2 py-1">
-                      <Text className="text-[10px] font-medium text-muted">Düzenle</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteMeal(meal.id)} className="px-1 py-1">
-                      <Text className="text-base font-bold text-muted/40">×</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View className="mt-2 flex-row gap-3">
-                  <Text className="text-xs text-muted">P: {Math.round(meal.total_protein)}g</Text>
-                  <Text className="text-xs text-muted">K: {Math.round(meal.total_carbs)}g</Text>
-                  <Text className="text-xs text-muted">Y: {Math.round(meal.total_fat)}g</Text>
-                </View>
-              </View>
-            ))
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
+              {t.today_set_goals}
+            </Text>
           )}
-        </View>
+        </GlassCard>
 
-        {/* AI Beslenme Koçu */}
-        <View style={{ marginBottom: 32, borderRadius: 20, backgroundColor: T.card.bg, borderWidth: 1, borderColor: T.card.border, shadowColor: T.card.shadowColor, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.07, shadowRadius: 12, elevation: 3, padding: 16 }}>
-          {/* Header */}
-          <TouchableOpacity onPress={() => setChatOpen((o) => !o)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View>
-              <Text style={{ fontWeight: '700', color: T.text.primary, fontSize: 13 }}>🥗 Beslenme Koçu</Text>
-              {dailySummary && nutritionTarget && (
-                <Text style={{ fontSize: 10, color: T.text.muted, marginTop: 2 }}>
-                  Kalan: {Math.max(0, Math.round(nutritionTarget.calories - dailySummary.calories))} kcal ·
-                  P {Math.max(0, Math.round(nutritionTarget.protein - dailySummary.protein))}g ·
-                  K {Math.max(0, Math.round(nutritionTarget.carbs - dailySummary.carbs))}g
-                </Text>
-              )}
+        {/* Food quick search */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? 'Hızlı Yiyecek Ara'}</Text>
+          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder="Yumurta, ekmek, peynir..." />
+          {foodResults.length > 0 && (
+            <View style={{ marginTop: spacing[3], gap: 2 }}>
+              {foodResults.map((food) => (
+                <TouchableOpacity
+                  key={food.id}
+                  onPress={() => { setRawInput(food.name); setFoodSearch(''); setFoodResults([]); setShowAdd(true) }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>
+                      {lang === 'en' && food.name_en ? food.name_en : food.name}
+                    </Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: 1 }}>
+                      {lang === 'en' ? food.name : (food.name_en ?? '')}
+                    </Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{Math.round(food.calories)} kcal · {Math.round(food.protein)}g protein ({food.serving_size}{food.serving_unit})</Text>
+                  </View>
+                  <Ionicons name="add-circle-outline" size={22} color={palette.meal} />
+                </TouchableOpacity>
+              ))}
             </View>
-            <Text style={{ fontSize: 14, color: T.text.subtle }}>{chatOpen ? '▾' : '▸'}</Text>
-          </TouchableOpacity>
+          )}
+        </GlassCard>
 
-          {chatOpen && (
-            <>
-              {/* Hızlı sorular */}
-              {chatMsgs.length === 0 && (
-                <View style={{ marginTop: 12, gap: 6 }}>
-                  {['Ne yiyebilirim?', 'Protein açığımı kapat', 'Akşam için öneri'].map((q) => (
-                    <TouchableOpacity key={q} onPress={() => void handleSendChat(q)}
-                      style={{ borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: T.btn.secondary.bg, borderWidth: 1, borderColor: T.btn.secondary.border }}>
-                      <Text style={{ fontSize: 12, color: T.text.accent, fontWeight: '500' }}>{q}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              {/* Mesajlar */}
-              {chatMsgs.length > 0 && (
-                <View style={{ marginTop: 12, gap: 8 }}>
-                  {chatMsgs.map((msg, i) => (
-                    <View key={i} style={{
-                      borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8,
-                      backgroundColor: msg.role === 'user' ? T.btn.secondary.bg : T.btn.pill.bg,
-                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                      maxWidth: '90%',
-                    }}>
-                      <Text style={{ fontSize: 12, color: msg.role === 'user' ? T.text.accent : T.text.primary, lineHeight: 18 }}>
-                        {msg.text}
+        {/* Meals by type */}
+        {MEAL_TYPES.map(({ key, label }) => {
+          const typeMeals = todayMeals.filter((m) => m.meal_type === key)
+          if (typeMeals.length === 0) return null
+          return (
+            <View key={key} style={{ marginBottom: spacing[4] }}>
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textMuted, marginBottom: spacing[2] }}>{label}</Text>
+              {typeMeals.map((meal) => (
+                <GlassCard key={meal.id} padding={spacing[4]} style={{ marginBottom: spacing[2] }} noShadow>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={2}>{meal.raw_input}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                        {meal.total_calories} kcal · P:{meal.total_protein}g · K:{meal.total_carbs}g · Y:{meal.total_fat}g
                       </Text>
                     </View>
-                  ))}
-                  {chatLoading && (
-                    <View style={{ borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: T.btn.pill.bg, alignSelf: 'flex-start' }}>
-                      <Text style={{ fontSize: 12, color: T.text.subtle }}>···</Text>
-                    </View>
-                  )}
-                </View>
-              )}
+                    <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                      <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEditMeal(meal)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginLeft: spacing[2] }}>
+                      <Ionicons name="create-outline" size={16} color={colors.textSubtle} />
+                    </TouchableOpacity>
+                  </View>
+                </GlassCard>
+              ))}
+            </View>
+          )
+        })}
 
-              {/* Input */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                <TextInput
-                  value={chatInput}
-                  onChangeText={setChatInput}
-                  placeholder="Ne yiyebilirim?..."
-                  placeholderTextColor="#9CA3AF"
-                  style={{ flex: 1, borderWidth: 1, borderColor: T.input.border, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: T.input.text, backgroundColor: T.input.bg }}
-                  onSubmitEditing={() => void handleSendChat()}
-                  returnKeyType="send"
-                />
-                <TouchableOpacity
-                  onPress={() => void handleSendChat()}
-                  disabled={chatLoading || !chatInput.trim()}
-                  style={{ borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: T.accent, justifyContent: 'center', opacity: chatLoading || !chatInput.trim() ? 0.4 : 1 }}
-                >
-                  <Text style={{ fontSize: 14, color: 'white', fontWeight: '700' }}>→</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
+        {todayMeals.length === 0 && (
+          <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+            <Ionicons name="restaurant-outline" size={48} color={colors.textSubtle} />
+            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.nutr_no_meals}</Text>
+            <Button label={t.nutr_add_meal} onPress={() => setShowAdd(true)} variant="secondary" />
+          </View>
+        )}
       </ScrollView>
 
-      {/* Add Modal — yeni flow: yaz → hesapla → kaydet */}
-      <Modal visible={showAddModal} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <View style={{ borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: 'white', padding: 24 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: T.text.primary, marginBottom: 16 }}>Ne yedin?</Text>
-
-            {/* Öğün tipi */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              {MEAL_TYPES.map((type) => (
-                <TouchableOpacity key={type} onPress={() => { setSelectedMealType(type); setPreview(null) }}
-                  style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
-                    backgroundColor: selectedMealType === type ? T.accent : T.btn.pill.bg }}>
-                  <Text style={{ marginRight: 4 }}>{MEAL_TYPE_ICONS[type]}</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: selectedMealType === type ? 'white' : T.text.muted }}>{MEAL_TYPE_LABELS[type]}</Text>
+      {/* Add meal */}
+      <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setParsedItems(null) }} title={t.nutr_add_meal} scrollable>
+        <View style={{ gap: spacing[4] }}>
+          <View>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>{t.nutr_meal_type}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+              {MEAL_TYPES.map(({ key, label }) => (
+                <TouchableOpacity key={key} onPress={() => setMealType(key)} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 10, backgroundColor: mealType === key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: mealType === key ? palette.accent : colors.border }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: mealType === key ? '#fff' : colors.textMuted }}>{label}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
+          </View>
 
-            {/* Metin girişi */}
-            <TextInput
-              value={rawInput}
-              onChangeText={(t) => { setRawInput(t); setPreview(null) }}
-              placeholder="örn: sabah kahvaltısında 2 yumurta, 2 dilim ekmek, peynir ve domates yedim"
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={3}
-              autoFocus
-              style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12,
-                fontSize: 14, color: T.input.text, minHeight: 80, textAlignVertical: 'top' }}
-            />
+          <Input
+            label={t.nutr_what_did_you_eat}
+            value={rawInput}
+            onChangeText={setRawInput}
+            placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
+            multiline
+            numberOfLines={3}
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+            autoFocus
+          />
 
-            {/* AI Önizleme */}
-            {preview && (
-              <View style={{ backgroundColor: `${T.accent}08`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.accent, marginBottom: 6 }}>🤖 AI Tahmini:</Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: T.text.primary }}>{Math.round(preview.calories)}</Text>
-                    <Text style={{ fontSize: 10, color: T.text.muted }}>kcal</Text>
-                  </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: T.blockType.workout }}>{Math.round(preview.protein)}g</Text>
-                    <Text style={{ fontSize: 10, color: T.text.muted }}>Protein</Text>
-                  </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: T.warning }}>{Math.round(preview.carbs)}g</Text>
-                    <Text style={{ fontSize: 10, color: T.text.muted }}>Karb</Text>
-                  </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: T.danger }}>{Math.round(preview.fat)}g</Text>
-                    <Text style={{ fontSize: 10, color: T.text.muted }}>Yağ</Text>
-                  </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: T.success }}>{Math.round(preview.fiber)}g</Text>
-                    <Text style={{ fontSize: 10, color: T.text.muted }}>Lif</Text>
-                  </View>
+          {!parsedItems && (
+            <Button label={parsing ? t.nutr_analyzing : t.nutr_ai_analyze} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
+          )}
+
+          {parsedItems && (
+            <View style={{ gap: spacing[2] }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} {t.nutr_nutrients_found}</Text>
+              {parsedItems.map((item, i) => (
+                <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.calories} kcal</Text>
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing[2] }}>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_total}</Text>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: palette.warning }}>
+                  {parsedItems.reduce((s, i) => s + i.calories, 0)} kcal
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <Button label={adding ? t.nutr_saving : t.nutr_save} onPress={handleAddMeal} loading={adding} fullWidth />
+        </View>
+      </BottomSheet>
+
+      {/* AI Chat */}
+      <BottomSheet visible={showChat} onClose={() => setShowChat(false)} title="Beslenme Asistanı" scrollable>
+        <View style={{ gap: spacing[3] }}>
+          {chatMsgs.length === 0 && (
+            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
+                Bugünkü beslenmen hakkında soru sorabilirsin. Örn: "Kaç kalori kaldı?", "Protein ihtiyacımı karşıladım mı?"
+              </Text>
+            </View>
+          )}
+          {chatMsgs.map((msg, i) => (
+            <View key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', padding: spacing[3], borderRadius: radius.lg, backgroundColor: msg.role === 'user' ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: msg.role === 'user' ? palette.accent : colors.border }}>
+              <Text style={{ fontSize: fontSize.sm, color: msg.role === 'user' ? '#fff' : colors.textSecondary, lineHeight: 20 }}>{msg.content}</Text>
+            </View>
+          ))}
+          {chatLoading && (
+            <View style={{ alignSelf: 'flex-start', padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner }}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yazıyor...</Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
+            <Input value={chatInput} onChangeText={setChatInput} placeholder="Sorun..." containerStyle={{ flex: 1 }} onSubmitEditing={handleChat} returnKeyType="send" />
+            <TouchableOpacity onPress={handleChat} disabled={chatLoading || !chatInput.trim()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: chatInput.trim() ? palette.accent : colors.glassInner, alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+              <Ionicons name="arrow-up" size={20} color={chatInput.trim() ? '#fff' : colors.textSubtle} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </BottomSheet>
+
+      {/* Edit meal */}
+      <BottomSheet
+        visible={!!editingMeal}
+        onClose={() => { setEditingMeal(null); setEditItems([]); setEditRawInput('') }}
+        title="Öğün Düzenle"
+        scrollable
+      >
+        <View style={{ gap: spacing[4] }}>
+          <Input
+            label="Öğün Metni"
+            value={editRawInput}
+            onChangeText={setEditRawInput}
+            placeholder="2 yumurta, 100g tavuk..."
+            multiline
+            numberOfLines={3}
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+          />
+
+          <Button
+            label={editLoading ? 'AI yeniden hesaplıyor...' : '✦ AI ile Yeniden Hesapla'}
+            onPress={() => void handleReparseEditMeal()}
+            loading={editLoading}
+            variant="secondary"
+            fullWidth
+          />
+
+          <View style={{ gap: spacing[2] }}>
+            {editItems.map((item, index) => (
+              <View key={`${item.name}-${index}`} style={{ paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: 6 }}>{item.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}>
+                  <Input
+                    value={String(item.amount)}
+                    onChangeText={(val) => updateEditItemAmount(index, val)}
+                    keyboardType="decimal-pad"
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.unit}</Text>
+                  <Text style={{ fontSize: fontSize.sm, color: palette.warning }}>{Math.round(item.calories)} kcal</Text>
                 </View>
               </View>
-            )}
-
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity onPress={() => { setShowAddModal(false); setRawInput(''); setPreview(null); setPreviewItems([]) }}
-                style={{ flex: 1, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: T.input.border, paddingVertical: 14 }}>
-                <Text style={{ fontWeight: '600', color: '#6B7280' }}>İptal</Text>
-              </TouchableOpacity>
-
-              {!preview ? (
-                <TouchableOpacity onPress={() => void handleCalculate()} disabled={!rawInput.trim() || adding}
-                  style={{ flex: 2, alignItems: 'center', borderRadius: 12, backgroundColor: T.accent, paddingVertical: 14, opacity: !rawInput.trim() || adding ? 0.5 : 1 }}>
-                  {adding ? <ActivityIndicator size="small" color="white" /> : <Text style={{ fontWeight: '600', color: 'white' }}>🤖 AI ile Hesapla</Text>}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={() => void handleAddMeal()} disabled={adding}
-                  style={{ flex: 2, alignItems: 'center', borderRadius: 12, backgroundColor: T.success, paddingVertical: 14, opacity: adding ? 0.5 : 1 }}>
-                  {adding ? <ActivityIndicator size="small" color="white" /> : <Text style={{ fontWeight: '600', color: 'white' }}>✓ Kaydet</Text>}
-                </TouchableOpacity>
-              )}
-            </View>
+            ))}
           </View>
-        </View>
-      </Modal>
 
-      {/* Edit Modal */}
-      <Modal visible={!!editingMeal} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/40">
-          <View className="rounded-t-3xl bg-surface p-6" style={{ maxHeight: '80%' }}>
-            <Text className="mb-4 text-lg font-bold text-primary">Öğünü Düzenle</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-              {MEAL_TYPES.map((type) => (
-                <TouchableOpacity key={type} onPress={() => setEditMealType(type)} className="mr-2 flex-row items-center rounded-xl px-3 py-2"
-                  style={{ backgroundColor: editMealType === type ? T.accent : T.btn.pill.bg }}>
-                  <Text className="mr-1">{MEAL_TYPE_ICONS[type]}</Text>
-                  <Text className="text-sm font-medium" style={{ color: editMealType === type ? 'white' : T.text.muted }}>{MEAL_TYPE_LABELS[type]}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <ScrollView className="mb-4 max-h-64">
-              {editItems.map((item, idx) => (
-                <View key={idx} className="mb-2 flex-row items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2">
-                  <Text className="flex-1 text-xs font-medium text-primary" numberOfLines={1}>{item.name}</Text>
-                  <TextInput value={String(item.amount)} onChangeText={(v) => handleEditAmount(idx, parseFloat(v) || 0)}
-                    keyboardType="decimal-pad" className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-xs text-primary" />
-                  <Text className="text-[10px] text-muted">{item.unit}</Text>
-                  <Text className="w-12 text-right text-xs font-semibold text-accent">{item.calories}kcal</Text>
-                  <TouchableOpacity onPress={() => { setEditItems((i) => i.filter((_, xi) => xi !== idx)); setEditRates((r) => r.filter((_, xi) => xi !== idx)) }}>
-                    <Text className="text-base font-bold text-muted/40">×</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-            <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setEditingMeal(null)} className="flex-1 items-center rounded-xl border border-gray-200 py-3">
-                <Text className="font-medium text-muted">İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleSaveEdit()} disabled={saving}
-                className="flex-1 items-center rounded-xl bg-accent py-3" style={{ opacity: saving ? 0.5 : 1 }}>
-                {saving ? <ActivityIndicator size="small" color="white" /> : <Text className="font-semibold text-white">Güncelle</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Button
+            label={editLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+            onPress={() => void handleSaveMealEdit()}
+            loading={editLoading}
+            fullWidth
+          />
         </View>
-      </Modal>
-    </GradientBackground>
+      </BottomSheet>
+    </ScreenBackground>
   )
 }

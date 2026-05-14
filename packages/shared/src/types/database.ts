@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -72,6 +72,56 @@ export type Database = {
         }
         Relationships: []
       }
+      exercises: {
+        Row: {
+          category: string
+          created_at: string | null
+          id: string
+          instructions: string | null
+          is_bodyweight: boolean | null
+          met_value: number | null
+          muscle_group_id: number | null
+          name: string
+          name_en: string | null
+          secondary_muscle_group_ids: number[] | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string | null
+          id?: string
+          instructions?: string | null
+          is_bodyweight?: boolean | null
+          met_value?: number | null
+          muscle_group_id?: number | null
+          name: string
+          name_en?: string | null
+          secondary_muscle_group_ids?: number[] | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          id?: string
+          instructions?: string | null
+          is_bodyweight?: boolean | null
+          met_value?: number | null
+          muscle_group_id?: number | null
+          name?: string
+          name_en?: string | null
+          secondary_muscle_group_ids?: number[] | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercises_muscle_group_id_fkey"
+            columns: ["muscle_group_id"]
+            isOneToOne: false
+            referencedRelation: "muscle_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       food_items: {
         Row: {
           aliases: string[] | null
@@ -84,6 +134,7 @@ export type Database = {
           id: string
           is_verified: boolean | null
           name: string
+          name_en: string | null
           protein: number
           serving_size: number
           serving_unit: string
@@ -100,6 +151,7 @@ export type Database = {
           id?: string
           is_verified?: boolean | null
           name: string
+          name_en?: string | null
           protein?: number
           serving_size?: number
           serving_unit?: string
@@ -116,6 +168,7 @@ export type Database = {
           id?: string
           is_verified?: boolean | null
           name?: string
+          name_en?: string | null
           protein?: number
           serving_size?: number
           serving_unit?: string
@@ -174,6 +227,27 @@ export type Database = {
         }
         Relationships: []
       }
+      muscle_groups: {
+        Row: {
+          body_region: string
+          id: number
+          name: string
+          name_en: string
+        }
+        Insert: {
+          body_region: string
+          id?: number
+          name: string
+          name_en: string
+        }
+        Update: {
+          body_region?: string
+          id?: number
+          name?: string
+          name_en?: string
+        }
+        Relationships: []
+      }
       nutrition_targets: {
         Row: {
           calories: number
@@ -216,6 +290,202 @@ export type Database = {
           user_id?: string
           workout_day_calories?: number | null
           workout_day_protein_g?: number | null
+        }
+        Relationships: []
+      }
+      payment_history: {
+        Row: {
+          amount: number
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          error_message: string | null
+          id: string
+          iyzico_conversation_id: string | null
+          iyzico_payment_id: string | null
+          iyzico_payment_transaction_id: string | null
+          plan: string | null
+          status: string
+          subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          error_message?: string | null
+          id?: string
+          iyzico_conversation_id?: string | null
+          iyzico_payment_id?: string | null
+          iyzico_payment_transaction_id?: string | null
+          plan?: string | null
+          status: string
+          subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          error_message?: string | null
+          id?: string
+          iyzico_conversation_id?: string | null
+          iyzico_payment_id?: string | null
+          iyzico_payment_transaction_id?: string | null
+          plan?: string | null
+          status?: string
+          subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_history_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_days: {
+        Row: {
+          created_at: string | null
+          day_name: string
+          day_number: number
+          id: string
+          is_rest: boolean | null
+          program_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          day_name: string
+          day_number: number
+          id?: string
+          is_rest?: boolean | null
+          program_id: string
+        }
+        Update: {
+          created_at?: string | null
+          day_name?: string
+          day_number?: number
+          id?: string
+          is_rest?: boolean | null
+          program_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_days_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "workout_programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_exercises: {
+        Row: {
+          exercise_id: string
+          id: string
+          notes: string | null
+          order_index: number | null
+          program_day_id: string
+          reps: number | null
+          rest_seconds: number | null
+          sets: number
+        }
+        Insert: {
+          exercise_id: string
+          id?: string
+          notes?: string | null
+          order_index?: number | null
+          program_day_id: string
+          reps?: number | null
+          rest_seconds?: number | null
+          sets?: number
+        }
+        Update: {
+          exercise_id?: string
+          id?: string
+          notes?: string | null
+          order_index?: number | null
+          program_day_id?: string
+          reps?: number | null
+          rest_seconds?: number | null
+          sets?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_exercises_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_exercises_program_day_id_fkey"
+            columns: ["program_day_id"]
+            isOneToOne: false
+            referencedRelation: "program_days"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean | null
+          cancelled_at: string | null
+          created_at: string | null
+          currency: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          iyzico_customer_reference_code: string | null
+          iyzico_subscription_reference_code: string | null
+          iyzico_token: string | null
+          plan: string
+          price_usd: number | null
+          status: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean | null
+          cancelled_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          iyzico_customer_reference_code?: string | null
+          iyzico_subscription_reference_code?: string | null
+          iyzico_token?: string | null
+          plan?: string
+          price_usd?: number | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean | null
+          cancelled_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          iyzico_customer_reference_code?: string | null
+          iyzico_subscription_reference_code?: string | null
+          iyzico_token?: string | null
+          plan?: string
+          price_usd?: number | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -351,7 +621,11 @@ export type Database = {
           date: string
           end_time: string
           id: string
+          is_recurring: boolean | null
           label: string | null
+          recurrence_days: number[] | null
+          recurrence_end: string | null
+          recurrence_type: string | null
           start_time: string
           task_id: string | null
           updated_at: string | null
@@ -364,7 +638,11 @@ export type Database = {
           date: string
           end_time: string
           id?: string
+          is_recurring?: boolean | null
           label?: string | null
+          recurrence_days?: number[] | null
+          recurrence_end?: string | null
+          recurrence_type?: string | null
           start_time: string
           task_id?: string | null
           updated_at?: string | null
@@ -377,7 +655,11 @@ export type Database = {
           date?: string
           end_time?: string
           id?: string
+          is_recurring?: boolean | null
           label?: string | null
+          recurrence_days?: number[] | null
+          recurrence_end?: string | null
+          recurrence_type?: string | null
           start_time?: string
           task_id?: string | null
           updated_at?: string | null
@@ -391,59 +673,6 @@ export type Database = {
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      subscriptions: {
-        Row: {
-          id: string
-          user_id: string
-          status: 'free' | 'pro_monthly' | 'pro_annual' | 'cancelled' | 'past_due'
-          plan: string
-          iyzico_subscription_reference_code: string | null
-          iyzico_customer_reference_code: string | null
-          iyzico_token: string | null
-          price_usd: number | null
-          currency: string | null
-          current_period_start: string | null
-          current_period_end: string | null
-          cancelled_at: string | null
-          cancel_at_period_end: boolean
-          trial_ends_at: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          status?: 'free' | 'pro_monthly' | 'pro_annual' | 'cancelled' | 'past_due'
-          plan?: string
-          iyzico_token?: string | null
-          current_period_start?: string | null
-          current_period_end?: string | null
-          cancelled_at?: string | null
-          cancel_at_period_end?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          status?: 'free' | 'pro_monthly' | 'pro_annual' | 'cancelled' | 'past_due'
-          plan?: string
-          iyzico_token?: string | null
-          iyzico_payment_id?: string | null
-          current_period_start?: string | null
-          current_period_end?: string | null
-          cancelled_at?: string | null
-          cancel_at_period_end?: boolean
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "subscriptions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          }
         ]
       }
       user_profiles: {
@@ -473,16 +702,154 @@ export type Database = {
         }
         Relationships: []
       }
+      workout_programs: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          frequency_per_week: number | null
+          id: string
+          name: string
+          split_type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          frequency_per_week?: number | null
+          id?: string
+          name: string
+          split_type?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          frequency_per_week?: number | null
+          id?: string
+          name?: string
+          split_type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      workout_sets: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          distance_m: number | null
+          duration_seconds: number | null
+          exercise_id: string
+          id: string
+          notes: string | null
+          reps: number | null
+          rest_seconds: number | null
+          set_number: number
+          weight_kg: number | null
+          workout_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          distance_m?: number | null
+          duration_seconds?: number | null
+          exercise_id: string
+          id?: string
+          notes?: string | null
+          reps?: number | null
+          rest_seconds?: number | null
+          set_number?: number
+          weight_kg?: number | null
+          workout_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          distance_m?: number | null
+          duration_seconds?: number | null
+          exercise_id?: string
+          id?: string
+          notes?: string | null
+          reps?: number | null
+          rest_seconds?: number | null
+          set_number?: number
+          weight_kg?: number | null
+          workout_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_sets_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sets_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workouts: {
+        Row: {
+          ai_plan: Json | null
+          created_at: string | null
+          date: string
+          duration_minutes: number | null
+          id: string
+          name: string | null
+          notes: string | null
+          status: string
+          total_calories_burned: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_plan?: Json | null
+          created_at?: string | null
+          date?: string
+          duration_minutes?: number | null
+          id?: string
+          name?: string | null
+          notes?: string | null
+          status?: string
+          total_calories_burned?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_plan?: Json | null
+          created_at?: string | null
+          date?: string
+          duration_minutes?: number | null
+          id?: string
+          name?: string | null
+          notes?: string | null
+          status?: string
+          total_calories_burned?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_pro_user: { Args: { check_user_id: string }; Returns: boolean }
     }
     Enums: {
       block_type: "task" | "routine" | "break" | "focus" | "meal" | "workout"
       meal_type: "breakfast" | "lunch" | "dinner" | "snack"
+      subscription_status:
+        | "free"
+        | "pro_monthly"
+        | "pro_annual"
+        | "cancelled"
+        | "past_due"
       task_status:
         | "backlog"
         | "planned"
@@ -622,6 +989,13 @@ export const Constants = {
     Enums: {
       block_type: ["task", "routine", "break", "focus", "meal", "workout"],
       meal_type: ["breakfast", "lunch", "dinner", "snack"],
+      subscription_status: [
+        "free",
+        "pro_monthly",
+        "pro_annual",
+        "cancelled",
+        "past_due",
+      ],
       task_status: [
         "backlog",
         "planned",

@@ -1,31 +1,34 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Alert, ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
-import { useTaskStore, TASK_STATUS_LABELS, WSJF_SCORE_LABELS } from '@lifeos/shared'
+import { Ionicons } from '@expo/vector-icons'
+import { useTaskStore } from '@lifeos/shared'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
-import { T } from '@/src/theme'
+import { callAiSuggest } from '@/src/lib/ai'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { StatusBadge } from '@/src/components/ui/Badge'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  backlog:     T.status.backlog.text,
-  planned:     T.status.planned.text,
-  in_progress: T.status.in_progress.text,
-  blocked:     T.status.blocked.text,
-  done:        T.status.done.text,
-  deferred:    T.status.deferred.text,
-}
+const STATUS_LABELS: Record<TaskStatus, string> = { backlog: 'Backlog', planned: 'Planlandı', in_progress: 'Devam', blocked: 'Bloke', done: 'Tamam', deferred: 'Ertelendi' }
+const STATUS_COLORS: Record<TaskStatus, string> = { backlog: palette.backlog, planned: palette.planned, in_progress: palette.inProgress, blocked: palette.blocked, done: palette.done, deferred: palette.deferred }
 
 const WSJF_FIELDS = [
-  { key: 'value_score' as const, label: '💎 Değer', color: T.blockType.workout },
-  { key: 'urgency_score' as const, label: '⏰ Aciliyet', color: T.danger },
-  { key: 'risk_score' as const, label: '⚠️ Risk', color: T.warning },
-  { key: 'effort_score' as const, label: '🔧 Efor', color: T.text.muted },
-  { key: 'friction_score' as const, label: '🚧 Engel', color: T.text.subtle },
-]
+  { key: 'value_score' as const,    label: 'Değer',   color: palette.accent },
+  { key: 'urgency_score' as const,  label: 'Aciliyet', color: palette.danger },
+  { key: 'risk_score' as const,     label: 'Risk',    color: palette.warning },
+  { key: 'effort_score' as const,   label: 'Efor',    color: palette.backlog },
+  { key: 'friction_score' as const, label: 'Engel',   color: palette.backlog },
+] as const
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { colors } = useTheme()
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -40,318 +43,232 @@ export default function TaskDetailScreen() {
     if (!id) return
     setLoading(true)
     try {
-      // Store'dan bak, yoksa fetch et
       const storeTask = useTaskStore.getState().tasks.find((t) => t.id === id)
-      if (storeTask) {
-        setTask(storeTask)
-      } else {
+      if (storeTask) { setTask(storeTask) }
+      else {
         await selectTask(supabase, id)
-        const fetched = useTaskStore.getState().selectedTask
-        setTask(fetched)
+        setTask(useTaskStore.getState().selectedTask)
       }
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [id, selectTask])
 
-  useEffect(() => {
-    void loadTask()
-  }, [loadTask])
+  useEffect(() => { void loadTask() }, [loadTask])
 
-  const handleStatusChange = useCallback(async (status: TaskStatus) => {
+  async function handleStatusChange(status: TaskStatus) {
     if (!task) return
     setSaving(true)
     try {
       await setStatus(supabase, task.id, status)
-      setTask((prev) => prev ? { ...prev, status } : null)
-    } finally {
-      setSaving(false)
-    }
-  }, [task, setStatus])
+      setTask((p) => p ? { ...p, status } : null)
+    } finally { setSaving(false) }
+  }
 
-  const handleTitleSave = useCallback(async () => {
+  async function handleTitleSave() {
     if (!task || !titleDraft.trim()) return
     setSaving(true)
     try {
       await updateTask(supabase, task.id, { title: titleDraft.trim() })
-      setTask((prev) => prev ? { ...prev, title: titleDraft.trim() } : null)
+      setTask((p) => p ? { ...p, title: titleDraft.trim() } : null)
       setEditingTitle(false)
-    } catch {
-      Alert.alert('Hata', 'Başlık kaydedilemedi')
-    } finally {
-      setSaving(false)
-    }
-  }, [task, titleDraft, updateTask])
+    } catch { Alert.alert('Hata', 'Başlık kaydedilemedi') }
+    finally { setSaving(false) }
+  }
 
-  const handleWsjfChange = useCallback(async (field: keyof Task, value: number) => {
+  async function handleWsjf(field: string, value: number) {
     if (!task) return
     setSaving(true)
     try {
       await updateTask(supabase, task.id, { [field]: value })
-      setTask((prev) => prev ? { ...prev, [field]: value } : null)
-    } catch {
-      Alert.alert('Hata', 'Skor güncellenemedi')
-    } finally {
-      setSaving(false)
-    }
-  }, [task, updateTask])
+      setTask((p) => p ? { ...p, [field]: value } : null)
+    } finally { setSaving(false) }
+  }
 
-  const handleAiPriority = useCallback(async () => {
+  async function handleAiSuggest() {
     if (!task) return
     setAiLoading(true)
     setAiReasoning(null)
     try {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        const { data: refreshData } = await supabase.auth.refreshSession()
-        session = refreshData.session
-      }
-      if (!session) throw new Error('Oturum bulunamadı. Lütfen tekrar giriş yapın.')
-      const response = await fetch(
-        `${process.env['EXPO_PUBLIC_SUPABASE_URL']}/functions/v1/ai-suggest`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: process.env['EXPO_PUBLIC_SUPABASE_ANON_KEY']!,
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ type: 'task_priority', task_id: task.id }),
-        },
-      )
-      if (!response.ok) throw new Error(`AI suggest failed: ${response.status}`)
-      const data = await response.json()
-      const s = (data as { suggestion?: Record<string, number | string> }).suggestion
+      const data = await callAiSuggest<{ suggestion?: Record<string, number | string> }>({
+        type: 'task_priority', task_id: task.id,
+      })
+      const s = data.suggestion
       if (s) {
         setAiReasoning(typeof s['reasoning'] === 'string' ? s['reasoning'] : null)
-        const fields = ['value_score','urgency_score','risk_score','effort_score','friction_score'] as const
+        const fields = ['value_score', 'urgency_score', 'risk_score', 'effort_score', 'friction_score']
         const updates: Record<string, number> = {}
-        for (const f of fields) {
-          if (typeof s[f] === 'number') updates[f] = s[f] as number
-        }
+        for (const f of fields) { if (typeof s[f] === 'number') updates[f] = s[f] as number }
         if (Object.keys(updates).length > 0) {
           await updateTask(supabase, task.id, updates)
-          setTask((prev) => prev ? { ...prev, ...updates } : null)
+          setTask((p) => p ? { ...p, ...updates } : null)
         }
       }
-    } catch {
-      setAiReasoning('AI önerisi alınamadı.')
-    } finally {
-      setAiLoading(false)
-    }
-  }, [task, updateTask])
+    } catch { setAiReasoning('AI önerisi alınamadı.') }
+    finally { setAiLoading(false) }
+  }
 
-  const handleDelete = useCallback(() => {
-    Alert.alert('Görevi Sil', 'Bu görevi kalıcı olarak silmek istediğinize emin misiniz?', [
+  function handleDelete() {
+    Alert.alert('Görevi Sil', 'Bu görevi kalıcı olarak silmek istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil', style: 'destructive',
-        onPress: async () => {
-          if (!task) return
-          await deleteTask(supabase, task.id)
-          router.back()
-        },
-      },
+      { text: 'Sil', style: 'destructive', onPress: async () => { if (!task) return; await deleteTask(supabase, task.id); router.back() } },
     ])
-  }, [task, deleteTask])
-
-  if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator size="large" color={T.accent} />
-      </View>
-    )
   }
 
-  if (!task) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <Text className="text-muted">Görev bulunamadı</Text>
-        <TouchableOpacity onPress={() => router.back()} className="mt-4">
-          <Text className="text-accent">← Geri Dön</Text>
-        </TouchableOpacity>
+  if (loading) return (
+    <ScreenBackground><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={palette.accent} /></View></ScreenBackground>
+  )
+
+  if (!task) return (
+    <ScreenBackground>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[4] }}>
+        <Text style={{ color: colors.textMuted }}>Görev bulunamadı</Text>
+        <Button label="Geri Dön" onPress={() => router.back()} variant="secondary" />
       </View>
-    )
-  }
+    </ScreenBackground>
+  )
 
   return (
-    <View className="flex-1 bg-background">
+    <ScreenBackground edges={['top']}>
       {/* Header */}
-      <View className="flex-row items-center justify-between border-b border-gray-100 px-5 pb-4 pt-14">
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text className="text-accent">← Geri</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="chevron-back" size={20} color={palette.accent} />
+          <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>Geri</Text>
         </TouchableOpacity>
-        <View className="flex-row items-center gap-3">
-          {saving && <ActivityIndicator size="small" color={T.accent} />}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
+          {saving && <ActivityIndicator size="small" color={palette.accent} />}
           <TouchableOpacity onPress={handleDelete}>
-            <Text className="text-danger">Sil</Text>
+            <Ionicons name="trash-outline" size={20} color={palette.danger} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-5 py-4">
-        {/* Başlık */}
-        {editingTitle ? (
-          <View className="mb-4">
-            <TextInput
-              value={titleDraft}
-              onChangeText={setTitleDraft}
-              className="rounded-xl border border-accent px-4 py-3 text-lg font-bold text-primary"
-              multiline
-              autoFocus
-            />
-            <View className="mt-2 flex-row gap-2">
-              <TouchableOpacity
-                onPress={() => setEditingTitle(false)}
-                className="flex-1 items-center rounded-xl border border-gray-200 py-2"
-              >
-                <Text className="text-muted">İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => void handleTitleSave()}
-                className="flex-1 items-center rounded-xl bg-accent py-2"
-              >
-                <Text className="font-semibold text-white">Kaydet</Text>
-              </TouchableOpacity>
+      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
+
+        {/* Title */}
+        <GlassCard>
+          {editingTitle ? (
+            <View style={{ gap: spacing[3] }}>
+              <Input value={titleDraft} onChangeText={setTitleDraft} multiline autoFocus />
+              <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+                <Button label="İptal" onPress={() => setEditingTitle(false)} variant="ghost" style={{ flex: 1 }} />
+                <Button label="Kaydet" onPress={handleTitleSave} style={{ flex: 1 }} />
+              </View>
             </View>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => { setTitleDraft(task.title); setEditingTitle(true) }}
-            className="mb-4"
-          >
-            <Text className="text-xl font-bold text-primary">{task.title}</Text>
-            <Text className="mt-0.5 text-xs text-muted">Düzenlemek için dokun</Text>
-          </TouchableOpacity>
-        )}
+          ) : (
+            <TouchableOpacity onPress={() => { setTitleDraft(task.title); setEditingTitle(true) }}>
+              <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{task.title}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: 4 }}>Düzenlemek için dokun</Text>
+            </TouchableOpacity>
+          )}
+        </GlassCard>
 
-        {/* Öncelik Skoru */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-surface p-4">
-          <Text className="mb-1 text-xs font-medium text-muted">WSJF Öncelik Skoru</Text>
-          <Text className="text-3xl font-bold text-accent">
-            {task.priority_score.toFixed(2)}
-          </Text>
-        </View>
+        {/* Priority score */}
+        <GlassCard>
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>WSJF Öncelik</Text>
+          <Text style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.extrabold, color: palette.accent }}>{task.priority_score?.toFixed(2) ?? '—'}</Text>
+        </GlassCard>
 
-        {/* Durum */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-surface p-4">
-          <Text className="mb-3 font-semibold text-primary">📊 Durum</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {STATUS_OPTIONS.map((s) => (
-              <TouchableOpacity
-                key={s}
-                onPress={() => void handleStatusChange(s)}
-                className="rounded-xl px-3 py-1.5"
-                style={{
-                  backgroundColor: task.status === s ? STATUS_COLORS[s] : STATUS_COLORS[s] + '22',
-                }}
-              >
-                <Text
-                  className="text-sm font-medium"
-                  style={{ color: task.status === s ? 'white' : STATUS_COLORS[s] }}
+        {/* Status */}
+        <GlassCard>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Durum</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+            {STATUS_OPTIONS.map((s) => {
+              const active = task.status === s
+              return (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => handleStatusChange(s)}
+                  style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}18`, borderWidth: 1, borderColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}35` }}
                 >
-                  {TASK_STATUS_LABELS[s]}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: active ? '#fff' : STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</Text>
+                </TouchableOpacity>
+              )
+            })}
           </View>
-        </View>
+        </GlassCard>
 
-        {/* WSJF Skorları */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-surface p-4">
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="font-semibold text-primary">⚡ WSJF Parametreleri</Text>
+        {/* WSJF */}
+        <GlassCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>WSJF Parametreleri</Text>
             <TouchableOpacity
-              onPress={() => void handleAiPriority()}
+              onPress={handleAiSuggest}
               disabled={aiLoading}
-              style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: `${T.blockType.workout}15`, opacity: aiLoading ? 0.5 : 1 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading ? 0.6 : 1 }}
             >
-              {aiLoading ? (
-                <ActivityIndicator size="small" color={T.blockType.workout} />
-              ) : (
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.blockType.workout }}>🤖 AI Öner</Text>
-              )}
+              {aiLoading ? <ActivityIndicator size="small" color={palette.accent} /> : <Ionicons name="sparkles" size={14} color={palette.accent} />}
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>AI Öner</Text>
             </TouchableOpacity>
           </View>
+
           {aiReasoning && (
-            <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: `${T.blockType.workout}10`, padding: 12 }}>
-              <Text style={{ fontSize: 12, color: T.text.secondary }}>{aiReasoning}</Text>
+            <View style={{ marginBottom: spacing[4], padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiReasoning}</Text>
             </View>
           )}
-          {WSJF_FIELDS.map((field) => {
-            const value = task[field.key] as number
-            return (
-              <View key={field.key} className="mb-3">
-                <View className="mb-1 flex-row justify-between">
-                  <Text className="text-sm text-primary">{field.label}</Text>
-                  <Text className="text-sm font-semibold" style={{ color: field.color }}>
-                    {value} — {WSJF_SCORE_LABELS[value as 1 | 2 | 3 | 4 | 5]}
-                  </Text>
-                </View>
-                <View className="flex-row gap-1">
-                  {[1, 2, 3, 4, 5].map((v) => (
-                    <TouchableOpacity
-                      key={v}
-                      onPress={() => void handleWsjfChange(field.key, v)}
-                      className="flex-1 items-center rounded-lg py-2"
-                      style={{
-                        backgroundColor: value === v ? field.color : field.color + '22',
-                      }}
-                    >
-                      <Text
-                        className="text-sm font-bold"
-                        style={{ color: value === v ? 'white' : field.color }}
+
+          <View style={{ gap: spacing[4] }}>
+            {WSJF_FIELDS.map((field) => {
+              const value = task[field.key] as number
+              return (
+                <View key={field.key}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing[2] }}>
+                    <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: fontWeight.medium }}>{field.label}</Text>
+                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: field.color }}>{value}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        onPress={() => handleWsjf(field.key, v)}
+                        style={{ flex: 1, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: value === v ? field.color : `${field.color}18`, borderWidth: 1, borderColor: value === v ? field.color : `${field.color}30` }}
                       >
-                        {v}
-                      </Text>
-                    </TouchableOpacity>
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: value === v ? '#fff' : field.color }}>{v}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        </GlassCard>
+
+        {/* Details */}
+        <GlassCard>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Detaylar</Text>
+          <View style={{ gap: spacing[3] }}>
+            {task.scheduled_date && <DetailRow label="Tarih" value={task.scheduled_date} />}
+            {task.due_date && <DetailRow label="Son Tarih" value={task.due_date} color={palette.danger} />}
+            {task.estimated_minutes && <DetailRow label="Süre" value={`${task.estimated_minutes} dk`} />}
+            {(task.tags?.length ?? 0) > 0 && (
+              <View>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>Etiketler</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+                  {task.tags.map((tag) => (
+                    <View key={tag} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}25` }}>
+                      <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium }}>#{tag}</Text>
+                    </View>
                   ))}
                 </View>
               </View>
-            )
-          })}
-        </View>
-
-        {/* Meta Bilgiler */}
-        <View className="mb-8 rounded-2xl border border-gray-100 bg-surface p-4">
-          <Text className="mb-3 font-semibold text-primary">📋 Detaylar</Text>
-          {task.scheduled_date && (
-            <View className="mb-2 flex-row justify-between">
-              <Text className="text-sm text-muted">Planlanan Tarih</Text>
-              <Text className="text-sm text-primary">{task.scheduled_date}</Text>
-            </View>
-          )}
-          {task.due_date && (
-            <View className="mb-2 flex-row justify-between">
-              <Text className="text-sm text-muted">Son Tarih</Text>
-              <Text className="text-sm text-primary">{task.due_date}</Text>
-            </View>
-          )}
-          {task.estimated_minutes && (
-            <View className="mb-2 flex-row justify-between">
-              <Text className="text-sm text-muted">Tahmini Süre</Text>
-              <Text className="text-sm text-primary">{task.estimated_minutes} dk</Text>
-            </View>
-          )}
-          {task.tags.length > 0 && (
-            <View className="mb-2">
-              <Text className="mb-1 text-sm text-muted">Etiketler</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {task.tags.map((tag) => (
-                  <View key={tag} className="rounded-full bg-accent/10 px-3 py-1">
-                    <Text className="text-xs text-accent">#{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-          <View className="flex-row justify-between">
-            <Text className="text-xs text-muted">
-              Oluşturulma: {new Date(task.created_at).toLocaleDateString('tr-TR')}
+            )}
+            <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+              Oluşturuldu: {new Date(task.created_at).toLocaleDateString('tr-TR')}
             </Text>
           </View>
-        </View>
+        </GlassCard>
+
       </ScrollView>
+    </ScreenBackground>
+  )
+}
+
+function DetailRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{label}</Text>
+      <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: color ?? colors.textPrimary }}>{value}</Text>
     </View>
   )
 }

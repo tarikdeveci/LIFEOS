@@ -82,7 +82,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
           tasksCompleted,
           taskPercent: tasksTotal > 0 ? Math.round((tasksCompleted / tasksTotal) * 100) : 0,
           calories: Math.round(calories),
-          caloriePercent: calorieTarget > 0 ? Math.min(100, Math.round((calories / calorieTarget) * 100)) : 0,
+          caloriePercent: calorieTarget > 0 ? Math.round((calories / calorieTarget) * 100) : 0,
           workoutStatus: (workoutStat?.status ?? 'none') as WeeklyDayStat['workoutStatus'],
           caloriesBurned: workoutStat?.caloriesBurned ?? 0,
         }
@@ -108,7 +108,12 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
   const calorieConsumed = dailySummary?.calories ?? 0
   const calorieBurned = todayWorkout?.total_calories_burned ?? 0
   const calorieNet = calorieConsumed - calorieBurned
-  const caloriePercent = Math.min(100, Math.round((calorieNet / calorieTarget) * 100))
+  const caloriePercent = Math.round((calorieNet / calorieTarget) * 100)
+  const calorieBarWidth = `${Math.min(100, Math.max(0, caloriePercent))}%`
+  const calorieBarColor =
+    caloriePercent > 120 ? '#EF4444' :
+    caloriePercent > 100 ? '#F59E0B' :
+    caloriePercent > 80  ? '#34A853' : '#4A90D9'
 
   const handleCreate = useCallback(
     async (input: CreateTaskInput) => {
@@ -348,17 +353,31 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
                 <div className="mt-1 h-2 rounded-full bg-border/40">
                   <div
                     className="h-2 rounded-full transition-all"
-                    style={{
-                      width: `${Math.max(0, caloriePercent)}%`,
-                      backgroundColor: caloriePercent >= 100 ? '#EF4444' : '#4A90D9',
-                    }}
+                    style={{ width: calorieBarWidth, backgroundColor: calorieBarColor }}
                   />
                 </div>
-                {calorieBurned > 0 && (
-                  <p className="mt-1 text-[10px] text-success">
-                    -{Math.round(calorieBurned)} kcal antrenman
-                  </p>
-                )}
+                <div className="mt-1 flex items-center justify-between">
+                  {calorieBurned > 0 && (
+                    <p className="text-[10px] text-success">
+                      -{Math.round(calorieBurned)} kcal antrenman
+                    </p>
+                  )}
+                  {caloriePercent > 120 && (
+                    <p className="ml-auto text-[10px]" style={{ color: '#EF4444' }}>
+                      Hedef %{caloriePercent - 100} aşıldı
+                    </p>
+                  )}
+                  {caloriePercent > 100 && caloriePercent <= 120 && (
+                    <p className="ml-auto text-[10px]" style={{ color: '#F59E0B' }}>
+                      Hedef biraz aşıldı
+                    </p>
+                  )}
+                  {caloriePercent > 0 && caloriePercent < 80 && (
+                    <p className="ml-auto text-[10px]" style={{ color: '#4A90D9' }}>
+                      %{100 - caloriePercent} açık
+                    </p>
+                  )}
+                </div>
               </div>
               {dailySummary && (
                 <div className="grid grid-cols-3 gap-1 text-center">

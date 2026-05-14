@@ -10,6 +10,8 @@ import type {
   CreateWorkoutSetInput,
   UpdateWorkoutSetInput,
   WorkoutStatus,
+  WorkoutProgram,
+  CreateProgramInput,
 } from '../types/workout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -218,4 +220,58 @@ export function estimateCalories(
   durationMinutes: number,
 ): number {
   return Math.round(metValue * weightKg * (durationMinutes / 60))
+}
+
+// -------------------------------------------------------
+// Workout Programs
+// -------------------------------------------------------
+
+export async function getWorkoutPrograms(
+  supabase: Supabase,
+  userId: string,
+): Promise<WorkoutProgram[]> {
+  const { data, error } = await supabase
+    .from('workout_programs')
+    .select(`
+      *,
+      days:program_days(
+        *,
+        exercises:program_exercises(
+          *,
+          exercise:exercises(*)
+        )
+      )
+    `)
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data as WorkoutProgram[]
+}
+
+export async function createWorkoutProgram(
+  supabase: Supabase,
+  userId: string,
+  input: CreateProgramInput,
+): Promise<WorkoutProgram> {
+  const { data, error } = await supabase
+    .from('workout_programs')
+    .insert({ ...input, user_id: userId })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as WorkoutProgram
+}
+
+export async function deleteWorkoutProgram(
+  supabase: Supabase,
+  programId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('workout_programs')
+    .delete()
+    .eq('id', programId)
+
+  if (error) throw error
 }

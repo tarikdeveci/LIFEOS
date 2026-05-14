@@ -103,3 +103,43 @@ export interface DailyWorkoutSummary {
   calories_burned: number | null
   muscle_groups_worked: string[]
 }
+
+// Workout Programs
+export interface WorkoutProgram {
+  id: string
+  user_id: string | null  // null = global template
+  name: string
+  description: string | null
+  split_type: 'bro_split' | 'push_pull_legs' | 'full_body' | 'upper_lower' | 'custom'
+  frequency_per_week: number
+  created_at: string
+  days?: ProgramDay[]
+}
+
+export interface ProgramDay {
+  id: string
+  program_id: string
+  day_number: number
+  day_name: string
+  is_rest: boolean
+  exercises?: ProgramExercise[]
+}
+
+export interface ProgramExercise {
+  id: string
+  program_day_id: string
+  exercise_id: string
+  exercise?: Exercise
+  sets: number
+  reps: number | null
+  rest_seconds: number
+  order_index: number
+  notes: string | null
+}
+
+export interface CreateProgramInput {
+  name: string
+  description?: string
+  split_type?: WorkoutProgram['split_type']
+  frequency_per_week?: number
+}

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import LoginForm from './LoginForm'
+import { LoginFormClient } from './LoginFormClient'
 
 export const metadata: Metadata = { title: 'Giriş Yap' }
 
@@ -63,7 +63,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6">
-            <LoginForm />
+            <LoginFormClient />
           </div>
         </div>
       </div>

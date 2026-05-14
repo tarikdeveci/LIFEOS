@@ -8,6 +8,8 @@ import type {
   CreateWorkoutInput,
   CreateWorkoutSetInput,
   UpdateWorkoutSetInput,
+  WorkoutProgram,
+  CreateProgramInput,
 } from '../types/workout'
 import {
   getMuscleGroups,
@@ -21,6 +23,9 @@ import {
   updateWorkoutSet,
   deleteWorkoutSet,
   completeWorkout,
+  getWorkoutPrograms,
+  createWorkoutProgram,
+  deleteWorkoutProgram,
 } from '../supabase/workouts'
 import { todayDate } from '../utils/date'
 
@@ -40,6 +45,9 @@ interface WorkoutState {
   loading: boolean
   error: string | null
 
+  // Programlar
+  programs: WorkoutProgram[]
+
   // Actions
   fetchLibrary: (supabase: Supabase, options?: { force?: boolean }) => Promise<void>
   fetchTodayWorkout: (supabase: Supabase, userId: string, date?: string) => Promise<void>
@@ -52,6 +60,9 @@ interface WorkoutState {
   updateSet: (supabase: Supabase, setId: string, updates: UpdateWorkoutSetInput) => Promise<void>
   removeSet: (supabase: Supabase, setId: string) => Promise<void>
   setWorkoutAiPlan: (supabase: Supabase, workoutId: string, plan: Workout['ai_plan']) => Promise<void>
+  fetchPrograms: (supabase: Supabase, userId: string) => Promise<void>
+  addProgram: (supabase: Supabase, userId: string, input: CreateProgramInput) => Promise<WorkoutProgram>
+  deleteProgram: (supabase: Supabase, programId: string) => Promise<void>
 
   // Realtime
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
@@ -66,6 +77,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   workoutHistory: [],
   loading: false,
   error: null,
+  programs: [],
 
   fetchLibrary: async (supabase, options) => {
     if (!options?.force && get().exercises.length > 0) return  // cache
@@ -178,6 +190,22 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ? { ...state.todayWorkout, ai_plan: plan }
         : state.todayWorkout,
     }))
+  },
+
+  fetchPrograms: async (supabase, userId) => {
+    const programs = await getWorkoutPrograms(supabase, userId)
+    set({ programs })
+  },
+
+  addProgram: async (supabase, userId, input) => {
+    const program = await createWorkoutProgram(supabase, userId, input)
+    set((state) => ({ programs: [...state.programs, program] }))
+    return program
+  },
+
+  deleteProgram: async (supabase, programId) => {
+    await deleteWorkoutProgram(supabase, programId)
+    set((state) => ({ programs: state.programs.filter((p) => p.id !== programId) }))
   },
 
   handleRealtimeEvent: (event) => {
