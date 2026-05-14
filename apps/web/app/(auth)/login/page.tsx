@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
-import LoginForm from './LoginForm'
+import dynamic from 'next/dynamic'
+
+const LoginForm = dynamic(() => import('./LoginForm'), { ssr: false })
 
 export const metadata: Metadata = { title: 'Giriş Yap' }
 
