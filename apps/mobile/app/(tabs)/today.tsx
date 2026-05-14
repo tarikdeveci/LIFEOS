@@ -15,7 +15,7 @@ export default function TodayScreen() {
   const { colors } = useTheme()
   const { tasks, fetchTasks } = useTaskStore()
   const { timeBlocks, fetchDayData } = usePlanningStore()
-  const { meals, target, fetchDayNutrition } = useNutritionStore()
+  const { meals, target, dailySummary, fetchDayNutrition } = useNutritionStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -54,9 +54,9 @@ export default function TodayScreen() {
     }, 0) / 60 * 10,
   ) / 10
 
-  const todayMeals = meals.filter((m) => m.date === todayStr)
-  const totalCal   = todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
-  const totalProt  = todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  // Prefer dailySummary (server-computed) over manual meal sum
+  const totalCal  = dailySummary?.calories ?? meals.filter((m) => m.date === todayStr).reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const totalProt = dailySummary?.protein  ?? meals.filter((m) => m.date === todayStr).reduce((s, m) => s + (m.total_protein ?? 0), 0)
 
   const blockColors: Record<string, string> = {
     task: palette.task, routine: palette.routine, break: palette.break,
@@ -139,15 +139,26 @@ export default function TodayScreen() {
               <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: target ? spacing[4] : 0 }}>
+          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: (target?.calories || target?.protein_g) ? spacing[4] : 0 }}>
             <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
             <StatCard label="Protein" value={`${totalProt}g`} color={palette.info} />
           </View>
           {target && (
             <View style={{ gap: spacing[3] }}>
-              <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
-              <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
+              {(target.calories ?? 0) > 0 && (
+                <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
+              )}
+              {(target.protein_g ?? 0) > 0 && (
+                <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
+              )}
             </View>
+          )}
+          {!target && (
+            <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
+                Beslenme hedeflerini ayarlamak için dokunun →
+              </Text>
+            </TouchableOpacity>
           )}
         </GlassCard>
       </ScrollView>
