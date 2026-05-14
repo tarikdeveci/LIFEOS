@@ -43,9 +43,9 @@ export default function TodayScreen() {
     setRefreshing(false)
   }
 
-  const todayTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
-  const doneTasks    = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
-  const todayBlocks  = timeBlocks.filter((b) => b.date === todayStr)
+  const todayTasks  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
+  const doneTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
+  const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
       const [sh, sm] = b.start_time.split(':').map(Number)
@@ -54,9 +54,12 @@ export default function TodayScreen() {
     }, 0) / 60 * 10,
   ) / 10
 
-  // Prefer dailySummary (server-computed) over manual meal sum
-  const totalCal  = dailySummary?.calories ?? meals.filter((m) => m.date === todayStr).reduce((s, m) => s + (m.total_calories ?? 0), 0)
-  const totalProt = dailySummary?.protein  ?? meals.filter((m) => m.date === todayStr).reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  // Use server-computed dailySummary when available, fallback to manual sum
+  const todayMeals = meals.filter((m) => m.date === todayStr)
+  const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const totalProt  = dailySummary?.protein  ?? todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  const totalCarbs = dailySummary?.carbs    ?? todayMeals.reduce((s, m) => s + (m.total_carbs ?? 0), 0)
+  const totalFat   = dailySummary?.fat      ?? todayMeals.reduce((s, m) => s + (m.total_fat ?? 0), 0)
 
   const blockColors: Record<string, string> = {
     task: palette.task, routine: palette.routine, break: palette.break,
@@ -139,11 +142,17 @@ export default function TodayScreen() {
               <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: (target?.calories || target?.protein_g) ? spacing[4] : 0 }}>
+
+          {/* 4 macro stats */}
+          <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[4] }}>
             <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
             <StatCard label="Protein" value={`${totalProt}g`} color={palette.info} />
+            <StatCard label="Karb" value={`${totalCarbs}g`} color={palette.success} />
+            <StatCard label="Yağ" value={`${totalFat}g`} color={palette.danger} />
           </View>
-          {target && (
+
+          {/* Progress bars if target is set */}
+          {target ? (
             <View style={{ gap: spacing[3] }}>
               {(target.calories ?? 0) > 0 && (
                 <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
@@ -151,12 +160,17 @@ export default function TodayScreen() {
               {(target.protein_g ?? 0) > 0 && (
                 <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
               )}
+              {(target.carbs_g ?? 0) > 0 && (
+                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs_g} color={palette.success} />
+              )}
+              {(target.fat_g ?? 0) > 0 && (
+                <ProgressBar label="Yağ" value={totalFat} target={target.fat_g} color={palette.danger} />
+              )}
             </View>
-          )}
-          {!target && (
+          ) : (
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
               <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
-                Beslenme hedeflerini ayarlamak için dokunun →
+                Beslenme hedeflerini ayarla →
               </Text>
             </TouchableOpacity>
           )}

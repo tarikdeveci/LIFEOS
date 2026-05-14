@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Calendar from 'expo-calendar'
 import { supabase } from '@/src/lib/supabase'
@@ -15,10 +15,10 @@ import type { Language } from '@/src/i18n'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 const ACTIVITY_LEVELS = [
-  { key: 'sedentary',         label: 'Hareketsiz',  sub: 'Masabaşı, spor yok' },
-  { key: 'lightly_active',    label: 'Az Aktif',    sub: 'Haftada 1-3 gün spor' },
-  { key: 'moderately_active', label: 'Orta Aktif',  sub: 'Haftada 3-5 gün spor' },
-  { key: 'very_active',       label: 'Çok Aktif',   sub: 'Haftada 6-7 gün spor' },
+  { key: 'sedentary',          label: 'Hareketsiz',  sub: 'Masabaşı, spor yok' },
+  { key: 'lightly_active',     label: 'Az Aktif',    sub: 'Haftada 1-3 gün spor' },
+  { key: 'moderately_active',  label: 'Orta Aktif',  sub: 'Haftada 3-5 gün spor' },
+  { key: 'very_active',        label: 'Çok Aktif',   sub: 'Haftada 6-7 gün spor' },
 ]
 
 const FITNESS_GOALS = [
@@ -44,6 +44,7 @@ interface ProfileState {
   height: string; weight: string; age: string
   fitnessGoal: string; activityLevel: string
 }
+
 interface NutritionState {
   calories: string; protein: string; carbs: string; fat: string; fiber: string
 }
@@ -56,7 +57,9 @@ export default function ProfileScreen() {
     displayName: '', email: '', height: '', weight: '', age: '',
     fitnessGoal: 'muscle_gain', activityLevel: 'moderately_active',
   })
-  const [nutrition, setNutrition] = useState<NutritionState>({ calories: '', protein: '', carbs: '', fat: '', fiber: '' })
+  const [nutrition, setNutrition] = useState<NutritionState>({
+    calories: '', protein: '', carbs: '', fat: '', fiber: '',
+  })
   const [calendarStatus, setCalendarStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown')
   const [userId, setUserId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -67,37 +70,48 @@ export default function ProfileScreen() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setUserId(user.id)
-    setProfile((p) => ({ ...p, displayName: user.user_metadata?.display_name ?? '', email: user.email ?? '' }))
+    setProfile((p) => ({
+      ...p,
+      displayName: String(user.user_metadata?.display_name ?? ''),
+      email: user.email ?? '',
+    }))
 
-    const [profileRes, targetRes, calRes] = await Promise.all([
-      supabase.from('user_profiles').select('preferences').eq('user_id', user.id).single(),
-      supabase.from('nutrition_targets').select('*').eq('user_id', user.id).single(),
-      Calendar.getCalendarPermissionsAsync().catch(() => null),
-    ])
+    // maybeSingle() returns null instead of error when no row found
+    const { data: profileData } = await supabase
+      .from('user_profiles')
+      .select('preferences')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (profileRes.data?.preferences) {
-      const p = profileRes.data.preferences as Record<string, unknown>
+    if (profileData?.preferences) {
+      const p = profileData.preferences as Record<string, unknown>
       setProfile((prev) => ({
         ...prev,
-        height: String(p['height_cm'] ?? ''),
-        weight: String(p['weight_kg'] ?? ''),
-        age: String(p['age'] ?? ''),
-        fitnessGoal: String(p['fitness_goal'] ?? 'muscle_gain'),
-        activityLevel: String(p['activity_level'] ?? 'moderately_active'),
+        height:        p['height_cm']      != null ? String(p['height_cm'])      : '',
+        weight:        p['weight_kg']      != null ? String(p['weight_kg'])      : '',
+        age:           p['age']            != null ? String(p['age'])            : '',
+        fitnessGoal:   p['fitness_goal']   != null ? String(p['fitness_goal'])   : 'muscle_gain',
+        activityLevel: p['activity_level'] != null ? String(p['activity_level']) : 'moderately_active',
       }))
     }
 
-    if (targetRes.data) {
-      const t = targetRes.data
+    const { data: targetData } = await supabase
+      .from('nutrition_targets')
+      .select('calories, protein_g, carbs_g, fat_g, fiber_g')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (targetData) {
       setNutrition({
-        calories: String(t.calories ?? ''),
-        protein:  String(t.protein_g ?? ''),
-        carbs:    String(t.carbs_g ?? ''),
-        fat:      String(t.fat_g ?? ''),
-        fiber:    String(t.fiber_g ?? ''),
+        calories: targetData.calories  != null ? String(targetData.calories)  : '',
+        protein:  targetData.protein_g != null ? String(targetData.protein_g) : '',
+        carbs:    targetData.carbs_g   != null ? String(targetData.carbs_g)   : '',
+        fat:      targetData.fat_g     != null ? String(targetData.fat_g)     : '',
+        fiber:    targetData.fiber_g   != null ? String(targetData.fiber_g)   : '',
       })
     }
 
+    const calRes = await Calendar.getCalendarPermissionsAsync().catch(() => null)
     if (calRes) setCalendarStatus(calRes.status === 'granted' ? 'granted' : 'denied')
   }, [])
 
@@ -107,46 +121,56 @@ export default function ProfileScreen() {
     if (!userId) return
     setSaving(true)
     try {
-      await supabase.from('user_profiles').upsert({
+      const { error } = await supabase.from('user_profiles').upsert({
         user_id: userId,
         preferences: {
-          height_cm: parseFloat(profile.height) || null,
-          weight_kg: parseFloat(profile.weight) || null,
-          age: parseInt(profile.age) || null,
-          fitness_goal: profile.fitnessGoal,
+          height_cm:      parseFloat(profile.height)  || null,
+          weight_kg:      parseFloat(profile.weight)  || null,
+          age:            parseInt(profile.age)        || null,
+          fitness_goal:   profile.fitnessGoal,
           activity_level: profile.activityLevel,
         },
       }, { onConflict: 'user_id' })
+      if (error) throw error
       setShowPhysical(false)
-    } catch { Alert.alert('Hata', 'Profil kaydedilemedi') }
-    finally { setSaving(false) }
+      Alert.alert('Kaydedildi', 'Fiziksel bilgilerin güncellendi.')
+    } catch (e) {
+      Alert.alert('Hata', 'Profil kaydedilemedi')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function saveNutrition() {
     if (!userId) return
     setSaving(true)
     try {
-      await supabase.from('nutrition_targets').upsert({
-        user_id: userId,
-        calories:   parseFloat(nutrition.calories) || 2000,
-        protein_g:  parseFloat(nutrition.protein)  || 150,
-        carbs_g:    parseFloat(nutrition.carbs)     || 250,
-        fat_g:      parseFloat(nutrition.fat)       || 70,
-        fiber_g:    parseFloat(nutrition.fiber)     || 30,
+      const { error } = await supabase.from('nutrition_targets').upsert({
+        user_id:   userId,
+        calories:  parseFloat(nutrition.calories) || 2000,
+        protein_g: parseFloat(nutrition.protein)  || 150,
+        carbs_g:   parseFloat(nutrition.carbs)    || 250,
+        fat_g:     parseFloat(nutrition.fat)      || 70,
+        fiber_g:   parseFloat(nutrition.fiber)    || 30,
       }, { onConflict: 'user_id' })
+      if (error) throw error
       setShowNutrition(false)
-    } catch { Alert.alert('Hata', 'Hedefler kaydedilemedi') }
-    finally { setSaving(false) }
+      Alert.alert('Kaydedildi', 'Beslenme hedeflerin güncellendi.')
+    } catch {
+      Alert.alert('Hata', 'Hedefler kaydedilemedi')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function requestCalendarPermission() {
     const { status } = await Calendar.requestCalendarPermissionsAsync()
-    setCalendarStatus(status === 'granted' ? 'granted' : 'denied')
-    if (status === 'granted') {
-      Alert.alert('Başarılı', 'Takvim erişimi verildi. Etkinlikler senkronize edilebilir.')
-    } else {
-      Alert.alert('Reddedildi', 'Takvim erişimi reddedildi. Ayarlardan izin verebilirsin.')
-    }
+    const granted = status === 'granted'
+    setCalendarStatus(granted ? 'granted' : 'denied')
+    Alert.alert(
+      granted ? '✓ Takvim Erişimi Verildi' : 'Erişim Reddedildi',
+      granted ? 'Zaman bloklarını takviminizle senkronize edebilirsiniz.' : 'Ayarlar > Uygulama İzinleri kısmından takvim iznini verebilirsiniz.',
+    )
   }
 
   function handleSignOut() {
@@ -157,7 +181,7 @@ export default function ProfileScreen() {
   }
 
   const initials = profile.displayName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?'
-  const hasNutrition = nutrition.calories && nutrition.protein
+  const hasNutrition = !!(nutrition.calories || nutrition.protein)
 
   return (
     <ScreenBackground>
@@ -166,7 +190,7 @@ export default function ProfileScreen() {
           Profil & Ayarlar
         </Text>
 
-        {/* User */}
+        {/* User card */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
             <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: `${palette.accent}18`, borderWidth: 1.5, borderColor: `${palette.accent}35`, alignItems: 'center', justifyContent: 'center' }}>
@@ -201,19 +225,19 @@ export default function ProfileScreen() {
               <InfoChip label="Lif" value={nutrition.fiber ? `${nutrition.fiber}g` : '—'} color="#10B981" />
             </View>
           ) : (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Hedef belirlenmemiş. Düzenle'ye dokunun.</Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Henüz hedef belirlenmemiş.</Text>
           )}
         </SectionCard>
 
         {/* Calendar */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
               <Ionicons name="calendar-outline" size={18} color={palette.accent} />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Takvim Entegrasyonu</Text>
-                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                  {calendarStatus === 'granted' ? '✓ Erişim verildi' : calendarStatus === 'denied' ? '✗ Erişim yok' : 'İzin verilmemiş'}
+                <Text style={{ fontSize: fontSize.xs, color: calendarStatus === 'granted' ? palette.success : colors.textMuted, marginTop: 2 }}>
+                  {calendarStatus === 'granted' ? '✓ Erişim verildi' : calendarStatus === 'denied' ? '✗ Erişim reddedildi' : 'İzin verilmemiş'}
                 </Text>
               </View>
             </View>
@@ -230,16 +254,16 @@ export default function ProfileScreen() {
 
         {/* Language */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>Dil</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>Dil / Language</Text>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             {LANG_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.lang}
                 onPress={() => setLang(opt.lang)}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: lang === opt.lang ? `${palette.accent}18` : colors.glassInner, borderWidth: 1, borderColor: lang === opt.lang ? palette.accent : colors.border }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: lang === opt.lang ? `${palette.accent}18` : colors.glassInner, borderWidth: 1.5, borderColor: lang === opt.lang ? palette.accent : colors.border }}
               >
-                <Text style={{ fontSize: 18 }}>{opt.flag}</Text>
-                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: lang === opt.lang ? palette.accent : colors.textMuted }}>{opt.label}</Text>
+                <Text style={{ fontSize: 20 }}>{opt.flag}</Text>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: lang === opt.lang ? fontWeight.bold : fontWeight.regular, color: lang === opt.lang ? palette.accent : colors.textMuted }}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -269,25 +293,27 @@ export default function ProfileScreen() {
       <BottomSheet visible={showPhysical} onClose={() => setShowPhysical(false)} title="Fiziksel Bilgiler" scrollable>
         <View style={{ gap: spacing[3] }}>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Boy (cm)" value={profile.height} onChangeText={(v) => setProfile((p) => ({ ...p, height: v }))} keyboardType="decimal-pad" placeholder="175" containerStyle={{ flex: 1 }} />
-            <Input label="Kilo (kg)" value={profile.weight} onChangeText={(v) => setProfile((p) => ({ ...p, weight: v }))} keyboardType="decimal-pad" placeholder="75" containerStyle={{ flex: 1 }} />
+            <Input label="Boy (cm)" value={profile.height} onChangeText={(v) => setProfile((p) => ({ ...p, height: v }))} keyboardType="decimal-pad" placeholder="175" containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label="Kilo (kg)" value={profile.weight} onChangeText={(v) => setProfile((p) => ({ ...p, weight: v }))} keyboardType="decimal-pad" placeholder="75" containerStyle={{ flex: 1 }} returnKeyType="next" />
           </View>
-          <Input label="Yaş" value={profile.age} onChangeText={(v) => setProfile((p) => ({ ...p, age: v }))} keyboardType="number-pad" placeholder="22" />
+          <Input label="Yaş" value={profile.age} onChangeText={(v) => setProfile((p) => ({ ...p, age: v }))} keyboardType="number-pad" placeholder="22" returnKeyType="done" />
 
-          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginTop: spacing[2] }}>Fitness Hedefi</Text>
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Fitness Hedefi</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             {FITNESS_GOALS.map((g) => (
-              <TouchableOpacity key={g.key} onPress={() => setProfile((p) => ({ ...p, fitnessGoal: g.key }))} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.lg, backgroundColor: profile.fitnessGoal === g.key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: profile.fitnessGoal === g.key ? palette.accent : colors.border }}>
+              <TouchableOpacity key={g.key} onPress={() => setProfile((p) => ({ ...p, fitnessGoal: g.key }))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.lg, backgroundColor: profile.fitnessGoal === g.key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: profile.fitnessGoal === g.key ? palette.accent : colors.border }}>
                 <Ionicons name={g.icon as never} size={14} color={profile.fitnessGoal === g.key ? '#fff' : colors.textMuted} />
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: profile.fitnessGoal === g.key ? '#fff' : colors.textMuted }}>{g.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginTop: spacing[2] }}>Aktivite Seviyesi</Text>
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Aktivite Seviyesi</Text>
           <View style={{ gap: spacing[2] }}>
             {ACTIVITY_LEVELS.map((a) => (
-              <TouchableOpacity key={a.key} onPress={() => setProfile((p) => ({ ...p, activityLevel: a.key }))} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing[4], borderRadius: radius.lg, backgroundColor: profile.activityLevel === a.key ? `${palette.accent}12` : colors.glassInner, borderWidth: 1, borderColor: profile.activityLevel === a.key ? palette.accent : colors.border }}>
+              <TouchableOpacity key={a.key} onPress={() => setProfile((p) => ({ ...p, activityLevel: a.key }))}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing[4], borderRadius: radius.lg, backgroundColor: profile.activityLevel === a.key ? `${palette.accent}12` : colors.glassInner, borderWidth: 1, borderColor: profile.activityLevel === a.key ? palette.accent : colors.border }}>
                 <View>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{a.label}</Text>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{a.sub}</Text>
@@ -297,23 +323,23 @@ export default function ProfileScreen() {
             ))}
           </View>
 
-          <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={savePhysical} loading={saving} fullWidth style={{ marginTop: spacing[2] }} />
+          <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={savePhysical} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
         </View>
       </BottomSheet>
 
       {/* Nutrition modal */}
       <BottomSheet visible={showNutrition} onClose={() => setShowNutrition(false)} title="Beslenme Hedefleri" scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Günlük Kalori (kcal)" value={nutrition.calories} onChangeText={(v) => setNutrition((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" />
+          <Input label="Günlük Kalori (kcal)" value={nutrition.calories} onChangeText={(v) => setNutrition((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Protein (g)" value={nutrition.protein} onChangeText={(v) => setNutrition((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} />
-            <Input label="Karb (g)" value={nutrition.carbs} onChangeText={(v) => setNutrition((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} />
+            <Input label="Protein (g)" value={nutrition.protein} onChangeText={(v) => setNutrition((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label="Karb (g)" value={nutrition.carbs} onChangeText={(v) => setNutrition((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} returnKeyType="next" />
           </View>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Yağ (g)" value={nutrition.fat} onChangeText={(v) => setNutrition((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} />
-            <Input label="Lif (g)" value={nutrition.fiber} onChangeText={(v) => setNutrition((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} />
+            <Input label="Yağ (g)" value={nutrition.fat} onChangeText={(v) => setNutrition((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label="Lif (g)" value={nutrition.fiber} onChangeText={(v) => setNutrition((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
-          <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={saveNutrition} loading={saving} fullWidth style={{ marginTop: spacing[2] }} />
+          <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={saveNutrition} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
         </View>
       </BottomSheet>
     </ScreenBackground>

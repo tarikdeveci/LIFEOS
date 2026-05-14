@@ -143,10 +143,10 @@ export default function WorkoutScreen() {
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Antrenman</Text>
-          {tab === 'today' && !todayWorkout && (
-            <TouchableOpacity onPress={() => setShowStart(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: palette.workout }}>
-              <Ionicons name="play" size={14} color="#fff" />
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Başlat</Text>
+          {tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' && (
+            <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
+              <Ionicons name="search-outline" size={14} color={palette.workout} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>Egzersiz Ekle</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -180,6 +180,27 @@ export default function WorkoutScreen() {
                 </View>
                 {aiSuggestion && <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiSuggestion}</Text>}
               </GlassCard>
+            )}
+
+            {!todayWorkout && (
+              <View style={{ alignItems: 'center', paddingVertical: spacing[8], gap: spacing[4] }}>
+                <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="barbell-outline" size={36} color={palette.workout} />
+                </View>
+                <View style={{ alignItems: 'center', gap: spacing[2] }}>
+                  <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Bugün antrenman yok</Text>
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', maxWidth: 220 }}>
+                    Yeni bir antrenman başlat ve kütüphaneden egzersizler ekle
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowStart(true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: spacing[6], paddingVertical: 14, borderRadius: radius.full, backgroundColor: palette.workout }}
+                >
+                  <Ionicons name="play-circle-outline" size={20} color="#fff" />
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>Antrenman Başlat</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {todayWorkout ? (
@@ -220,13 +241,7 @@ export default function WorkoutScreen() {
                   </TouchableOpacity>
                 )}
               </GlassCard>
-            ) : (
-              <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
-                <Ionicons name="barbell-outline" size={48} color={colors.textSubtle} />
-                <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Bugün antrenman başlatılmamış</Text>
-                <Button label="Antrenman başlat" onPress={() => setShowStart(true)} variant="secondary" />
-              </View>
-            )}
+            ) : null}
           </>
         )}
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, TextInput, FlatList } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
@@ -27,7 +27,7 @@ interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
 export default function NutritionScreen() {
   const { colors } = useTheme()
-  const { meals, target, fetchDayNutrition, addMeal, removeMeal } = useNutritionStore()
+  const { meals, target, dailySummary, fetchDayNutrition, addMeal, removeMeal } = useNutritionStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -69,7 +69,6 @@ export default function NutritionScreen() {
     setRefreshing(false)
   }
 
-  // Food search with debounce
   function handleFoodSearch(q: string) {
     setFoodSearch(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
@@ -79,7 +78,7 @@ export default function NutritionScreen() {
         .from('food_items')
         .select('id, name, calories_per_100g, protein_per_100g')
         .ilike('name', `%${q}%`)
-        .limit(8)
+        .limit(6)
       setFoodResults((data ?? []) as typeof foodResults)
     }, 300)
   }
@@ -109,7 +108,8 @@ export default function NutritionScreen() {
       )
       await addMeal(supabase, userId, {
         date: todayStr, meal_type: mealType, raw_input: rawInput.trim(),
-        items: items as never[], total_calories: totals.cal, total_protein: totals.prot,
+        items: items as never[],
+        total_calories: totals.cal, total_protein: totals.prot,
         total_carbs: totals.carbs, total_fat: totals.fat, total_fiber: totals.fiber,
       })
       setRawInput(''); setParsedItems(null); setShowAdd(false)
@@ -125,14 +125,15 @@ export default function NutritionScreen() {
     setChatLoading(true)
     try {
       const todayMeals = meals.filter((m) => m.date === todayStr)
-      const totals = todayMeals.reduce(
-        (s, m) => ({ cal: s.cal + (m.total_calories ?? 0), prot: s.prot + (m.total_protein ?? 0), carbs: s.carbs + (m.total_carbs ?? 0), fat: s.fat + (m.total_fat ?? 0) }),
-        { cal: 0, prot: 0, carbs: 0, fat: 0 },
-      )
       const data = await callAiSuggest<{ message?: string }>({
         type: 'nutrition_chat',
         target,
-        consumed: totals,
+        consumed: {
+          cal:   dailySummary?.calories ?? 0,
+          prot:  dailySummary?.protein  ?? 0,
+          carbs: dailySummary?.carbs    ?? 0,
+          fat:   dailySummary?.fat      ?? 0,
+        },
         meals_today: todayMeals.map((m) => ({ meal_type: m.meal_type, items: m.items })),
         history: chatMsgs.slice(-8).map((m) => ({ role: m.role, content: m.content })),
         user_message: userMsg.content,
@@ -144,10 +145,11 @@ export default function NutritionScreen() {
   }
 
   const todayMeals = meals.filter((m) => m.date === todayStr)
-  const totals = todayMeals.reduce(
-    (s, m) => ({ cal: s.cal + (m.total_calories ?? 0), prot: s.prot + (m.total_protein ?? 0), carbs: s.carbs + (m.total_carbs ?? 0), fat: s.fat + (m.total_fat ?? 0), fiber: s.fiber + (m.total_fiber ?? 0) }),
-    { cal: 0, prot: 0, carbs: 0, fat: 0, fiber: 0 },
-  )
+  const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const totalProt  = dailySummary?.protein  ?? todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  const totalCarbs = dailySummary?.carbs    ?? todayMeals.reduce((s, m) => s + (m.total_carbs ?? 0), 0)
+  const totalFat   = dailySummary?.fat      ?? todayMeals.reduce((s, m) => s + (m.total_fat ?? 0), 0)
+  const totalFiber = dailySummary?.fiber    ?? todayMeals.reduce((s, m) => s + (m.total_fiber ?? 0), 0)
 
   return (
     <ScreenBackground>
@@ -172,48 +174,65 @@ export default function NutritionScreen() {
         {/* Summary */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>Bugün</Text>
-          <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: target ? spacing[4] : 0 }}>
-            <StatCard label="Kalori" value={totals.cal} color={palette.warning} />
-            <StatCard label="Protein" value={`${totals.prot}g`} color={palette.info} />
-            <StatCard label="Karb" value={`${totals.carbs}g`} color={palette.success} />
-            <StatCard label="Yağ" value={`${totals.fat}g`} color={palette.danger} />
+
+          {/* 4 macro stat chips */}
+          <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[4] }}>
+            <StatCard label="Kalori" value={totalCal} color={palette.warning} />
+            <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
+            <StatCard label="Karb" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+            <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
           </View>
-          {target && (
+
+          {/* Progress bars against targets */}
+          {target ? (
             <View style={{ gap: spacing[3] }}>
-              <ProgressBar label="Kalori" value={totals.cal} target={target.calories} unit=" kcal" color={palette.warning} />
-              <ProgressBar label="Protein" value={totals.prot} target={target.protein_g} color={palette.info} />
-              <ProgressBar label="Karbonhidrat" value={totals.carbs} target={target.carbs_g} color={palette.success} />
-              <ProgressBar label="Yağ" value={totals.fat} target={target.fat_g} color={palette.danger} />
-              {target.fiber_g && <ProgressBar label="Lif" value={totals.fiber} target={target.fiber_g} color="#10B981" />}
+              {(target.calories ?? 0) > 0 && (
+                <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
+              )}
+              {(target.protein_g ?? 0) > 0 && (
+                <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
+              )}
+              {(target.carbs_g ?? 0) > 0 && (
+                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs_g} color={palette.success} />
+              )}
+              {(target.fat_g ?? 0) > 0 && (
+                <ProgressBar label="Yağ" value={totalFat} target={target.fat_g} color={palette.danger} />
+              )}
+              {(target.fiber_g ?? 0) > 0 && (
+                <ProgressBar label="Lif" value={totalFiber} target={target.fiber_g} color="#10B981" />
+              )}
             </View>
+          ) : (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
+              Hedef belirlemek için Profil → Beslenme Hedefleri →
+            </Text>
           )}
         </GlassCard>
 
-        {/* Food search */}
+        {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Hızlı Yiyecek Ara</Text>
           <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder="Yumurta, ekmek, peynir..." />
           {foodResults.length > 0 && (
-            <View style={{ marginTop: spacing[3], gap: spacing[2] }}>
+            <View style={{ marginTop: spacing[3], gap: 2 }}>
               {foodResults.map((food) => (
-                <View key={food.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[2] }}>
-                  <View>
+                <TouchableOpacity
+                  key={food.id}
+                  onPress={() => { setRawInput(food.name); setFoodSearch(''); setFoodResults([]); setShowAdd(true) }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border }}
+                >
+                  <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>{food.name}</Text>
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{food.calories_per_100g} kcal · {food.protein_per_100g}g protein (100g başına)</Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{food.calories_per_100g} kcal · {food.protein_per_100g}g protein (100g)</Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => { setRawInput(food.name); setFoodSearch(''); setFoodResults([]); setShowAdd(true) }}
-                    style={{ paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.meal}18`, borderWidth: 1, borderColor: `${palette.meal}30` }}
-                  >
-                    <Text style={{ fontSize: fontSize.xs, color: palette.meal, fontWeight: fontWeight.semibold }}>Ekle</Text>
-                  </TouchableOpacity>
-                </View>
+                  <Ionicons name="add-circle-outline" size={22} color={palette.meal} />
+                </TouchableOpacity>
               ))}
             </View>
           )}
         </GlassCard>
 
-        {/* Meals */}
+        {/* Meals by type */}
         {MEAL_TYPES.map(({ key, label }) => {
           const typeMeals = todayMeals.filter((m) => m.meal_type === key)
           if (typeMeals.length === 0) return null
@@ -225,7 +244,9 @@ export default function NutritionScreen() {
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={2}>{meal.raw_input}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{meal.total_calories} kcal · P:{meal.total_protein}g · K:{meal.total_carbs}g · Y:{meal.total_fat}g</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                        {meal.total_calories} kcal · P:{meal.total_protein}g · K:{meal.total_carbs}g · Y:{meal.total_fat}g
+                      </Text>
                     </View>
                     <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                       <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
@@ -246,10 +267,9 @@ export default function NutritionScreen() {
         )}
       </ScrollView>
 
-      {/* Add meal modal */}
+      {/* Add meal */}
       <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setParsedItems(null) }} title="Öğün Ekle" scrollable>
         <View style={{ gap: spacing[4] }}>
-          {/* Meal type */}
           <View>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Öğün türü</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
@@ -261,17 +281,24 @@ export default function NutritionScreen() {
             </View>
           </View>
 
-          <Input label="Ne yedin?" value={rawInput} onChangeText={setRawInput} placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..." multiline numberOfLines={3} style={{ minHeight: 80, textAlignVertical: 'top' }} autoFocus />
+          <Input
+            label="Ne yedin?"
+            value={rawInput}
+            onChangeText={setRawInput}
+            placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
+            multiline
+            numberOfLines={3}
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+            autoFocus
+          />
 
-          {/* AI Parse button */}
           {!parsedItems && (
             <Button label={parsing ? 'AI analiz ediyor...' : '✦ AI ile Hesapla'} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
           )}
 
-          {/* Parsed items preview */}
           {parsedItems && (
             <View style={{ gap: spacing[2] }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>AI Sonucu ({parsedItems.length} besin)</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} besin bulundu</Text>
               {parsedItems.map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                   <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
@@ -291,13 +318,13 @@ export default function NutritionScreen() {
         </View>
       </BottomSheet>
 
-      {/* AI Chat modal */}
+      {/* AI Chat */}
       <BottomSheet visible={showChat} onClose={() => setShowChat(false)} title="Beslenme Asistanı" scrollable>
         <View style={{ gap: spacing[3] }}>
           {chatMsgs.length === 0 && (
-            <View style={{ padding: spacing[4], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
-                Beslenme hedeflerin ve bugünkü öğünlerin hakkında soru sorabilirsin. Örnek: "Kaç kalori kaldı?", "Protein ihtiyacımı karşılamak için ne yemeliyim?"
+                Bugünkü beslenmen hakkında soru sorabilirsin. Örn: "Kaç kalori kaldı?", "Protein ihtiyacımı karşıladım mı?"
               </Text>
             </View>
           )}
@@ -308,7 +335,7 @@ export default function NutritionScreen() {
           ))}
           {chatLoading && (
             <View style={{ alignSelf: 'flex-start', padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner }}>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yanıt yazılıyor...</Text>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yazıyor...</Text>
             </View>
           )}
           <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
