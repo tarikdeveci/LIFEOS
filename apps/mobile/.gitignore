@@ -4,3 +4,9 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# Store credentials — never commit
+google-services-key.json
+*.p8
+*.p12
+*.mobileprovision
