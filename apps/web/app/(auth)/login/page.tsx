@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
-import dynamic from 'next/dynamic'
-
-const LoginForm = dynamic(() => import('./LoginForm'), { ssr: false })
+import { LoginFormClient } from './LoginFormClient'
 
 export const metadata: Metadata = { title: 'Giriş Yap' }
 
@@ -65,7 +63,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6">
-            <LoginForm />
+            <LoginFormClient />
           </div>
         </div>
       </div>
