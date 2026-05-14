@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import { useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -14,7 +14,7 @@ import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-type WorkoutTab = 'today' | 'library' | 'history'
+type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
 
 const CATEGORY_LABELS: Record<string, string> = {
   strength: 'Kuvvet', cardio: 'Kardiyo', flexibility: 'Esneklik', mobility: 'Hareketlilik',
@@ -22,7 +22,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function WorkoutScreen() {
   const { colors } = useTheme()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, fetchLibrary, fetchTodayWorkout, fetchHistory, startWorkout, finishWorkout, addSet, removeSet } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, addSet, removeSet } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
@@ -54,8 +54,8 @@ export default function WorkoutScreen() {
   const todayStr = new Date().toISOString().split('T')[0]
 
   const load = useCallback(async (uid: string) => {
-    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid)])
-  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory])
+    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchPrograms(supabase, uid)])
+  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -128,10 +128,16 @@ export default function WorkoutScreen() {
   }).length
 
   const TABS: { key: WorkoutTab; label: string }[] = [
-    { key: 'today', label: 'Bugün' },
-    { key: 'library', label: 'Kütüphane' },
-    { key: 'history', label: 'Geçmiş' },
+    { key: 'today',    label: 'Bugün' },
+    { key: 'programs', label: 'Programlar' },
+    { key: 'library',  label: 'Kütüphane' },
+    { key: 'history',  label: 'Geçmiş' },
   ]
+
+  const SPLIT_LABELS: Record<string, string> = {
+    bro_split: 'Bro Split', push_pull_legs: 'Push Pull Legs',
+    full_body: 'Full Body', upper_lower: 'Upper Lower', custom: 'Özel',
+  }
 
   return (
     <ScreenBackground>
@@ -348,6 +354,31 @@ export default function WorkoutScreen() {
           </>
         )}
 
+        {/* ── PROGRAMS ── */}
+        {tab === 'programs' && (
+          <View style={{ gap: spacing[3] }}>
+            {programs.length === 0 ? (
+              <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+                <Ionicons name="list-outline" size={48} color={colors.textSubtle} />
+                <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Program yüklenemedi</Text>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>Migration'ları çalıştırdıktan sonra programlar görünecek</Text>
+              </View>
+            ) : (
+              programs.map((prog) => (
+                <ProgramCard
+                  key={prog.id}
+                  program={prog}
+                  splitLabel={SPLIT_LABELS[prog.split_type] ?? prog.split_type}
+                  onStart={() => {
+                    setWorkoutName(prog.name)
+                    setShowStart(true)
+                  }}
+                />
+              ))
+            )}
+          </View>
+        )}
+
         {/* ── HISTORY ── */}
         {tab === 'history' && (
           workoutHistory.length === 0 ? (
@@ -417,6 +448,60 @@ export default function WorkoutScreen() {
         </View>
       </BottomSheet>
     </ScreenBackground>
+  )
+}
+
+function ProgramCard({ program, splitLabel, onStart }: { program: WorkoutProgram; splitLabel: string; onStart: () => void }) {
+  const { colors } = useTheme()
+  const isGlobal = program.user_id === null
+  const dayCount = program.days?.filter((d) => !d.is_rest).length ?? program.frequency_per_week
+
+  return (
+    <GlassCard padding={spacing[4]} noShadow>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing[3] }}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: 4 }}>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{program.name}</Text>
+            {isGlobal && (
+              <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.full, backgroundColor: `${palette.accent}15` }}>
+                <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium }}>Şablon</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }} numberOfLines={2}>{program.description}</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[3] }}>
+        <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${palette.workout}12`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
+          <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.medium }}>{splitLabel}</Text>
+        </View>
+        <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{dayCount} gün/hafta</Text>
+        </View>
+      </View>
+
+      {/* Day names */}
+      {program.days && program.days.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[1], marginBottom: spacing[3] }}>
+          {program.days.slice(0, 6).map((day) => (
+            <View key={day.id} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: day.is_rest ? colors.glassInner : `${palette.workout}10` }}>
+              <Text style={{ fontSize: fontSize.xs, color: day.is_rest ? colors.textSubtle : palette.workout }}>
+                {day.is_rest ? 'Dinlenme' : day.day_name}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <TouchableOpacity
+        onPress={onStart}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: palette.workout }}
+      >
+        <Ionicons name="play-circle-outline" size={16} color="#fff" />
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu Programla Başla</Text>
+      </TouchableOpacity>
+    </GlassCard>
   )
 }
 
