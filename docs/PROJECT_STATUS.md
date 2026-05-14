@@ -8,7 +8,9 @@
 - Login sayfasında prerendering hatası: `TypeError: Cannot read properties of undefined (reading 'trim')`
 - Root cause: LoginForm (Client Component) Server Component olan login/page.tsx tarafından import ediliyordu; prerendering sırasında LoginForm sunucu-tarafında execute ediliyordu
 - LoginForm `useLang()` hook'unu çağırıyor ve bu Context sunucu-tarafında initialize edilmiyordu
-- Çözüm: [apps/web/app/(auth)/login/page.tsx](apps/web/app/(auth)/login/page.tsx) içinde LoginForm'u `dynamic(() => import('./LoginForm'), { ssr: false })` ile import etmek; böylece client-only rendering sağlandı
+- İlk çözüm denemesi `ssr: false` kullandi ama Next.js hata verdi: `ssr: false` is not allowed with `next/dynamic` in Server Components
+- Nihai çözüm: Yeni wrapper component [apps/web/app/(auth)/login/LoginFormClient.tsx](apps/web/app/(auth)/login/LoginFormClient.tsx) oluşturuldu (`'use client'` marked)
+- LoginFormClient wrapper'ında dynamic import `{ ssr: false }` kullanıldı; page.tsx (Server Component) tarafından wrapper import edildi
 - Vercel build başarılı hale geldi ✅
 
 ### Checkpoint 15 — 30 Nisan 2026
