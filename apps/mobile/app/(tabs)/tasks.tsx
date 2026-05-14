@@ -13,6 +13,7 @@ import { StatusBadge } from '@/src/components/ui/Badge'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type Tab = 'today' | 'all'
@@ -27,12 +28,13 @@ interface Draft {
 }
 
 const EMPTY: Draft = {
-  title: '', scheduled_date: new Date().toISOString().split('T')[0],
+  title: '', scheduled_date: new Date().toISOString().split('T')[0] ?? '',
   estimated_minutes: '30', value_score: 3, urgency_score: 3, effort_score: 3,
 }
 
 export default function TasksScreen() {
   const { colors } = useTheme()
+  const { t } = useLang()
   const { tasks, fetchTasks, addTask } = useTaskStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('today')
@@ -93,27 +95,27 @@ export default function TasksScreen() {
       <View style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Görevler</Text>
+            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.tasks_title}</Text>
             <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
-            <StatCard label="Bugün açık" value={open} color={palette.accent} />
-            <StatCard label="Tamamlandı" value={done} color={palette.success} />
-            <StatCard label="Toplam" value={tasks.length} />
+            <StatCard label={t.tasks_open} value={open} color={palette.accent} />
+            <StatCard label={t.tasks_completed} value={done} color={palette.success} />
+            <StatCard label={t.tasks_total} value={tasks.length} />
           </View>
 
           <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[3] }}>
-            {(['today', 'all'] as Tab[]).map((t) => (
+            {(['today', 'all'] as Tab[]).map((tabKey) => (
               <TouchableOpacity
-                key={t}
-                onPress={() => setTab(t)}
-                style={{ flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: 'center', backgroundColor: tab === t ? colors.bgSurface : 'transparent', ...(tab === t ? colors.shadowCard : {}) }}
+                key={tabKey}
+                onPress={() => setTab(tabKey)}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: 'center', backgroundColor: tab === tabKey ? colors.bgSurface : 'transparent', ...(tab === tabKey ? colors.shadowCard : {}) }}
               >
-                <Text style={{ fontSize: fontSize.sm, fontWeight: tab === t ? fontWeight.semibold : fontWeight.regular, color: tab === t ? colors.textPrimary : colors.textMuted }}>
-                  {t === 'today' ? 'Bugün' : 'Tümü'}
+                <Text style={{ fontSize: fontSize.sm, fontWeight: tab === tabKey ? fontWeight.semibold : fontWeight.regular, color: tab === tabKey ? colors.textPrimary : colors.textMuted }}>
+                  {tabKey === 'today' ? t.today : t.all}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -125,7 +127,7 @@ export default function TasksScreen() {
           >
             <Ionicons name={hideDone ? 'eye-off-outline' : 'eye-outline'} size={13} color={hideDone ? palette.accent : colors.textMuted} />
             <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: hideDone ? palette.accent : colors.textMuted }}>
-              {hideDone ? 'Tamamlananlar gizli' : 'Tamamlananlar görünür'}
+              {hideDone ? t.tasks_done_hidden : t.tasks_done_visible}
             </Text>
           </TouchableOpacity>
         </View>
@@ -138,7 +140,7 @@ export default function TasksScreen() {
           {displayed.length === 0 ? (
             <View style={{ paddingTop: spacing[10], alignItems: 'center', gap: spacing[3] }}>
               <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textSubtle} />
-              <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Görev yok</Text>
+              <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.tasks_empty}</Text>
             </View>
           ) : displayed.map((task) => (
             <TaskRow key={task.id} task={task} onPress={() => router.push(`/task/${task.id}` as never)} />
@@ -146,7 +148,7 @@ export default function TasksScreen() {
         </ScrollView>
       </View>
 
-      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title="Yeni Görev" scrollable>
+      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
           <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus returnKeyType="next" />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>

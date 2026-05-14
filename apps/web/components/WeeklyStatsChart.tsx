@@ -12,18 +12,12 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
+  ReferenceLine,
 } from 'recharts'
 
 interface WeeklyStatsChartProps {
   data: WeeklyDayStat[]
   calorieTarget: number
-}
-
-const WORKOUT_DOT_COLOR: Record<string, string> = {
-  completed: '#34A853',
-  in_progress: '#F59E0B',
-  skipped: '#EF4444',
-  none: '#E5E7EB',
 }
 
 interface TooltipPayloadItem {
@@ -36,6 +30,15 @@ interface CustomTooltipProps {
   active?: boolean
   payload?: TooltipPayloadItem[]
   label?: string
+}
+
+function getCalorieDotColor(calories: number, target: number): string {
+  if (target === 0 || calories === 0) return '#E5E7EB'
+  const ratio = calories / target
+  if (ratio > 1.2) return '#EF4444'  // >120%: kırmızı
+  if (ratio > 1.0) return '#F59E0B'  // 100-120%: amber
+  if (ratio > 0.8) return '#34A853'  // 80-100%: yeşil
+  return '#4A90D9'                   // <80%: mavi (kalori açığı)
 }
 
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
@@ -65,11 +68,12 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
     day: d.dayLabel,
     'Görev %': d.taskPercent,
     'Kalori': d.calories,
-    'Kalori Hedef': calorieTarget,
     workoutStatus: d.workoutStatus,
     caloriesBurned: d.caloriesBurned,
     _full: d,
   }))
+
+  const kcalDomainMax = Math.max(calorieTarget * 1.3, 100)
 
   return (
     <div className="space-y-1">
@@ -93,7 +97,7 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
           <YAxis
             yAxisId="kcal"
             orientation="right"
-            domain={[0, Math.max(calorieTarget * 1.2, 100)]}
+            domain={[0, kcalDomainMax]}
             tick={{ fontSize: 10, fill: '#9CA3AF' }}
             axisLine={false}
             tickLine={false}
@@ -106,6 +110,17 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
             iconSize={7}
           />
 
+          {/* Kalori hedef referans çizgisi */}
+          {calorieTarget > 0 && (
+            <ReferenceLine
+              yAxisId="kcal"
+              y={calorieTarget}
+              stroke="#9CA3AF"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+            />
+          )}
+
           {/* Görev tamamlama % */}
           <Bar yAxisId="percent" dataKey="Görev %" fill="#34A853" radius={[4, 4, 0, 0]} maxBarSize={28}>
             {chartData.map((entry, i) => (
@@ -116,7 +131,7 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
             ))}
           </Bar>
 
-          {/* Kalori tüketim çizgisi */}
+          {/* Kalori tüketim çizgisi — nokta rengi kalori/hedef oranını gösterir */}
           <Line
             yAxisId="kcal"
             type="monotone"
@@ -126,7 +141,7 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
             dot={(props) => {
               const { cx = 0, cy = 0, index = 0 } = props as { cx?: number; cy?: number; index?: number }
               const d = chartData[index]
-              const color = d ? (WORKOUT_DOT_COLOR[d.workoutStatus] ?? '#9CA3AF') : '#9CA3AF'
+              const color = d ? getCalorieDotColor(d['Kalori'], calorieTarget) : '#9CA3AF'
               return (
                 <circle
                   key={index}
@@ -144,23 +159,25 @@ export function WeeklyStatsChart({ data, calorieTarget }: WeeklyStatsChartProps)
         </ComposedChart>
       </ResponsiveContainer>
 
-      {/* Antrenman durumu açıklaması */}
+      {/* Kalori durum renk açıklaması */}
       <div className="flex flex-wrap gap-3 px-1 text-[10px] text-muted">
-        {[
-          { color: '#34A853', label: 'Antrenman Tamamlandı' },
-          { color: '#F59E0B', label: 'Devam Ediyor' },
-          { color: '#EF4444', label: 'Atlandı' },
-          { color: '#E5E7EB', label: 'Antrenman Yok' },
-        ].map((l) => (
-          <span key={l.label} className="flex items-center gap-1">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: l.color }}
-            />
-            {l.label}
-          </span>
-        ))}
-        <span className="ml-auto opacity-60">● Kalori noktası = antrenman durumu</span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
+          %120+ aşıldı
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
+          %100–120
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
+          %80–100
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#4A90D9' }} />
+          %80 altı açık
+        </span>
+        <span className="ml-auto opacity-60">--- hedef</span>
       </div>
     </div>
   )

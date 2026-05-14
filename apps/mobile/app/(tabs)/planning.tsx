@@ -11,7 +11,9 @@ import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { getCalendarIntegrationState, importCalendarEventsForDate } from '@/src/lib/calendarIntegration'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
@@ -26,6 +28,11 @@ const ENERGY_LEVELS = [
   { level: 5 as const, emoji: '🔥', label: 'Harika' },
 ]
 
+function localIsoDate(date = new Date()): string {
+  const tzOffsetMs = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
+}
+
 function getWeekDays(anchor: Date): Date[] {
   const start = new Date(anchor)
   const day = anchor.getDay()
@@ -37,9 +44,10 @@ interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block
 
 export default function PlanningScreen() {
   const { colors } = useTheme()
+  const { t } = useLang()
   const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
   const [userId, setUserId] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -50,11 +58,28 @@ export default function PlanningScreen() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMessage, setAiMessage] = useState<string | null>(null)
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localIsoDate()
   const weekDays = getWeekDays(weekAnchor)
+  const weekStart = weekDays[0]
+  const weekEnd = weekDays[6]
 
   const load = useCallback(async (uid: string, date: string) => {
     await fetchDayData(supabase, uid, date)
+    try {
+      const state = await getCalendarIntegrationState()
+      // Local calendar: run whenever permission is granted (no toggle required)
+      // Provider calendars: respect autoImportEnabled toggle
+      const shouldImport = state.localPermission === 'granted'
+        || ((state.googleConnected || state.outlookConnected) && state.autoImportEnabled)
+      if (shouldImport) {
+        const result = await importCalendarEventsForDate(supabase, uid, date)
+        if (result.imported > 0) {
+          await fetchDayData(supabase, uid, date)
+        }
+      }
+    } catch {
+      // Calendar sync errors should not block the planning screen.
+    }
   }, [fetchDayData])
 
   useEffect(() => {
@@ -68,6 +93,20 @@ export default function PlanningScreen() {
     setRefreshing(true)
     await load(userId, selectedDate)
     setRefreshing(false)
+  }
+
+  async function handleManualCalendarImport() {
+    if (!userId) return
+    try {
+      const result = await importCalendarEventsForDate(supabase, userId, selectedDate)
+      if (result.imported > 0) {
+        await fetchDayData(supabase, userId, selectedDate)
+      }
+      Alert.alert('Takvim Senkronu', `${result.imported} etkinlik eklendi, ${result.skipped} etkinlik atlandı.`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Takvim içe aktarma başarısız'
+      Alert.alert('Takvim Senkronu', message)
+    }
   }
 
   async function handleAdd() {
@@ -114,7 +153,7 @@ export default function PlanningScreen() {
                 label: b.label,
                 start_time: b.start_time,
                 end_time: b.end_time,
-                block_type: b.block_type as string,
+                block_type: b.block_type as BlockType,
               })
             }
           }
@@ -143,8 +182,11 @@ export default function PlanningScreen() {
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Planlama</Text>
+          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity onPress={() => void handleManualCalendarImport()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="download-outline" size={18} color={palette.info} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAiChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
             </TouchableOpacity>
@@ -156,7 +198,7 @@ export default function PlanningScreen() {
 
         {/* Energy level */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Bugünkü Enerji</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.plan_energy}</Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             {ENERGY_LEVELS.map(({ level, emoji, label }) => {
               const active = dailyPlan?.energy_level === level
@@ -180,7 +222,7 @@ export default function PlanningScreen() {
             <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
           </TouchableOpacity>
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary }}>
-            {weekDays[0].toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – {weekDays[6].toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+            {weekStart?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''} – {weekEnd?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''}
           </Text>
           <TouchableOpacity onPress={() => { const d = new Date(weekAnchor); d.setDate(d.getDate() + 7); setWeekAnchor(d) }}>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
@@ -191,7 +233,7 @@ export default function PlanningScreen() {
         <GlassCard style={{ marginBottom: spacing[5] }} padding={spacing[3]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             {weekDays.map((day, i) => {
-              const dateStr = day.toISOString().split('T')[0]
+              const dateStr = localIsoDate(day)
               const isSelected = dateStr === selectedDate
               const isToday = dateStr === todayStr
               const hasBlocks = timeBlocks.some((b) => b.date === dateStr)
@@ -222,10 +264,10 @@ export default function PlanningScreen() {
         {dayBlocks.length === 0 ? (
           <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
             <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
-            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Bu gün için blok yok</Text>
+            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-              <Button label="Blok ekle" onPress={() => setShowAdd(true)} variant="secondary" />
-              <Button label="AI planla" onPress={() => setShowAiChat(true)} variant="secondary" />
+              <Button label={t.plan_add_block_btn} onPress={() => setShowAdd(true)} variant="secondary" />
+              <Button label={t.plan_ai_plan} onPress={() => setShowAiChat(true)} variant="secondary" />
             </View>
           </View>
         ) : (
@@ -236,7 +278,7 @@ export default function PlanningScreen() {
       </ScrollView>
 
       {/* Add block modal */}
-      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title="Yeni Blok" scrollable>
+      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.plan_new_block} scrollable>
         <View style={{ gap: spacing[3] }}>
           <Input label="Başlık" value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="Odak çalışması" autoFocus />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
@@ -258,7 +300,7 @@ export default function PlanningScreen() {
       </BottomSheet>
 
       {/* AI Chat modal */}
-      <BottomSheet visible={showAiChat} onClose={() => setShowAiChat(false)} title="AI Planlama Asistanı">
+      <BottomSheet visible={showAiChat} onClose={() => setShowAiChat(false)} title={t.plan_ai_planning}>
         <View style={{ gap: spacing[4] }}>
           <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
             <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>

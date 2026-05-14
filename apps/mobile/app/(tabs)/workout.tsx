@@ -12,6 +12,7 @@ import { Button } from '@/src/components/ui/Button'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
@@ -22,10 +23,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function WorkoutScreen() {
   const { colors } = useTheme()
+  const { t } = useLang()
   const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, addSet, removeSet } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
+  const [setsExpanded, setSetsExpanded] = useState(false)
 
   // Start
   const [showStart, setShowStart] = useState(false)
@@ -46,12 +49,13 @@ export default function WorkoutScreen() {
   // AI
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
+  const [selectedProgram, setSelectedProgram] = useState<WorkoutProgram | null>(null)
 
   // Library search + filter
   const [search, setSearch] = useState('')
   const [filterGroupId, setFilterGroupId] = useState<number | null>(null)
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = new Date().toISOString().split('T')[0] ?? ''
 
   const load = useCallback(async (uid: string) => {
     await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchPrograms(supabase, uid)])
@@ -104,6 +108,34 @@ export default function WorkoutScreen() {
     finally { setFinishing(false) }
   }
 
+  async function handleStartFromProgramDay(program: WorkoutProgram, dayId: string) {
+    if (!userId) return
+    const day = program.days?.find((d) => d.id === dayId)
+    if (!day || day.is_rest) return
+
+    const dayName = day.day_name?.trim() || `Gün ${day.day_number}`
+    setStarting(true)
+    try {
+      const workout = await startWorkout(supabase, userId, { name: `${program.name} · ${dayName}`, date: todayStr })
+      for (const ex of day.exercises ?? []) {
+        for (let setNo = 1; setNo <= ex.sets; setNo++) {
+          await addSet(supabase, {
+            workout_id: workout.id,
+            exercise_id: ex.exercise_id,
+            set_number: setNo,
+            reps: ex.reps ?? 10,
+          })
+        }
+      }
+      setSelectedProgram(null)
+      setTab('today')
+    } catch {
+      Alert.alert('Hata', 'Program günü başlatılamadı')
+    } finally {
+      setStarting(false)
+    }
+  }
+
   async function handleAiSuggest() {
     setAiLoading(true); setAiSuggestion(null)
     try {
@@ -128,10 +160,10 @@ export default function WorkoutScreen() {
   }).length
 
   const TABS: { key: WorkoutTab; label: string }[] = [
-    { key: 'today',    label: 'Bugün' },
-    { key: 'programs', label: 'Programlar' },
-    { key: 'library',  label: 'Kütüphane' },
-    { key: 'history',  label: 'Geçmiş' },
+    { key: 'today',    label: t.work_tab_today },
+    { key: 'programs', label: t.work_tab_programs },
+    { key: 'library',  label: t.work_tab_library },
+    { key: 'history',  label: t.work_tab_history },
   ]
 
   const SPLIT_LABELS: Record<string, string> = {
@@ -148,7 +180,7 @@ export default function WorkoutScreen() {
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Antrenman</Text>
+          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.work_title}</Text>
           {tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' && (
             <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
               <Ionicons name="search-outline" size={14} color={palette.workout} />
@@ -170,18 +202,18 @@ export default function WorkoutScreen() {
         {tab === 'today' && (
           <>
             <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
-              <StatCard label="Bu hafta" value={weekCount} color={palette.workout} />
-              <StatCard label="Bugün set" value={todayWorkout?.workout_sets?.length ?? 0} color={palette.accent} />
-              <StatCard label="Toplam" value={workoutHistory.length} />
+              <StatCard label={t.work_this_week} value={weekCount} color={palette.workout} />
+              <StatCard label={t.work_today_sets} value={todayWorkout?.workout_sets?.length ?? 0} color={palette.accent} />
+              <StatCard label={t.work_total} value={workoutHistory.length} />
             </View>
 
             {!todayWorkout && (
               <GlassCard style={{ marginBottom: spacing[4] }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiSuggestion ? spacing[3] : 0 }}>
-                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>AI Antrenman Önerisi</Text>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_ai_suggest}</Text>
                   <TouchableOpacity onPress={handleAiSuggest} disabled={aiLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, opacity: aiLoading ? 0.6 : 1 }}>
                     <Ionicons name="sparkles" size={13} color={palette.accent} />
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{aiLoading ? 'Yükleniyor...' : 'Öner'}</Text>
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{aiLoading ? t.loading : t.work_ai_suggest_btn}</Text>
                   </TouchableOpacity>
                 </View>
                 {aiSuggestion && <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiSuggestion}</Text>}
@@ -195,9 +227,9 @@ export default function WorkoutScreen() {
                     <Ionicons name="barbell-outline" size={36} color={palette.workout} />
                   </View>
                   <View style={{ alignItems: 'center', gap: spacing[2] }}>
-                    <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Bugün antrenman yok</Text>
+                    <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_no_workout}</Text>
                     <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', maxWidth: 220 }}>
-                      Yeni bir antrenman başlat ve kütüphaneden egzersizler ekle
+                      {t.work_no_workout_hint}
                     </Text>
                   </View>
                 </View>
@@ -207,7 +239,7 @@ export default function WorkoutScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.full, backgroundColor: palette.workout }}
                 >
                   <Ionicons name="play-circle-outline" size={20} color="#fff" />
-                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>Antrenman Başlat</Text>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>{t.work_start}</Text>
                 </TouchableOpacity>
 
                 {exercises.length > 0 && (
@@ -233,33 +265,56 @@ export default function WorkoutScreen() {
 
             {todayWorkout ? (
               <GlassCard>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                {/* Workout header */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], flex: 1 }}>
                     <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.workout}18`, alignItems: 'center', justifyContent: 'center' }}>
                       <Ionicons name="barbell" size={20} color={palette.workout} />
                     </View>
-                    <View>
-                      <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{todayWorkout.name}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-                        {todayWorkout.status === 'completed' ? '✓ Tamamlandı' : `● Devam · ${todayWorkout.workout_sets?.length ?? 0} set`}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }} numberOfLines={1}>{todayWorkout.name}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: todayWorkout.status === 'completed' ? palette.success : colors.textMuted }}>
+                        {todayWorkout.status === 'completed'
+                          ? `${t.work_completed} · ${todayWorkout.workout_sets?.length ?? 0} set`
+                          : `● Devam · ${todayWorkout.workout_sets?.length ?? 0} set`}
                       </Text>
                     </View>
                   </View>
-                  {todayWorkout.status !== 'completed' && (
-                    <TouchableOpacity onPress={() => setShowFinish(true)} style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: `${palette.success}18`, borderWidth: 1, borderColor: `${palette.success}30` }}>
-                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.success }}>Bitir</Text>
-                    </TouchableOpacity>
-                  )}
+                  <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+                    {/* When completed: toggle sets visibility */}
+                    {todayWorkout.status === 'completed' && (todayWorkout.workout_sets?.length ?? 0) > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setSetsExpanded((v) => !v)}
+                        style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+                      >
+                        <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted }}>
+                          {setsExpanded ? t.work_hide_sets : t.work_show_sets}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {todayWorkout.status !== 'completed' && (
+                      <TouchableOpacity onPress={() => setShowFinish(true)} style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: `${palette.success}18`, borderWidth: 1, borderColor: `${palette.success}30` }}>
+                        <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.success }}>{t.work_finish}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
 
-                {(todayWorkout.workout_sets?.length ?? 0) > 0 ? (
-                  <View style={{ gap: 2, marginBottom: spacing[4] }}>
-                    {todayWorkout.workout_sets?.map((set: WorkoutSet) => (
-                      <SetRow key={set.id} set={set} onDelete={() => removeSet(supabase, set.id)} />
-                    ))}
-                  </View>
-                ) : (
-                  <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>Kütüphaneden egzersiz seçip set ekle</Text>
+                {/* Sets: always visible when in-progress, collapsible when completed */}
+                {(todayWorkout.status !== 'completed' || setsExpanded) && (
+                  <>
+                    {(todayWorkout.workout_sets?.length ?? 0) > 0 ? (
+                      <View style={{ gap: 2, marginBottom: spacing[4] }}>
+                        {todayWorkout.workout_sets?.map((set: WorkoutSet) => (
+                          <SetRow key={set.id} set={set} onDelete={todayWorkout.status !== 'completed' ? () => removeSet(supabase, set.id) : undefined} />
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
+                        {t.work_exercise_search}
+                      </Text>
+                    )}
+                  </>
                 )}
 
                 {todayWorkout.status !== 'completed' && (
@@ -267,7 +322,7 @@ export default function WorkoutScreen() {
                     <Input
                       value={search}
                       onChangeText={setSearch}
-                      placeholder="Egzersiz ara... (ör: squat, bench press)"
+                      placeholder={t.work_exercise_search}
                     />
                     {search.trim().length > 0 && (
                       <View style={{ gap: spacing[2] }}>
@@ -290,7 +345,7 @@ export default function WorkoutScreen() {
                           </TouchableOpacity>
                         ))}
                         {filteredExercises.length === 0 && (
-                          <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Sonuç yok</Text>
+                          <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.work_no_results}</Text>
                         )}
                       </View>
                     )}
@@ -369,10 +424,7 @@ export default function WorkoutScreen() {
                   key={prog.id}
                   program={prog}
                   splitLabel={SPLIT_LABELS[prog.split_type] ?? prog.split_type}
-                  onStart={() => {
-                    setWorkoutName(prog.name)
-                    setShowStart(true)
-                  }}
+                  onStart={() => setSelectedProgram(prog)}
                 />
               ))
             )}
@@ -412,7 +464,7 @@ export default function WorkoutScreen() {
       </ScrollView>
 
       {/* Start workout */}
-      <BottomSheet visible={showStart} onClose={() => setShowStart(false)} title="Antrenman Başlat">
+      <BottomSheet visible={showStart} onClose={() => setShowStart(false)} title={t.work_start_modal}>
         <View style={{ gap: spacing[4] }}>
           <Input label="Antrenman adı" value={workoutName} onChangeText={setWorkoutName} placeholder="Üst beden, Bacak günü, Push Day..." autoFocus />
           <Button label={starting ? 'Başlatılıyor...' : 'Başlat'} onPress={handleStart} loading={starting} fullWidth />
@@ -445,6 +497,27 @@ export default function WorkoutScreen() {
         <View style={{ gap: spacing[4] }}>
           <Input label="Toplam süre (dakika)" value={duration} onChangeText={setDuration} keyboardType="number-pad" placeholder="45" autoFocus />
           <Button label={finishing ? 'Kaydediliyor...' : 'Tamamla'} onPress={handleFinish} loading={finishing} fullWidth />
+        </View>
+      </BottomSheet>
+
+      {/* Program day picker */}
+      <BottomSheet
+        visible={!!selectedProgram}
+        onClose={() => setSelectedProgram(null)}
+        title={selectedProgram ? `${selectedProgram.name} · Gün Seç` : 'Program Günü Seç'}
+        scrollable
+      >
+        <View style={{ gap: spacing[2] }}>
+          {(selectedProgram?.days ?? []).filter((d) => !d.is_rest).map((day) => (
+            <TouchableOpacity
+              key={day.id}
+              onPress={() => void handleStartFromProgramDay(selectedProgram as WorkoutProgram, day.id)}
+              style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+            >
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{day.day_name || `Gün ${day.day_number}`}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{day.exercises?.length ?? 0} egzersiz</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </BottomSheet>
     </ScreenBackground>
@@ -505,7 +578,7 @@ function ProgramCard({ program, splitLabel, onStart }: { program: WorkoutProgram
   )
 }
 
-function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete: () => void }) {
+function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
   const { colors } = useTheme()
   const name = set.exercise?.name ?? `Egzersiz #${set.set_number}`
   return (
@@ -519,9 +592,11 @@ function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete: () => void }) {
           {set.reps ?? '—'} tekrar{set.weight_kg ? ` · ${set.weight_kg}kg` : ''}
         </Text>
       </View>
-      <TouchableOpacity onPress={onDelete} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
-      </TouchableOpacity>
+      {onDelete && (
+        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
+        </TouchableOpacity>
+      )}
     </View>
   )
 }

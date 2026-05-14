@@ -14,7 +14,7 @@ export function ScreenBackground({ children, style, edges = ['top'] }: Props) {
 
   return (
     <LinearGradient
-      colors={colors.gradientColors}
+      colors={colors.gradientColors as [string, string, ...string[]]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}

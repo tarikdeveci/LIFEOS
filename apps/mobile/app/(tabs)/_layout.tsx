@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Platform } from 'react-native'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
@@ -97,14 +98,16 @@ function FloatingTabBar() {
 }
 
 export default function TabsLayout() {
+  const { t } = useLang()
+
   return (
     <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="today"     options={{ title: 'Bugün'     }} />
-      <Tabs.Screen name="planning"  options={{ title: 'Planlama'  }} />
-      <Tabs.Screen name="tasks"     options={{ title: 'Görevler'  }} />
-      <Tabs.Screen name="nutrition" options={{ title: 'Beslenme'  }} />
-      <Tabs.Screen name="workout"   options={{ title: 'Antrenman' }} />
-      <Tabs.Screen name="profile"   options={{ href: null, title: 'Profil' }} />
+      <Tabs.Screen name="today"     options={{ title: t.tab_today }} />
+      <Tabs.Screen name="planning"  options={{ title: t.tab_planning }} />
+      <Tabs.Screen name="tasks"     options={{ title: t.tab_tasks }} />
+      <Tabs.Screen name="nutrition" options={{ title: t.tab_nutrition }} />
+      <Tabs.Screen name="workout"   options={{ title: t.tab_workout }} />
+      <Tabs.Screen name="profile"   options={{ href: null, title: t.tab_profile }} />
     </Tabs>
   )
 }

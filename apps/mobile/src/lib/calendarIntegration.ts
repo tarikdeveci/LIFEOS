@@ -248,12 +248,13 @@ export async function requestLocalCalendarAccess(): Promise<CalendarIntegrationS
   if (permission.status === 'granted') {
     const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT)
     const config = await readConfig()
-    if (config.selectedLocalCalendarIds.length === 0) {
-      await writeConfig({
-        ...config,
-        selectedLocalCalendarIds: calendars.map((calendar) => calendar.id),
-      })
-    }
+    await writeConfig({
+      ...config,
+      autoImportEnabled: true,
+      selectedLocalCalendarIds: config.selectedLocalCalendarIds.length > 0
+        ? config.selectedLocalCalendarIds
+        : calendars.map((calendar) => calendar.id),
+    })
   }
 
   return getCalendarIntegrationState()
@@ -445,7 +446,7 @@ export async function importCalendarEventsForDate(supabase: any, userId: string,
 
   type ExistingBlock = { id: string; start_time: string; end_time: string; label: string | null }
   const blocks: ExistingBlock[] = existingBlocks ?? []
-  const occupied = blocks.map((b) => ({ start: timeToMins(b.start_time), end: timeToMins(b.end_time) }))
+  // Only deduplicate by signature — do NOT skip based on time overlap
   const existingSigs = new Set(
     blocks
       .filter((b) => (b.label ?? '').startsWith('📅 '))
@@ -467,11 +468,6 @@ export async function importCalendarEventsForDate(supabase: any, userId: string,
     const endRaw = event.allDay ? 10 * 60 : endDate.getHours() * 60 + endDate.getMinutes()
     const end = Math.max(start + 30, Math.min(endRaw, 23 * 60))
 
-    if (occupied.some((b) => b.start < end && b.end > start)) {
-      skipped++
-      continue
-    }
-
     const startStr = `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`
     const endStr = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
     const label = `📅 ${sourceLabel[event.source]} · ${event.title}`
@@ -486,7 +482,6 @@ export async function importCalendarEventsForDate(supabase: any, userId: string,
       .insert({ user_id: userId, date, start_time: startStr, end_time: endStr, block_type: 'routine', label })
     if (insertError) throw insertError
 
-    occupied.push({ start, end })
     existingSigs.add(sig)
     imported++
   }

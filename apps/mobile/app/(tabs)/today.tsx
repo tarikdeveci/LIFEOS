@@ -9,10 +9,12 @@ import { GlassCard } from '@/src/components/ui/GlassCard'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
   const { colors } = useTheme()
+  const { lang, t } = useLang()
   const { tasks, fetchTasks } = useTaskStore()
   const { timeBlocks, fetchDayData } = usePlanningStore()
   const { meals, target, dailySummary, fetchDayNutrition } = useNutritionStore()
@@ -20,7 +22,8 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false)
 
   const todayStr = new Date().toISOString().split('T')[0]
-  const dateLabel = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
+  const dateLabel = new Date().toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 
   const load = useCallback(async (uid: string) => {
     await Promise.all([
@@ -48,13 +51,12 @@ export default function TodayScreen() {
   const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
-      const [sh, sm] = b.start_time.split(':').map(Number)
-      const [eh, em] = b.end_time.split(':').map(Number)
+      const [sh = 0, sm = 0] = b.start_time.split(':').map(Number)
+      const [eh = 0, em = 0] = b.end_time.split(':').map(Number)
       return s + eh * 60 + em - sh * 60 - sm
     }, 0) / 60 * 10,
   ) / 10
 
-  // Use server-computed dailySummary when available, fallback to manual sum
   const todayMeals = meals.filter((m) => m.date === todayStr)
   const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
   const totalProt  = dailySummary?.protein  ?? todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
@@ -76,7 +78,7 @@ export default function TodayScreen() {
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[6] }}>
           <View>
-            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>Bugün</Text>
+            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>{t.today}</Text>
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>{dateLabel}</Text>
           </View>
           <TouchableOpacity
@@ -90,15 +92,15 @@ export default function TodayScreen() {
         {/* Tasks */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Görevler</Text>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_tasks_section}</Text>
             <TouchableOpacity onPress={() => router.push('/(tabs)/tasks')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Tümü →</Text>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_all}</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
-            <StatCard label="Bekleyen" value={todayTasks.length} color={palette.accent} />
-            <StatCard label="Tamam" value={doneTasks} color={palette.success} />
-            <StatCard label="Planlandı" value={`${plannedHours}s`} color={palette.warning} />
+            <StatCard label={t.today_pending} value={todayTasks.length} color={palette.accent} />
+            <StatCard label={t.today_done_count} value={doneTasks} color={palette.success} />
+            <StatCard label={t.today_planned_hours} value={`${plannedHours}s`} color={palette.warning} />
           </View>
           {todayTasks.slice(0, 3).map((task) => (
             <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}` as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}>
@@ -108,16 +110,16 @@ export default function TodayScreen() {
             </TouchableOpacity>
           ))}
           {todayTasks.length === 0 && (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Bugün için görev yok 🎉</Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_tasks}</Text>
           )}
         </GlassCard>
 
         {/* Planning */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Takvim</Text>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_calendar}</Text>
             <TouchableOpacity onPress={() => router.push('/(tabs)/planning')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_open}</Text>
             </TouchableOpacity>
           </View>
           {todayBlocks.slice(0, 4).map((block) => (
@@ -130,51 +132,49 @@ export default function TodayScreen() {
             </View>
           ))}
           {todayBlocks.length === 0 && (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Bugün için blok eklenmemiş</Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_blocks_today}</Text>
           )}
         </GlassCard>
 
         {/* Nutrition */}
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Beslenme</Text>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_nutrition}</Text>
             <TouchableOpacity onPress={() => router.push('/(tabs)/nutrition')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_open}</Text>
             </TouchableOpacity>
           </View>
 
-          {/* 2x2 macro grid */}
           <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-              <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
-              <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
+              <StatCard label={t.today_calories} value={`${totalCal}`} color={palette.warning} />
+              <StatCard label={t.nutr_protein} value={`${Math.round(totalProt)}g`} color={palette.info} />
             </View>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-              <StatCard label="Karbonhidrat" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
-              <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
+              <StatCard label={t.nutr_carbs} value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+              <StatCard label={t.nutr_fat} value={`${Math.round(totalFat)}g`} color={palette.danger} />
             </View>
           </View>
 
-          {/* Progress bars if target is set */}
           {target ? (
             <View style={{ gap: spacing[3] }}>
               {(target.calories ?? 0) > 0 && (
-                <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
+                <ProgressBar label={t.today_calories} value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
               )}
               {(target.protein ?? 0) > 0 && (
-                <ProgressBar label="Protein" value={totalProt} target={target.protein} color={palette.info} />
+                <ProgressBar label={t.nutr_protein} value={totalProt} target={target.protein} color={palette.info} />
               )}
               {(target.carbs ?? 0) > 0 && (
-                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs} color={palette.success} />
+                <ProgressBar label={t.nutr_carbs} value={totalCarbs} target={target.carbs} color={palette.success} />
               )}
               {(target.fat ?? 0) > 0 && (
-                <ProgressBar label="Yağ" value={totalFat} target={target.fat} color={palette.danger} />
+                <ProgressBar label={t.nutr_fat} value={totalFat} target={target.fat} color={palette.danger} />
               )}
             </View>
           ) : (
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
               <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
-                Beslenme hedeflerini ayarla →
+                {t.today_set_goals}
               </Text>
             </TouchableOpacity>
           )}

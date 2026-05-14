@@ -22,7 +22,7 @@ const WSJF_FIELDS = [
   { key: 'value_score' as const,    label: 'Değer',   color: palette.accent },
   { key: 'urgency_score' as const,  label: 'Aciliyet', color: palette.danger },
   { key: 'risk_score' as const,     label: 'Risk',    color: palette.warning },
-  { key: 'effort_score' as const,   label: 'Efor',    color: palette.textMuted ?? palette.backlog },
+  { key: 'effort_score' as const,   label: 'Efor',    color: palette.backlog },
   { key: 'friction_score' as const, label: 'Engel',   color: palette.backlog },
 ] as const
 

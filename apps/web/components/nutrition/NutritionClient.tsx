@@ -17,7 +17,7 @@ import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Button } from '@/components/ui/Button'
 
-type FoodResult = { name: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; serving_size: number; serving_unit: string }
+type FoodResult = { name: string; name_en?: string | null; calories: number; protein: number; carbs: number; fat: number; fiber: number; serving_size: number; serving_unit: string }
 
 interface NutritionClientProps { userId: string }
 
@@ -145,18 +145,20 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
     if (!query.trim() || query.length < 2) { setFoodResults([]); return }
     const q = query.toLowerCase().trim()
     const userFilter = `user_id.is.null,user_id.eq.${userId}`
-    const cols = 'name, calories, protein, carbs, fat, fiber, serving_size, serving_unit'
+    const cols = 'name, name_en, calories, protein, carbs, fat, fiber, serving_size, serving_unit'
 
-    const [{ data: byName }, { data: byAlias }] = await Promise.all([
+    const [{ data: byName }, { data: byAlias }, { data: byNameEn }] = await Promise.all([
       supabase.from('food_items').select(cols).or(userFilter)
         .ilike('name', `%${q}%`).order('is_verified', { ascending: false }).limit(12),
       supabase.from('food_items').select(cols).or(userFilter)
         .contains('aliases', [q]).order('is_verified', { ascending: false }).limit(8),
+      supabase.from('food_items').select(cols).or(userFilter)
+        .ilike('name_en', `%${q}%`).order('is_verified', { ascending: false }).limit(12),
     ])
 
     const seen = new Set<string>()
     const merged: FoodResult[] = []
-    for (const item of [...(byName ?? []), ...(byAlias ?? [])]) {
+    for (const item of [...(byName ?? []), ...(byAlias ?? []), ...(byNameEn ?? [])]) {
       const key = (item as FoodResult).name.toLowerCase()
       if (!seen.has(key)) { seen.add(key); merged.push(item as FoodResult) }
     }
@@ -259,7 +261,14 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
                       <div key={i}>
                         <div className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-background">
                           <div>
-                            <p className="text-xs font-medium text-primary">{food.name}</p>
+                            <p className="text-xs font-medium text-primary">
+                              {lang === 'en' && food.name_en ? food.name_en : food.name}
+                            </p>
+                            {(lang === 'en' ? food.name : food.name_en) && (
+                              <p className="text-[10px] text-muted/70">
+                                {lang === 'en' ? food.name : food.name_en}
+                              </p>
+                            )}
                             <p className="text-[10px] text-muted">{food.serving_size}{food.serving_unit} · P:{Math.round(food.protein)}g K:{Math.round(food.carbs)}g Y:{Math.round(food.fat)}g</p>
                           </div>
                           <div className="flex items-center gap-2">

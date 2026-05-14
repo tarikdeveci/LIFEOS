@@ -5,7 +5,7 @@ import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
 import type { ParsedItem } from '@/src/lib/ai'
 import { useNutritionStore } from '@lifeos/shared'
-import type { MealType } from '@lifeos/shared'
+import type { MealType, Meal, MealItem } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -14,20 +14,22 @@ import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
-
-const MEAL_TYPES: { key: MealType; label: string }[] = [
-  { key: 'breakfast', label: 'Kahvaltı' },
-  { key: 'lunch',     label: 'Öğle' },
-  { key: 'dinner',    label: 'Akşam' },
-  { key: 'snack',     label: 'Ara Öğün' },
-]
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
 export default function NutritionScreen() {
   const { colors } = useTheme()
-  const { meals, target, dailySummary, fetchDayNutrition, addMeal, removeMeal } = useNutritionStore()
+  const { t, lang } = useLang()
+  const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
+
+  const MEAL_TYPES: { key: MealType; label: string }[] = [
+    { key: 'breakfast', label: t.nutr_breakfast },
+    { key: 'lunch',     label: t.nutr_lunch },
+    { key: 'dinner',    label: t.nutr_dinner },
+    { key: 'snack',     label: t.nutr_snack },
+  ]
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -41,8 +43,14 @@ export default function NutritionScreen() {
 
   // Food search
   const [foodSearch, setFoodSearch] = useState('')
-  const [foodResults, setFoodResults] = useState<Array<{ id: string; name: string; calories_per_100g: number; protein_per_100g: number }>>([])
+  const [foodResults, setFoodResults] = useState<Array<{ id: string; name: string; name_en: string | null; calories: number; protein: number; serving_size: number; serving_unit: string }>>([])
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Edit modal
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
+  const [editRawInput, setEditRawInput] = useState('')
+  const [editItems, setEditItems] = useState<MealItem[]>([])
+  const [editLoading, setEditLoading] = useState(false)
 
   // AI Chat
   const [showChat, setShowChat] = useState(false)
@@ -74,13 +82,72 @@ export default function NutritionScreen() {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!q.trim()) { setFoodResults([]); return }
     searchTimer.current = setTimeout(async () => {
+      const term = q.trim()
       const { data } = await supabase
         .from('food_items')
-        .select('id, name, calories_per_100g, protein_per_100g')
-        .ilike('name', `%${q}%`)
+        .select('id, name, name_en, calories, protein, serving_size, serving_unit')
+        .or(`name.ilike.%${term}%,name_en.ilike.%${term}%`)
         .limit(6)
-      setFoodResults((data ?? []) as typeof foodResults)
+      setFoodResults((data ?? []) as unknown as typeof foodResults)
     }, 300)
+  }
+
+  function openEditMeal(meal: Meal) {
+    setEditingMeal(meal)
+    setEditRawInput(meal.raw_input ?? '')
+    setEditItems(meal.items ?? [])
+  }
+
+  function updateEditItemAmount(index: number, amountRaw: string) {
+    const nextAmount = Number(amountRaw)
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return
+
+    setEditItems((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      const baseAmount = item.amount > 0 ? item.amount : 1
+      const ratio = nextAmount / baseAmount
+      return {
+        ...item,
+        amount: nextAmount,
+        calories: Math.round(item.calories * ratio),
+        protein: Math.round(item.protein * ratio * 10) / 10,
+        carbs: Math.round(item.carbs * ratio * 10) / 10,
+        fat: Math.round(item.fat * ratio * 10) / 10,
+        fiber: Math.round(item.fiber * ratio * 10) / 10,
+      }
+    }))
+  }
+
+  async function handleSaveMealEdit() {
+    if (!editingMeal) return
+    setEditLoading(true)
+    try {
+      await editMeal(supabase, editingMeal.id, {
+        raw_input: editRawInput.trim(),
+        items: editItems,
+      })
+      setEditingMeal(null)
+      setEditItems([])
+      setEditRawInput('')
+      if (userId) await load(userId)
+    } catch {
+      Alert.alert('Hata', 'Öğün güncellenemedi')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  async function handleReparseEditMeal() {
+    if (!editingMeal || !userId || !editRawInput.trim()) return
+    setEditLoading(true)
+    try {
+      const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
+      setEditItems(result.items as MealItem[])
+    } catch {
+      Alert.alert('Hata', 'Öğün yeniden analiz edilemedi')
+    } finally {
+      setEditLoading(false)
+    }
   }
 
   async function handleParse() {
@@ -102,15 +169,9 @@ export default function NutritionScreen() {
     setAdding(true)
     try {
       const items = parsedItems ?? []
-      const totals = items.reduce(
-        (s, i) => ({ cal: s.cal + i.calories, prot: s.prot + i.protein, carbs: s.carbs + i.carbs, fat: s.fat + i.fat, fiber: s.fiber + i.fiber }),
-        { cal: 0, prot: 0, carbs: 0, fat: 0, fiber: 0 },
-      )
       await addMeal(supabase, userId, {
         date: todayStr, meal_type: mealType, raw_input: rawInput.trim(),
         items: items as never[],
-        total_calories: totals.cal, total_protein: totals.prot,
-        total_carbs: totals.carbs, total_fat: totals.fat, total_fiber: totals.fiber,
       })
       setRawInput(''); setParsedItems(null); setShowAdd(false)
     } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
@@ -160,7 +221,7 @@ export default function NutritionScreen() {
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Beslenme</Text>
+          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_title}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
             <TouchableOpacity onPress={() => setShowChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
@@ -173,17 +234,17 @@ export default function NutritionScreen() {
 
         {/* Summary */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>Bugün</Text>
+          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>{t.today}</Text>
 
           {/* 2x2 macro grid */}
           <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-              <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
-              <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
+              <StatCard label={t.nutr_calories} value={`${totalCal}`} color={palette.warning} />
+              <StatCard label={t.nutr_protein} value={`${Math.round(totalProt)}g`} color={palette.info} />
             </View>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-              <StatCard label="Karb" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
-              <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
+              <StatCard label={t.nutr_carbs} value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+              <StatCard label={t.nutr_fat} value={`${Math.round(totalFat)}g`} color={palette.danger} />
             </View>
           </View>
 
@@ -191,31 +252,31 @@ export default function NutritionScreen() {
           {target ? (
             <View style={{ gap: spacing[3] }}>
               {(target.calories ?? 0) > 0 && (
-                <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
+                <ProgressBar label={t.nutr_calories} value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
               )}
               {(target.protein ?? 0) > 0 && (
-                <ProgressBar label="Protein" value={totalProt} target={target.protein} color={palette.info} />
+                <ProgressBar label={t.nutr_protein} value={totalProt} target={target.protein} color={palette.info} />
               )}
               {(target.carbs ?? 0) > 0 && (
-                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs} color={palette.success} />
+                <ProgressBar label={t.nutr_carbs} value={totalCarbs} target={target.carbs} color={palette.success} />
               )}
               {(target.fat ?? 0) > 0 && (
-                <ProgressBar label="Yağ" value={totalFat} target={target.fat} color={palette.danger} />
+                <ProgressBar label={t.nutr_fat} value={totalFat} target={target.fat} color={palette.danger} />
               )}
               {(target.fiber ?? 0) > 0 && (
-                <ProgressBar label="Lif" value={totalFiber} target={target.fiber} color="#10B981" />
+                <ProgressBar label={t.nutr_fiber} value={totalFiber} target={target.fiber} color="#10B981" />
               )}
             </View>
           ) : (
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>
-              Hedef belirlemek için Profil → Beslenme Hedefleri →
+              {t.today_set_goals}
             </Text>
           )}
         </GlassCard>
 
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Hızlı Yiyecek Ara</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? 'Hızlı Yiyecek Ara'}</Text>
           <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder="Yumurta, ekmek, peynir..." />
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
@@ -226,8 +287,13 @@ export default function NutritionScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>{food.name}</Text>
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{food.calories_per_100g} kcal · {food.protein_per_100g}g protein (100g)</Text>
+                    <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>
+                      {lang === 'en' && food.name_en ? food.name_en : food.name}
+                    </Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: 1 }}>
+                      {lang === 'en' ? food.name : (food.name_en ?? '')}
+                    </Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{Math.round(food.calories)} kcal · {Math.round(food.protein)}g protein ({food.serving_size}{food.serving_unit})</Text>
                   </View>
                   <Ionicons name="add-circle-outline" size={22} color={palette.meal} />
                 </TouchableOpacity>
@@ -255,6 +321,9 @@ export default function NutritionScreen() {
                     <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                       <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEditMeal(meal)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginLeft: spacing[2] }}>
+                      <Ionicons name="create-outline" size={16} color={colors.textSubtle} />
+                    </TouchableOpacity>
                   </View>
                 </GlassCard>
               ))}
@@ -265,17 +334,17 @@ export default function NutritionScreen() {
         {todayMeals.length === 0 && (
           <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
             <Ionicons name="restaurant-outline" size={48} color={colors.textSubtle} />
-            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Bugün öğün eklenmemiş</Text>
-            <Button label="Öğün ekle" onPress={() => setShowAdd(true)} variant="secondary" />
+            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.nutr_no_meals}</Text>
+            <Button label={t.nutr_add_meal} onPress={() => setShowAdd(true)} variant="secondary" />
           </View>
         )}
       </ScrollView>
 
       {/* Add meal */}
-      <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setParsedItems(null) }} title="Öğün Ekle" scrollable>
+      <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setParsedItems(null) }} title={t.nutr_add_meal} scrollable>
         <View style={{ gap: spacing[4] }}>
           <View>
-            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Öğün türü</Text>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>{t.nutr_meal_type}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
               {MEAL_TYPES.map(({ key, label }) => (
                 <TouchableOpacity key={key} onPress={() => setMealType(key)} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 10, backgroundColor: mealType === key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: mealType === key ? palette.accent : colors.border }}>
@@ -286,7 +355,7 @@ export default function NutritionScreen() {
           </View>
 
           <Input
-            label="Ne yedin?"
+            label={t.nutr_what_did_you_eat}
             value={rawInput}
             onChangeText={setRawInput}
             placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
@@ -297,12 +366,12 @@ export default function NutritionScreen() {
           />
 
           {!parsedItems && (
-            <Button label={parsing ? 'AI analiz ediyor...' : '✦ AI ile Hesapla'} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
+            <Button label={parsing ? t.nutr_analyzing : t.nutr_ai_analyze} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
           )}
 
           {parsedItems && (
             <View style={{ gap: spacing[2] }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} besin bulundu</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} {t.nutr_nutrients_found}</Text>
               {parsedItems.map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                   <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
@@ -310,7 +379,7 @@ export default function NutritionScreen() {
                 </View>
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing[2] }}>
-                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Toplam</Text>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_total}</Text>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: palette.warning }}>
                   {parsedItems.reduce((s, i) => s + i.calories, 0)} kcal
                 </Text>
@@ -318,7 +387,7 @@ export default function NutritionScreen() {
             </View>
           )}
 
-          <Button label={adding ? 'Ekleniyor...' : 'Kaydet'} onPress={handleAddMeal} loading={adding} fullWidth />
+          <Button label={adding ? t.nutr_saving : t.nutr_save} onPress={handleAddMeal} loading={adding} fullWidth />
         </View>
       </BottomSheet>
 
@@ -348,6 +417,59 @@ export default function NutritionScreen() {
               <Ionicons name="arrow-up" size={20} color={chatInput.trim() ? '#fff' : colors.textSubtle} />
             </TouchableOpacity>
           </View>
+        </View>
+      </BottomSheet>
+
+      {/* Edit meal */}
+      <BottomSheet
+        visible={!!editingMeal}
+        onClose={() => { setEditingMeal(null); setEditItems([]); setEditRawInput('') }}
+        title="Öğün Düzenle"
+        scrollable
+      >
+        <View style={{ gap: spacing[4] }}>
+          <Input
+            label="Öğün Metni"
+            value={editRawInput}
+            onChangeText={setEditRawInput}
+            placeholder="2 yumurta, 100g tavuk..."
+            multiline
+            numberOfLines={3}
+            style={{ minHeight: 80, textAlignVertical: 'top' }}
+          />
+
+          <Button
+            label={editLoading ? 'AI yeniden hesaplıyor...' : '✦ AI ile Yeniden Hesapla'}
+            onPress={() => void handleReparseEditMeal()}
+            loading={editLoading}
+            variant="secondary"
+            fullWidth
+          />
+
+          <View style={{ gap: spacing[2] }}>
+            {editItems.map((item, index) => (
+              <View key={`${item.name}-${index}`} style={{ paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: 6 }}>{item.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}>
+                  <Input
+                    value={String(item.amount)}
+                    onChangeText={(val) => updateEditItemAmount(index, val)}
+                    keyboardType="decimal-pad"
+                    containerStyle={{ flex: 1 }}
+                  />
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.unit}</Text>
+                  <Text style={{ fontSize: fontSize.sm, color: palette.warning }}>{Math.round(item.calories)} kcal</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <Button
+            label={editLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+            onPress={() => void handleSaveMealEdit()}
+            loading={editLoading}
+            fullWidth
+          />
         </View>
       </BottomSheet>
     </ScreenBackground>

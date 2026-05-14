@@ -171,11 +171,29 @@ serve(async (req: Request) => {
         }
       }
 
+      // English name match (name_en)
+      if (!bestMatch || bestScore < 0.8) {
+        for (const food of allFoodItems) {
+          const nameEnLower = (food.name_en ?? '').toLowerCase()
+          if (!nameEnLower || nameEnLower.length < 4) continue
+          const nameEnWords = nameEnLower.split(/\s+/)
+          const partWords = part.split(/\s+/)
+          const matchingWords = nameEnWords.filter((w) => w.length >= 3 && partWords.some((pw) => pw.includes(w) || w.includes(pw)))
+          if (nameEnWords.length > 0 && matchingWords.length / nameEnWords.length >= 0.5 && nameEnLower.length >= 4) {
+            const matchScore = matchingWords.length / nameEnWords.length
+            if (matchScore > bestScore) {
+              bestScore = matchScore
+              bestMatch = food
+            }
+          }
+        }
+      }
+
       // Alias eşleşmesi (sadece eğer tam isim eşleşmesi iyi değilse)
       if (!bestMatch || bestScore < 0.8) {
         for (const food of allFoodItems) {
           const aliasesLower = (food.aliases ?? []).map((a: string) => a.toLowerCase())
-          
+
           for (const alias of aliasesLower) {
             // Alias en az 5 karakter ve part'ta yer almalı (substring, prefix match tercih)
             if (alias.length >= 5 && part.includes(alias)) {

@@ -7,7 +7,7 @@ import {
   WORKOUT_CATEGORY_LABELS, WORKOUT_CATEGORY_COLORS,
   WORKOUT_STATUS_LABELS, WORKOUT_STATUS_COLORS,
   BODY_REGION_LABELS,
-  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan,
+  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan, type WorkoutProgram as CloudWorkoutProgram,
 } from '@lifeos/shared'
 import { estimateCalories } from '@lifeos/shared/supabase'
 import type { Exercise, WorkoutSet } from '@lifeos/shared'
@@ -51,6 +51,23 @@ function normalizeExerciseName(value: string): string {
     .trim()
 }
 
+function flattenProgramDayExercises(program: CloudWorkoutProgram, dayId: string): Array<{ exercise_id: string; exercise_name: string; sets: number; reps: number; weight_kg: number }> {
+  const items: Array<{ exercise_id: string; exercise_name: string; sets: number; reps: number; weight_kg: number }> = []
+  const day = (program.days ?? []).find((d) => d.id === dayId)
+  if (!day || day.is_rest) return items
+  for (const exercise of day.exercises ?? []) {
+    if (!exercise.exercise_id) continue
+    items.push({
+      exercise_id: exercise.exercise_id,
+      exercise_name: exercise.exercise?.name ?? 'Egzersiz',
+      sets: exercise.sets,
+      reps: exercise.reps ?? 10,
+      weight_kg: 0,
+    })
+  }
+  return items
+}
+
 function useWorkoutPrograms(userId: string) {
   const key = `lifeos_programs_${userId}`
   const [programs, setPrograms] = useState<WorkoutProgram[]>([])
@@ -91,11 +108,12 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     fetchLibrary, fetchTodayWorkout, fetchHistory,
     startWorkout, finishWorkout, skipWorkout, removeWorkout,
     addSet, updateSet, removeSet, setWorkoutAiPlan,
+    programs: cloudPrograms, fetchPrograms,
   } = useWorkoutStore()
 
   const { showToast } = useToast()
   const { t } = useLang()
-  const { programs, saveProgram, deleteProgram } = useWorkoutPrograms(userId)
+  const { programs: localPrograms, saveProgram, deleteProgram } = useWorkoutPrograms(userId)
 
   const FITNESS_GOALS = [
     { value: 'muscle_gain', label: t.work_goal_muscle },
@@ -118,7 +136,6 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
 
   // Program modal state
   const [showNewProgram, setShowNewProgram]           = useState(false)
-  const [showSelectProgram, setShowSelectProgram]     = useState(false)
   const [progName, setProgName]                       = useState('')
   const [progDesc, setProgDesc]                       = useState('')
   const [progExercises, setProgExercises]             = useState<ProgramExercise[]>([])
@@ -138,6 +155,8 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
   const [startTime, setStartTime] = useState<Date | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [showFinishModal, setShowFinishModal] = useState(false)
+  const [setsExpanded, setSetsExpanded] = useState(false)
+  const hasActiveWorkout = todayWorkout?.status === 'in_progress'
 
   const applyAssistantProgram = useCallback((program: WorkoutAssistantProgram) => {
     const mappedExercises = program.exercises.flatMap((exercise) => {
@@ -174,7 +193,8 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     void fetchLibrary(supabase)
     void fetchTodayWorkout(supabase, userId)
     void fetchHistory(supabase, userId)
-  }, [fetchLibrary, fetchTodayWorkout, fetchHistory, userId])
+    void fetchPrograms(supabase, userId)
+  }, [fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, userId])
 
   // ---------- Antrenman başlat ----------
   const handleStart = useCallback(async () => {
@@ -335,7 +355,22 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
       }
     }
     setStartTime(new Date())
-    setShowSelectProgram(false)
+    setActiveTab('today')
+    showToast(`"${prog.name}" programindan antrenman basladi`, 'success')
+  }, [startWorkout, addSet, userId, showToast])
+
+  const handleStartFromCloudProgramDay = useCallback(async (prog: CloudWorkoutProgram, dayId: string) => {
+    const day = (prog.days ?? []).find((d) => d.id === dayId)
+    if (!day || day.is_rest) return
+    const flattened = flattenProgramDayExercises(prog, dayId)
+    const dayName = day.day_name?.trim() || `Gun ${day.day_number}`
+    const workout = await startWorkout(supabase, userId, { date: todayDate(), name: `${prog.name} · ${dayName}`, status: 'in_progress' })
+    for (const pe of flattened) {
+      for (let s = 1; s <= pe.sets; s++) {
+        await addSet(supabase, { workout_id: workout.id, exercise_id: pe.exercise_id, set_number: s, reps: pe.reps, weight_kg: pe.weight_kg > 0 ? pe.weight_kg : undefined })
+      }
+    }
+    setStartTime(new Date())
     setActiveTab('today')
     showToast(`"${prog.name}" programindan antrenman basladi`, 'success')
   }, [startWorkout, addSet, userId, showToast])
@@ -372,15 +407,15 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           <p className="text-sm text-muted">{todayLabel}</p>
         </div>
         <div className="flex gap-2">
-          {!todayWorkout && programs.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowSelectProgram(true)}>{t.work_start_program}</Button>
+          {!hasActiveWorkout && (localPrograms.length > 0 || cloudPrograms.length > 0) && (
+            <Button variant="outline" size="sm" onClick={() => setActiveTab('programs')}>{t.work_start_program}</Button>
           )}
-          {!todayWorkout && (
+          {!hasActiveWorkout && (
             <Button onClick={() => setShowStartModal(true)} size="sm">
               {t.work_new}
             </Button>
           )}
-          {todayWorkout?.status === 'in_progress' && (
+          {hasActiveWorkout && (
             <Button variant="danger" size="sm" onClick={() => setShowFinishModal(true)}>
               {t.work_finish}
             </Button>
@@ -446,20 +481,32 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
                   )}
                 </div>
 
-                {/* Set listesi */}
+                {/* Set listesi — in_progress: always visible; completed: collapsible */}
                 {todayWorkout.workout_sets && todayWorkout.workout_sets.length > 0 && (
                   <div className="glass rounded-2xl p-4">
-                    <h3 className="mb-3 font-semibold text-primary">{t.work_sets_title}</h3>
-                    <div className="space-y-2">
-                      {todayWorkout.workout_sets.map((set) => (
-                        <SetRow
-                          key={set.id}
-                          set={set}
-                          onToggle={() => void updateSet(supabase, set.id, { completed: !set.completed })}
-                          onDelete={() => void removeSet(supabase, set.id)}
-                        />
-                      ))}
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-semibold text-primary">{t.work_sets_title}</h3>
+                      {todayWorkout.status === 'completed' && (
+                        <button
+                          onClick={() => setSetsExpanded((v) => !v)}
+                          className="text-xs text-muted hover:text-primary transition-colors"
+                        >
+                          {setsExpanded ? '▲ Gizle' : `▼ ${t.work_sets_title} (${todayWorkout.workout_sets.length})`}
+                        </button>
+                      )}
                     </div>
+                    {(todayWorkout.status !== 'completed' || setsExpanded) && (
+                      <div className="space-y-2">
+                        {todayWorkout.workout_sets.map((set) => (
+                          <SetRow
+                            key={set.id}
+                            set={set}
+                            onToggle={todayWorkout.status === 'in_progress' ? () => void updateSet(supabase, set.id, { completed: !set.completed }) : undefined}
+                            onDelete={todayWorkout.status === 'in_progress' ? () => void removeSet(supabase, set.id) : undefined}
+                          />
+                        ))}
+                      </div>
+                    )}
                     {todayWorkout.status === 'in_progress' && (
                       <Button
                         variant="outline"
@@ -671,7 +718,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
             <p className="text-sm text-muted">{t.work_saved_programs}</p>
             <Button size="sm" onClick={() => { setProgName(''); setProgDesc(''); setProgExercises([]); setProgramChat([]); setProgTab('manual'); setShowNewProgram(true) }}>{t.work_new_program}</Button>
           </div>
-          {programs.length === 0 ? (
+          {localPrograms.length === 0 && cloudPrograms.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border py-16 text-center">
               <p className="mt-3 font-medium text-primary">{t.work_no_programs}</p>
               <p className="mt-1 text-sm text-muted">{t.work_no_programs_hint}</p>
@@ -679,7 +726,36 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {programs.map((prog) => (
+              {cloudPrograms.map((prog) => {
+                const activeDays = (prog.days ?? []).filter((d) => !d.is_rest)
+                return (
+                <div key={prog.id} className="glass rounded-2xl p-4">
+                  <div className="flex items-start justify-between">
+                    <div><h3 className="font-semibold text-primary">{prog.name}</h3>{prog.description && <p className="mt-0.5 text-xs text-muted">{prog.description}</p>}</div>
+                    {prog.user_id === null ? <span className="text-[10px] text-accent">Template</span> : null}
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {activeDays.slice(0, 4).map((day) => (
+                      <button
+                        key={day.id}
+                        onClick={() => void handleStartFromCloudProgramDay(prog, day.id)}
+                        disabled={hasActiveWorkout}
+                        className="flex w-full items-center justify-between rounded-lg border border-border/50 px-2 py-1.5 text-left hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span className="text-xs font-medium text-primary">{day.day_name || `Gun ${day.day_number}`}</span>
+                        <span className="text-[10px] text-muted">{day.exercises?.length ?? 0} egzersiz</span>
+                      </button>
+                    ))}
+                    {activeDays.length === 0 ? <p className="text-xs text-muted">Program günü bulunamadı</p> : null}
+                    {activeDays.length > 4 ? <p className="text-xs text-muted">+{activeDays.length - 4} gun</p> : null}
+                  </div>
+                  <Button size="sm" className="mt-4 w-full" onClick={() => setActiveTab('today')} disabled={hasActiveWorkout}>
+                    {hasActiveWorkout ? 'Antrenman devam ediyor' : 'Günlerden birini seç'}
+                  </Button>
+                </div>
+                )
+              })}
+              {localPrograms.map((prog) => (
                 <div key={prog.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start justify-between">
                     <div><h3 className="font-semibold text-primary">{prog.name}</h3>{prog.description && <p className="mt-0.5 text-xs text-muted">{prog.description}</p>}</div>
@@ -687,14 +763,14 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
                   </div>
                   <div className="mt-3 space-y-1">
                     {prog.exercises.map((pe, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-muted">
+                      <div key={`${prog.id}-${i}`} className="flex items-center gap-2 text-xs text-muted">
                         <span className="font-medium text-primary">{pe.exercise_name}</span>
                         <span>{pe.sets}x{pe.reps}{pe.weight_kg > 0 ? ` · ${pe.weight_kg}kg` : ''}</span>
                       </div>
                     ))}
                   </div>
-                  <Button size="sm" className="mt-4 w-full" onClick={() => void handleStartFromProgram(prog)} disabled={!!todayWorkout}>
-                    {todayWorkout ? 'Antrenman devam ediyor' : 'Bu Programla Baslat'}
+                  <Button size="sm" className="mt-4 w-full" onClick={() => void handleStartFromProgram(prog)} disabled={hasActiveWorkout}>
+                    {hasActiveWorkout ? 'Antrenman devam ediyor' : 'Bu Programla Baslat'}
                   </Button>
                 </div>
               ))}
@@ -934,20 +1010,6 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
         </div>
       </Modal>
 
-      {/* Program Seç */}
-      <Modal open={showSelectProgram} onClose={() => setShowSelectProgram(false)} title={t.work_select_program} size="sm">
-        <div className="space-y-2">
-          {programs.map((prog) => (
-            <button key={prog.id} onClick={() => void handleStartFromProgram(prog)}
-              className="w-full rounded-xl border border-border/60 bg-surface p-4 text-left hover:border-accent/50 hover:bg-accent/5 transition-colors">
-              <p className="font-semibold text-primary">{prog.name}</p>
-              {prog.description && <p className="text-xs text-muted">{prog.description}</p>}
-              <p className="mt-1 text-xs text-muted">{prog.exercises.length} egzersiz</p>
-            </button>
-          ))}
-        </div>
-      </Modal>
-
     </div>
   )
 }
@@ -958,18 +1020,22 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
 
 function SetRow({ set, onToggle, onDelete }: {
   set: WorkoutSet
-  onToggle: () => void
-  onDelete: () => void
+  onToggle?: () => void
+  onDelete?: () => void
 }) {
   const color = WORKOUT_CATEGORY_COLORS[set.exercise?.category ?? 'strength']
   return (
     <div className={`flex items-center gap-3 rounded-xl px-3 py-2 ${set.completed ? 'bg-success/5' : 'bg-background'}`}>
-      <button
-        onClick={onToggle}
-        className={`h-5 w-5 rounded-full border-2 transition-colors ${
-          set.completed ? 'border-success bg-success' : 'border-border'
-        }`}
-      />
+      {onToggle ? (
+        <button
+          onClick={onToggle}
+          className={`h-5 w-5 rounded-full border-2 transition-colors ${
+            set.completed ? 'border-success bg-success' : 'border-border'
+          }`}
+        />
+      ) : (
+        <div className={`h-5 w-5 rounded-full border-2 ${set.completed ? 'border-success bg-success' : 'border-border/40'}`} />
+      )}
       <div className="flex-1 min-w-0">
         <p className="truncate text-sm font-medium text-primary">
           {set.exercise?.name ?? '—'}
@@ -987,9 +1053,11 @@ function SetRow({ set, onToggle, onDelete }: {
       >
         {set.exercise?.muscle_group?.name ?? '—'}
       </span>
-      <button onClick={onDelete} className="shrink-0 text-xs text-danger hover:underline">
-        ×
-      </button>
+      {onDelete && (
+        <button onClick={onDelete} className="shrink-0 text-xs text-danger hover:underline">
+          ×
+        </button>
+      )}
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import * as Calendar from 'expo-calendar'
 import { supabase } from '@/src/lib/supabase'
+import { getCalendarIntegrationState, requestLocalCalendarAccess, setCalendarAutoImport } from '@/src/lib/calendarIntegration'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -14,24 +14,24 @@ import { useLang } from '@/src/contexts/LangContext'
 import type { Language } from '@/src/i18n'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-const ACTIVITY_LEVELS = [
-  { key: 'sedentary',          label: 'Hareketsiz',  sub: 'Masabaşı, spor yok' },
-  { key: 'lightly_active',     label: 'Az Aktif',    sub: 'Haftada 1-3 gün spor' },
-  { key: 'moderately_active',  label: 'Orta Aktif',  sub: 'Haftada 3-5 gün spor' },
-  { key: 'very_active',        label: 'Çok Aktif',   sub: 'Haftada 6-7 gün spor' },
+const ACTIVITY_LEVELS_DEF = [
+  { key: 'sedentary',          trLabel: 'Hareketsiz',  enLabel: 'Sedentary',      trSub: 'Masabaşı, spor yok',       enSub: 'Desk job, no exercise' },
+  { key: 'lightly_active',     trLabel: 'Az Aktif',    enLabel: 'Lightly Active', trSub: 'Haftada 1-3 gün spor',    enSub: '1-3 days/week' },
+  { key: 'moderately_active',  trLabel: 'Orta Aktif',  enLabel: 'Moderately Active', trSub: 'Haftada 3-5 gün spor', enSub: '3-5 days/week' },
+  { key: 'very_active',        trLabel: 'Çok Aktif',   enLabel: 'Very Active',    trSub: 'Haftada 6-7 gün spor',    enSub: '6-7 days/week' },
 ]
 
-const FITNESS_GOALS = [
-  { key: 'weight_loss',  label: 'Kilo Vermek',  icon: 'trending-down-outline' },
-  { key: 'muscle_gain',  label: 'Kas Kazanmak', icon: 'barbell-outline' },
-  { key: 'maintenance',  label: 'Kilo Korumak', icon: 'fitness-outline' },
-  { key: 'endurance',    label: 'Dayanıklılık', icon: 'timer-outline' },
+const FITNESS_GOALS_DEF = [
+  { key: 'weight_loss',  trLabel: 'Kilo Vermek',  enLabel: 'Weight Loss',  icon: 'trending-down-outline' },
+  { key: 'muscle_gain',  trLabel: 'Kas Kazanmak', enLabel: 'Muscle Gain',  icon: 'barbell-outline' },
+  { key: 'maintenance',  trLabel: 'Kilo Korumak', enLabel: 'Maintenance',  icon: 'fitness-outline' },
+  { key: 'endurance',    trLabel: 'Dayanıklılık', enLabel: 'Endurance',    icon: 'timer-outline' },
 ]
 
-const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
-  { mode: 'light', label: 'Açık',   icon: 'sunny-outline' },
-  { mode: 'dark',  label: 'Koyu',   icon: 'moon-outline' },
-  { mode: 'system',label: 'Sistem', icon: 'phone-portrait-outline' },
+const THEME_OPTIONS_DEF: { mode: ThemeMode; trLabel: string; enLabel: string; icon: string }[] = [
+  { mode: 'light',  trLabel: 'Açık',   enLabel: 'Light',  icon: 'sunny-outline' },
+  { mode: 'dark',   trLabel: 'Koyu',   enLabel: 'Dark',   icon: 'moon-outline' },
+  { mode: 'system', trLabel: 'Sistem', enLabel: 'System', icon: 'phone-portrait-outline' },
 ]
 
 const LANG_OPTIONS: { lang: Language; label: string; flag: string }[] = [
@@ -51,7 +51,19 @@ interface NutritionState {
 
 export default function ProfileScreen() {
   const { colors, mode, setMode } = useTheme()
-  const { lang, setLang } = useLang()
+  const { lang, setLang, t } = useLang()
+
+  const ACTIVITY_LEVELS = ACTIVITY_LEVELS_DEF.map((a) => ({
+    key: a.key,
+    label: lang === 'tr' ? a.trLabel : a.enLabel,
+    sub:   lang === 'tr' ? a.trSub   : a.enSub,
+  }))
+
+  const FITNESS_GOALS = FITNESS_GOALS_DEF.map((g) => ({
+    key:   g.key,
+    label: lang === 'tr' ? g.trLabel : g.enLabel,
+    icon:  g.icon,
+  }))
 
   const [profile, setProfile] = useState<ProfileState>({
     displayName: '', email: '', height: '', weight: '', age: '',
@@ -61,6 +73,7 @@ export default function ProfileScreen() {
     calories: '', protein: '', carbs: '', fat: '', fiber: '',
   })
   const [calendarStatus, setCalendarStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown')
+  const [calendarAutoImport, setCalendarAutoImportState] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
@@ -88,7 +101,7 @@ export default function ProfileScreen() {
       setProfile((prev) => ({
         ...prev,
         height:        p['height_cm']      != null ? String(p['height_cm'])      : '',
-        weight:        p['weight_kg']      != null ? String(p['weight_kg'])      : '',
+        weight:        p['body_weight_kg'] != null ? String(p['body_weight_kg']) : (p['weight_kg'] != null ? String(p['weight_kg']) : ''),
         age:           p['age']            != null ? String(p['age'])            : '',
         fitnessGoal:   p['fitness_goal']   != null ? String(p['fitness_goal'])   : 'muscle_gain',
         activityLevel: p['activity_level'] != null ? String(p['activity_level']) : 'moderately_active',
@@ -112,8 +125,11 @@ export default function ProfileScreen() {
       })
     }
 
-    const calRes = await Calendar.getCalendarPermissionsAsync().catch(() => null)
-    if (calRes) setCalendarStatus(calRes.status === 'granted' ? 'granted' : 'denied')
+    const calRes = await getCalendarIntegrationState().catch(() => null)
+    if (calRes) {
+      setCalendarStatus(calRes.localPermission === 'granted' ? 'granted' : 'denied')
+      setCalendarAutoImportState(calRes.autoImportEnabled)
+    }
   }, [])
 
   useEffect(() => { void load() }, [load])
@@ -126,7 +142,7 @@ export default function ProfileScreen() {
         id: userId,
         preferences: {
           height_cm:      parseFloat(profile.height)  || null,
-          weight_kg:      parseFloat(profile.weight)  || null,
+          body_weight_kg: parseFloat(profile.weight)  || null,
           age:            parseInt(profile.age)        || null,
           fitness_goal:   profile.fitnessGoal,
           activity_level: profile.activityLevel,
@@ -166,13 +182,23 @@ export default function ProfileScreen() {
   }
 
   async function requestCalendarPermission() {
-    const { status } = await Calendar.requestCalendarPermissionsAsync()
-    const granted = status === 'granted'
+    const state = await requestLocalCalendarAccess()
+    const granted = state.localPermission === 'granted'
     setCalendarStatus(granted ? 'granted' : 'denied')
     Alert.alert(
       granted ? '✓ Takvim Erişimi Verildi' : 'Erişim Reddedildi',
       granted ? 'Zaman bloklarını takviminizle senkronize edebilirsiniz.' : 'Ayarlar > Uygulama İzinleri kısmından takvim iznini verebilirsiniz.',
     )
+  }
+
+  async function handleToggleCalendarAutoImport() {
+    try {
+      const next = !calendarAutoImport
+      const state = await setCalendarAutoImport(next)
+      setCalendarAutoImportState(state.autoImportEnabled)
+    } catch {
+      Alert.alert('Hata', 'Takvim otomatik içe aktarma ayarı güncellenemedi')
+    }
   }
 
   function handleSignOut() {
@@ -189,7 +215,7 @@ export default function ProfileScreen() {
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[6] }}>
-          Profil & Ayarlar
+          {t.profile_title}
         </Text>
 
         {/* User card */}
@@ -206,7 +232,7 @@ export default function ProfileScreen() {
         </GlassCard>
 
         {/* Physical info */}
-        <SectionCard title="Fiziksel Bilgiler" icon="body-outline" onEdit={() => setShowPhysical(true)} style={{ marginBottom: spacing[4] }}>
+        <SectionCard title={lang === 'tr' ? 'Fiziksel Bilgiler' : 'Physical Info'} icon="body-outline" onEdit={() => setShowPhysical(true)} style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             <InfoChip label="Boy" value={profile.height ? `${profile.height} cm` : '—'} />
             <InfoChip label="Kilo" value={profile.weight ? `${profile.weight} kg` : '—'} />
@@ -217,7 +243,7 @@ export default function ProfileScreen() {
         </SectionCard>
 
         {/* Nutrition targets */}
-        <SectionCard title="Beslenme Hedefleri" icon="nutrition-outline" onEdit={() => setShowNutrition(true)} style={{ marginBottom: spacing[4] }}>
+        <SectionCard title={lang === 'tr' ? 'Beslenme Hedefleri' : 'Nutrition Goals'} icon="nutrition-outline" onEdit={() => setShowNutrition(true)} style={{ marginBottom: spacing[4] }}>
           {hasNutrition ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
               <InfoChip label="Kalori" value={nutrition.calories ? `${nutrition.calories} kcal` : '—'} color={palette.warning} />
@@ -237,7 +263,7 @@ export default function ProfileScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
               <Ionicons name="calendar-outline" size={18} color={palette.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Takvim Entegrasyonu</Text>
+                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{lang === 'tr' ? 'Takvim Entegrasyonu' : 'Calendar Integration'}</Text>
                 <Text style={{ fontSize: fontSize.xs, color: calendarStatus === 'granted' ? palette.success : colors.textMuted, marginTop: 2 }}>
                   {calendarStatus === 'granted' ? '✓ Erişim verildi' : calendarStatus === 'denied' ? '✗ Erişim reddedildi' : 'İzin verilmemiş'}
                 </Text>
@@ -249,6 +275,17 @@ export default function ProfileScreen() {
             >
               <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: calendarStatus === 'granted' ? palette.success : palette.accent }}>
                 {calendarStatus === 'granted' ? 'Verildi' : 'İzin Ver'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ marginTop: spacing[3], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{lang === 'tr' ? 'Planlama ekranına girince otomatik içe aktar' : 'Auto-import when opening Planning'}</Text>
+            <TouchableOpacity
+              onPress={() => void handleToggleCalendarAutoImport()}
+              style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: calendarAutoImport ? `${palette.success}15` : colors.glassInner, borderWidth: 1, borderColor: calendarAutoImport ? `${palette.success}30` : colors.border }}
+            >
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: calendarAutoImport ? palette.success : colors.textMuted }}>
+                {calendarAutoImport ? 'Açık' : 'Kapalı'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -273,22 +310,24 @@ export default function ProfileScreen() {
 
         {/* Theme */}
         <GlassCard style={{ marginBottom: spacing[6] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>Tema</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>{lang === 'tr' ? 'Tema' : 'Theme'}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            {THEME_OPTIONS.map((opt) => (
+            {THEME_OPTIONS_DEF.map((opt) => (
               <TouchableOpacity
                 key={opt.mode}
                 onPress={() => setMode(opt.mode)}
                 style={{ flex: 1, alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: mode === opt.mode ? `${palette.accent}18` : colors.glassInner, borderWidth: 1, borderColor: mode === opt.mode ? palette.accent : colors.border }}
               >
                 <Ionicons name={opt.icon as never} size={20} color={mode === opt.mode ? palette.accent : colors.textMuted} />
-                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: mode === opt.mode ? palette.accent : colors.textMuted }}>{opt.label}</Text>
+                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: mode === opt.mode ? palette.accent : colors.textMuted }}>
+                  {lang === 'tr' ? opt.trLabel : opt.enLabel}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </GlassCard>
 
-        <Button label="Oturumu Kapat" onPress={handleSignOut} variant="danger" fullWidth />
+        <Button label={t.profile_logout} onPress={handleSignOut} variant="danger" fullWidth />
       </ScrollView>
 
       {/* Physical modal */}
