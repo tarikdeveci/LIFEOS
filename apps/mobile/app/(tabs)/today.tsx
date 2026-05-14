@@ -157,14 +157,14 @@ export default function TodayScreen() {
               {(target.calories ?? 0) > 0 && (
                 <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
               )}
-              {(target.protein_g ?? 0) > 0 && (
-                <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
+              {(target.protein ?? 0) > 0 && (
+                <ProgressBar label="Protein" value={totalProt} target={target.protein} color={palette.info} />
               )}
-              {(target.carbs_g ?? 0) > 0 && (
-                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs_g} color={palette.success} />
+              {(target.carbs ?? 0) > 0 && (
+                <ProgressBar label="Karbonhidrat" value={totalCarbs} target={target.carbs} color={palette.success} />
               )}
-              {(target.fat_g ?? 0) > 0 && (
-                <ProgressBar label="Yağ" value={totalFat} target={target.fat_g} color={palette.danger} />
+              {(target.fat ?? 0) > 0 && (
+                <ProgressBar label="Yağ" value={totalFat} target={target.fat} color={palette.danger} />
               )}
             </View>
           ) : (

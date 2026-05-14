@@ -80,7 +80,7 @@ export default function ProfileScreen() {
     const { data: profileData } = await supabase
       .from('user_profiles')
       .select('preferences')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .maybeSingle()
 
     if (profileData?.preferences) {
@@ -99,6 +99,7 @@ export default function ProfileScreen() {
       .from('nutrition_targets')
       .select('calories, protein_g, carbs_g, fat_g, fiber_g')
       .eq('user_id', user.id)
+      .eq('is_active', true)
       .maybeSingle()
 
     if (targetData) {
@@ -122,7 +123,7 @@ export default function ProfileScreen() {
     setSaving(true)
     try {
       const { error } = await supabase.from('user_profiles').upsert({
-        user_id: userId,
+        id: userId,
         preferences: {
           height_cm:      parseFloat(profile.height)  || null,
           weight_kg:      parseFloat(profile.weight)  || null,
@@ -130,7 +131,7 @@ export default function ProfileScreen() {
           fitness_goal:   profile.fitnessGoal,
           activity_level: profile.activityLevel,
         },
-      }, { onConflict: 'user_id' })
+      }, { onConflict: 'id' })
       if (error) throw error
       setShowPhysical(false)
       Alert.alert('Kaydedildi', 'Fiziksel bilgilerin güncellendi.')
@@ -152,6 +153,7 @@ export default function ProfileScreen() {
         carbs_g:   parseFloat(nutrition.carbs)    || 250,
         fat_g:     parseFloat(nutrition.fat)      || 70,
         fiber_g:   parseFloat(nutrition.fiber)    || 30,
+        is_active: true,
       }, { onConflict: 'user_id' })
       if (error) throw error
       setShowNutrition(false)

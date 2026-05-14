@@ -9,13 +9,13 @@ interface LangContextValue {
 }
 
 const LangContext = createContext<LangContextValue>({
-  lang: 'en',
+  lang: 'tr',
   setLang: () => {},
-  t: getTranslations('en'),
+  t: getTranslations('tr'),
 })
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Language>('en')
+  const [lang, setLangState] = useState<Language>('tr')
 
   useEffect(() => {
     void AsyncStorage.getItem(LANG_STORAGE_KEY).then((stored) => {
@@ -28,8 +28,11 @@ export function LangProvider({ children }: { children: ReactNode }) {
     void AsyncStorage.setItem(LANG_STORAGE_KEY, l)
   }
 
+  // t is recomputed on every lang change — any component calling useLang() re-renders
+  const t = getTranslations(lang)
+
   return (
-    <LangContext.Provider value={{ lang, setLang, t: getTranslations(lang) }}>
+    <LangContext.Provider value={{ lang, setLang, t }}>
       {children}
     </LangContext.Provider>
   )

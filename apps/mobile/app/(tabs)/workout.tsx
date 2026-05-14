@@ -183,23 +183,45 @@ export default function WorkoutScreen() {
             )}
 
             {!todayWorkout && (
-              <View style={{ alignItems: 'center', paddingVertical: spacing[8], gap: spacing[4] }}>
-                <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="barbell-outline" size={36} color={palette.workout} />
+              <View style={{ paddingVertical: spacing[6], gap: spacing[5] }}>
+                <View style={{ alignItems: 'center', gap: spacing[3] }}>
+                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="barbell-outline" size={36} color={palette.workout} />
+                  </View>
+                  <View style={{ alignItems: 'center', gap: spacing[2] }}>
+                    <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Bugün antrenman yok</Text>
+                    <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', maxWidth: 220 }}>
+                      Yeni bir antrenman başlat ve kütüphaneden egzersizler ekle
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ alignItems: 'center', gap: spacing[2] }}>
-                  <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Bugün antrenman yok</Text>
-                  <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', maxWidth: 220 }}>
-                    Yeni bir antrenman başlat ve kütüphaneden egzersizler ekle
-                  </Text>
-                </View>
+
                 <TouchableOpacity
                   onPress={() => setShowStart(true)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: spacing[6], paddingVertical: 14, borderRadius: radius.full, backgroundColor: palette.workout }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.full, backgroundColor: palette.workout }}
                 >
                   <Ionicons name="play-circle-outline" size={20} color="#fff" />
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>Antrenman Başlat</Text>
                 </TouchableOpacity>
+
+                {exercises.length > 0 && (
+                  <View style={{ gap: spacing[2] }}>
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                      Popüler Egzersizler
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+                      {exercises.slice(0, 6).map((ex) => (
+                        <View
+                          key={ex.id}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+                        >
+                          <Ionicons name="barbell-outline" size={12} color={palette.workout} />
+                          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSecondary }}>{ex.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -235,10 +257,38 @@ export default function WorkoutScreen() {
                 )}
 
                 {todayWorkout.status !== 'completed' && (
-                  <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: radius.lg, backgroundColor: `${palette.workout}12`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
-                    <Ionicons name="search-outline" size={16} color={palette.workout} />
-                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>Kütüphaneden Egzersiz Seç</Text>
-                  </TouchableOpacity>
+                  <View style={{ gap: spacing[3] }}>
+                    <Input
+                      value={search}
+                      onChangeText={setSearch}
+                      placeholder="Egzersiz ara... (ör: squat, bench press)"
+                    />
+                    {search.trim().length > 0 && (
+                      <View style={{ gap: spacing[2] }}>
+                        {filteredExercises.slice(0, 5).map((ex) => (
+                          <TouchableOpacity
+                            key={ex.id}
+                            onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setSearch('') }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{ex.name}</Text>
+                              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                                {ex.muscle_group?.name ?? '—'} · {CATEGORY_LABELS[ex.category] ?? ex.category}
+                                {ex.is_bodyweight ? ' · Vücut ağırlığı' : ''}
+                              </Text>
+                            </View>
+                            <View style={{ paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
+                              <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.semibold }}>+ Set</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        {filteredExercises.length === 0 && (
+                          <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Sonuç yok</Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
                 )}
               </GlassCard>
             ) : null}
