@@ -1,219 +1,177 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, RefreshControl, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native'
+import { useEffect, useState, useCallback } from 'react'
+import { ScrollView, View, Text, TouchableOpacity, RefreshControl } from 'react-native'
 import { router } from 'expo-router'
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — @expo/vector-icons is available at runtime via Expo SDK
 import { Ionicons } from '@expo/vector-icons'
-import {
-  todayDate,
-  relativeDateLabel,
-  useNutritionStore,
-  usePlanningStore,
-  useTaskStore,
-  useWorkoutStore,
-  BLOCK_TYPE_COLORS,
-  BLOCK_TYPE_LABELS,
-  WORKOUT_STATUS_LABELS,
-} from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
-import { GlassCard } from '@/src/components/GlassCard'
-import { GradientBackground } from '@/src/components/GradientBackground'
-import { WeeklyStatsMobile } from '@/src/components/WeeklyStatsMobile'
-import { T } from '@/src/theme'
-
-function timeToMinutes(t: string): number {
-  const [h = 0, m = 0] = t.slice(0, 5).split(':').map(Number)
-  return h * 60 + m
-}
+import { useTaskStore, usePlanningStore, useNutritionStore } from '@lifeos/shared'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { StatCard } from '@/src/components/ui/StatCard'
+import { ProgressBar } from '@/src/components/ui/ProgressBar'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
-  const date = todayDate()
-  const dateLabel = relativeDateLabel(date)
-
+  const { colors } = useTheme()
+  const { tasks, fetchTasks } = useTaskStore()
+  const { timeBlocks, fetchTimeBlocks } = usePlanningStore()
+  const { meals, nutritionTargets, fetchMeals, fetchNutritionTargets } = useNutritionStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [now, setNow] = useState(() => new Date())
-  const clockRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { timeBlocks, fetchDayData, loading: planningLoading } = usePlanningStore()
-  const { tasks, fetchTasks, loading: tasksLoading } = useTaskStore()
-  const { dailySummary, target: nutritionTarget, fetchDayNutrition, loading: nutritionLoading } = useNutritionStore()
-  const { todayWorkout, fetchTodayWorkout, loading: workoutLoading } = useWorkoutStore()
+  const today = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const dateLabel = today.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  const load = useCallback(async (uid: string) => {
+    await Promise.all([
+      fetchTasks(uid, {}),
+      fetchTimeBlocks(uid, todayStr),
+      fetchMeals(uid, todayStr),
+      fetchNutritionTargets(uid),
+    ])
+  }, [todayStr, fetchTasks, fetchTimeBlocks, fetchMeals, fetchNutritionTargets])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id)
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) { setUserId(data.user.id); void load(data.user.id) }
     })
-    clockRef.current = setInterval(() => setNow(new Date()), 60_000)
-    return () => { if (clockRef.current) clearInterval(clockRef.current) }
-  }, [])
+  }, [load])
 
-  const loadAll = useCallback(async (uid: string) => {
-    try {
-      await Promise.all([
-        fetchDayData(supabase, uid, date),
-        fetchTasks(supabase, uid, { scheduled_date: date }),
-        fetchDayNutrition(supabase, uid, date),
-        fetchTodayWorkout(supabase, uid, date),
-      ])
-    } catch {
-      // stores handle their own error state
-    }
-  }, [date, fetchDayData, fetchDayNutrition, fetchTasks, fetchTodayWorkout])
-
-  useEffect(() => {
-    if (!userId) return
-    void loadAll(userId)
-  }, [userId, loadAll])
-
-  const onRefresh = useCallback(async () => {
+  async function handleRefresh() {
     if (!userId) return
     setRefreshing(true)
-    await loadAll(userId)
+    await load(userId)
     setRefreshing(false)
-  }, [loadAll, userId])
+  }
 
-  const openTasks = useMemo(() => tasks.filter((t) => t.status !== 'done' && t.status !== 'deferred'), [tasks])
-  const doneTasks = useMemo(() => tasks.filter((t) => t.status === 'done').length, [tasks])
+  const todayTasks  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
+  const doneTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
+  const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
+  const plannedHours = Math.round(
+    todayBlocks.reduce((s, b) => {
+      const [sh, sm] = b.start_time.split(':').map(Number)
+      const [eh, em] = b.end_time.split(':').map(Number)
+      return s + eh * 60 + em - sh * 60 - sm
+    }, 0) / 60 * 10,
+  ) / 10
 
-  const plannedMinutes = useMemo(
-    () => timeBlocks.reduce((sum, block) => sum + Math.max(0, timeToMinutes(block.end_time) - timeToMinutes(block.start_time)), 0),
-    [timeBlocks],
-  )
-  const plannedHours = Math.round((plannedMinutes / 60) * 10) / 10
+  const todayMeals = meals.filter((m) => m.date === todayStr)
+  const totalCal   = todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const totalProt  = todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
+  const target     = nutritionTargets?.[0]
 
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  const currentBlock = timeBlocks.find((b) => b.start_time.slice(0, 5) <= currentTime && b.end_time.slice(0, 5) > currentTime)
-
-  const calorieTarget = nutritionTarget?.calories ?? 2000
-  const caloriePercent = dailySummary ? Math.min(100, Math.round((dailySummary.calories / calorieTarget) * 100)) : 0
+  const blockColors: Record<string, string> = {
+    task: palette.task, routine: palette.routine, break: palette.break,
+    focus: palette.focus, meal: palette.meal, workout: palette.workout,
+  }
 
   return (
-    <GradientBackground>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-
-      <View style={{ paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+    <ScreenBackground>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[6] }}>
           <View>
-            <Text style={{ fontSize: 26, fontWeight: '800', color: T.text.primary, letterSpacing: -0.5 }}>{dateLabel}</Text>
-            <Text style={{ marginTop: 3, fontSize: 13, color: T.text.muted }}>
-              {currentBlock ? `Simdi: ${currentBlock.label ?? BLOCK_TYPE_LABELS[currentBlock.block_type]}` : 'Bugunun genel ozeti'}
+            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>
+              Bugün
+            </Text>
+            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>
+              {dateLabel}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/profile')}
-            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)' }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Ionicons name="settings-outline" size={20} color={T.text.secondary} />
+            <Ionicons name="person-outline" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
-      </View>
 
-      <ScrollView
-        style={{ flex: 1, paddingHorizontal: 20 }}
-        contentContainerStyle={{ paddingTop: 2, paddingBottom: 112 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.accent} />}
-      >
-        {/* Planlama */}
-        <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <Text style={{ fontWeight: '700', color: T.text.primary, fontSize: 13 }}>Planlama</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/planning')}>
-              <Text style={{ fontSize: 12, color: T.accent, fontWeight: '700' }}>Ayrintili ac</Text>
+        {/* Tasks card */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Görevler</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/tasks')}>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Tümü →</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: 'rgba(99,102,241,0.08)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.18)' }}>
-              <Text style={{ fontSize: 11, color: T.text.subtle }}>Planli Saat</Text>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: T.text.primary, marginTop: 2 }}>{plannedHours}h</Text>
-            </View>
-            <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: 'rgba(16,185,129,0.08)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.18)' }}>
-              <Text style={{ fontSize: 11, color: T.text.subtle }}>Zaman Blogu</Text>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: T.text.primary, marginTop: 2 }}>{timeBlocks.length}</Text>
-            </View>
+          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
+            <StatCard label="Bekleyen" value={todayTasks.length} color={palette.accent} />
+            <StatCard label="Tamam" value={doneTasks} color={palette.success} />
+            <StatCard label="Planlandı" value={`${plannedHours}s`} color={palette.warning} />
           </View>
-          {timeBlocks.length > 0 && (
-            <View style={{ marginTop: 10 }}>
-              {timeBlocks.slice(0, 3).map((block) => {
-                const color = BLOCK_TYPE_COLORS[block.block_type]
-                return (
-                  <View key={block.id} style={{ marginBottom: 6, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: `${color}25`, backgroundColor: `${color}10` }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.primary }} numberOfLines={1}>{block.label ?? BLOCK_TYPE_LABELS[block.block_type]}</Text>
-                    <Text style={{ fontSize: 10, color: T.text.subtle, marginTop: 1 }}>{block.start_time.slice(0, 5)}-{block.end_time.slice(0, 5)}</Text>
-                  </View>
-                )
-              })}
-            </View>
+          {todayTasks.slice(0, 3).map((task) => (
+            <TouchableOpacity
+              key={task.id}
+              onPress={() => router.push(`/task/${task.id}` as never)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}
+            >
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.accent }} />
+              <Text style={{ flex: 1, fontSize: fontSize.base, color: colors.textSecondary }} numberOfLines={1}>
+                {task.title}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
+            </TouchableOpacity>
+          ))}
+          {todayTasks.length === 0 && (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
+              Bugün için görev yok 🎉
+            </Text>
           )}
-          {planningLoading && <ActivityIndicator style={{ marginTop: 8 }} size="small" color={T.accent} />}
         </GlassCard>
 
-        {/* Görevler */}
-        <GlassCard>
-          <Text style={{ fontWeight: '700', color: T.text.primary, fontSize: 13, marginBottom: 10 }}>Gorevler</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.18)' }}>
-              <Text style={{ fontSize: 11, color: T.text.subtle }}>Acik</Text>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: T.text.primary, marginTop: 2 }}>{openTasks.length}</Text>
-            </View>
-            <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: 'rgba(16,185,129,0.08)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.18)' }}>
-              <Text style={{ fontSize: 11, color: T.text.subtle }}>Tamamlanan</Text>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: T.text.primary, marginTop: 2 }}>{doneTasks}</Text>
-            </View>
+        {/* Planning card */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Takvim</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/planning')}>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/tasks')} style={{ marginTop: 10 }}>
-            <Text style={{ fontSize: 12, color: T.accent, fontWeight: '700' }}>Gorevlere git</Text>
-          </TouchableOpacity>
-          {tasksLoading && <ActivityIndicator style={{ marginTop: 8 }} size="small" color={T.accent} />}
-        </GlassCard>
-
-        {/* Beslenme */}
-        <GlassCard>
-          <Text style={{ fontWeight: '700', color: T.text.primary, fontSize: 13, marginBottom: 10 }}>Beslenme</Text>
-          {nutritionLoading ? (
-            <ActivityIndicator size="small" color={T.accent} />
-          ) : (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 28, fontWeight: '800', color: T.text.primary }}>{Math.round(dailySummary?.calories ?? 0)}</Text>
-                <Text style={{ fontSize: 12, color: T.text.muted }}>/ {calorieTarget} kcal</Text>
+          {todayBlocks.slice(0, 4).map((block) => (
+            <View key={block.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 7 }}>
+              <View style={{ width: 3, height: 36, borderRadius: 2, backgroundColor: blockColors[block.block_type] ?? palette.accent }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>
+                  {block.label}
+                </Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                  {block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}
+                </Text>
               </View>
-              <View style={{ marginTop: 8, height: 6, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(15,23,42,0.06)' }}>
-                <View style={{ height: 6, borderRadius: 6, backgroundColor: T.accent, width: `${caloriePercent}%` }} />
-              </View>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/nutrition')} style={{ marginTop: 10 }}>
-                <Text style={{ fontSize: 12, color: T.accent, fontWeight: '700' }}>Beslenmeye git</Text>
-              </TouchableOpacity>
-            </>
+            </View>
+          ))}
+          {todayBlocks.length === 0 && (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
+              Bugün için blok eklenmemiş
+            </Text>
           )}
         </GlassCard>
 
-        {/* Antrenman */}
+        {/* Nutrition card */}
         <GlassCard>
-          <Text style={{ fontWeight: '700', color: T.text.primary, fontSize: 13, marginBottom: 10 }}>Antrenman</Text>
-          {workoutLoading ? (
-            <ActivityIndicator size="small" color={T.accent} />
-          ) : todayWorkout ? (
-            <>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: T.text.primary }}>{todayWorkout.name ?? 'Antrenman'}</Text>
-              <Text style={{ fontSize: 12, color: T.text.subtle, marginTop: 4 }}>{WORKOUT_STATUS_LABELS[todayWorkout.status]}</Text>
-            </>
-          ) : (
-            <Text style={{ fontSize: 13, color: T.text.muted }}>Bugun antrenman yok</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Beslenme</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/nutrition')}>
+              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>Aç →</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: target ? spacing[4] : 0 }}>
+            <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
+            <StatCard label="Protein" value={`${totalProt}g`} color={palette.info} />
+          </View>
+          {target && (
+            <View style={{ gap: spacing[3] }}>
+              <ProgressBar label="Kalori" value={totalCal} target={target.calories} unit=" kcal" color={palette.warning} />
+              <ProgressBar label="Protein" value={totalProt} target={target.protein_g} color={palette.info} />
+            </View>
           )}
-          <TouchableOpacity onPress={() => router.push('/(tabs)/workout')} style={{ marginTop: 10 }}>
-            <Text style={{ fontSize: 12, color: T.accent, fontWeight: '700' }}>Antrenmana git</Text>
-          </TouchableOpacity>
         </GlassCard>
-
-        {/* Bu Hafta */}
-        {userId && (
-          <GlassCard marginBottom={32}>
-            <Text style={{ marginBottom: 12, fontWeight: '700', color: T.text.primary, fontSize: 13 }}>Bu Hafta</Text>
-            <WeeklyStatsMobile supabase={supabase} userId={userId} calorieTarget={calorieTarget} />
-          </GlassCard>
-        )}
       </ScrollView>
-    </GradientBackground>
+    </ScreenBackground>
   )
 }

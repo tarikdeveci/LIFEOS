@@ -1,93 +1,91 @@
 import { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, Image } from 'react-native'
+import { View, Text, Image, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { GradientBackground } from '@/src/components/GradientBackground'
-import { T } from '@/src/theme'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 export default function LoginScreen() {
+  const { colors } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleLogin() {
+    if (!email || !password) return
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) {
-        Alert.alert('Hata', error.message)
-        return
-      }
-      router.replace('/(tabs)/today')
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (error) Alert.alert('Giriş Başarısız', error.message)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <GradientBackground>
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32 }}>
-        <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          <View style={{ shadowColor: '#4048C8', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 6, borderRadius: 22 }}>
-            <Image
-              source={require('../../assets/logo.png')}
-              style={{ width: 88, height: 88, borderRadius: 22 }}
-              resizeMode="cover"
-            />
+    <ScreenBackground edges={['top', 'bottom']}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[8] }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo */}
+        <View style={{ alignItems: 'center', marginBottom: spacing[8] }}>
+          <View style={{ borderRadius: radius.xl, overflow: 'hidden', ...colors.shadowSoft }}>
+            <Image source={require('../../assets/logo.png')} style={{ width: 80, height: 80, borderRadius: radius.xl }} />
           </View>
-          <Text style={{ marginTop: 18, fontSize: 30, fontWeight: '800', color: T.text.primary }}>LifeOS</Text>
-          <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 20, color: T.text.muted, textAlign: 'center', maxWidth: 280 }}>
-            Planlarını, görevlerini ve günlük ritmini tek yerde toparla.
+          <Text style={{ marginTop: spacing[4], fontSize: fontSize['3xl'], fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>
+            LifeOS
+          </Text>
+          <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
+            Planlarını, görevlerini ve günlük ritmini tek yerde yönet.
           </Text>
         </View>
 
-        <View style={{ borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.92)', padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', shadowColor: T.card.shadowColor, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 8 }}>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: T.text.primary }}>Giriş Yap</Text>
-          <Text style={{ marginTop: 6, marginBottom: 18, fontSize: 13, color: T.text.muted }}>Hesabınla devam et ve bugünün akışını aç.</Text>
+        {/* Card */}
+        <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
+            Giriş Yap
+          </Text>
+          <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>
+            Hesabınla devam et
+          </Text>
 
-          <View style={{ marginBottom: 12, borderRadius: 18, borderWidth: 1, borderColor: T.input.border, backgroundColor: T.input.bg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-            <Ionicons name="mail-outline" size={18} color={T.text.muted} />
-            <TextInput
-              style={{ flex: 1, paddingVertical: 14, paddingLeft: 10, color: T.input.text, fontSize: 15 }}
-              placeholder="E-posta"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor={T.input.placeholder}
-            />
-          </View>
+          <Input
+            label="E-posta"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            placeholder="ornek@email.com"
+            containerStyle={{ marginBottom: spacing[3] }}
+          />
+          <Input
+            label="Şifre"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="••••••••"
+            containerStyle={{ marginBottom: spacing[5] }}
+            onSubmitEditing={handleLogin}
+          />
 
-          <View style={{ marginBottom: 18, borderRadius: 18, borderWidth: 1, borderColor: T.input.border, backgroundColor: T.input.bg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-            <Ionicons name="lock-closed-outline" size={18} color={T.text.muted} />
-            <TextInput
-              style={{ flex: 1, paddingVertical: 14, paddingLeft: 10, color: T.input.text, fontSize: 15 }}
-              placeholder="Şifre"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholderTextColor={T.input.placeholder}
-            />
-          </View>
+          <Button label={loading ? 'Giriş yapılıyor...' : 'Giriş Yap'} onPress={handleLogin} loading={loading} fullWidth />
 
-          <TouchableOpacity
-            onPress={handleLogin}
-            disabled={loading}
-            style={{ width: '100%', alignItems: 'center', borderRadius: 18, backgroundColor: T.accent, paddingVertical: 15, opacity: loading ? 0.6 : 1 }}
-          >
-            <Text style={{ fontWeight: '700', color: 'white', fontSize: 15 }}>
-              {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+          <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: spacing[4] }}>
+            <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
+              Hesabın yok mu?{' '}
+              <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>Kayıt ol</Text>
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: 16 }}>
-            <Text style={{ textAlign: 'center', fontSize: 13, color: T.text.muted }}>
-              Hesabın yok mu? <Text style={{ color: T.accent, fontWeight: '700' }}>Kayıt ol</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </GradientBackground>
+        </GlassCard>
+      </ScrollView>
+    </ScreenBackground>
   )
 }

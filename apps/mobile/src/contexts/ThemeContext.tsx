@@ -1,79 +1,48 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import { Appearance } from 'react-native'
+import { useColorScheme } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { light, dark, type ColorScheme } from '../theme/tokens'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
-export type ResolvedTheme = 'light' | 'dark'
-
-const THEME_KEY = 'lifeos_theme'
-
-// Light theme colors
-const lightTheme = {
-  bg: '#D9DFF2',
-  card: { bg: '#FFFFFF', border: 'rgba(99, 102, 241, 0.08)' },
-  input: { bg: '#F8F9FF', border: 'rgba(99, 102, 241, 0.18)', text: '#0D1B3E', placeholder: '#97A3C9' },
-  text: { primary: '#0D1B3E', secondary: '#2E3E6B', muted: '#63709A', accent: '#6366F1' },
-  accent: '#6366F1',
-  separator: 'rgba(99, 102, 241, 0.10)',
-  tabBar: { bg: '#EEF0FA', active: '#6366F1', inactive: '#97A3C9' },
-}
-
-// Dark theme colors
-const darkTheme = {
-  bg: '#0B1120',
-  card: { bg: '#141D30', border: 'rgba(99, 102, 241, 0.18)' },
-  input: { bg: '#1A2540', border: 'rgba(99, 102, 241, 0.25)', text: '#E2E8F0', placeholder: '#64748B' },
-  text: { primary: '#E2E8F0', secondary: '#94A3B8', muted: '#64748B', accent: '#818CF8' },
-  accent: '#818CF8',
-  separator: 'rgba(99, 102, 241, 0.15)',
-  tabBar: { bg: '#0D1525', active: '#818CF8', inactive: '#475569' },
-}
-
-export type AppTheme = typeof lightTheme
 
 interface ThemeContextValue {
   mode: ThemeMode
-  resolved: ResolvedTheme
-  theme: AppTheme
-  setMode: (m: ThemeMode) => void
+  colors: ColorScheme
   isDark: boolean
+  setMode: (mode: ThemeMode) => void
 }
 
-const ThemeContext = createContext<ThemeContextValue>({
-  mode: 'system',
-  resolved: 'light',
-  theme: lightTheme,
-  setMode: () => {},
-  isDark: false,
-})
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+const STORAGE_KEY = '@lifeos/theme'
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const systemScheme = useColorScheme()
   const [mode, setModeState] = useState<ThemeMode>('system')
-  const systemScheme = Appearance.getColorScheme() ?? 'light'
 
   useEffect(() => {
-    void AsyncStorage.getItem(THEME_KEY).then((stored) => {
-      if (stored === 'light' || stored === 'dark' || stored === 'system') {
-        setModeState(stored)
-      }
+    void AsyncStorage.getItem(STORAGE_KEY).then((v) => {
+      if (v === 'light' || v === 'dark' || v === 'system') setModeState(v)
     })
   }, [])
 
-  function setMode(m: ThemeMode) {
-    setModeState(m)
-    void AsyncStorage.setItem(THEME_KEY, m)
+  const isDark = mode === 'system' ? systemScheme === 'dark' : mode === 'dark'
+  const colors = isDark ? dark : light
+
+  function setMode(next: ThemeMode) {
+    setModeState(next)
+    void AsyncStorage.setItem(STORAGE_KEY, next)
   }
 
-  const resolved: ResolvedTheme = mode === 'system' ? (systemScheme as ResolvedTheme) : mode
-  const theme = resolved === 'dark' ? darkTheme : lightTheme
-
   return (
-    <ThemeContext.Provider value={{ mode, resolved, theme, setMode, isDark: resolved === 'dark' }}>
+    <ThemeContext.Provider value={{ mode, colors, isDark, setMode }}>
       {children}
     </ThemeContext.Provider>
   )
 }
 
 export function useTheme() {
-  return useContext(ThemeContext)
+  const ctx = useContext(ThemeContext)
+  if (!ctx) throw new Error('useTheme must be used inside ThemeProvider')
+  return ctx
 }

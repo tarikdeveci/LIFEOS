@@ -1,323 +1,238 @@
-import { useEffect, useState, useCallback } from 'react'
-import {
-  View, Text, ScrollView, RefreshControl,
-  TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert,
-} from 'react-native'
+import { useEffect, useState, useCallback, useMemo, useReducer } from 'react'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useTaskStore, todayDate, TASK_STATUS_LABELS } from '@lifeos/shared'
-import type { CreateTaskInput, Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
-import { T, HEADER_BTN, MODAL_SHEET, GLASS_CARD } from '@/src/theme'
-import { GradientBackground } from '@/src/components/GradientBackground'
+import { useTaskStore } from '@lifeos/shared'
+import type { Task } from '@lifeos/shared'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { Button } from '@/src/components/ui/Button'
+import { Input } from '@/src/components/ui/Input'
+import { StatusBadge } from '@/src/components/ui/Badge'
+import { StatCard } from '@/src/components/ui/StatCard'
+import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  backlog:     T.status.backlog.bg,
-  planned:     T.status.planned.bg,
-  in_progress: T.status.in_progress.bg,
-  blocked:     T.status.blocked.bg,
-  done:        T.status.done.bg,
-  deferred:    T.status.deferred.bg,
-}
+type Tab = 'today' | 'all'
 
-const STATUS_TEXT: Record<TaskStatus, string> = {
-  backlog:     T.status.backlog.text,
-  planned:     T.status.planned.text,
-  in_progress: T.status.in_progress.text,
-  blocked:     T.status.blocked.text,
-  done:        T.status.done.text,
-  deferred:    T.status.deferred.text,
-}
-
-const ROUTINE_TAGS = ['spor', 'yazılım', 'must-do', 'sağlık', 'kariyer']
-
-type SortKey = 'priority' | 'effort' | 'date' | 'status'
-const SORT_LABELS: Record<SortKey, string> = {
-  priority: 'Oncelik', effort: 'Sure', date: 'Tarih', status: 'Durum',
-}
-
-interface TaskDraft {
+interface Draft {
   title: string
-  description: string
-  scheduledDate: string
-  dueDate: string
-  estimatedMinutes: string
-  effortScore: string
-  tags: string
+  scheduled_date: string
+  estimated_minutes: string
+  value_score: number
+  urgency_score: number
+  effort_score: number
 }
 
-const EMPTY_DRAFT: TaskDraft = {
-  title: '',
-  description: '',
-  scheduledDate: '',
-  dueDate: '',
-  estimatedMinutes: '',
-  effortScore: '',
-  tags: '',
-}
-
-function sortTasks(tasks: Task[], key: SortKey, asc: boolean): Task[] {
-  return [...tasks].sort((a, b) => {
-    let diff = 0
-    if (key === 'priority') diff = a.priority_score - b.priority_score
-    else if (key === 'effort') diff = a.effort_score - b.effort_score
-    else if (key === 'date') diff = (a.scheduled_date ?? '').localeCompare(b.scheduled_date ?? '')
-    else if (key === 'status') diff = a.status.localeCompare(b.status)
-    return asc ? diff : -diff
-  })
+const EMPTY: Draft = {
+  title: '', scheduled_date: new Date().toISOString().split('T')[0],
+  estimated_minutes: '30', value_score: 3, urgency_score: 3, effort_score: 3,
 }
 
 export default function TasksScreen() {
-  const today = todayDate()
+  const { colors } = useTheme()
+  const { tasks, fetchTasks, addTask } = useTaskStore()
   const [userId, setUserId] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [draft, setDraft] = useState<TaskDraft>(EMPTY_DRAFT)
+  const [tab, setTab] = useState<Tab>('today')
+  const [showAdd, setShowAdd] = useState(false)
+  const [draft, setDraft] = useState<Draft>(EMPTY)
   const [adding, setAdding] = useState(false)
-  const [activeTab, setActiveTab] = useState<'today' | 'all'>('today')
-  const [hideRoutine, setHideRoutine] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
-  const [sortKey, setSortKey] = useState<SortKey>('priority')
-  const [sortAsc, setSortAsc] = useState(false)
-  const [showSortMenu, setShowSortMenu] = useState(false)
 
-  const { tasks, loading, fetchTasks, fetchBacklog, addTask, setStatus } = useTaskStore()
+  const todayStr = new Date().toISOString().split('T')[0]
 
-  useEffect(() => { supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUserId(user.id) }) }, [])
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) { setUserId(data.user.id); void fetchTasks(data.user.id, {}) }
+    })
+  }, [fetchTasks])
 
-  const loadTasks = useCallback(async (uid: string) => {
-    try {
-      await Promise.all([fetchTasks(supabase, uid, { scheduled_date: today }), fetchBacklog(supabase, uid)])
-    } catch {
-      // stores handle their own error state
-    }
-  }, [today, fetchTasks, fetchBacklog])
+  async function handleRefresh() {
+    if (!userId) return
+    setRefreshing(true)
+    await fetchTasks(userId, {})
+    setRefreshing(false)
+  }
 
-  useEffect(() => { if (userId) void loadTasks(userId) }, [userId, loadTasks])
+  const displayed = useMemo(() => {
+    let list = tab === 'today'
+      ? tasks.filter((t) => t.scheduled_date === todayStr)
+      : tasks
+    if (hideDone) list = list.filter((t) => t.status !== 'done')
+    return list.sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0))
+  }, [tasks, tab, hideDone, todayStr])
 
-  const onRefresh = useCallback(async () => {
-    if (!userId) return; setRefreshing(true); await loadTasks(userId); setRefreshing(false)
-  }, [userId, loadTasks])
+  const done  = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
+  const open  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done').length
 
-  const updateDraft = useCallback((field: keyof TaskDraft, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }))
-  }, [])
-
-  const handleAddTask = useCallback(async () => {
+  async function handleAdd() {
     if (!userId || !draft.title.trim()) return
     setAdding(true)
     try {
-      const input: CreateTaskInput = {
+      await addTask(userId, {
         title: draft.title.trim(),
-        ...(draft.description.trim() && { description: draft.description.trim() }),
-        ...((draft.scheduledDate || activeTab === 'today') && { scheduled_date: draft.scheduledDate || today, status: 'planned' }),
-        ...(draft.dueDate && { due_date: draft.dueDate }),
-        ...(draft.estimatedMinutes && { estimated_minutes: parseInt(draft.estimatedMinutes, 10) }),
-        ...(draft.effortScore && { effort_score: parseInt(draft.effortScore, 10) }),
-        ...(draft.tags.trim() && { tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean) }),
-      }
-      await addTask(supabase, userId, input)
-      setDraft(EMPTY_DRAFT); setShowAddModal(false)
-    } catch { Alert.alert('Hata', 'Görev eklenemedi') }
-    finally { setAdding(false) }
-  }, [userId, draft, addTask, activeTab, today])
-
-  const handleStatusChange = useCallback(async (taskId: string, currentStatus: TaskStatus) => {
-    if (currentStatus === 'done') {
-      Alert.alert('Görevi Sıfırla', 'Bu görevi tamamlanmamış olarak işaretlemek istiyor musun?', [
-        { text: 'Hayır', style: 'cancel' },
-        { text: 'Evet', onPress: () => void setStatus(supabase, taskId, 'backlog') },
-      ]); return
+        scheduled_date: draft.scheduled_date || undefined,
+        estimated_minutes: parseInt(draft.estimated_minutes) || 30,
+        value_score: draft.value_score,
+        urgency_score: draft.urgency_score,
+        effort_score: draft.effort_score,
+        status: 'planned',
+      })
+      setDraft(EMPTY)
+      setShowAdd(false)
+    } catch (e) {
+      Alert.alert('Hata', 'Görev eklenemedi')
+    } finally {
+      setAdding(false)
     }
-    const nextStatus: Record<TaskStatus, TaskStatus> = {
-      backlog: 'planned', planned: 'in_progress', in_progress: 'done',
-      blocked: 'planned', done: 'backlog', deferred: 'planned',
-    }
-    await setStatus(supabase, taskId, nextStatus[currentStatus])
-  }, [setStatus])
-
-  const isRoutineTask = (tags: string[]) => hideRoutine && tags.some((tag) => ROUTINE_TAGS.includes(tag))
-  const base = tasks.filter((t) => !isRoutineTask(t.tags ?? []) && !(hideDone && (t.status === 'done' || t.status === 'deferred')))
-  const todayTasks = sortTasks(base.filter((t) => t.scheduled_date === today), sortKey, sortAsc)
-  const allActiveTasks = sortTasks(base, sortKey, sortAsc)
-  const displayTasks = activeTab === 'today' ? todayTasks : allActiveTasks
-  const hiddenRoutineCount = tasks.filter((t) => isRoutineTask(t.tags ?? [])).length
-  const hiddenDoneCount = tasks.filter((t) => t.status === 'done' || t.status === 'deferred').length
+  }
 
   return (
-    <GradientBackground>
-      {/* Header */}
-      <View style={{ paddingHorizontal: 20, paddingTop: 56, paddingBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <Text style={{ fontSize: 28, fontWeight: '800', color: T.text.primary, letterSpacing: -0.5 }}>Görevler</Text>
-          <TouchableOpacity onPress={() => setShowAddModal(true)}
-            style={HEADER_BTN}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons name="add" size={16} color="white" />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>Yeni Gorev</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+    <ScreenBackground>
+      <View style={{ flex: 1 }}>
+        {/* Header */}
+        <View style={{ paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Görevler</Text>
+            <TouchableOpacity
+              onPress={() => setShowAdd(true)}
+              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-        {/* Tab + Sort */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-          <View style={{ flex: 1, flexDirection: 'row', borderRadius: T.btn.radius, backgroundColor: T.btn.pill.bg, borderWidth: 1, borderColor: 'transparent', padding: 4 }}>
-            {([{ key: 'today' as const, label: 'Bugün' }, { key: 'all' as const, label: 'Tümü' }]).map((tab) => (
-              <TouchableOpacity key={tab.key} onPress={() => setActiveTab(tab.key)}
-                style={{ flex: 1, alignItems: 'center', paddingVertical: T.btn.pill.paddingVertical, borderRadius: T.btn.radius - 2, backgroundColor: activeTab === tab.key ? T.btn.pill.active_bg : 'transparent' }}>
-                <Text style={{ fontSize: 13, fontWeight: activeTab === tab.key ? '700' : '400', color: activeTab === tab.key ? T.btn.pill.active_text : T.text.muted }}>
-                  {tab.label}
+          {/* Stats */}
+          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
+            <StatCard label="Bugün açık" value={open} color={palette.accent} />
+            <StatCard label="Tamamlandı" value={done} color={palette.success} />
+            <StatCard label="Toplam" value={tasks.length} />
+          </View>
+
+          {/* Tabs */}
+          <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[3] }}>
+            {(['today', 'all'] as Tab[]).map((t) => (
+              <TouchableOpacity
+                key={t}
+                onPress={() => setTab(t)}
+                style={{
+                  flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: 'center',
+                  backgroundColor: tab === t ? colors.bgSurface : 'transparent',
+                  ...( tab === t ? colors.shadowCard : {}),
+                }}
+              >
+                <Text style={{ fontSize: fontSize.sm, fontWeight: tab === t ? fontWeight.semibold : fontWeight.regular, color: tab === t ? colors.textPrimary : colors.textMuted }}>
+                  {t === 'today' ? 'Bugün' : 'Tümü'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity onPress={() => setShowSortMenu((s) => !s)}
-            style={{ borderRadius: T.btn.radius, paddingHorizontal: T.btn.secondary.paddingHorizontal, paddingVertical: T.btn.secondary.paddingVertical, backgroundColor: showSortMenu ? T.accent : T.btn.secondary.bg, borderWidth: 1, borderColor: showSortMenu ? T.accent : T.btn.secondary.border }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="swap-vertical" size={14} color={showSortMenu ? 'white' : T.btn.secondary.text} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: showSortMenu ? 'white' : T.btn.secondary.text }}>
-                {SORT_LABELS[sortKey]} {sortAsc ? '↑' : '↓'}
-              </Text>
-            </View>
+
+          {/* Filter */}
+          <TouchableOpacity
+            onPress={() => setHideDone((v) => !v)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: hideDone ? `${palette.accent}18` : colors.glassInner, borderWidth: 1, borderColor: hideDone ? `${palette.accent}30` : colors.border }}
+          >
+            <Ionicons name={hideDone ? 'eye-off-outline' : 'eye-outline'} size={13} color={hideDone ? palette.accent : colors.textMuted} />
+            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: hideDone ? palette.accent : colors.textMuted }}>
+              {hideDone ? 'Tamamlananlar gizli' : 'Tamamlananlar görünür'}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Sort menu */}
-        {showSortMenu && (
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.90)', borderRadius: 16, padding: 8, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.90)', marginBottom: 10, shadowColor: T.card.shadowColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 16, elevation: 4 }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: T.text.muted, paddingHorizontal: 8, paddingVertical: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Sıralama</Text>
-            {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-              <TouchableOpacity key={key} onPress={() => { if (sortKey === key) setSortAsc((a) => !a); else { setSortKey(key); setSortAsc(false) }; setShowSortMenu(false) }}
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 10, borderRadius: 10, backgroundColor: sortKey === key ? 'rgba(129,140,248,0.15)' : 'transparent' }}>
-                <Text style={{ fontSize: 13, fontWeight: sortKey === key ? '600' : '400', color: sortKey === key ? T.accent : T.text.secondary }}>{SORT_LABELS[key]}</Text>
-                {sortKey === key && <Text style={{ fontSize: 12, color: T.accent, fontWeight: '600' }}>{sortAsc ? '↑ Artan' : '↓ Azalan'}</Text>}
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Filtre chip'leri */}
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {[
-            { label: hideRoutine ? 'Rutin gizli' : 'Rutin goster', active: hideRoutine, onPress: () => setHideRoutine((h) => !h), activeColor: T.accent, icon: 'repeat' as const },
-            { label: hideDone ? 'Bitmis gizli' : 'Bitmis goster', active: hideDone, onPress: () => setHideDone((h) => !h), activeColor: T.success, icon: 'checkmark-done' as const },
-          ].map((chip) => (
-            <TouchableOpacity key={chip.label} onPress={chip.onPress}
-              style={{ borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: chip.active ? chip.activeColor + '50' : 'rgba(255,255,255,0.12)', backgroundColor: chip.active ? chip.activeColor + '15' : 'rgba(255,255,255,0.06)' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name={chip.icon} size={12} color={chip.active ? chip.activeColor : T.text.muted} />
-                <Text style={{ fontSize: 11, fontWeight: '600', color: chip.active ? chip.activeColor : T.text.muted }}>{chip.label}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {((hideRoutine && hiddenRoutineCount > 0) || (hideDone && hiddenDoneCount > 0)) && (
-          <Text style={{ marginTop: 6, fontSize: 11, color: T.text.muted }}>
-            {[hideRoutine && hiddenRoutineCount > 0 && `${hiddenRoutineCount} rutin`, hideDone && hiddenDoneCount > 0 && `${hiddenDoneCount} tamamlanan`].filter(Boolean).join(' · ')} gizlendi
-          </Text>
-        )}
+        {/* List */}
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: spacing[5], paddingBottom: 100, gap: spacing[3] }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {displayed.length === 0 ? (
+            <View style={{ paddingTop: spacing[10], alignItems: 'center', gap: spacing[3] }}>
+              <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textSubtle} />
+              <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>Görev yok</Text>
+            </View>
+          ) : (
+            displayed.map((task) => (
+              <TaskRow key={task.id} task={task} onPress={() => router.push(`/task/${task.id}` as never)} />
+            ))
+          )}
+        </ScrollView>
       </View>
 
-      <ScrollView style={{ flex: 1, paddingHorizontal: 20 }} contentContainerStyle={{ paddingTop: 4, paddingBottom: 112 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.text.secondary} />}>
-        {loading && !refreshing ? (
-          <ActivityIndicator size="large" color={T.accent} style={{ marginTop: 40 }} />
-        ) : displayTasks.length === 0 ? (
-          <View style={{ marginTop: 60, alignItems: 'center' }}>
-            <Ionicons name="checkmark-circle-outline" size={40} color={T.text.muted} />
-            <Text style={{ marginTop: 12, textAlign: 'center', fontSize: 14, color: T.text.muted }}>
-              {activeTab === 'today' ? 'Bugün için görev yok' : 'Açık görev yok'}
+      {/* Add modal */}
+      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title="Yeni Görev" scrollable>
+        <View style={{ gap: spacing[3] }}>
+          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus />
+          <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" />
+          <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" />
+
+          <ScoreRow label="Değer" value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
+          <ScoreRow label="Aciliyet" value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
+          <ScoreRow label="Çaba" value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+
+          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
+        </View>
+      </BottomSheet>
+    </ScreenBackground>
+  )
+}
+
+function TaskRow({ task, onPress }: { task: Task; onPress: () => void }) {
+  const { colors } = useTheme()
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+      <GlassCard padding={spacing[4]} noShadow>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[3] }}>
+          <View style={{ flex: 1, gap: 6 }}>
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }} numberOfLines={2}>
+              {task.title}
             </Text>
-          </View>
-        ) : (
-          <View style={{ paddingBottom: 32, paddingTop: 4 }}>
-            {displayTasks.map((task) => (
-              <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}`)} style={[GLASS_CARD, { marginBottom: 10 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                  <Text style={{ flex: 1, fontWeight: '600', fontSize: 14, color: T.text.primary }} numberOfLines={2}>{task.title}</Text>
-                  <TouchableOpacity onPress={() => void handleStatusChange(task.id, task.status)}
-                    style={{ marginLeft: 10, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: STATUS_COLORS[task.status] }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: STATUS_TEXT[task.status] }}>{TASK_STATUS_LABELS[task.status]}</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <View style={{ height: 6, width: 6, borderRadius: 3, backgroundColor: task.priority_score >= 1.5 ? T.text.danger : task.priority_score >= 1.0 ? T.text.warning : T.text.muted }} />
-                    <Text style={{ fontSize: 11, color: T.text.muted }}>{task.priority_score.toFixed(1)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="time-outline" size={12} color={T.text.muted} />
-                    <Text style={{ fontSize: 11, color: T.text.muted }}>{task.effort_score}h</Text>
-                  </View>
-                  {task.tags.length > 0 && <Text style={{ fontSize: 11, color: T.accent, fontWeight: '500' }}>#{task.tags[0]}</Text>}
-                  {task.scheduled_date && <Text style={{ fontSize: 11, color: T.text.muted }}>{task.scheduled_date === today ? 'Bugün' : task.scheduled_date}</Text>}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Add Modal */}
-      <Modal visible={showAddModal} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' }}>
-          <View style={MODAL_SHEET}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.12)', alignSelf: 'center', marginBottom: 20 }} />
-            <Text style={{ fontSize: 18, fontWeight: '700', color: T.text.primary, marginBottom: 16 }}>Yeni Görev</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Başlık</Text>
-              <TextInput value={draft.title} onChangeText={(value) => updateDraft('title', value)} placeholder="Ne yapilacak?" placeholderTextColor={T.input.placeholder}
-                style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, marginBottom: 14, backgroundColor: T.input.bg }}
-                autoFocus multiline />
-
-              <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Açıklama</Text>
-              <TextInput value={draft.description} onChangeText={(value) => updateDraft('description', value)} placeholder="Beklenen çıktı, notlar, baglam" placeholderTextColor={T.input.placeholder}
-                style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, marginBottom: 14, backgroundColor: T.input.bg, minHeight: 92, textAlignVertical: 'top' }}
-                multiline />
-
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Planlanan gün</Text>
-                  <TextInput value={draft.scheduledDate} onChangeText={(value) => updateDraft('scheduledDate', value)} placeholder="2026-04-30" placeholderTextColor={T.input.placeholder}
-                    style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, backgroundColor: T.input.bg }} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Son tarih</Text>
-                  <TextInput value={draft.dueDate} onChangeText={(value) => updateDraft('dueDate', value)} placeholder="2026-05-02" placeholderTextColor={T.input.placeholder}
-                    style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, backgroundColor: T.input.bg }} />
-                </View>
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Tahmini süre (dk)</Text>
-                  <TextInput value={draft.estimatedMinutes} onChangeText={(value) => updateDraft('estimatedMinutes', value)} keyboardType="numeric" placeholder="45" placeholderTextColor={T.input.placeholder}
-                    style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, backgroundColor: T.input.bg }} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Efor skoru (1-5)</Text>
-                  <TextInput value={draft.effortScore} onChangeText={(value) => updateDraft('effortScore', value)} keyboardType="numeric" placeholder="3" placeholderTextColor={T.input.placeholder}
-                    style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, backgroundColor: T.input.bg }} />
-                </View>
-              </View>
-
-              <Text style={{ fontSize: 12, fontWeight: '600', color: T.text.secondary, marginBottom: 6 }}>Etiketler</Text>
-              <TextInput value={draft.tags} onChangeText={(value) => updateDraft('tags', value)} placeholder="is, derin-calisma, saglik" placeholderTextColor={T.input.placeholder}
-                style={{ borderWidth: 1, borderColor: T.input.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: T.input.text, marginBottom: 20, backgroundColor: T.input.bg }} />
-            </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity onPress={() => { setShowAddModal(false); setDraft(EMPTY_DRAFT) }}
-                style={{ flex: 1, alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)', paddingVertical: 14 }}>
-                <Text style={{ fontWeight: '600', color: T.text.muted }}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleAddTask()} disabled={!draft.title.trim() || adding}
-                style={{ flex: 1, alignItems: 'center', borderRadius: 16, backgroundColor: T.accent, paddingVertical: 14, opacity: !draft.title.trim() || adding ? 0.4 : 1, shadowColor: T.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10 }}>
-                {adding ? <ActivityIndicator size="small" color="white" /> : <Text style={{ fontWeight: '700', color: 'white' }}>Ekle</Text>}
-              </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flexWrap: 'wrap' }}>
+              <StatusBadge status={task.status as never} />
+              {task.estimated_minutes && (
+                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                  {task.estimated_minutes}dk
+                </Text>
+              )}
+              {task.priority_score != null && (
+                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                  WSJF {task.priority_score.toFixed(1)}
+                </Text>
+              )}
             </View>
           </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} style={{ marginTop: 2 }} />
         </View>
-      </Modal>
-    </GradientBackground>
+      </GlassCard>
+    </TouchableOpacity>
+  )
+}
+
+function ScoreRow({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: fontWeight.medium }}>{label}</Text>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <TouchableOpacity
+            key={n}
+            onPress={() => onChange(n)}
+            style={{
+              width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: value === n ? palette.accent : colors.glassInner,
+              borderWidth: 1, borderColor: value === n ? palette.accent : colors.border,
+            }}
+          >
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: value === n ? '#fff' : colors.textMuted }}>
+              {n}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
   )
 }
