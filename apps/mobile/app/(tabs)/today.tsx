@@ -143,12 +143,16 @@ export default function TodayScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 4 macro stats */}
-          <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[4] }}>
-            <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
-            <StatCard label="Protein" value={`${totalProt}g`} color={palette.info} />
-            <StatCard label="Karb" value={`${totalCarbs}g`} color={palette.success} />
-            <StatCard label="Yağ" value={`${totalFat}g`} color={palette.danger} />
+          {/* 2x2 macro grid */}
+          <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
+              <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label="Karbonhidrat" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+              <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
+            </View>
           </View>
 
           {/* Progress bars if target is set */}

@@ -175,12 +175,16 @@ export default function NutritionScreen() {
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>Bugün</Text>
 
-          {/* 4 macro stat chips */}
-          <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[4] }}>
-            <StatCard label="Kalori" value={totalCal} color={palette.warning} />
-            <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
-            <StatCard label="Karb" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
-            <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
+          {/* 2x2 macro grid */}
+          <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label="Kalori" value={`${totalCal}`} color={palette.warning} />
+              <StatCard label="Protein" value={`${Math.round(totalProt)}g`} color={palette.info} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <StatCard label="Karb" value={`${Math.round(totalCarbs)}g`} color={palette.success} />
+              <StatCard label="Yağ" value={`${Math.round(totalFat)}g`} color={palette.danger} />
+            </View>
           </View>
 
           {/* Progress bars against targets */}

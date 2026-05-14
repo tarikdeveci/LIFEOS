@@ -148,13 +148,22 @@ export default function TasksScreen() {
 
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title="Yeni Görev" scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus />
-          <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" />
-          <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" />
+          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus returnKeyType="next" />
+          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+          </View>
+
+          {/* Primary action — visible before WSJF so keyboard never hides it */}
+          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth />
+
+          {/* WSJF — optional, collapsible feel via section header */}
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', marginTop: spacing[1] }}>
+            WSJF skorları (opsiyonel — varsayılan 3)
+          </Text>
           <ScoreRow label="Değer" value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
           <ScoreRow label="Aciliyet" value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
           <ScoreRow label="Çaba" value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
-          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
         </View>
       </BottomSheet>
     </ScreenBackground>
