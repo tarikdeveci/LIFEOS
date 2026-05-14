@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
-import { useNutritionStore, MEAL_TYPE_LABELS } from '@lifeos/shared'
+import { useNutritionStore } from '@lifeos/shared'
 import type { MealType } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -14,11 +14,16 @@ import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+const MEAL_TYPES: { key: MealType; label: string }[] = [
+  { key: 'breakfast', label: 'Kahvaltı' },
+  { key: 'lunch',     label: 'Öğle' },
+  { key: 'dinner',    label: 'Akşam' },
+  { key: 'snack',     label: 'Ara Öğün' },
+]
 
 export default function NutritionScreen() {
   const { colors } = useTheme()
-  const { meals, nutritionTargets, fetchMeals, fetchNutritionTargets, addMeal, deleteMeal } = useNutritionStore()
+  const { meals, target, fetchDayNutrition, addMeal, removeMeal } = useNutritionStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -29,8 +34,8 @@ export default function NutritionScreen() {
   const todayStr = new Date().toISOString().split('T')[0]
 
   const load = useCallback(async (uid: string) => {
-    await Promise.all([fetchMeals(uid, todayStr), fetchNutritionTargets(uid)])
-  }, [todayStr, fetchMeals, fetchNutritionTargets])
+    await fetchDayNutrition(supabase, uid, todayStr)
+  }, [todayStr, fetchDayNutrition])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -49,7 +54,7 @@ export default function NutritionScreen() {
     if (!userId || !rawInput.trim()) return
     setAdding(true)
     try {
-      await addMeal(userId, {
+      await addMeal(supabase, userId, {
         date: todayStr,
         meal_type: mealType,
         raw_input: rawInput.trim(),
@@ -66,14 +71,8 @@ export default function NutritionScreen() {
   }
 
   const todayMeals = meals.filter((m) => m.date === todayStr)
-  const target = nutritionTargets?.[0]
   const totals = todayMeals.reduce(
-    (s, m) => ({
-      cal: s.cal + (m.total_calories ?? 0),
-      prot: s.prot + (m.total_protein ?? 0),
-      carbs: s.carbs + (m.total_carbs ?? 0),
-      fat: s.fat + (m.total_fat ?? 0),
-    }),
+    (s, m) => ({ cal: s.cal + (m.total_calories ?? 0), prot: s.prot + (m.total_protein ?? 0), carbs: s.carbs + (m.total_carbs ?? 0), fat: s.fat + (m.total_fat ?? 0) }),
     { cal: 0, prot: 0, carbs: 0, fat: 0 },
   )
 
@@ -84,22 +83,16 @@ export default function NutritionScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Beslenme</Text>
-          <TouchableOpacity
-            onPress={() => setShowAdd(true)}
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}
-          >
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="add" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* Summary */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>
-            Bugün
-          </Text>
+          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[4] }}>Bugün</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: target ? spacing[4] : 0 }}>
             <StatCard label="Kalori" value={totals.cal} color={palette.warning} />
             <StatCard label="Protein" value={`${totals.prot}g`} color={palette.info} />
@@ -116,30 +109,21 @@ export default function NutritionScreen() {
           )}
         </GlassCard>
 
-        {/* Meals by type */}
-        {MEAL_TYPES.map((type) => {
-          const typeMeals = todayMeals.filter((m) => m.meal_type === type)
+        {/* Meals */}
+        {MEAL_TYPES.map(({ key, label }) => {
+          const typeMeals = todayMeals.filter((m) => m.meal_type === key)
           if (typeMeals.length === 0) return null
           return (
-            <View key={type} style={{ marginBottom: spacing[4] }}>
-              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textMuted, marginBottom: spacing[2] }}>
-                {MEAL_TYPE_LABELS[type]}
-              </Text>
+            <View key={key} style={{ marginBottom: spacing[4] }}>
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textMuted, marginBottom: spacing[2] }}>{label}</Text>
               {typeMeals.map((meal) => (
                 <GlassCard key={meal.id} padding={spacing[4]} style={{ marginBottom: spacing[2] }} noShadow>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={2}>
-                        {meal.raw_input}
-                      </Text>
-                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-                        {meal.total_calories} kcal · {meal.total_protein}g protein
-                      </Text>
+                      <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={2}>{meal.raw_input}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{meal.total_calories} kcal · {meal.total_protein}g protein</Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => deleteMeal(meal.id)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    >
+                    <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                       <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
                   </View>
@@ -158,44 +142,19 @@ export default function NutritionScreen() {
         )}
       </ScrollView>
 
-      {/* Add modal */}
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title="Öğün Ekle" scrollable>
         <View style={{ gap: spacing[4] }}>
-          {/* Meal type selector */}
           <View>
-            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>
-              Öğün türü
-            </Text>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Öğün türü</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-              {MEAL_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  onPress={() => setMealType(t)}
-                  style={{
-                    paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 10,
-                    backgroundColor: mealType === t ? palette.accent : colors.glassInner,
-                    borderWidth: 1, borderColor: mealType === t ? palette.accent : colors.border,
-                  }}
-                >
-                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: mealType === t ? '#fff' : colors.textMuted }}>
-                    {MEAL_TYPE_LABELS[t]}
-                  </Text>
+              {MEAL_TYPES.map(({ key, label }) => (
+                <TouchableOpacity key={key} onPress={() => setMealType(key)} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 10, backgroundColor: mealType === key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: mealType === key ? palette.accent : colors.border }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: mealType === key ? '#fff' : colors.textMuted }}>{label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-
-          <Input
-            label="Ne yedin?"
-            value={rawInput}
-            onChangeText={setRawInput}
-            placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
-            multiline
-            numberOfLines={3}
-            style={{ minHeight: 80, textAlignVertical: 'top' }}
-            autoFocus
-          />
-
+          <Input label="Ne yedin?" value={rawInput} onChangeText={setRawInput} placeholder="2 yumurta, tam buğday ekmek..." multiline numberOfLines={3} style={{ minHeight: 80, textAlignVertical: 'top' }} autoFocus />
           <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth />
         </View>
       </BottomSheet>

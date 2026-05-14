@@ -14,23 +14,21 @@ import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 export default function TodayScreen() {
   const { colors } = useTheme()
   const { tasks, fetchTasks } = useTaskStore()
-  const { timeBlocks, fetchTimeBlocks } = usePlanningStore()
-  const { meals, nutritionTargets, fetchMeals, fetchNutritionTargets } = useNutritionStore()
+  const { timeBlocks, fetchDayData } = usePlanningStore()
+  const { meals, target, fetchDayNutrition } = useNutritionStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const today = new Date()
-  const todayStr = today.toISOString().split('T')[0]
-  const dateLabel = today.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const todayStr = new Date().toISOString().split('T')[0]
+  const dateLabel = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   const load = useCallback(async (uid: string) => {
     await Promise.all([
-      fetchTasks(uid, {}),
-      fetchTimeBlocks(uid, todayStr),
-      fetchMeals(uid, todayStr),
-      fetchNutritionTargets(uid),
+      fetchTasks(supabase, uid),
+      fetchDayData(supabase, uid, todayStr),
+      fetchDayNutrition(supabase, uid, todayStr),
     ])
-  }, [todayStr, fetchTasks, fetchTimeBlocks, fetchMeals, fetchNutritionTargets])
+  }, [todayStr, fetchTasks, fetchDayData, fetchDayNutrition])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -45,9 +43,9 @@ export default function TodayScreen() {
     setRefreshing(false)
   }
 
-  const todayTasks  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
-  const doneTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
-  const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
+  const todayTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
+  const doneTasks    = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
+  const todayBlocks  = timeBlocks.filter((b) => b.date === todayStr)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
       const [sh, sm] = b.start_time.split(':').map(Number)
@@ -59,7 +57,6 @@ export default function TodayScreen() {
   const todayMeals = meals.filter((m) => m.date === todayStr)
   const totalCal   = todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
   const totalProt  = todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
-  const target     = nutritionTargets?.[0]
 
   const blockColors: Record<string, string> = {
     task: palette.task, routine: palette.routine, break: palette.break,
@@ -76,12 +73,8 @@ export default function TodayScreen() {
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[6] }}>
           <View>
-            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>
-              Bugün
-            </Text>
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>
-              {dateLabel}
-            </Text>
+            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>Bugün</Text>
+            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>{dateLabel}</Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/profile')}
@@ -91,7 +84,7 @@ export default function TodayScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Tasks card */}
+        {/* Tasks */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
             <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Görevler</Text>
@@ -105,26 +98,18 @@ export default function TodayScreen() {
             <StatCard label="Planlandı" value={`${plannedHours}s`} color={palette.warning} />
           </View>
           {todayTasks.slice(0, 3).map((task) => (
-            <TouchableOpacity
-              key={task.id}
-              onPress={() => router.push(`/task/${task.id}` as never)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}
-            >
+            <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}` as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}>
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.accent }} />
-              <Text style={{ flex: 1, fontSize: fontSize.base, color: colors.textSecondary }} numberOfLines={1}>
-                {task.title}
-              </Text>
+              <Text style={{ flex: 1, fontSize: fontSize.base, color: colors.textSecondary }} numberOfLines={1}>{task.title}</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
             </TouchableOpacity>
           ))}
           {todayTasks.length === 0 && (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
-              Bugün için görev yok 🎉
-            </Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Bugün için görev yok 🎉</Text>
           )}
         </GlassCard>
 
-        {/* Planning card */}
+        {/* Planning */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
             <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Takvim</Text>
@@ -136,23 +121,17 @@ export default function TodayScreen() {
             <View key={block.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 7 }}>
               <View style={{ width: 3, height: 36, borderRadius: 2, backgroundColor: blockColors[block.block_type] ?? palette.accent }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>
-                  {block.label}
-                </Text>
-                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-                  {block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}
-                </Text>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>{block.label}</Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}</Text>
               </View>
             </View>
           ))}
           {todayBlocks.length === 0 && (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
-              Bugün için blok eklenmemiş
-            </Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Bugün için blok eklenmemiş</Text>
           )}
         </GlassCard>
 
-        {/* Nutrition card */}
+        {/* Nutrition */}
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
             <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>Beslenme</Text>
