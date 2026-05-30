@@ -248,6 +248,39 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_preferences: {
+        Row: {
+          block_reminder_enabled: boolean | null
+          block_reminder_minutes: number | null
+          created_at: string | null
+          digest_enabled: boolean | null
+          digest_hour: number | null
+          timezone: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          block_reminder_enabled?: boolean | null
+          block_reminder_minutes?: number | null
+          created_at?: string | null
+          digest_enabled?: boolean | null
+          digest_hour?: number | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          block_reminder_enabled?: boolean | null
+          block_reminder_minutes?: number | null
+          created_at?: string | null
+          digest_enabled?: boolean | null
+          digest_hour?: number | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       nutrition_targets: {
         Row: {
           calories: number
@@ -431,6 +464,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_tokens: {
+        Row: {
+          created_at: string | null
+          id: string
+          platform: string
+          token: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          platform: string
+          token: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          platform?: string
+          token?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
@@ -623,6 +680,7 @@ export type Database = {
           id: string
           is_recurring: boolean | null
           label: string | null
+          notification_sent_at: string | null
           recurrence_days: number[] | null
           recurrence_end: string | null
           recurrence_type: string | null
@@ -640,6 +698,7 @@ export type Database = {
           id?: string
           is_recurring?: boolean | null
           label?: string | null
+          notification_sent_at?: string | null
           recurrence_days?: number[] | null
           recurrence_end?: string | null
           recurrence_type?: string | null
@@ -657,6 +716,7 @@ export type Database = {
           id?: string
           is_recurring?: boolean | null
           label?: string | null
+          notification_sent_at?: string | null
           recurrence_days?: number[] | null
           recurrence_end?: string | null
           recurrence_type?: string | null

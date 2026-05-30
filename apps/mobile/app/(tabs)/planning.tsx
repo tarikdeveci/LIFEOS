@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/src/lib/supabase'
@@ -13,7 +13,9 @@ import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
-import { getCalendarIntegrationState, importCalendarEventsForDate } from '@/src/lib/calendarIntegration'
+import { useCalendarStore } from '@/src/stores/calendarStore'
+import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
+import type { LocalCalendarEvent } from '@/src/utils/calendarSync'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
@@ -46,6 +48,7 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
+  const { localEvents, isSyncing, hasPermission, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
@@ -58,54 +61,46 @@ export default function PlanningScreen() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiMessage, setAiMessage] = useState<string | null>(null)
 
+  // Foreground'a her dönüşte takvimi senkronize et
+  useCalendarAutoSync()
+
   const todayStr = localIsoDate()
   const weekDays = getWeekDays(weekAnchor)
   const weekStart = weekDays[0]
   const weekEnd = weekDays[6]
 
+  // Seçili güne ait local takvim etkinlikleri
+  const localEventsForDate = useMemo(
+    () => localEvents.filter((e) => e.startsAt.startsWith(selectedDate)),
+    [localEvents, selectedDate],
+  )
+
   const load = useCallback(async (uid: string, date: string) => {
     await fetchDayData(supabase, uid, date)
-    try {
-      const state = await getCalendarIntegrationState()
-      // Local calendar: run whenever permission is granted (no toggle required)
-      // Provider calendars: respect autoImportEnabled toggle
-      const shouldImport = state.localPermission === 'granted'
-        || ((state.googleConnected || state.outlookConnected) && state.autoImportEnabled)
-      if (shouldImport) {
-        const result = await importCalendarEventsForDate(supabase, uid, date)
-        if (result.imported > 0) {
-          await fetchDayData(supabase, uid, date)
-        }
-      }
-    } catch {
-      // Calendar sync errors should not block the planning screen.
-    }
   }, [fetchDayData])
 
   useEffect(() => {
+    // Takvim iznini başlat (ilk açılışta)
+    void initialize()
+
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) { setUserId(data.user.id); void load(data.user.id, selectedDate) }
     })
-  }, [load, selectedDate])
+  }, [load, selectedDate, initialize])
 
   async function handleRefresh() {
     if (!userId) return
     setRefreshing(true)
-    await load(userId, selectedDate)
+    await Promise.all([load(userId, selectedDate), syncEvents()])
     setRefreshing(false)
   }
 
-  async function handleManualCalendarImport() {
-    if (!userId) return
+  async function handleManualCalendarSync() {
     try {
-      const result = await importCalendarEventsForDate(supabase, userId, selectedDate)
-      if (result.imported > 0) {
-        await fetchDayData(supabase, userId, selectedDate)
-      }
-      Alert.alert('Takvim Senkronu', `${result.imported} etkinlik eklendi, ${result.skipped} etkinlik atlandı.`)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Takvim içe aktarma başarısız'
-      Alert.alert('Takvim Senkronu', message)
+      await syncEvents()
+      Alert.alert('Takvim Senkronu', hasPermission ? 'Takvim senkronize edildi.' : 'Takvim izni verilmedi. Ayarlar ekranından izin verin.')
+    } catch {
+      Alert.alert('Takvim Senkronu', 'Senkronizasyon başarısız')
     }
   }
 
@@ -171,7 +166,9 @@ export default function PlanningScreen() {
     catch { Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi') }
   }
 
-  const dayBlocks = timeBlocks.filter((b) => b.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time))
+  const dayBlocks = timeBlocks
+    .filter((b) => b.date === selectedDate)
+    .sort((a, b) => a.start_time.localeCompare(b.start_time))
 
   return (
     <ScreenBackground>
@@ -184,8 +181,8 @@ export default function PlanningScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity onPress={() => void handleManualCalendarImport()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="download-outline" size={18} color={palette.info} />
+            <TouchableOpacity onPress={() => void handleManualCalendarSync()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={isSyncing ? 'sync-outline' : 'calendar-outline'} size={18} color={palette.info} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAiChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
@@ -261,7 +258,7 @@ export default function PlanningScreen() {
         )}
 
         {/* Day blocks */}
-        {dayBlocks.length === 0 ? (
+        {dayBlocks.length === 0 && localEventsForDate.length === 0 ? (
           <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
             <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
             <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
@@ -272,7 +269,14 @@ export default function PlanningScreen() {
           </View>
         ) : (
           <View style={{ gap: spacing[3] }}>
-            {dayBlocks.map((block) => <BlockRow key={block.id} block={block} onDelete={() => removeTimeBlock(supabase, block.id)} />)}
+            {/* LifeOS zaman blokları */}
+            {dayBlocks.map((block) => (
+              <BlockRow key={block.id} block={block} onDelete={() => removeTimeBlock(supabase, block.id)} />
+            ))}
+            {/* Yerel takvim etkinlikleri (read-only) */}
+            {localEventsForDate.map((event) => (
+              <CalendarEventRow key={event.id} event={event} />
+            ))}
           </View>
         )}
       </ScrollView>
@@ -341,6 +345,38 @@ function BlockRow({ block, onDelete }: { block: TimeBlock; onDelete: () => void 
         <TouchableOpacity onPress={onDelete} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
         </TouchableOpacity>
+      </View>
+    </GlassCard>
+  )
+}
+
+function CalendarEventRow({ event }: { event: LocalCalendarEvent }) {
+  const { colors } = useTheme()
+  const startTime = event.isAllDay
+    ? 'Tüm gün'
+    : new Date(event.startsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const endTime = event.isAllDay
+    ? ''
+    : ` – ${new Date(event.endsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+
+  return (
+    <GlassCard padding={spacing[4]} noShadow style={{ opacity: 0.8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+        <View style={{ width: 3, height: 44, borderRadius: 2, backgroundColor: colors.textSubtle }} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[1] }}>
+            <Ionicons name="calendar-outline" size={12} color={colors.textSubtle} />
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>
+              {event.title}
+            </Text>
+          </View>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
+            {startTime}{endTime}
+          </Text>
+          <View style={{ marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.glassInner }}>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontWeight: fontWeight.medium }}>Takvim</Text>
+          </View>
+        </View>
       </View>
     </GlassCard>
   )

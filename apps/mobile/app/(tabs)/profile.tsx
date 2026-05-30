@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { getCalendarIntegrationState, requestLocalCalendarAccess, setCalendarAutoImport } from '@/src/lib/calendarIntegration'
+import { useCalendarStore } from '@/src/stores/calendarStore'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -52,6 +53,7 @@ interface NutritionState {
 export default function ProfileScreen() {
   const { colors, mode, setMode } = useTheme()
   const { lang, setLang, t } = useLang()
+  const { hasPermission: calendarGranted } = useCalendarStore()
 
   const ACTIVITY_LEVELS = ACTIVITY_LEVELS_DEF.map((a) => ({
     key: a.key,
@@ -72,8 +74,6 @@ export default function ProfileScreen() {
   const [nutrition, setNutrition] = useState<NutritionState>({
     calories: '', protein: '', carbs: '', fat: '', fiber: '',
   })
-  const [calendarStatus, setCalendarStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown')
-  const [calendarAutoImport, setCalendarAutoImportState] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
@@ -125,11 +125,6 @@ export default function ProfileScreen() {
       })
     }
 
-    const calRes = await getCalendarIntegrationState().catch(() => null)
-    if (calRes) {
-      setCalendarStatus(calRes.localPermission === 'granted' ? 'granted' : 'denied')
-      setCalendarAutoImportState(calRes.autoImportEnabled)
-    }
   }, [])
 
   useEffect(() => { void load() }, [load])
@@ -178,26 +173,6 @@ export default function ProfileScreen() {
       Alert.alert('Hata', 'Hedefler kaydedilemedi')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function requestCalendarPermission() {
-    const state = await requestLocalCalendarAccess()
-    const granted = state.localPermission === 'granted'
-    setCalendarStatus(granted ? 'granted' : 'denied')
-    Alert.alert(
-      granted ? '✓ Takvim Erişimi Verildi' : 'Erişim Reddedildi',
-      granted ? 'Zaman bloklarını takviminizle senkronize edebilirsiniz.' : 'Ayarlar > Uygulama İzinleri kısmından takvim iznini verebilirsiniz.',
-    )
-  }
-
-  async function handleToggleCalendarAutoImport() {
-    try {
-      const next = !calendarAutoImport
-      const state = await setCalendarAutoImport(next)
-      setCalendarAutoImportState(state.autoImportEnabled)
-    } catch {
-      Alert.alert('Hata', 'Takvim otomatik içe aktarma ayarı güncellenemedi')
     }
   }
 
@@ -258,38 +233,25 @@ export default function ProfileScreen() {
         </SectionCard>
 
         {/* Calendar */}
-        <GlassCard style={{ marginBottom: spacing[4] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
-              <Ionicons name="calendar-outline" size={18} color={palette.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{lang === 'tr' ? 'Takvim Entegrasyonu' : 'Calendar Integration'}</Text>
-                <Text style={{ fontSize: fontSize.xs, color: calendarStatus === 'granted' ? palette.success : colors.textMuted, marginTop: 2 }}>
-                  {calendarStatus === 'granted' ? '✓ Erişim verildi' : calendarStatus === 'denied' ? '✗ Erişim reddedildi' : 'İzin verilmemiş'}
-                </Text>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <TouchableOpacity onPress={() => router.push('/(tabs)/settings/calendar' as any)} activeOpacity={0.7}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
+                <Ionicons name="calendar-outline" size={18} color={palette.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                    {lang === 'tr' ? 'Takvim Senkronizasyonu' : 'Calendar Sync'}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.xs, color: calendarGranted ? palette.success : colors.textMuted, marginTop: 2 }}>
+                    {calendarGranted ? '✓ Erişim verildi' : 'İzin verilmemiş'}
+                  </Text>
+                </View>
               </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
             </View>
-            <TouchableOpacity
-              onPress={requestCalendarPermission}
-              style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: calendarStatus === 'granted' ? `${palette.success}15` : `${palette.accent}15`, borderWidth: 1, borderColor: calendarStatus === 'granted' ? `${palette.success}30` : `${palette.accent}30` }}
-            >
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: calendarStatus === 'granted' ? palette.success : palette.accent }}>
-                {calendarStatus === 'granted' ? 'Verildi' : 'İzin Ver'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ marginTop: spacing[3], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{lang === 'tr' ? 'Planlama ekranına girince otomatik içe aktar' : 'Auto-import when opening Planning'}</Text>
-            <TouchableOpacity
-              onPress={() => void handleToggleCalendarAutoImport()}
-              style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: calendarAutoImport ? `${palette.success}15` : colors.glassInner, borderWidth: 1, borderColor: calendarAutoImport ? `${palette.success}30` : colors.border }}
-            >
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: calendarAutoImport ? palette.success : colors.textMuted }}>
-                {calendarAutoImport ? 'Açık' : 'Kapalı'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </GlassCard>
+          </GlassCard>
+        </TouchableOpacity>
 
         {/* Language */}
         <GlassCard style={{ marginBottom: spacing[4] }}>

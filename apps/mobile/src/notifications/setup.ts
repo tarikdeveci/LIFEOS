@@ -55,29 +55,16 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null
   }
 
-  // Token'ı Supabase'e kaydet — sadece değişmişse güncelle
+  // Token'ı push_tokens tablosuna upsert et
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (user) {
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('preferences')
-      .eq('id', user.id)
-      .single()
-
-    if (profile) {
-      const preferences = (profile.preferences as Record<string, unknown>) ?? {}
-      if (preferences['push_token'] !== token) {
-        await supabase
-          .from('user_profiles')
-          .update({
-            preferences: { ...preferences, push_token: token },
-          })
-          .eq('id', user.id)
-      }
-    }
+    await supabase.from('push_tokens').upsert(
+      { user_id: user.id, token, platform: Platform.OS as 'ios' | 'android' },
+      { onConflict: 'user_id, platform' },
+    )
   }
 
   // Android kanal ayarla
