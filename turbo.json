@@ -12,7 +12,10 @@
         "NEXT_PUBLIC_APP_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
         "IYZICO_API_KEY",
-        "IYZICO_SECRET_KEY"
+        "IYZICO_SECRET_KEY",
+        "PAYTR_MERCHANT_ID",
+        "PAYTR_MERCHANT_KEY",
+        "PAYTR_MERCHANT_SALT"
       ]
     },
     "dev": {
