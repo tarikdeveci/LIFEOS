@@ -26,14 +26,5 @@
     "prettier": "^3.4.2",
     "rimraf": "^6.0.1",
     "next": "^15.1.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0",
-      "@types/react": "~19.1.10",
-      "@types/react-dom": "~19.1.6",
-      "lightningcss": "1.30.1"
-    }
   }
 }
