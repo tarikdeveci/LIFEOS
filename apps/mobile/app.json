@@ -22,14 +22,16 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.lifeos.app",
+      "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "NSCameraUsageDescription": "Profil fotoğrafı için kamera erişimi",
+        "NSCameraUsageDescription": "Profil fotoğrafı için kamera erişimi gerekiyor.",
         "NSCalendarsUsageDescription": "Zaman bloklarını takvimden içe aktarmak için takvim erişimi gerekiyor.",
         "NSRemindersUsageDescription": "Takvim hatırlatıcılarını okumak için erişim gerekiyor.",
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
