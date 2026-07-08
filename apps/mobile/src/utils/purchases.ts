@@ -10,6 +10,9 @@ async function getPurchases(): Promise<any> {
   return mod?.default ?? null
 }
 
+let revenueCatConfigured = false
+let revenueCatUserId: string | null = null
+
 export async function initRevenueCat(userId: string): Promise<void> {
   const Purchases = await getPurchases()
   if (!Purchases) return
@@ -21,8 +24,15 @@ export async function initRevenueCat(userId: string): Promise<void> {
 
   if (!apiKey) return
 
-  await Purchases.configure({ apiKey })
-  await Purchases.logIn(userId)
+  if (!revenueCatConfigured) {
+    await Purchases.configure({ apiKey })
+    revenueCatConfigured = true
+  }
+
+  if (revenueCatUserId !== userId) {
+    await Purchases.logIn(userId)
+    revenueCatUserId = userId
+  }
 }
 
 export async function getCustomerInfo() {

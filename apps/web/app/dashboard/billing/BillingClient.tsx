@@ -9,7 +9,7 @@ const PLANS = [
   {
     key: 'free',
     name: 'Free',
-    price: '$0',
+    price: '₺0',
     period: 'sonsuza dek',
     features: [
       'Sınırsız görev yönetimi',
@@ -29,7 +29,7 @@ const PLANS = [
   {
     key: 'pro_monthly',
     name: 'Pro Aylık',
-    price: '$4.99',
+    price: '₺99,90',
     period: 'ay',
     badge: null as string | null,
     features: [
@@ -49,9 +49,9 @@ const PLANS = [
   {
     key: 'pro_annual',
     name: 'Pro Yıllık',
-    price: '$39',
+    price: '₺790',
     period: 'yıl',
-    badge: '%35 indirim',
+    badge: '%34 indirim',
     features: [
       'Sınırsız görev yönetimi',
       'Günlük zaman planlama',
@@ -71,7 +71,7 @@ const PLANS = [
 export default function BillingClient() {
   const { subscription, loading, isPro } = useSubscription()
   const [upgrading, setUpgrading] = useState<string | null>(null)
-  const [checkoutHtml, setCheckoutHtml] = useState<string | null>(null)
+  
   const searchParams = useSearchParams()
   const { showToast } = useToast()
 
@@ -101,17 +101,15 @@ export default function BillingClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planKey }),
       })
-      const data = await res.json() as { checkoutFormContent?: string; paymentPageUrl?: string; error?: string }
+      const data = await res.json() as { paymentUrl?: string; error?: string }
 
       if (!res.ok || data.error) {
         showToast(data.error ?? 'Ödeme başlatılamadı', 'error')
         return
       }
 
-      if (data.checkoutFormContent) {
-        setCheckoutHtml(data.checkoutFormContent)
-      } else if (data.paymentPageUrl) {
-        window.location.href = data.paymentPageUrl
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl
       }
     } catch {
       showToast('Ödeme başlatılırken hata oluştu', 'error')
@@ -237,7 +235,7 @@ export default function BillingClient() {
           {[
             {
               q: 'Ödeme güvenli mi?',
-              a: 'Evet. Ödemeler İyzico altyapısı üzerinden işlenir. Kart bilgileriniz bizde saklanmaz.',
+              a: 'Evet. Ödemeler PayTR altyapısı üzerinden işlenir. Kart bilgileriniz bizde saklanmaz.',
             },
             {
               q: 'İptal edebilir miyim?',
@@ -260,23 +258,6 @@ export default function BillingClient() {
         </div>
       </div>
 
-      {/* İyzico checkout modal */}
-      {checkoutHtml && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-2">
-            <button
-              onClick={() => setCheckoutHtml(null)}
-              className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md text-gray-500 hover:text-gray-900"
-            >
-              ×
-            </button>
-            <div
-              dangerouslySetInnerHTML={{ __html: checkoutHtml }}
-              className="iyzico-checkout-form"
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }

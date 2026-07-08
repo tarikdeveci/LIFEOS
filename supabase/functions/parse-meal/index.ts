@@ -40,6 +40,20 @@ interface ParseRequest {
   user_id: string
 }
 
+async function isProUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('subscriptions')
+    .select('status, current_period_end')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
+  const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
+  const notExpired = !periodEnd || new Date(periodEnd) > new Date()
+
+  return active && notExpired
+}
+
 serve(async (req: Request) => {
   const corsHeaders = getCorsHeaders(req)
 
@@ -90,6 +104,14 @@ serve(async (req: Request) => {
     }
 
     // Supabase client (service role ile — RLS bypass)
+    const allowed = await isProUser(authClient, user.id)
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: 'AI access requires Pro' }),
+        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,

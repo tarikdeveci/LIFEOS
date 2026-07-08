@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal, View, TouchableOpacity, ScrollView, Text, Keyboard, Platform, useWindowDimensions } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../contexts/ThemeContext'
 import { radius, spacing, fontSize, fontWeight } from '../../theme/tokens'
 
@@ -14,7 +15,10 @@ interface Props {
 export function BottomSheet({ visible, onClose, title, children, scrollable = false }: Props) {
   const { colors } = useTheme()
   const { height: screenHeight } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const bottomOffset = keyboardHeight > 0 ? Math.max(keyboardHeight - insets.bottom, 0) : insets.bottom
+  const sheetMaxHeight = Math.max(screenHeight * 0.45, screenHeight - bottomOffset - spacing[4])
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -30,7 +34,7 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
         paddingBottom pushes the flex-end anchor up above the keyboard.
         The sheet's bottom edge lands exactly at the keyboard top.
       */}
-      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: keyboardHeight }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: bottomOffset }}>
         {/* Tap-to-close backdrop — absolute so it covers the full screen including keyboard area */}
         <TouchableOpacity
           activeOpacity={1}
@@ -48,7 +52,7 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
             borderLeftWidth: 1,
             borderRightWidth: 1,
             borderColor: colors.glassBorder,
-            maxHeight: screenHeight * 0.88,
+            maxHeight: Math.min(screenHeight * 0.88, sheetMaxHeight),
           }}
         >
           {/* Handle */}
@@ -72,12 +76,12 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: spacing[5], paddingBottom: spacing[6] }}
+              contentContainerStyle={{ paddingHorizontal: spacing[5], paddingBottom: spacing[6] + insets.bottom }}
             >
               {children}
             </ScrollView>
           ) : (
-            <View style={{ paddingHorizontal: spacing[5], paddingBottom: spacing[5] }}>
+            <View style={{ paddingHorizontal: spacing[5], paddingBottom: spacing[5] + insets.bottom }}>
               {children}
             </View>
           )}

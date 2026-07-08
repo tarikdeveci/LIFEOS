@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
+import { initRevenueCat } from '@/src/utils/purchases'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import '../global.css'
@@ -21,7 +22,10 @@ function AppNavigator() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (event === 'INITIAL_SESSION') setInitialized(true)
-      if (s?.user) void registerForPushNotificationsAsync()
+      if (s?.user) {
+        void registerForPushNotificationsAsync()
+        void initRevenueCat(s.user.id)
+      }
     })
 
     notifRef.current = addNotificationResponseListener((path) => router.push(path as never))

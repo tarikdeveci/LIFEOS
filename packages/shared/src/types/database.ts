@@ -337,6 +337,7 @@ export type Database = {
           iyzico_conversation_id: string | null
           iyzico_payment_id: string | null
           iyzico_payment_transaction_id: string | null
+          paytr_merchant_oid: string | null
           plan: string | null
           status: string
           subscription_id: string | null
@@ -352,6 +353,7 @@ export type Database = {
           iyzico_conversation_id?: string | null
           iyzico_payment_id?: string | null
           iyzico_payment_transaction_id?: string | null
+          paytr_merchant_oid?: string | null
           plan?: string | null
           status: string
           subscription_id?: string | null
@@ -367,6 +369,7 @@ export type Database = {
           iyzico_conversation_id?: string | null
           iyzico_payment_id?: string | null
           iyzico_payment_transaction_id?: string | null
+          paytr_merchant_oid?: string | null
           plan?: string | null
           status?: string
           subscription_id?: string | null
@@ -501,6 +504,7 @@ export type Database = {
           iyzico_customer_reference_code: string | null
           iyzico_subscription_reference_code: string | null
           iyzico_token: string | null
+          paytr_merchant_oid: string | null
           plan: string
           price_usd: number | null
           status: Database["public"]["Enums"]["subscription_status"]
@@ -519,6 +523,7 @@ export type Database = {
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
+          paytr_merchant_oid?: string | null
           plan?: string
           price_usd?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -537,6 +542,7 @@ export type Database = {
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
+          paytr_merchant_oid?: string | null
           plan?: string
           price_usd?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]

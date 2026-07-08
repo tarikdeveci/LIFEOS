@@ -3,7 +3,18 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // Kimlik doğrulaması gerektirmeyen rotalar
-const PUBLIC_ROUTES = ['/', '/login', '/register', '/auth/callback']
+const PUBLIC_ROUTES = [
+  '/',
+  '/login',
+  '/register',
+  '/auth/callback',
+  // Yasal sayfalar (PayTR canlı mod gerekliliği — herkese açık olmalı)
+  '/iletisim',
+  '/mesafeli-satis-sozlesmesi',
+  '/iptal-iade-kosullari',
+  '/teslimat-kosullari',
+  '/gizlilik-kvkk',
+]
 // Sadece oturumsuz kullanıcılara açık (oturum varsa dashboard'a yönlendir)
 const AUTH_ROUTES = ['/login', '/register']
 

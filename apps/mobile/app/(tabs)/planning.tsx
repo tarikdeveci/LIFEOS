@@ -43,6 +43,7 @@ function getWeekDays(anchor: Date): Date[] {
 }
 
 interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> }
+interface AiChatMsg { role: 'user' | 'assistant'; content: string }
 
 export default function PlanningScreen() {
   const { colors } = useTheme()
@@ -59,7 +60,7 @@ export default function PlanningScreen() {
   const [showAiChat, setShowAiChat] = useState(false)
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiMessage, setAiMessage] = useState<string | null>(null)
+  const [aiChatMsgs, setAiChatMsgs] = useState<AiChatMsg[]>([])
 
   // Foreground'a her dönüşte takvimi senkronize et
   useCalendarAutoSync()
@@ -123,8 +124,10 @@ export default function PlanningScreen() {
 
   async function handleAiReplan() {
     if (!userId || !aiInput.trim()) return
+    const userMessage = aiInput.trim()
+    setAiChatMsgs((messages) => [...messages, { role: 'user', content: userMessage }])
+    setAiInput('')
     setAiLoading(true)
-    setAiMessage(null)
     try {
       const dayBlocks = timeBlocks.filter((b) => b.date === selectedDate)
       const data = await callAiSuggest<{ message?: string; actions?: AiAction[] }>({
@@ -132,9 +135,9 @@ export default function PlanningScreen() {
         current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         date: selectedDate,
         existing_blocks: dayBlocks.map((b) => ({ id: b.id, start: b.start_time, end: b.end_time, label: b.label })),
-        user_message: aiInput.trim(),
+        user_message: userMessage,
       })
-      setAiMessage(data.message ?? null)
+      setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: data.message ?? 'Yanit alinamadi.' }])
       // Apply AI actions
       if (data.actions && userId) {
         for (const action of data.actions) {
@@ -155,8 +158,9 @@ export default function PlanningScreen() {
         }
         await load(userId, selectedDate)
       }
-      setAiInput('')
-    } catch { Alert.alert('Hata', 'AI planlama başarısız') }
+    } catch {
+      setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: 'AI planlama basarisiz. Pro aboneligini ve baglantini kontrol et.' }])
+    }
     finally { setAiLoading(false) }
   }
 
@@ -247,16 +251,6 @@ export default function PlanningScreen() {
           </View>
         </GlassCard>
 
-        {/* AI message */}
-        {aiMessage && (
-          <GlassCard style={{ marginBottom: spacing[4] }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[3] }}>
-              <Ionicons name="sparkles" size={16} color={palette.accent} style={{ marginTop: 2 }} />
-              <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiMessage}</Text>
-            </View>
-          </GlassCard>
-        )}
-
         {/* Day blocks */}
         {dayBlocks.length === 0 && localEventsForDate.length === 0 ? (
           <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
@@ -304,13 +298,28 @@ export default function PlanningScreen() {
       </BottomSheet>
 
       {/* AI Chat modal */}
-      <BottomSheet visible={showAiChat} onClose={() => setShowAiChat(false)} title={t.plan_ai_planning}>
+      <BottomSheet visible={showAiChat} onClose={() => setShowAiChat(false)} title={t.plan_ai_planning} scrollable>
         <View style={{ gap: spacing[4] }}>
-          <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
-              Mevcut blokların ve görevlerin bağlamında planlama yap. Örnek: "Bugünü yeniden düzenle", "Öğleden sonra 2 saatlik odak bloğu ekle", "Akşam 8'den sonra tüm blokları kaldır"
-            </Text>
-          </View>
+          {aiChatMsgs.length === 0 && (
+            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
+                Mevcut blokların ve görevlerin bağlamında planlama yap. Örnek: "Bugünü yeniden düzenle", "Öğleden sonra 2 saatlik odak bloğu ekle", "Akşam 8'den sonra tüm blokları kaldır"
+              </Text>
+            </View>
+          )}
+          {aiChatMsgs.map((msg, index) => (
+            <View
+              key={`${msg.role}-${index}`}
+              style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%', padding: spacing[3], borderRadius: radius.lg, backgroundColor: msg.role === 'user' ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: msg.role === 'user' ? palette.accent : colors.border }}
+            >
+              <Text style={{ fontSize: fontSize.sm, color: msg.role === 'user' ? '#fff' : colors.textSecondary, lineHeight: 20 }}>{msg.content}</Text>
+            </View>
+          ))}
+          {aiLoading && (
+            <View style={{ alignSelf: 'flex-start', padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner }}>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Planlaniyor...</Text>
+            </View>
+          )}
           <Input
             label="Ne yapmak istiyorsun?"
             value={aiInput}

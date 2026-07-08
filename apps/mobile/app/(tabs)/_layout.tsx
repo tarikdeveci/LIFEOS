@@ -2,6 +2,7 @@ import { Tabs, useRouter, usePathname } from 'expo-router'
 import { View, TouchableOpacity, Platform } from 'react-native'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, radius } from '@/src/theme/tokens'
@@ -18,12 +19,14 @@ function FloatingTabBar() {
   const router = useRouter()
   const pathname = usePathname()
   const { colors, isDark } = useTheme()
+  const insets = useSafeAreaInsets()
+  const bottomOffset = Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 28 : 16)
 
   return (
     <View
       style={{
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 28 : 16,
+        bottom: bottomOffset,
         left: 20,
         right: 20,
         height: 64,

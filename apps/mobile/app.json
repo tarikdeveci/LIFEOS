@@ -37,15 +37,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1A1A2E"
       },
-      "package": "com.lifeos.app",
-      "googleServicesFile": "./google-services.json",
+      "package": "tr.lifeos.app",
       "permissions": [
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
       ],
-      "versionCode": 3
+      "versionCode": 5
     },
     "plugins": [
       "expo-router",

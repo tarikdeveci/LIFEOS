@@ -67,6 +67,20 @@ interface WorkoutProgramResult {
   program: WorkoutProgramPayload | null
 }
 
+async function isProUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('subscriptions')
+    .select('status, current_period_end')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
+  const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
+  const notExpired = !periodEnd || new Date(periodEnd) > new Date()
+
+  return active && notExpired
+}
+
 function normalizeExerciseName(value: string): string {
   return value
     .toLocaleLowerCase('tr-TR')
@@ -111,6 +125,14 @@ serve(async (req: Request) => {
     }
 
     const { type, language, date, task_id, fitness_goal, available_minutes, recent_workouts, energy_level, buffer_minutes, existing_blocks, user_message, current_time, nutrition_context, workout_context }: SuggestRequest = await req.json()
+    const allowed = await isProUser(supabase, user.id)
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: 'AI access requires Pro' }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
 
     // Dil talimatı — tüm system prompt'lara eklenir

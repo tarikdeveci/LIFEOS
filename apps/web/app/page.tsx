@@ -36,7 +36,7 @@ export default function LandingPage() {
   const plans = [
     {
       name: t.pricing_free_name,
-      price: '$0',
+      price: '₺0',
       period: t.pricing_free_period,
       highlight: false,
       badge: null as string | null,
@@ -52,7 +52,7 @@ export default function LandingPage() {
     },
     {
       name: t.pricing_monthly_name,
-      price: '$4.99',
+      price: '₺99,90',
       period: `/ ${t.pricing_monthly_period}`,
       highlight: false,
       badge: null as string | null,
@@ -70,7 +70,7 @@ export default function LandingPage() {
     },
     {
       name: t.pricing_annual_name,
-      price: '$39',
+      price: '₺790',
       period: `/ ${t.pricing_annual_period}`,
       highlight: true,
       badge: t.pricing_annual_badge,
@@ -480,6 +480,23 @@ export default function LandingPage() {
 
             <p className="text-xs text-white/20">© {new Date().getFullYear()} LifeOS. {t.footer_rights}</p>
           </div>
+
+          {/* Yasal linkler (PayTR canlı mod gerekliliği) */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-white/[0.04] pt-6 text-xs text-white/30">
+            <Link href="/iletisim" className="transition hover:text-white">İletişim</Link>
+            <span className="text-white/10">·</span>
+            <Link href="/mesafeli-satis-sozlesmesi" className="transition hover:text-white">Mesafeli Satış Sözleşmesi</Link>
+            <span className="text-white/10">·</span>
+            <Link href="/iptal-iade-kosullari" className="transition hover:text-white">İptal & İade Koşulları</Link>
+            <span className="text-white/10">·</span>
+            <Link href="/teslimat-kosullari" className="transition hover:text-white">Teslimat & Hizmet Koşulları</Link>
+            <span className="text-white/10">·</span>
+            <Link href="/gizlilik-kvkk" className="transition hover:text-white">Gizlilik & KVKK</Link>
+          </div>
+
+          <p className="mt-4 text-center text-xs text-white/20">
+            Detay İnovasyon Çevre Eğitim ve Danışmanlık Hizmetleri Ltd. Şti.
+          </p>
         </div>
       </footer>
     </div>

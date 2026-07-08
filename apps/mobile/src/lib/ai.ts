@@ -20,7 +20,10 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`AI suggest hatası: ${res.status}`)
+  if (!res.ok) {
+    if (res.status === 402 || res.status === 403) throw new Error('AI erisimi icin Pro abonelik gerekli')
+    throw new Error(`AI suggest hatası: ${res.status}`)
+  }
   return res.json() as Promise<T>
 }
 
@@ -31,7 +34,10 @@ export async function callParseMeal(body: Record<string, unknown>): Promise<Pars
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`Parse meal hatası: ${res.status}`)
+  if (!res.ok) {
+    if (res.status === 402 || res.status === 403) throw new Error('AI erisimi icin Pro abonelik gerekli')
+    throw new Error(`Parse meal hatası: ${res.status}`)
+  }
   return res.json() as Promise<ParseMealResult>
 }
 

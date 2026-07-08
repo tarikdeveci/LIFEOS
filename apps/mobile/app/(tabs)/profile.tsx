@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -43,6 +44,7 @@ const LANG_OPTIONS: { lang: Language; label: string; flag: string }[] = [
 interface ProfileState {
   displayName: string; email: string
   height: string; weight: string; age: string
+  gender: 'male' | 'female'
   fitnessGoal: string; activityLevel: string
 }
 
@@ -69,6 +71,7 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<ProfileState>({
     displayName: '', email: '', height: '', weight: '', age: '',
+    gender: 'male',
     fitnessGoal: 'muscle_gain', activityLevel: 'moderately_active',
   })
   const [nutrition, setNutrition] = useState<NutritionState>({
@@ -103,6 +106,7 @@ export default function ProfileScreen() {
         height:        p['height_cm']      != null ? String(p['height_cm'])      : '',
         weight:        p['body_weight_kg'] != null ? String(p['body_weight_kg']) : (p['weight_kg'] != null ? String(p['weight_kg']) : ''),
         age:           p['age']            != null ? String(p['age'])            : '',
+        gender:        p['gender'] === 'female' ? 'female' : 'male',
         fitnessGoal:   p['fitness_goal']   != null ? String(p['fitness_goal'])   : 'muscle_gain',
         activityLevel: p['activity_level'] != null ? String(p['activity_level']) : 'moderately_active',
       }))
@@ -139,6 +143,7 @@ export default function ProfileScreen() {
           height_cm:      parseFloat(profile.height)  || null,
           body_weight_kg: parseFloat(profile.weight)  || null,
           age:            parseInt(profile.age)        || null,
+          gender:         profile.gender,
           fitness_goal:   profile.fitnessGoal,
           activity_level: profile.activityLevel,
         },
@@ -174,6 +179,49 @@ export default function ProfileScreen() {
     } finally {
       setSaving(false)
     }
+  }
+
+  function calculateNutritionTargets() {
+    const height = parseFloat(profile.height)
+    const weight = parseFloat(profile.weight)
+    const age = parseInt(profile.age, 10)
+
+    if (!Number.isFinite(height) || !Number.isFinite(weight) || !Number.isFinite(age) || height <= 0 || weight <= 0 || age <= 0) {
+      Alert.alert('Eksik bilgi', 'Kalori hesaplamak icin boy, kilo ve yas bilgilerini doldur.')
+      return
+    }
+
+    const activityLevel =
+      profile.activityLevel === 'sedentary' ||
+      profile.activityLevel === 'lightly_active' ||
+      profile.activityLevel === 'moderately_active' ||
+      profile.activityLevel === 'very_active'
+        ? profile.activityLevel
+        : 'moderately_active'
+
+    const goal =
+      profile.fitnessGoal === 'weight_loss'
+        ? 'fat_loss'
+        : profile.fitnessGoal === 'muscle_gain'
+          ? 'muscle_gain'
+          : 'general'
+
+    const tdee = calculateTDEE({
+      weight_kg: weight,
+      height_cm: height,
+      age,
+      gender: profile.gender,
+      activity_level: activityLevel,
+    })
+    const suggested = suggestMacrosFromTDEE(tdee, goal)
+
+    setNutrition({
+      calories: String(suggested.calories),
+      protein: String(suggested.protein_g),
+      carbs: String(suggested.carbs_g),
+      fat: String(suggested.fat_g),
+      fiber: String(suggested.fiber_g),
+    })
   }
 
   function handleSignOut() {
@@ -212,6 +260,7 @@ export default function ProfileScreen() {
             <InfoChip label="Boy" value={profile.height ? `${profile.height} cm` : '—'} />
             <InfoChip label="Kilo" value={profile.weight ? `${profile.weight} kg` : '—'} />
             <InfoChip label="Yaş" value={profile.age || '—'} />
+            <InfoChip label="Cinsiyet" value={profile.gender === 'female' ? 'Kadin' : 'Erkek'} />
             <InfoChip label="Hedef" value={FITNESS_GOALS.find((g) => g.key === profile.fitnessGoal)?.label ?? '—'} />
             <InfoChip label="Aktivite" value={ACTIVITY_LEVELS.find((a) => a.key === profile.activityLevel)?.label ?? '—'} />
           </View>
@@ -301,6 +350,21 @@ export default function ProfileScreen() {
           </View>
           <Input label="Yaş" value={profile.age} onChangeText={(v) => setProfile((p) => ({ ...p, age: v }))} keyboardType="number-pad" placeholder="22" returnKeyType="done" />
 
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Cinsiyet</Text>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            {(['male', 'female'] as const).map((gender) => (
+              <TouchableOpacity
+                key={gender}
+                onPress={() => setProfile((p) => ({ ...p, gender }))}
+                style={{ flex: 1, paddingVertical: spacing[3], borderRadius: radius.lg, alignItems: 'center', backgroundColor: profile.gender === gender ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: profile.gender === gender ? palette.accent : colors.border }}
+              >
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: profile.gender === gender ? '#fff' : colors.textMuted }}>
+                  {gender === 'female' ? 'Kadin' : 'Erkek'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Fitness Hedefi</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             {FITNESS_GOALS.map((g) => (
@@ -333,6 +397,12 @@ export default function ProfileScreen() {
       {/* Nutrition modal */}
       <BottomSheet visible={showNutrition} onClose={() => setShowNutrition(false)} title="Beslenme Hedefleri" scrollable>
         <View style={{ gap: spacing[3] }}>
+          <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
+              Fiziksel bilgilerinden kalori ve makro hedefi hesaplayabilir, sonra gerekirse elle duzenleyebilirsin.
+            </Text>
+          </View>
+          <Button label="Otomatik Hesapla" onPress={calculateNutritionTargets} variant="secondary" fullWidth />
           <Input label="Günlük Kalori (kcal)" value={nutrition.calories} onChangeText={(v) => setNutrition((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             <Input label="Protein (g)" value={nutrition.protein} onChangeText={(v) => setNutrition((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
