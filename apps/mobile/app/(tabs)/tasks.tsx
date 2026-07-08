@@ -14,6 +14,7 @@ import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type Tab = 'today' | 'all'
@@ -35,6 +36,7 @@ const EMPTY: Draft = {
 export default function TasksScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const bottomPadding = useBottomTabPadding()
   const { tasks, fetchTasks, addTask } = useTaskStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('today')
@@ -133,7 +135,7 @@ export default function TasksScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: spacing[5], paddingBottom: 100, gap: spacing[3] }}
+          contentContainerStyle={{ paddingHorizontal: spacing[5], paddingBottom: bottomPadding, gap: spacing[3] }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
           showsVerticalScrollIndicator={false}
         >

@@ -5,6 +5,8 @@ import { router } from 'expo-router'
 import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { useCalendarStore } from '@/src/stores/calendarStore'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -56,6 +58,7 @@ export default function ProfileScreen() {
   const { colors, mode, setMode } = useTheme()
   const { lang, setLang, t } = useLang()
   const { hasPermission: calendarGranted } = useCalendarStore()
+  const bottomPadding = useBottomTabPadding()
 
   const ACTIVITY_LEVELS = ACTIVITY_LEVELS_DEF.map((a) => ({
     key: a.key,
@@ -78,6 +81,7 @@ export default function ProfileScreen() {
     calories: '', protein: '', carbs: '', fat: '', fiber: '',
   })
   const [userId, setUserId] = useState<string | null>(null)
+  const subscription = useSubscriptionStatus()
   const [saving, setSaving] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
   const [showNutrition, setShowNutrition] = useState(false)
@@ -162,15 +166,25 @@ export default function ProfileScreen() {
     if (!userId) return
     setSaving(true)
     try {
-      const { error } = await supabase.from('nutrition_targets').upsert({
-        user_id:   userId,
+      const payload = {
         calories:  parseFloat(nutrition.calories) || 2000,
         protein_g: parseFloat(nutrition.protein)  || 150,
         carbs_g:   parseFloat(nutrition.carbs)    || 250,
         fat_g:     parseFloat(nutrition.fat)      || 70,
         fiber_g:   parseFloat(nutrition.fiber)    || 30,
         is_active: true,
-      }, { onConflict: 'user_id' })
+      }
+      const { data: existing } = await supabase
+        .from('nutrition_targets')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      const { error } = existing?.id
+        ? await supabase.from('nutrition_targets').update(payload).eq('id', existing.id)
+        : await supabase.from('nutrition_targets').insert({ user_id: userId, ...payload })
+
       if (error) throw error
       setShowNutrition(false)
       Alert.alert('Kaydedildi', 'Beslenme hedeflerin güncellendi.')
@@ -233,10 +247,16 @@ export default function ProfileScreen() {
 
   const initials = profile.displayName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?'
   const hasNutrition = !!(nutrition.calories || nutrition.protein)
+  const membershipTitle = lang === 'tr' ? 'Uyelik Durumu' : 'Membership'
+  const membershipSubtitle = subscription.isLoading
+    ? (lang === 'tr' ? 'Kontrol ediliyor' : 'Checking status')
+    : subscription.isPro
+      ? (lang === 'tr' ? 'Pro ozellikler aktif' : 'Pro features active')
+      : (lang === 'tr' ? 'Ucretsiz plan' : 'Free plan')
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[6] }}>
           {t.profile_title}
         </Text>
@@ -250,6 +270,24 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{profile.displayName || 'Kullanıcı'}</Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{profile.email}</Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                {membershipTitle}
+              </Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                {membershipSubtitle}
+              </Text>
+            </View>
+            <View style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.full, backgroundColor: subscription.isPro ? `${palette.success}18` : colors.glassInner, borderWidth: 1, borderColor: subscription.isPro ? `${palette.success}35` : colors.border }}>
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: subscription.isPro ? palette.success : colors.textMuted }}>
+                {subscription.isPro ? 'PRO' : 'FREE'}
+              </Text>
             </View>
           </View>
         </GlassCard>

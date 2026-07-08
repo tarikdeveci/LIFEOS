@@ -12,6 +12,7 @@ import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
@@ -29,6 +30,8 @@ const WSJF_FIELDS = [
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { colors } = useTheme()
+  const [userId, setUserId] = useState<string | null>(null)
+  const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -52,7 +55,10 @@ export default function TaskDetailScreen() {
     } finally { setLoading(false) }
   }, [id, selectTask])
 
-  useEffect(() => { void loadTask() }, [loadTask])
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+    void loadTask()
+  }, [loadTask])
 
   async function handleStatusChange(status: TaskStatus) {
     if (!task) return
@@ -85,6 +91,7 @@ export default function TaskDetailScreen() {
 
   async function handleAiSuggest() {
     if (!task) return
+    if (!requirePro()) return
     setAiLoading(true)
     setAiReasoning(null)
     try {
@@ -193,11 +200,11 @@ export default function TaskDetailScreen() {
             <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>WSJF Parametreleri</Text>
             <TouchableOpacity
               onPress={handleAiSuggest}
-              disabled={aiLoading}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading ? 0.6 : 1 }}
+              disabled={aiLoading || isCheckingPro}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading || !isPro ? 0.6 : 1 }}
             >
-              {aiLoading ? <ActivityIndicator size="small" color={palette.accent} /> : <Ionicons name="sparkles" size={14} color={palette.accent} />}
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>AI Öner</Text>
+              {aiLoading ? <ActivityIndicator size="small" color={palette.accent} /> : <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={14} color={palette.accent} />}
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{isPro ? 'AI Öner' : 'Pro · AI Öner'}</Text>
             </TouchableOpacity>
           </View>
 

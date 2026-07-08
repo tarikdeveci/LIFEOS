@@ -44,7 +44,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
       ],
-      "versionCode": 5
+      "versionCode": 7
     },
     "plugins": [
       "expo-router",

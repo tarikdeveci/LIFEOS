@@ -15,6 +15,8 @@ import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
@@ -22,6 +24,7 @@ interface ChatMsg { role: 'user' | 'assistant'; content: string }
 export default function NutritionScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
+  const bottomPadding = useBottomTabPadding()
   const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
 
   const MEAL_TYPES: { key: MealType; label: string }[] = [
@@ -31,6 +34,7 @@ export default function NutritionScreen() {
     { key: 'snack',     label: t.nutr_snack },
   ]
   const [userId, setUserId] = useState<string | null>(null)
+  const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [refreshing, setRefreshing] = useState(false)
 
   // Add modal
@@ -139,6 +143,7 @@ export default function NutritionScreen() {
 
   async function handleReparseEditMeal() {
     if (!editingMeal || !userId || !editRawInput.trim()) return
+    if (!requirePro()) return
     setEditLoading(true)
     try {
       const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
@@ -152,6 +157,7 @@ export default function NutritionScreen() {
 
   async function handleParse() {
     if (!rawInput.trim()) return
+    if (!requirePro()) return
     setParsing(true)
     setParsedItems(null)
     try {
@@ -180,6 +186,7 @@ export default function NutritionScreen() {
 
   async function handleChat() {
     if (!chatInput.trim() || !userId) return
+    if (!requirePro()) return
     const userMsg: ChatMsg = { role: 'user', content: chatInput.trim() }
     setChatMsgs((m) => [...m, userMsg])
     setChatInput('')
@@ -215,7 +222,7 @@ export default function NutritionScreen() {
   return (
     <ScreenBackground>
       <ScrollView
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
       >
@@ -223,8 +230,8 @@ export default function NutritionScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_title}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity onPress={() => setShowChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
+            <TouchableOpacity onPress={() => { if (requirePro()) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
+              <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
@@ -335,7 +342,6 @@ export default function NutritionScreen() {
           <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
             <Ionicons name="restaurant-outline" size={48} color={colors.textSubtle} />
             <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.nutr_no_meals}</Text>
-            <Button label={t.nutr_add_meal} onPress={() => setShowAdd(true)} variant="secondary" />
           </View>
         )}
       </ScrollView>
@@ -366,7 +372,7 @@ export default function NutritionScreen() {
           />
 
           {!parsedItems && (
-            <Button label={parsing ? t.nutr_analyzing : t.nutr_ai_analyze} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
+            <Button label={parsing ? t.nutr_analyzing : isPro ? t.nutr_ai_analyze : `Pro · ${t.nutr_ai_analyze}`} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
           )}
 
           {parsedItems && (
@@ -439,7 +445,7 @@ export default function NutritionScreen() {
           />
 
           <Button
-            label={editLoading ? 'AI yeniden hesaplıyor...' : '✦ AI ile Yeniden Hesapla'}
+            label={editLoading ? 'AI yeniden hesaplıyor...' : isPro ? '✦ AI ile Yeniden Hesapla' : 'Pro · AI ile Yeniden Hesapla'}
             onPress={() => void handleReparseEditMeal()}
             loading={editLoading}
             variant="secondary"

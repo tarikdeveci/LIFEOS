@@ -15,6 +15,8 @@ import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useProGate } from '@/src/hooks/useProGate'
 import type { LocalCalendarEvent } from '@/src/utils/calendarSync'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
@@ -42,15 +44,31 @@ function getWeekDays(anchor: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d })
 }
 
-interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> }
+interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> & { date?: string } }
 interface AiChatMsg { role: 'user' | 'assistant'; content: string }
+
+function addDays(date: string, days: number): string {
+  const next = new Date(`${date}T00:00:00`)
+  next.setDate(next.getDate() + days)
+  return localIsoDate(next)
+}
+
+function inferRequestedDate(input: string, fallbackDate: string): string {
+  const normalized = input.toLocaleLowerCase('tr-TR')
+  if (/\b(bugun|bugün|today)\b/.test(normalized)) return localIsoDate()
+  if (/\b(yarin|yarın|tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 1)
+  if (/\b(ertesi gun|ertesi gün|after tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 2)
+  return fallbackDate
+}
 
 export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
+  const bottomPadding = useBottomTabPadding()
+  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
   const { localEvents, isSyncing, hasPermission, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
+  const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
@@ -124,30 +142,50 @@ export default function PlanningScreen() {
 
   async function handleAiReplan() {
     if (!userId || !aiInput.trim()) return
+    if (!requirePro()) return
     const userMessage = aiInput.trim()
+    const requestedDate = inferRequestedDate(userMessage, selectedDate)
     setAiChatMsgs((messages) => [...messages, { role: 'user', content: userMessage }])
     setAiInput('')
     setAiLoading(true)
     try {
-      const dayBlocks = timeBlocks.filter((b) => b.date === selectedDate)
+      const { data: targetBlocks } = await supabase
+        .from('time_blocks')
+        .select('id, start_time, end_time, label')
+        .eq('user_id', userId)
+        .eq('date', requestedDate)
+        .order('start_time')
+
       const data = await callAiSuggest<{ message?: string; actions?: AiAction[] }>({
         type: 'replan',
         current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        date: selectedDate,
-        existing_blocks: dayBlocks.map((b) => ({ id: b.id, start: b.start_time, end: b.end_time, label: b.label })),
+        date: requestedDate,
+        existing_blocks: (targetBlocks ?? []).map((b) => ({ id: b.id, start: b.start_time, end: b.end_time, label: b.label ?? '' })),
         user_message: userMessage,
       })
       setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: data.message ?? 'Yanit alinamadi.' }])
       // Apply AI actions
       if (data.actions && userId) {
+        let affectedDate = requestedDate
         for (const action of data.actions) {
           if (action.action === 'remove' && action.block_id) {
             await removeTimeBlock(supabase, action.block_id)
+          } else if (action.action === 'move' && action.block_id && action.block) {
+            const b = action.block
+            const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
+            affectedDate = blockDate
+            await updateTimeBlock(supabase, action.block_id, {
+              date: blockDate,
+              start_time: b.start_time,
+              end_time: b.end_time,
+            })
           } else if (action.action === 'add' && action.block) {
             const b = action.block
             if (b.label && b.start_time && b.end_time && b.block_type) {
+              const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
+              affectedDate = blockDate
               await addTimeBlock(supabase, userId, {
-                date: selectedDate,
+                date: blockDate,
                 label: b.label,
                 start_time: b.start_time,
                 end_time: b.end_time,
@@ -156,7 +194,8 @@ export default function PlanningScreen() {
             }
           }
         }
-        await load(userId, selectedDate)
+        setSelectedDate(affectedDate)
+        await load(userId, affectedDate)
       }
     } catch {
       setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: 'AI planlama basarisiz. Pro aboneligini ve baglantini kontrol et.' }])
@@ -177,7 +216,7 @@ export default function PlanningScreen() {
   return (
     <ScreenBackground>
       <ScrollView
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
       >
@@ -188,8 +227,8 @@ export default function PlanningScreen() {
             <TouchableOpacity onPress={() => void handleManualCalendarSync()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={isSyncing ? 'sync-outline' : 'calendar-outline'} size={18} color={palette.info} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAiChat(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="sparkles-outline" size={18} color={palette.accent} />
+            <TouchableOpacity onPress={() => { if (requirePro()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
+              <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
@@ -258,7 +297,7 @@ export default function PlanningScreen() {
             <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
               <Button label={t.plan_add_block_btn} onPress={() => setShowAdd(true)} variant="secondary" />
-              <Button label={t.plan_ai_plan} onPress={() => setShowAiChat(true)} variant="secondary" />
+              <Button label={isPro ? t.plan_ai_plan : `Pro · ${t.plan_ai_plan}`} onPress={() => { if (requirePro()) setShowAiChat(true) }} variant="secondary" />
             </View>
           </View>
         ) : (
@@ -330,7 +369,7 @@ export default function PlanningScreen() {
             style={{ minHeight: 80, textAlignVertical: 'top' }}
             autoFocus
           />
-          <Button label={aiLoading ? 'Planlanıyor...' : '✦ Planla'} onPress={handleAiReplan} loading={aiLoading} fullWidth />
+          <Button label={aiLoading ? 'Planlanıyor...' : isPro ? '✦ Planla' : 'Pro · Planla'} onPress={handleAiReplan} loading={aiLoading} fullWidth />
         </View>
       </BottomSheet>
     </ScreenBackground>

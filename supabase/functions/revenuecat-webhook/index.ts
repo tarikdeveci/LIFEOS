@@ -53,6 +53,11 @@ Deno.serve(async (req) => {
   switch (event.type) {
     case 'INITIAL_PURCHASE':
     case 'RENEWAL': {
+      if (!event.expiration_at_ms) {
+        console.warn(`Ignoring ${event.type} without expiration_at_ms for user ${userId}`)
+        break
+      }
+
       await supabase.from('subscriptions').upsert(
         {
           user_id: userId,
@@ -62,9 +67,7 @@ Deno.serve(async (req) => {
           current_period_start: event.purchased_at_ms
             ? new Date(event.purchased_at_ms).toISOString()
             : now.toISOString(),
-          current_period_end: event.expiration_at_ms
-            ? new Date(event.expiration_at_ms).toISOString()
-            : null,
+          current_period_end: new Date(event.expiration_at_ms).toISOString(),
           updated_at: now.toISOString(),
         },
         { onConflict: 'user_id' },

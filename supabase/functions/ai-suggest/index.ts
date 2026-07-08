@@ -76,7 +76,7 @@ async function isProUser(supabase: ReturnType<typeof createClient>, userId: stri
 
   const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
   const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
-  const notExpired = !periodEnd || new Date(periodEnd) > new Date()
+  const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
 
   return active && notExpired
 }
@@ -518,14 +518,16 @@ ${catalogSummary}`,
       })
     } else if (type === 'replan') {
       const targetDate = date ?? new Date().toISOString().split('T')[0]!
+      const today = new Date().toISOString().split('T')[0]!
       const now = current_time ?? new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
+      const planningCutoff = targetDate === today ? now : '00:00'
 
       const { data: tasks } = await supabase
         .from('tasks').select('id, title, status, effort_score, estimated_minutes, priority_score')
         .eq('scheduled_date', targetDate).not('status', 'in', '(done,deferred)').order('priority_score', { ascending: false })
 
-      const pastBlocks   = (existing_blocks ?? []).filter((b) => b.end <= now)
-      const futureBlocks = (existing_blocks ?? []).filter((b) => b.end > now)
+      const pastBlocks   = (existing_blocks ?? []).filter((b) => b.end <= planningCutoff)
+      const futureBlocks = (existing_blocks ?? []).filter((b) => b.end > planningCutoff)
 
       const pastSummary = pastBlocks.length > 0
         ? pastBlocks.map((b) => `✓ ${b.start}–${b.end}: ${b.label}`).join('\n')
@@ -552,16 +554,17 @@ YANIT FORMATI — yalnızca geçerli JSON döndür, başka metin ekleme:
 }
 
 Kullanılabilir action tipleri:
-1. Blok ekle:   {"action":"add","block":{"start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}}
+1. Blok ekle:   {"action":"add","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}}
 2. Blok sil:    {"action":"remove","block_id":"<id>"}        ← id'yi aşağıdaki JSON'dan aynen kopyala
-3. Blok taşı:   {"action":"move","block_id":"<id>","block":{"start_time":"HH:MM","end_time":"HH:MM"}}
+3. Blok taşı:   {"action":"move","block_id":"<id>","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}}
 
+TARIH KURALI: Kullanıcı yarın/ertesi gün gibi göreli tarih söylerse action.block.date alanına gerçek YYYY-MM-DD tarihini yaz. Tarih belirtilmediyse ${targetDate} kullan.
 ÇAKIŞMA KURALI: Yeni blok eklerken önce çakışanları remove et (id'sini JSON'dan al), sonra add et.`,
         messages: [{
           role: 'user',
           content: `Kullanıcı: "${user_message ?? 'Günümü planla'}"
 
-Şu anki saat: ${now} | Tarih: ${targetDate}
+Şu anki saat: ${now} | Planlanacak tarih: ${targetDate} | Planlama başlangıcı: ${planningCutoff}
 
 Tamamlanan bloklar (dokunma):
 ${pastSummary}

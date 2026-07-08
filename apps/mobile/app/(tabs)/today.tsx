@@ -10,11 +10,13 @@ import { StatCard } from '@/src/components/ui/StatCard'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
   const { colors } = useTheme()
   const { lang, t } = useLang()
+  const bottomPadding = useBottomTabPadding()
   const { tasks, fetchTasks } = useTaskStore()
   const { timeBlocks, fetchDayData } = usePlanningStore()
   const { meals, target, dailySummary, fetchDayNutrition } = useNutritionStore()
@@ -71,7 +73,7 @@ export default function TodayScreen() {
   return (
     <ScreenBackground>
       <ScrollView
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
       >

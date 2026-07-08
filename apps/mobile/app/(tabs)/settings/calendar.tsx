@@ -6,11 +6,13 @@ import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 
 export default function CalendarSettingsScreen() {
   const { colors } = useTheme()
+  const bottomPadding = useBottomTabPadding()
   const {
     availableCalendars,
     selectedCalendarIds,
@@ -32,7 +34,7 @@ export default function CalendarSettingsScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
           <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>

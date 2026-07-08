@@ -13,6 +13,8 @@ import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
@@ -24,8 +26,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const bottomPadding = useBottomTabPadding()
   const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, addSet, removeSet } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
+  const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
   const [setsExpanded, setSetsExpanded] = useState(false)
@@ -137,6 +141,7 @@ export default function WorkoutScreen() {
   }
 
   async function handleAiSuggest() {
+    if (!requirePro()) return
     setAiLoading(true); setAiSuggestion(null)
     try {
       const data = await callAiSuggest<{ suggestions?: Array<{ message: string }> }>({
@@ -174,7 +179,7 @@ export default function WorkoutScreen() {
   return (
     <ScreenBackground>
       <ScrollView
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: 100 }}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.workout} />}
         showsVerticalScrollIndicator={false}
       >
@@ -211,9 +216,9 @@ export default function WorkoutScreen() {
               <GlassCard style={{ marginBottom: spacing[4] }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiSuggestion ? spacing[3] : 0 }}>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_ai_suggest}</Text>
-                  <TouchableOpacity onPress={handleAiSuggest} disabled={aiLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, opacity: aiLoading ? 0.6 : 1 }}>
-                    <Ionicons name="sparkles" size={13} color={palette.accent} />
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{aiLoading ? t.loading : t.work_ai_suggest_btn}</Text>
+                  <TouchableOpacity onPress={handleAiSuggest} disabled={aiLoading || isCheckingPro} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, opacity: aiLoading || !isPro ? 0.6 : 1 }}>
+                    <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={13} color={palette.accent} />
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{aiLoading ? t.loading : isPro ? t.work_ai_suggest_btn : `Pro · ${t.work_ai_suggest_btn}`}</Text>
                   </TouchableOpacity>
                 </View>
                 {aiSuggestion && <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiSuggestion}</Text>}

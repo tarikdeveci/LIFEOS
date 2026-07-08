@@ -8,6 +8,7 @@ import { registerForPushNotificationsAsync, addNotificationResponseListener } fr
 import { initRevenueCat } from '@/src/utils/purchases'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
+import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -59,7 +60,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <LangProvider>
-        <AppNavigator />
+        <SubscriptionProvider>
+          <AppNavigator />
+        </SubscriptionProvider>
       </LangProvider>
     </ThemeProvider>
   )

@@ -49,7 +49,7 @@ async function isProUser(supabase: ReturnType<typeof createClient>, userId: stri
 
   const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
   const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
-  const notExpired = !periodEnd || new Date(periodEnd) > new Date()
+  const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
 
   return active && notExpired
 }

@@ -9,6 +9,20 @@ export interface SubscriptionState {
   isLoading: boolean
 }
 
+function stateFromRow(row: Record<string, unknown> | null | undefined): SubscriptionState {
+  const active = row?.['status'] === 'pro_monthly' || row?.['status'] === 'pro_annual'
+  const periodEnd = (row?.['current_period_end'] as string | null) ?? null
+  const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
+
+  return {
+    isPro: active && notExpired,
+    plan: (row?.['plan'] as string) ?? 'free',
+    status: (row?.['status'] as string) ?? 'free',
+    periodEnd,
+    isLoading: false,
+  }
+}
+
 export function useSubscription(supabase: SupabaseClient, userId: string | null): SubscriptionState {
   const [state, setState] = useState<SubscriptionState>({
     isPro: false,
@@ -24,55 +38,16 @@ export function useSubscription(supabase: SupabaseClient, userId: string | null)
       return
     }
 
-    // İlk yükleme
     supabase
       .from('subscriptions')
       .select('plan, status, current_period_end')
       .eq('user_id', userId)
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
-        const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
-        const periodEnd = (data?.current_period_end as string | null) ?? null
-        const notExpired = !periodEnd || new Date(periodEnd) > new Date()
-        setState({
-          isPro: active && notExpired,
-          plan: (data?.plan as string) ?? 'free',
-          status: (data?.status as string) ?? 'free',
-          periodEnd,
-          isLoading: false,
-        })
+        setState(stateFromRow(data as Record<string, unknown> | null))
       })
 
-    // Realtime: webhook güncellemelerini yakala
-    const channel = supabase
-      .channel(`subscription-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'subscriptions',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.new as Record<string, unknown>
-          const active = row['status'] === 'pro_monthly' || row['status'] === 'pro_annual'
-          const periodEnd = (row['current_period_end'] as string | null) ?? null
-          const notExpired = !periodEnd || new Date(periodEnd) > new Date()
-          setState({
-            isPro: active && notExpired,
-            plan: (row['plan'] as string) ?? 'free',
-            status: (row['status'] as string) ?? 'free',
-            periodEnd,
-            isLoading: false,
-          })
-        },
-      )
-      .subscribe()
-
-    return () => {
-      void supabase.removeChannel(channel)
-    }
+    return undefined
   }, [supabase, userId])
 
   return state
