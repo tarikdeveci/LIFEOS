@@ -9,6 +9,12 @@ out
 build
 .expo
 
+# Store build artifacts (.ipa / .aab) — never commit
+dist-store/
+graphify-out/
+*.ipa
+*.aab
+
 # Environment
 .env
 .env.local

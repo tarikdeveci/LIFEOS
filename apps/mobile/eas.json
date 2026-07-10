@@ -51,7 +51,10 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "tariikdevecii@gmail.com"
+        "appleId": "tariikdevecii@gmail.com",
+        "ascApiKeyPath": "./asc-api-key.p8",
+        "ascApiKeyId": "REPLACE_ASC_KEY_ID",
+        "ascApiKeyIssuerId": "REPLACE_ASC_ISSUER_ID"
       },
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",
