@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
@@ -83,6 +83,7 @@ export default function ProfileScreen() {
   const [userId, setUserId] = useState<string | null>(null)
   const subscription = useSubscriptionStatus()
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
   const [showNutrition, setShowNutrition] = useState(false)
 
@@ -245,6 +246,44 @@ export default function ProfileScreen() {
     ])
   }
 
+  async function openExternalUrl(url: string) {
+    try {
+      await Linking.openURL(url)
+    } catch {
+      Alert.alert('Bağlantı açılamadı', 'Lütfen lifeos.tr adresini tarayıcıdan ziyaret et.')
+    }
+  }
+
+  async function deleteAccount() {
+    setDeleting(true)
+    try {
+      const { error } = await supabase.functions.invoke('delete-account', { body: {} })
+      if (error) throw error
+      await supabase.auth.signOut()
+      Alert.alert(lang === 'tr' ? 'Hesap silindi' : 'Account deleted', lang === 'tr' ? 'Hesabın ve ilişkili verilerin kalıcı olarak silindi.' : 'Your account and associated data were permanently deleted.')
+    } catch (error: unknown) {
+      Alert.alert(lang === 'tr' ? 'Hesap silinemedi' : 'Could not delete account', error instanceof Error ? error.message : (lang === 'tr' ? 'Lütfen daha sonra tekrar dene.' : 'Please try again later.'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      lang === 'tr' ? 'Hesabı kalıcı olarak sil' : 'Permanently delete account',
+      lang === 'tr' ? 'Görevlerin, planların, beslenme kayıtların ve profilin kalıcı olarak silinecek. Bu işlem geri alınamaz.' : 'Your tasks, plans, nutrition records, and profile will be permanently deleted. This cannot be undone.',
+      [
+        { text: lang === 'tr' ? 'Vazgeç' : 'Cancel', style: 'cancel' },
+        { text: lang === 'tr' ? 'Hesabı Sil' : 'Delete Account', style: 'destructive', onPress: () => {
+          Alert.alert(lang === 'tr' ? 'Son onay' : 'Final confirmation', lang === 'tr' ? 'Hesabını ve tüm verilerini şimdi silelim mi?' : 'Delete your account and all data now?', [
+            { text: lang === 'tr' ? 'Hayır' : 'No', style: 'cancel' },
+            { text: lang === 'tr' ? 'Evet, kalıcı sil' : 'Yes, delete permanently', style: 'destructive', onPress: () => void deleteAccount() },
+          ])
+        } },
+      ],
+    )
+  }
+
   const initials = profile.displayName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?'
   const hasNutrition = !!(nutrition.calories || nutrition.protein)
   const membershipTitle = lang === 'tr' ? 'Uyelik Durumu' : 'Membership'
@@ -374,6 +413,30 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </GlassCard>
+
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[3] }}>
+            <Ionicons name="shield-checkmark-outline" size={19} color={palette.accent} />
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+              {lang === 'tr' ? 'Hesap ve Gizlilik' : 'Account & Privacy'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/gizlilik-kvkk')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3] }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{lang === 'tr' ? 'Gizlilik Politikası ve KVKK' : 'Privacy Policy'}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{lang === 'tr' ? 'Verilerinin nasıl işlendiğini incele' : 'See how your data is handled'}</Text>
+            </View>
+            <Ionicons name="open-outline" size={17} color={colors.textMuted} />
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <TouchableOpacity onPress={handleDeleteAccount} disabled={deleting} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing[3] }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.danger }}>{deleting ? (lang === 'tr' ? 'Hesap siliniyor...' : 'Deleting account...') : (lang === 'tr' ? 'Hesabı kalıcı olarak sil' : 'Permanently delete account')}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{lang === 'tr' ? 'Tüm LifeOS verilerini geri alınamaz biçimde siler' : 'Permanently removes all LifeOS data'}</Text>
+            </View>
+            <Ionicons name="trash-outline" size={17} color={palette.danger} />
+          </TouchableOpacity>
         </GlassCard>
 
         <Button label={t.profile_logout} onPress={handleSignOut} variant="danger" fullWidth />

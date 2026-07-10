@@ -26,6 +26,26 @@ export default function LoginScreen() {
     }
   }
 
+  async function handlePasswordReset() {
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail) {
+      Alert.alert('E-posta gerekli', 'Şifre sıfırlama bağlantısı için e-posta adresini yaz.')
+      return
+    }
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: 'lifeos://reset-password',
+      })
+      if (error) throw error
+      Alert.alert('Bağlantı gönderildi', 'Şifre sıfırlama bağlantısı e-posta adresine gönderildi.')
+    } catch (error: unknown) {
+      Alert.alert('Gönderilemedi', error instanceof Error ? error.message : 'Lütfen daha sonra tekrar dene.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <LinearGradient colors={colors.gradientColors as [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
       <KeyboardAvoidingView
@@ -84,6 +104,12 @@ export default function LoginScreen() {
             />
 
             <Button label={loading ? 'Giriş yapılıyor...' : 'Giriş Yap'} onPress={handleLogin} loading={loading} fullWidth />
+
+            <TouchableOpacity onPress={handlePasswordReset} disabled={loading} style={{ marginTop: spacing[4] }}>
+              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>
+                Şifremi unuttum
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: spacing[4] }}>
               <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>

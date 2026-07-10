@@ -7,6 +7,7 @@ const legalLinks = [
   { href: '/iptal-iade-kosullari', label: 'İptal & İade Koşulları' },
   { href: '/teslimat-kosullari', label: 'Teslimat & Hizmet Koşulları' },
   { href: '/gizlilik-kvkk', label: 'Gizlilik & KVKK' },
+  { href: '/hesap-silme', label: 'Hesap Silme' },
 ]
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {

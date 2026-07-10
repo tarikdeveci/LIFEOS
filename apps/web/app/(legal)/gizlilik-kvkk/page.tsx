@@ -76,6 +76,14 @@ export default function GizlilikKvkkPage() {
           30 gün içinde sonuçlandırılır.
         </p>
       </Section>
+      <Section title="7. Hesap ve Veri Silme">
+        <p>
+          LifeOS hesabınızı mobil uygulamadaki <strong className="text-white/80">Profil → Hesap ve Gizlilik</strong>{' '}
+          bölümünden kalıcı olarak silebilirsiniz. Uygulamaya erişemiyorsanız{' '}
+          <a href="/hesap-silme" className="font-semibold text-indigo-300 hover:text-indigo-200">hesap silme sayfasındaki</a>{' '}
+          alternatif başvuru yolunu kullanabilirsiniz.
+        </p>
+      </Section>
     </>
   )
 }
