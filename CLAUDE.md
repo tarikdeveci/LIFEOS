@@ -89,7 +89,8 @@ lib/         → Yardımcı fonksiyonlar, hooks
 ### supabase/functions/
 Her Edge Function kendi klasöründe `index.ts` ile:
 - `parse-meal/` → AI ile öğün parse (Claude claude-opus-4-6)
-- `send-notification/` → Expo push notification gönderimi
+- `daily-digest/` → Zamana bağlı bildirimler: sabah/öğlen/akşam (saat başı cron)
+- `event-notifications/` → Yaklaşan time_block hatırlatıcıları (5dk'da bir cron)
 - `ai-suggest/` → Görev önceliklendirme + günlük plan AI önerileri
 
 ## Claude API Kullanımı (Edge Functions)
@@ -159,7 +160,27 @@ Gelecekte multi-device sync (web + mobil aynı anda açık) için. Şimdilik opt
 4. DB'deki eşleşmeler Claude tahmini yerine geçer (daha doğru)
 
 ### Bildirim Sistemi
-Expo Push Notifications. Token `user_profiles.preferences.push_token`'da saklanır. `send-notification` edge function pg_cron ile tetiklenir.
+Expo Push Notifications.
+
+**Token `push_tokens` tablosunda saklanır** — `user_profiles.preferences.push_token` DEĞİL.
+Mobil uygulama `src/notifications/setup.ts` içinde oraya upsert eder. Bu ayrım
+önemli: eski `send-notification` fonksiyonu yanlış yerden okuduğu için aylarca
+sessizce sıfır bildirim gönderdi (`{"sent":0}` + HTTP 200 döndürüyordu, cron
+başarılı sanıyordu). Yeni bildirim yazarken **daima `push_tokens`'ı oku**.
+
+Kullanıcı tercihleri `notification_preferences` tablosunda: her slot için
+`*_enabled` + `*_hour` (kullanıcı yerel saati) ve `timezone`.
+
+İki cron, ikisi de key gömülü olarak kurulu (`current_setting` kullanma —
+`format()` ile schedule anında gömmek 401'e yol açıyor):
+- `daily-digest` (saat başı) → yerel saate göre sabah/öğlen/akşam slotu seçer
+- `block-notifications` (5dk) → `event-notifications`, yaklaşan blokları hatırlatır
+
+Saat hesabı her zaman kullanıcının `timezone`'una göre yapılmalı — sunucu UTC'de
+çalışır, `new Date().getHours()` ve `toISOString()` yanlış gün/saat verir.
+
+E-posta bildirimi şu an YOK: `send-email` için `RESEND_API_KEY` secret'ı
+tanımlanmamış. İstenirse önce secret set edilmeli, sonra cron kurulmalı.
 
 ## Komutlar
 ```bash

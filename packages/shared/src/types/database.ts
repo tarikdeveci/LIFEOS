@@ -255,6 +255,10 @@ export type Database = {
           created_at: string | null
           digest_enabled: boolean | null
           digest_hour: number | null
+          evening_enabled: boolean | null
+          evening_hour: number | null
+          midday_enabled: boolean | null
+          midday_hour: number | null
           timezone: string | null
           updated_at: string | null
           user_id: string
@@ -265,6 +269,10 @@ export type Database = {
           created_at?: string | null
           digest_enabled?: boolean | null
           digest_hour?: number | null
+          evening_enabled?: boolean | null
+          evening_hour?: number | null
+          midday_enabled?: boolean | null
+          midday_hour?: number | null
           timezone?: string | null
           updated_at?: string | null
           user_id: string
@@ -275,6 +283,10 @@ export type Database = {
           created_at?: string | null
           digest_enabled?: boolean | null
           digest_hour?: number | null
+          evening_enabled?: boolean | null
+          evening_hour?: number | null
+          midday_enabled?: boolean | null
+          midday_hour?: number | null
           timezone?: string | null
           updated_at?: string | null
           user_id?: string

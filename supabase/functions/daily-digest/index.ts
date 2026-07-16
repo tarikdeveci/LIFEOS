@@ -1,12 +1,17 @@
 // supabase/functions/daily-digest/index.ts
 // Her saat başı pg_cron tarafından çağrılır.
-// Kullanıcı yerel saatine göre günlük özet bildirimi gönderir.
+// Kullanıcının yerel saatine göre üç slottan birini gönderir:
+//   sabah  (digest_hour)  → günün planı
+//   öğlen  (midday_hour)  → kalan bloklar + kalori durumu
+//   akşam  (evening_hour) → günün beslenme özeti
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
+
+type Slot = 'morning' | 'midday' | 'evening'
 
 interface PushMessage {
   to: string
@@ -22,85 +27,193 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   )
 }
 
-function getUserLocalHour(timezone: string): number {
+// Kullanıcının kendi saat diliminde şu anki tarih/saat.
+// Sunucu UTC'de çalıştığı için new Date().getHours() ve toISOString() kullanılamaz:
+// İstanbul'da 01:00'de UTC tarihi hâlâ dünü gösterir.
+function localNow(timezone: string): { hour: number; date: string; time: string } {
+  const now = new Date()
   try {
-    const hourStr = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      hour12: false,
-    }).format(new Date())
-    return parseInt(hourStr, 10)
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      })
+        .formatToParts(now)
+        .map((p) => [p.type, p.value]),
+    )
+    return {
+      hour: parseInt(parts.hour as string, 10),
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+      time: `${parts.hour}:${parts.minute}`,
+    }
   } catch {
-    return new Date().getUTCHours()
+    // Geçersiz timezone → UTC'ye düş
+    return {
+      hour: now.getUTCHours(),
+      date: now.toISOString().slice(0, 10),
+      time: now.toISOString().slice(11, 16),
+    }
   }
+}
+
+async function buildMorning(uid: string, date: string, time: string) {
+  const { count } = await supabase
+    .from('time_blocks')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', uid)
+    .eq('date', date)
+
+  const { data: next } = await supabase
+    .from('time_blocks')
+    .select('label, start_time')
+    .eq('user_id', uid)
+    .eq('date', date)
+    .gte('start_time', time)
+    .order('start_time', { ascending: true })
+    .limit(1)
+
+  const first = next?.[0]
+  return {
+    title: `Günaydın! Bugün ${count ?? 0} blok var`,
+    body: first
+      ? `İlk blok: ${(first.start_time as string).slice(0, 5)} — ${first.label as string}`
+      : 'Boş bir gün. Planlayıcıya göz at!',
+  }
+}
+
+async function buildMidday(uid: string, date: string, time: string) {
+  const { count: remaining } = await supabase
+    .from('time_blocks')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', uid)
+    .eq('date', date)
+    .gte('start_time', time)
+
+  const { data: meals } = await supabase
+    .from('meals')
+    .select('total_calories')
+    .eq('user_id', uid)
+    .eq('date', date)
+
+  const kcal = (meals ?? []).reduce(
+    (s: number, m: { total_calories: number | null }) => s + (m.total_calories ?? 0),
+    0,
+  )
+
+  const left = remaining ?? 0
+  const title = left > 0 ? `Öğlen kontrolü — ${left} blok kaldı` : 'Öğlen kontrolü'
+
+  let body: string
+  if (kcal > 0) {
+    const { data: target } = await supabase
+      .from('nutrition_targets')
+      .select('calories')
+      .eq('user_id', uid)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    body = `${kcal} kcal aldın`
+    if (target?.calories) body += ` — hedefin %${Math.round((kcal / target.calories) * 100)}'i`
+  } else {
+    body = left > 0 ? 'Henüz öğün girmedin. Günün yarısı önünde.' : 'Henüz öğün girmedin.'
+  }
+
+  return { title, body }
+}
+
+async function buildEvening(uid: string, date: string) {
+  const { data: meals } = await supabase
+    .from('meals')
+    .select('total_calories, total_protein')
+    .eq('user_id', uid)
+    .eq('date', date)
+
+  // Hiç öğün yoksa akşam özeti göndermenin anlamı yok
+  if (!meals || meals.length === 0) return null
+
+  const kcal = meals.reduce(
+    (s: number, m: { total_calories: number | null }) => s + (m.total_calories ?? 0),
+    0,
+  )
+  const protein = meals.reduce(
+    (s: number, m: { total_protein: number | null }) => s + (m.total_protein ?? 0),
+    0,
+  )
+
+  const { data: target } = await supabase
+    .from('nutrition_targets')
+    .select('calories')
+    .eq('user_id', uid)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  let body = `${kcal} kcal, ${Math.round(protein)}g protein aldın.`
+  if (target?.calories) body += ` (Hedefe %${Math.round((kcal / target.calories) * 100)})`
+
+  return { title: 'Günlük beslenme özeti', body }
 }
 
 Deno.serve(async () => {
   const { data: prefs, error } = await supabase
     .from('notification_preferences')
-    .select('user_id, digest_hour, timezone, digest_enabled')
-    .eq('digest_enabled', true)
+    .select(
+      'user_id, timezone, digest_hour, digest_enabled, midday_hour, midday_enabled, evening_hour, evening_enabled',
+    )
 
   if (error) {
     return new Response(`DB error: ${error.message}`, { status: 500 })
   }
 
   const pushMessages: PushMessage[] = []
-  const today = new Date().toISOString().slice(0, 10)
+  const bySlot: Record<Slot, number> = { morning: 0, midday: 0, evening: 0 }
 
   for (const pref of prefs ?? []) {
-    const localHour = getUserLocalHour(pref.timezone as string)
-    if (localHour !== (pref.digest_hour as number)) continue
+    const tz = (pref.timezone as string) ?? 'Europe/Istanbul'
+    const { hour, date, time } = localNow(tz)
+
+    // Bu saatte hangi slot düşüyor? (aynı saate iki slot ayarlanmışsa ilki kazanır)
+    let slot: Slot | null = null
+    if (pref.digest_enabled && hour === pref.digest_hour) slot = 'morning'
+    else if (pref.midday_enabled && hour === pref.midday_hour) slot = 'midday'
+    else if (pref.evening_enabled && hour === pref.evening_hour) slot = 'evening'
+    if (!slot) continue
 
     const uid = pref.user_id as string
-
-    // Bugünkü tamamlanmamış blok sayısı
-    const { count: blockCount } = await supabase
-      .from('time_blocks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', uid)
-      .eq('date', today)
-
-    // İlk yaklaşan blok
-    const now = new Date()
-    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    const { data: nextBlocks } = await supabase
-      .from('time_blocks')
-      .select('label, start_time')
-      .eq('user_id', uid)
-      .eq('date', today)
-      .gte('start_time', nowTime)
-      .order('start_time', { ascending: true })
-      .limit(1)
 
     const { data: tokens } = await supabase
       .from('push_tokens')
       .select('token')
       .eq('user_id', uid)
 
-    const firstBlock = nextBlocks?.[0]
-    const blockTime = firstBlock
-      ? (firstBlock.start_time as string).slice(0, 5)
-      : null
+    if (!tokens || tokens.length === 0) continue
 
-    const total = blockCount ?? 0
+    const content = slot === 'morning'
+      ? await buildMorning(uid, date, time)
+      : slot === 'midday'
+      ? await buildMidday(uid, date, time)
+      : await buildEvening(uid, date)
 
-    for (const { token } of tokens ?? []) {
+    if (!content) continue
+
+    for (const { token } of tokens) {
       pushMessages.push({
         to: token as string,
-        title: `Günaydın! Bugün ${total} blok var`,
-        body: firstBlock
-          ? `İlk blok: ${blockTime} — ${firstBlock.label as string}`
-          : 'Boş bir gün. Planlayıcıya göz at!',
-        data: { type: 'daily_digest' },
+        title: content.title,
+        body: content.body,
+        data: { type: `daily_digest_${slot}` },
         sound: 'default',
       })
     }
+    bySlot[slot]++
   }
 
   if (pushMessages.length > 0) {
-    const chunks = chunkArray(pushMessages, 100)
-    for (const chunk of chunks) {
+    for (const chunk of chunkArray(pushMessages, 100)) {
       await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +223,7 @@ Deno.serve(async () => {
   }
 
   return new Response(
-    JSON.stringify({ sent: pushMessages.length }),
+    JSON.stringify({ sent: pushMessages.length, slots: bySlot }),
     { headers: { 'Content-Type': 'application/json' } },
   )
 })

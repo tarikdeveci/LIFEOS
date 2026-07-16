@@ -12,7 +12,8 @@ supabase/
     002_nutrition_schema.sql → nutrition_targets, meals, food_items
   functions/
     parse-meal/          → AI ile öğün parse (Claude API)
-    send-notification/   → Expo Push Notification gönderimi
+    daily-digest/        → Sabah/öğlen/akşam bildirimleri (saat başı cron)
+    event-notifications/ → Yaklaşan time_block hatırlatıcısı (5dk cron)
     ai-suggest/          → Görev önceliklendirme + günlük plan AI önerileri
   seed.sql              → Türk mutfağı yiyecek veritabanı (60+ yiyecek)
 ```
@@ -28,8 +29,9 @@ supabase/
 - Deno runtime (TypeScript)
 - `npm:@anthropic-ai/sdk` ile Claude API
 - CORS headers her function'da ekli
-- Service role key → sadece send-notification (cron)
+- Service role key → cron'dan tetiklenenler: daily-digest, event-notifications
 - Anon key + auth header → parse-meal, ai-suggest
+- Push token DAİMA `push_tokens` tablosundan okunur (detay: kök CLAUDE.md)
 
 ## Ortam Değişkenleri (Edge Functions)
 ```
