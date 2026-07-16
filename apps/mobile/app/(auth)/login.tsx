@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -9,11 +9,22 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
+// Supabase'in SMTP "minimum interval per user" ayarıyla aynı: daha erken
+// denemede sunucu zaten hata döner, bounce'ı tetiklemeden burada durduruyoruz.
+const RESET_COOLDOWN_SECONDS = 60
+
 export default function LoginScreen() {
   const { colors } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resetCooldown, setResetCooldown] = useState(0)
+
+  useEffect(() => {
+    if (resetCooldown <= 0) return
+    const timer = setTimeout(() => setResetCooldown(resetCooldown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resetCooldown])
 
   async function handleLogin() {
     if (!email || !password) return
@@ -32,13 +43,15 @@ export default function LoginScreen() {
       Alert.alert('E-posta gerekli', 'Şifre sıfırlama bağlantısı için e-posta adresini yaz.')
       return
     }
+    if (resetCooldown > 0) return
     setLoading(true)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: 'lifeos://reset-password',
       })
       if (error) throw error
-      Alert.alert('Bağlantı gönderildi', 'Şifre sıfırlama bağlantısı e-posta adresine gönderildi.')
+      setResetCooldown(RESET_COOLDOWN_SECONDS)
+      Alert.alert('Bağlantı gönderildi', 'Şifre sıfırlama bağlantısı e-posta adresine gönderildi. Gelmezse spam klasörünü kontrol et.')
     } catch (error: unknown) {
       Alert.alert('Gönderilemedi', error instanceof Error ? error.message : 'Lütfen daha sonra tekrar dene.')
     } finally {
@@ -105,9 +118,9 @@ export default function LoginScreen() {
 
             <Button label={loading ? 'Giriş yapılıyor...' : 'Giriş Yap'} onPress={handleLogin} loading={loading} fullWidth />
 
-            <TouchableOpacity onPress={handlePasswordReset} disabled={loading} style={{ marginTop: spacing[4] }}>
-              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>
-                Şifremi unuttum
+            <TouchableOpacity onPress={handlePasswordReset} disabled={loading || resetCooldown > 0} style={{ marginTop: spacing[4] }}>
+              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: resetCooldown > 0 ? colors.textMuted : palette.accent, fontWeight: fontWeight.semibold }}>
+                {resetCooldown > 0 ? `Tekrar gönder (${resetCooldown}sn)` : 'Şifremi unuttum'}
               </Text>
             </TouchableOpacity>
 

@@ -22,7 +22,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Profil fotoğrafı için kamera erişimi gerekiyor.",
@@ -47,7 +47,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
       ],
-      "versionCode": 12
+      "versionCode": 13
     },
     "plugins": [
       "expo-router",
