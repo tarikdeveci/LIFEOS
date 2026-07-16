@@ -31,12 +31,19 @@ BÖLÜM 1 — TOPLANAN VERİLER (Play "Veri güvenliği" formu)
   ✔ Fitness bilgileri        → antrenman kayıtları, setler, programlar (005/016/017)
                                 Amaç: Uygulama işlevselliği
 
-▍ TAKVİM
-  ✔ Takvim etkinlikleri      → READ_CALENDAR + WRITE_CALENDAR izni, expo-calendar
-                                time_blocks ile senkron
-                                Amaç: Uygulama işlevselliği
-                                >>> BUNU ATLAMA. İzin manifest'te var, Play
-                                    izinle beyanı karşılaştırıyor.
+▍ TAKVİM  >>> DÜZELTME (2026-07-16): BEYAN ETME <<<
+  ✘ Takvim etkinlikleri      → TOPLANMIYOR.
+        Bu maddenin ilk hâli YANLIŞTI ("beyan et, atlama" yazıyordu).
+        Manifest'teki READ_CALENDAR/WRITE_CALENDAR iznine bakıp time_blocks'a
+        senkron olduğu VARSAYILMIŞTI. Kod kontrol edildi, öyle değil:
+          apps/mobile/src/utils/calendarSync.ts (64 satır) → sıfır supabase/
+          fetch/http çağrısı. Etkinlikler expo-calendar ile okunuyor,
+          calendarStore'da (Zustand, bellekte) tutuluyor, planning.tsx'te
+          gösteriliyor. Tip adı bile LocalCalendarEvent.
+        Hem Google hem Apple için "toplama" = veriyi CİHAZDAN DIŞARI göndermek.
+        Takvim verisi cihazdan çıkmıyor → toplanmıyor → beyan edilmez.
+        İzin sadece cihazdaki takvimi OKUMAK için; izin ≠ toplama.
+        >>> Formu ilk taslakla doldurup takvimi işaretlediysen GERİ AL.
 
 ▍ UYGULAMA ETKİNLİĞİ
   ✔ Diğer kullanıcı içeriği  → tasks (title, description), task_details (notes,
@@ -145,5 +152,69 @@ BÖLÜM 5 — TUTARLILIK KONTROLÜ (unutulursa reddedilir)
   □ Apple App Privacy formu ile Play Veri güvenliği formu tutarlı olmalı.
     Aynı uygulama, aynı veri. Farklı beyan = biri yanlış.
 
-  □ Manifest izinleri ile beyan tutarlı olmalı.
-    READ_CALENDAR/WRITE_CALENDAR var → takvim beyan edilmeli.
+  □ İzin ≠ toplama. READ_CALENDAR/WRITE_CALENDAR var ama takvim verisi
+    cihazdan çıkmıyor → beyan EDİLMEZ. (Bkz. Bölüm 1, takvim düzeltmesi.)
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 6 — APPLE "APP PRIVACY" FORMU
+═══════════════════════════════════════════════════════════════
+App Store Connect → Uygulaman → App Privacy → "Get Started"
+Aynı kod, aynı veri; sadece Apple'ın kategori isimleri farklı.
+
+Apple her veri tipi için üç şey sorar:
+  1) Toplanıyor mu?  2) Kullanıcıya bağlı mı (linked)?  3) İzleme için mi (tracking)?
+
+▍ TOPLANAN — hepsi "Linked to You", hiçbiri "Tracking" DEĞİL
+
+  Contact Info → Email Address    → auth.users. Amaç: App Functionality
+  Contact Info → Name             → user_profiles.display_name (opsiyonel)
+                                     Amaç: App Functionality
+  Health & Fitness → Health       → meals, nutrition_targets (kalori/makro)
+  Health & Fitness → Fitness      → antrenman kayıtları, setler, programlar
+  Financial Info → Purchase History → payment_history (tutar, durum, plan)
+  User Content → Other User Content → tasks (başlık/açıklama), task_details
+                                     (notlar, checklist), daily_plans.notes,
+                                     meals.raw_input
+  Identifiers → User ID           → auth.users UUID
+  Identifiers → Device ID         → push_tokens.token (Expo push token)
+
+▍ TOPLANMAYAN — "No" işaretle
+
+  ✘ Financial Info → Payment Info → KART VERİSİ YOK. Sadece İyzico referans
+                                     token'ı saklanıyor (iyzico_token vb.)
+  ✘ Location                      → konum izni yok, expo-location yok
+  ✘ Contacts                      → rehber izni yok
+  ✘ Browsing History / Search History
+  ✘ Usage Data                    → analitik SDK YOK (kontrol edildi)
+  ✘ Diagnostics                   → crash SDK yok (Sentry/Crashlytics yok)
+  ✘ Sensitive Info
+  ✘ Other Data                    → takvim cihazda kalıyor, dışarı çıkmıyor
+
+▍ "Data Used to Track You" → HİÇBİRİ
+  Reklam SDK'sı, IDFA, expo-tracking-transparency, AppsFlyer/Facebook SDK
+  yok. Kontrol edildi. Hiçbir veri izleme için kullanılmıyor.
+
+▍ Apple'da "paylaşım" sorusu
+  Apple, Play gibi ayrı bir "shared with third parties" kutusu sormaz;
+  onun yerine veriyi "service provider" olarak işleyenler beyan dışıdır.
+  Anthropic/Resend/Expo/İyzico bu kapsamda. Bölüm 2'deki aynı muhakeme
+  geçerli — tereddüt edersen oradaki uyarıyı tekrar oku.
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 7 — APPLE'DA GERİ KALAN (2026-07-16 itibarıyla API'den doğrulandı)
+═══════════════════════════════════════════════════════════════
+  ✔ Build 3 sürüme bağlı
+  ✔ 6 ekran görüntüsü COMPLETE (1290×2796, APP_IPHONE_67)
+  ✔ Gizlilik politikası URL'i girildi
+  ✔ App Review iletişim bilgisi girildi
+  ✔ İhracat uyumluluğu — app.json'daki ITSAppUsesNonExemptEncryption:false
+     sayesinde build'de usesNonExemptEncryption=false olarak beyan edilmiş.
+     AYRICA BİR ŞEY YAPMANA GEREK YOK.
+  ✔ Fiyat programı tanımlı
+
+  □ App Privacy formu → yukarıdaki Bölüm 6. (API'den okunamıyor, ASC
+     arayüzünden kontrol et.)
+  □ DSA tacir doğrulaması → İngilizce ikametgah belgesi Apple'a iletildi,
+     inceleme bekleniyor. NOT: Bu, incelemeye GÖNDERMEYİ engellemez;
+     yalnızca AB mağazalarında yayına çıkmayı etkiler.
+  □ Sonra: "Add for Review"
