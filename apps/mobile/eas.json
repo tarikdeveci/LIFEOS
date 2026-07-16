@@ -52,13 +52,15 @@
     "production": {
       "ios": {
         "appleId": "tariikdevecii@gmail.com",
+        "ascAppId": "6789708836",
         "ascApiKeyPath": "./asc-api-key.p8",
-        "ascApiKeyId": "REPLACE_ASC_KEY_ID",
-        "ascApiKeyIssuerId": "REPLACE_ASC_ISSUER_ID"
+        "ascApiKeyId": "B2T86BFZ5S",
+        "ascApiKeyIssuerId": "041cacda-7f2f-4c5c-8c31-ffb7180771bd"
       },
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",
-        "track": "alpha"
+        "track": "alpha",
+        "releaseStatus": "draft"
       }
     }
   }

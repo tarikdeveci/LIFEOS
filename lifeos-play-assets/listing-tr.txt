@@ -1,0 +1,52 @@
+═══════════════════════════════════════════
+GOOGLE PLAY — MAĞAZA GİRİŞİ (Türkçe)
+═══════════════════════════════════════════
+
+UYGULAMA ADI (max 30 karakter)
+LifeOS: Planla, Yaşa
+
+KISA AÇIKLAMA (max 80 karakter)
+Görev, günlük plan, beslenme ve antrenman — hayatın tek uygulamada.
+
+═══════════════════════════════════════════
+TAM AÇIKLAMA (max 4000 karakter)
+═══════════════════════════════════════════
+LifeOS, dağınık günleri düzene sokan kişisel yaşam işletim sistemin. Görevlerini, gününü, beslenmeni ve antrenmanını tek bir yerde topla; enerjini gerçekten önemli olana ayır.
+
+▍ AKILLI GÖREV YÖNETİMİ
+Görevlerin WSJF önceliklendirmesiyle kendiliğinden sıralanır — değer, aciliyet ve efora göre en doğru işi öne çıkarır. Bugüne odaklan, gerisini sisteme bırak.
+
+▍ GÜNLÜK PLANLAMA
+Gününü zaman bloklarına böl. Enerji seviyene göre planla, akışını koru. Takvim senkronizasyonuyla her şey hizada.
+
+▍ BESLENME TAKİBİ
+Öğünlerini tek dokunuşla kaydet, makrolarını (kalori, protein, karbonhidrat, yağ, lif) anlık gör. Hedefin hep gözünün önünde.
+
+▍ ANTRENMAN
+Hazır programlarla (Bro Split, Push Pull Legs, Full Body) hemen başla ya da kendi rutinini kur. Setlerini kaydet, ilerlemeni izle.
+
+▍ SANA GÖRE
+Boyun, kilon, hedeflerin ve makroların; plan tamamen sana ayarlı. LifeOS seni tanır, ritmine uyar.
+
+Planla. Odaklan. Yaşa.
+
+═══════════════════════════════════════════
+DİĞER MAĞAZA BİLGİLERİ
+═══════════════════════════════════════════
+• Paket adı: tr.lifeos.app
+• Kategori: Verimlilik (Productivity) veya Sağlık ve Fitness
+• Gizlilik Politikası URL: https://lifeos.tr/gizlilik-kvkk
+• Hesap silme URL: https://lifeos.tr/hesap-silme
+• İletişim e-posta: info@detayinovasyon.com
+• Web sitesi: https://lifeos.tr
+
+GÖRSELLER (hazır):
+• Uygulama ikonu 512×512: icon-512.png
+• Feature graphic 1024×500: feature-graphic-1024x500.png
+• Telefon ekran görüntüleri (2-8 adet): lifeos-app-store-screens/ klasöründeki 01–06 (1290×2796)
+
+SENİN DOLDURMAN GEREKENLER (politika beyanları — yasal olarak senin):
+• İçerik derecelendirme anketi (IARC)
+• Veri güvenliği formu (hangi veriler toplanıyor: e-posta, sağlık/fitness verisi, kullanım)
+• Hedef kitle ve içerik (yaş grubu)
+• Reklam içeriyor mu? (Hayır)

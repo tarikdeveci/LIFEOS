@@ -1,0 +1,149 @@
+═══════════════════════════════════════════════════════════════
+VERİ GÜVENLİĞİ + IARC — CEVAP TASLAĞI
+═══════════════════════════════════════════════════════════════
+Bu bir TASLAK. Koddan çıkarıldı, gerekçeleri yanında yazıyor.
+Beyan yasal olarak SANA ait — okuyup onaylamadan gönderme.
+
+Kaynak: supabase/migrations/*.sql, supabase/functions/*, apps/mobile/app.json
+Tarih: 2026-07-16
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 1 — TOPLANAN VERİLER (Play "Veri güvenliği" formu)
+═══════════════════════════════════════════════════════════════
+
+▍ KİŞİSEL BİLGİLER
+  ✔ E-posta adresi           → auth.users. Kayıt/giriş için. ZORUNLU.
+                                Amaç: Hesap yönetimi
+  ✔ İsim                     → user_profiles.display_name. OPSİYONEL (nullable).
+                                Amaç: Uygulama işlevselliği
+
+▍ FİNANSAL BİLGİLER
+  ✔ Satın alma geçmişi       → payment_history (amount, currency, status, plan)
+                                Amaç: Uygulama işlevselliği
+  ✘ Ödeme bilgileri          → KART VERİSİ SAKLANMIYOR. subscriptions/payment_history
+                                sadece İyzico referans token'ı tutuyor
+                                (iyzico_payment_id, iyzico_token vb.)
+                                Kart numarası hiçbir tabloda yok.
+
+▍ SAĞLIK VE FİTNESS
+  ✔ Sağlık bilgileri         → meals, nutrition_targets (kalori, protein, karb, yağ, lif)
+                                Amaç: Uygulama işlevselliği
+  ✔ Fitness bilgileri        → antrenman kayıtları, setler, programlar (005/016/017)
+                                Amaç: Uygulama işlevselliği
+
+▍ TAKVİM
+  ✔ Takvim etkinlikleri      → READ_CALENDAR + WRITE_CALENDAR izni, expo-calendar
+                                time_blocks ile senkron
+                                Amaç: Uygulama işlevselliği
+                                >>> BUNU ATLAMA. İzin manifest'te var, Play
+                                    izinle beyanı karşılaştırıyor.
+
+▍ UYGULAMA ETKİNLİĞİ
+  ✔ Diğer kullanıcı içeriği  → tasks (title, description), task_details (notes,
+                                checklist), daily_plans (notes), meals.raw_input
+                                Amaç: Uygulama işlevselliği
+
+▍ CİHAZ VEYA DİĞER KİMLİKLER
+  ✔ Cihaz veya diğer kimlik  → Expo push token
+                                (user_profiles.preferences.push_token)
+                                Amaç: Uygulama işlevselliği (bildirimler)
+
+▍ TOPLANMAYANLAR (kodda karşılığı yok — "hayır" işaretle)
+  ✘ Konum          → konum izni yok, expo-location yok
+  ✘ Kişiler        → rehber izni yok
+  ✘ Fotoğraf/video → kamera izni yok
+  ✘ Ses            → mikrofon izni yok
+  ✘ SMS/arama      → izin yok
+  ✘ Kişisel tanımlayıcılar (reklam ID) → reklam SDK'sı yok
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 2 — "PAYLAŞIM" SORUSU  ← EN KRİTİK KARAR, DİKKAT OKU
+═══════════════════════════════════════════════════════════════
+
+Uygulama şu üçüncü taraflara veri gönderiyor:
+
+  Anthropic (Claude)   → parse-meal: meals.raw_input (kullanıcının yazdığı
+                          öğün metni) aynen gidiyor
+                        → ai-suggest: görev başlıkları, açıklamaları, günlük
+                          plan verisi, fitness verisi gidiyor
+  Resend               → send-email: kullanıcının e-posta adresi
+  Expo (exp.host)      → send-notification: push token
+  İyzico / PayTR /     → ödeme akışı
+  RevenueCat
+
+>>> KARAR NOKTASI:
+Google'ın "paylaşım" tanımı, senin adına işlem yapan "hizmet sağlayıcıya"
+(service provider) yapılan aktarımı KAPSAM DIŞI bırakıyor. Yukarıdakilerin
+hepsi muhtemelen bu istisnaya giriyor — ama bu istisna, tarafın veriyi
+SADECE senin adına işlemesi ve kendi amaçları için kullanmaması şartına bağlı.
+
+Bunu kendi başına varsayma:
+  1. Google'ın "sharing" tanımını oku:
+     https://support.google.com/googleplay/android-developer/answer/10787469
+  2. Her sağlayıcının DPA/şartlarında "veriyi kendi amaçları için
+     kullanmaz" maddesi var mı kontrol et.
+
+Yanlış tarafa düşersen: "paylaşmıyorum" dedin ama Google aksini tespit etti
+= politika ihlali = uygulama kaldırılır. Tereddüt edersen paylaşımı BEYAN ET;
+beyan etmek uygulamayı riske atmaz, gizlemek atar.
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 3 — GÜVENLİK UYGULAMALARI
+═══════════════════════════════════════════════════════════════
+
+  ✔ Veriler aktarım sırasında şifrelenir
+      → Supabase HTTPS/TLS. Tüm istemci istekleri TLS üzerinden.
+
+  ✔ Kullanıcı verilerinin silinmesini talep edebilir
+      → supabase/functions/delete-account/index.ts mevcut
+      → Web: https://lifeos.tr/hesap-silme (200 döndüğü doğrulandı)
+      → Mobil: profile.tsx içinde hesap silme akışı var
+      → Silme URL'i olarak: https://lifeos.tr/hesap-silme
+
+  ? Veri toplama zorunlu mu / kullanıcı seçebilir mi
+      → E-posta ZORUNLU (hesap için)
+      → Beslenme/fitness/takvim OPSİYONEL (kullanmazsa veri yok)
+      → İlgili her veri tipinde "kullanıcı seçebilir" işaretlemeyi değerlendir
+
+  ? Bağımsız güvenlik denetimi
+      → Yapılmadıysa "hayır". Yalan söyleme, denetlenebilir.
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 4 — IARC İÇERİK DERECELENDİRME ANKETİ
+═══════════════════════════════════════════════════════════════
+
+Kategori: Verimlilik (Productivity)
+
+  Şiddet                          → Hayır
+  Cinsellik / müstehcenlik        → Hayır
+  Küfür / kaba dil                → Hayır
+  Uyuşturucu, alkol, tütün        → Hayır
+  Kumar / şans oyunu              → Hayır
+  Korku / rahatsız edici içerik   → Hayır
+  Kullanıcılar arası etkileşim    → Hayır (sosyal özellik yok, görevler
+                                     tamamen özel, paylaşım/yorum yok)
+  Kullanıcı konumu paylaşımı      → Hayır (konum toplanmıyor)
+  Kişisel bilgi paylaşımı         → Hayır (kullanıcılar birbirini görmüyor)
+  Dijital satın alma              → EVET (pro_monthly / pro_annual abonelik)
+  Reklam                          → Hayır (reklam SDK'sı yok)
+
+  Beklenen sonuç: 3+ / Everyone
+
+  Çocuklara yönelik mi?           → Hayır
+                                     (ASC'de isOrEverWasMadeForKids=false,
+                                      Play'de de tutarlı olmalı)
+
+═══════════════════════════════════════════════════════════════
+BÖLÜM 5 — TUTARLILIK KONTROLÜ (unutulursa reddedilir)
+═══════════════════════════════════════════════════════════════
+
+  □ Play "Veri güvenliği" beyanı ile lifeos.tr/gizlilik-kvkk sayfası
+    BİRBİRİYLE ÇELİŞMEMELİ. Gizlilik politikası Anthropic/Resend/İyzico'dan
+    bahsetmiyorsa ve sen formda paylaşım beyan ettiysen, çelişki olur.
+    >>> Gizlilik politikasını bu form ile karşılaştır.
+
+  □ Apple App Privacy formu ile Play Veri güvenliği formu tutarlı olmalı.
+    Aynı uygulama, aynı veri. Farklı beyan = biri yanlış.
+
+  □ Manifest izinleri ile beyan tutarlı olmalı.
+    READ_CALENDAR/WRITE_CALENDAR var → takvim beyan edilmeli.
