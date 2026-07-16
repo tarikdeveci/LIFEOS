@@ -43,10 +43,22 @@ function planFromProductId(productId: string | undefined): 'pro_monthly' | 'pro_
 }
 
 Deno.serve(async (req) => {
-  // Webhook secret doğrula
-  const authHeader = req.headers.get('Authorization')
+  // Bu fonksiyon verify_jwt=false ile deploy edilir (config.toml): RevenueCat
+  // Supabase JWT'si üretemez, header'a bizim verdiğimiz secret'ı koyar. Yani
+  // Supabase'in kapısı devre dışı — tek koruma buradaki karşılaştırma.
+  //
+  // Bu yüzden secret YOKSA fail-closed davranıyoruz. Eskiden `if (expectedSecret
+  // && ...)` yazıyordu; secret tanımsızken kontrol tamamen atlanıyor, endpoint
+  // herkese açık kalıyordu — sahte INITIAL_PURCHASE ile kendine Pro yazmak
+  // mümkündü.
   const expectedSecret = Deno.env.get('REVENUECAT_WEBHOOK_SECRET')
-  if (expectedSecret && authHeader !== expectedSecret) {
+  if (!expectedSecret) {
+    console.error('REVENUECAT_WEBHOOK_SECRET tanımlı değil — tüm istekler reddediliyor')
+    return new Response('Server misconfigured', { status: 500 })
+  }
+
+  const authHeader = req.headers.get('Authorization')
+  if (authHeader !== expectedSecret) {
     return new Response('Unauthorized', { status: 401 })
   }
 

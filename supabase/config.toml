@@ -30,3 +30,10 @@ file_size_limit = "50MiB"
 
 [realtime]
 enabled = true
+
+# RevenueCat webhook'u Supabase JWT'si üretemez; header'a bizim secret'ımızı
+# koyar. verify_jwt açık kalırsa Supabase kapıda 401 verir ve fonksiyon hiç
+# çalışmaz. Kapıyı kapatıyoruz — kimlik doğrulama fonksiyon içindeki
+# REVENUECAT_WEBHOOK_SECRET karşılaştırması ile yapılıyor (fail-closed).
+[functions.revenuecat-webhook]
+verify_jwt = false
