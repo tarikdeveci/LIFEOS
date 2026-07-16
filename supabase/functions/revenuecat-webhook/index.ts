@@ -17,6 +17,8 @@ interface RevenueCatEvent {
   purchased_at_ms?: number
   expiration_at_ms?: number
   store?: string
+  product_id?: string
+  period_type?: string
 }
 
 interface RevenueCatPayload {
@@ -27,6 +29,17 @@ function mapStore(store: string | undefined): string {
   if (store === 'APP_STORE') return 'app_store'
   if (store === 'PLAY_STORE') return 'play_store'
   return store?.toLowerCase() ?? 'unknown'
+}
+
+// Ürün ID'sinden planı çöz. App Store: PRO_1/PRO_2, Play: pro_1/pro_2.
+// Bilinmeyen ürün gelirse aylığa düşmek yanlış olur (yıllık ödeyen aylık görünür),
+// o yüzden null dönüp event'i atlıyoruz — sessizce yanlış veri yazmaktansa loglayalım.
+function planFromProductId(productId: string | undefined): 'pro_monthly' | 'pro_annual' | null {
+  if (!productId) return null
+  const id = productId.toLowerCase()
+  if (id === 'pro_1') return 'pro_monthly'
+  if (id === 'pro_2') return 'pro_annual'
+  return null
 }
 
 Deno.serve(async (req) => {
@@ -58,11 +71,19 @@ Deno.serve(async (req) => {
         break
       }
 
+      const plan = planFromProductId(event.product_id)
+      if (!plan) {
+        console.error(
+          `Ignoring ${event.type} for user ${userId}: unknown product_id "${event.product_id}" via ${source}`,
+        )
+        break
+      }
+
       await supabase.from('subscriptions').upsert(
         {
           user_id: userId,
-          plan: 'pro_monthly',
-          status: 'pro_monthly',
+          plan,
+          status: plan,
           iyzico_subscription_reference_code: event.original_transaction_id ?? null,
           current_period_start: event.purchased_at_ms
             ? new Date(event.purchased_at_ms).toISOString()
