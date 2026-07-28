@@ -324,7 +324,7 @@ export default function ProfileScreen() {
                 {membershipTitle}
               </Text>
               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                {subscription.isPro ? membershipSubtitle : (lang === 'tr' ? 'Pro planlari incele' : 'See Pro plans')}
+                {subscription.isPro ? membershipSubtitle : (lang === 'tr' ? 'Pro planları incele' : 'See Pro plans')}
               </Text>
             </View>
             <View style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.full, backgroundColor: subscription.isPro ? `${palette.success}18` : colors.glassInner, borderWidth: 1, borderColor: subscription.isPro ? `${palette.success}35` : colors.border }}>

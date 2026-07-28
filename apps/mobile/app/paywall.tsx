@@ -18,11 +18,11 @@ const PRIVACY_URL = 'https://lifeos.tr/gizlilik-kvkk'
 const TERMS_URL = 'https://lifeos.tr/mesafeli-satis-sozlesmesi'
 
 const BENEFITS: Array<{ icon: keyof typeof Ionicons.glyphMap; tr: string; en: string }> = [
-  { icon: 'restaurant-outline', tr: 'Ogun fotografini ve metnini AI ile coz', en: 'Parse meals from free text with AI' },
-  { icon: 'nutrition-outline', tr: 'Beslenme kocu: makro ve hedef onerileri', en: 'Nutrition coach: macro and goal advice' },
-  { icon: 'flash-outline', tr: 'WSJF ile AI destekli gorev onceliklendirme', en: 'AI-assisted WSJF task prioritisation' },
-  { icon: 'calendar-outline', tr: 'Gunluk plani AI ile olustur ve duzenle', en: 'Build and adjust your daily plan with AI' },
-  { icon: 'barbell-outline', tr: 'Antrenman programi onerileri', en: 'Workout programme suggestions' },
+  { icon: 'restaurant-outline', tr: 'Öğün fotoğrafını ve metnini AI ile çöz', en: 'Parse meals from free text with AI' },
+  { icon: 'nutrition-outline', tr: 'Beslenme koçu: makro ve hedef önerileri', en: 'Nutrition coach: macro and goal advice' },
+  { icon: 'flash-outline', tr: 'WSJF ile AI destekli görev önceliklendirme', en: 'AI-assisted WSJF task prioritisation' },
+  { icon: 'calendar-outline', tr: 'Günlük planı AI ile oluştur ve düzenle', en: 'Build and adjust your daily plan with AI' },
+  { icon: 'barbell-outline', tr: 'Antrenman programı önerileri', en: 'Workout programme suggestions' },
 ]
 
 export default function PaywallScreen() {
@@ -62,14 +62,14 @@ export default function PaywallScreen() {
     if (outcome === 'purchased') {
       await subscription.refresh()
       Alert.alert(
-        tr ? 'Tesekkurler' : 'Thank you',
-        tr ? 'Pro uyeligin aktif. AI ozellikleri acildi.' : 'Your Pro membership is active. AI features are unlocked.',
+        tr ? 'Teşekkürler' : 'Thank you',
+        tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.',
         [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
       )
     } else if (outcome === 'error') {
-      Alert.alert(tr ? 'Satin alma tamamlanamadi' : 'Purchase failed', tr ? 'Lutfen tekrar dene.' : 'Please try again.')
+      Alert.alert(tr ? 'Satın alma tamamlanamadı' : 'Purchase failed', tr ? 'Lütfen tekrar dene.' : 'Please try again.')
     } else if (outcome === 'unavailable') {
-      Alert.alert(tr ? 'Kullanilamiyor' : 'Unavailable', tr ? 'Satin alma bu surumde acik degil.' : 'Purchases are not available in this build.')
+      Alert.alert(tr ? 'Kullanılamıyor' : 'Unavailable', tr ? 'Satın alma bu sürümde açık değil.' : 'Purchases are not available in this build.')
     }
   }
 
@@ -81,21 +81,21 @@ export default function PaywallScreen() {
     if (outcome === 'restored') {
       await subscription.refresh()
       Alert.alert(
-        tr ? 'Geri yuklendi' : 'Restored',
-        tr ? 'Pro uyeligin geri yuklendi.' : 'Your Pro membership has been restored.',
+        tr ? 'Geri yüklendi' : 'Restored',
+        tr ? 'Pro üyeliğin geri yüklendi.' : 'Your Pro membership has been restored.',
         [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
       )
     } else if (outcome === 'nothing') {
-      Alert.alert(tr ? 'Kayit bulunamadi' : 'Nothing to restore', tr ? 'Bu hesapta aktif bir Pro aboneligi bulunamadi.' : 'No active Pro subscription found for this account.')
+      Alert.alert(tr ? 'Kayıt bulunamadı' : 'Nothing to restore', tr ? 'Bu hesapta aktif bir Pro aboneliği bulunamadı.' : 'No active Pro subscription found for this account.')
     } else {
-      Alert.alert(tr ? 'Geri yukleme basarisiz' : 'Restore failed', tr ? 'Lutfen tekrar dene.' : 'Please try again.')
+      Alert.alert(tr ? 'Geri yükleme başarısız' : 'Restore failed', tr ? 'Lütfen tekrar dene.' : 'Please try again.')
     }
   }
 
   const monthly = plans?.find((p) => p.period === 'monthly')
   const annual = plans?.find((p) => p.period === 'annual')
 
-  // Yillik tasarruf yalnizca iki fiyat da gercekten store'dan geldiyse gosterilir
+  // Yıllık tasarruf yalnızca iki fiyat da gerçekten store'dan geldiyse gösterilir
   let savingPercent: number | null = null
   if (monthly && annual) {
     const monthlyYear = monthly.product?.price * 12
@@ -107,7 +107,7 @@ export default function PaywallScreen() {
 
   const storeName = Platform.OS === 'ios' ? 'App Store' : 'Google Play'
   const renewalNotice = tr
-    ? `Abonelik otomatik olarak yenilenir. Odeme, satin alma onaylandiginda ${storeName} hesabina yansitilir. Mevcut donem bitmeden en az 24 saat once iptal edilmezse ayni tutarla yenilenir. Aboneligini ${storeName} hesap ayarlarindan yonetebilir veya iptal edebilirsin.`
+    ? `Abonelik otomatik olarak yenilenir. Ödeme, satın alma onaylandığında ${storeName} hesabına yansıtılır. Mevcut dönem bitmeden en az 24 saat önce iptal edilmezse aynı tutarla yenilenir. Aboneliğini ${storeName} hesap ayarlarından yönetebilir veya iptal edebilirsin.`
     : `Your subscription renews automatically. Payment is charged to your ${storeName} account when the purchase is confirmed. It renews at the same price unless cancelled at least 24 hours before the current period ends. You can manage or cancel it in your ${storeName} account settings.`
 
   return (
@@ -127,7 +127,7 @@ export default function PaywallScreen() {
             LifeOS Pro
           </Text>
           <Text style={{ fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
-            {tr ? 'AI destekli beslenme, planlama ve antrenman ozelliklerinin tamami' : 'Every AI-powered nutrition, planning and workout feature'}
+            {tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature'}
           </Text>
         </View>
 
@@ -150,7 +150,7 @@ export default function PaywallScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
               <Ionicons name="checkmark-circle" size={24} color={palette.success} />
               <Text style={{ flex: 1, fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                {tr ? 'Pro uyeligin zaten aktif' : 'Your Pro membership is already active'}
+                {tr ? 'Pro üyeliğin zaten aktif' : 'Your Pro membership is already active'}
               </Text>
             </View>
           </GlassCard>
@@ -161,15 +161,15 @@ export default function PaywallScreen() {
         ) : plans.length === 0 ? (
           <GlassCard style={{ marginBottom: spacing[5] }}>
             <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, textAlign: 'center' }}>
-              {tr ? 'Abonelik secenekleri su anda yuklenemedi. Lutfen daha sonra tekrar dene.' : 'Subscription options could not be loaded right now. Please try again later.'}
+              {tr ? 'Abonelik seçenekleri şu anda yüklenemedi. Lütfen daha sonra tekrar dene.' : 'Subscription options could not be loaded right now. Please try again later.'}
             </Text>
           </GlassCard>
         ) : (
           <View style={{ gap: spacing[3], marginBottom: spacing[5] }}>
             {plans.map((plan) => {
               const active = plan.period === selected
-              const title = plan.period === 'monthly' ? (tr ? 'Aylik' : 'Monthly') : (tr ? 'Yillik' : 'Annual')
-              const per = plan.period === 'monthly' ? (tr ? '/ ay' : '/ month') : (tr ? '/ yil' : '/ year')
+              const title = plan.period === 'monthly' ? (tr ? 'Aylık' : 'Monthly') : (tr ? 'Yıllık' : 'Annual')
+              const per = plan.period === 'monthly' ? (tr ? '/ ay' : '/ month') : (tr ? '/ yıl' : '/ year')
 
               return (
                 <TouchableOpacity
@@ -206,7 +206,7 @@ export default function PaywallScreen() {
                       )}
                     </View>
                     <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                      {tr ? 'Otomatik yenilenir, istedigin zaman iptal et' : 'Auto-renews, cancel anytime'}
+                      {tr ? 'Otomatik yenilenir, istediğin zaman iptal et' : 'Auto-renews, cancel anytime'}
                     </Text>
                   </View>
                   <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>
@@ -221,7 +221,7 @@ export default function PaywallScreen() {
 
         {!subscription.isPro && (
           <Button
-            label={tr ? 'Pro uyeligi baslat' : 'Start Pro membership'}
+            label={tr ? 'Pro üyeliği başlat' : 'Start Pro membership'}
             onPress={() => void handlePurchase()}
             size="lg"
             fullWidth
@@ -232,7 +232,7 @@ export default function PaywallScreen() {
         )}
 
         <Button
-          label={tr ? 'Satin alimlari geri yukle' : 'Restore purchases'}
+          label={tr ? 'Satın alımları geri yükle' : 'Restore purchases'}
           onPress={() => void handleRestore()}
           variant="ghost"
           fullWidth
@@ -247,17 +247,17 @@ export default function PaywallScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: spacing[4] }}>
           <TouchableOpacity onPress={() => openLink(EULA_URL)}>
             <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
-              {tr ? 'Kullanim Kosullari' : 'Terms of Use'}
+              {tr ? 'Kullanım Koşulları' : 'Terms of Use'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => openLink(PRIVACY_URL)}>
             <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
-              {tr ? 'Gizlilik Politikasi' : 'Privacy Policy'}
+              {tr ? 'Gizlilik Politikası' : 'Privacy Policy'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => openLink(TERMS_URL)}>
             <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
-              {tr ? 'Satis Sozlesmesi' : 'Sales Agreement'}
+              {tr ? 'Satış Sözleşmesi' : 'Sales Agreement'}
             </Text>
           </TouchableOpacity>
         </View>
