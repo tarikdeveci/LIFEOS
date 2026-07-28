@@ -47,9 +47,21 @@ export async function isPro(): Promise<boolean> {
   return info.entitlements.active['pro'] !== undefined
 }
 
-// Store urun kimlikleri. App Store Connect'te PRO grubu altinda tanimli;
-// Play tarafinda ayni kimliklerle olusturulmali.
+// Store urun kimlikleri.
+//
+// App Store'da PRO_1 / PRO_2, Play'de pro_1 / pro_2 — Play buyuk harfe izin
+// vermiyor ("Subscription ID is malformed"), o yuzden kimlikler magazalar
+// arasinda birebir ayni olamiyor. Karsilastirmalar bu yuzden buyuk/kucuk harf
+// duyarsiz yapilir.
 export const PRO_PRODUCT_IDS = { monthly: 'PRO_1', annual: 'PRO_2' } as const
+
+/** getProducts fallback'i icin her iki magazanin yazimi */
+const PRODUCT_ID_VARIANTS = [
+  PRO_PRODUCT_IDS.monthly,
+  PRO_PRODUCT_IDS.annual,
+  PRO_PRODUCT_IDS.monthly.toLowerCase(),
+  PRO_PRODUCT_IDS.annual.toLowerCase(),
+]
 
 export type ProPeriod = 'monthly' | 'annual'
 
@@ -65,12 +77,12 @@ export interface ProPlan {
 }
 
 function periodOf(productId: string): ProPeriod | null {
-  // Play'de kimlik "PRO_1:aylik" gibi productId:basePlanId biçiminde gelir,
-  // App Store'da yalnızca "PRO_1". Base plan ekini atıp karşılaştırıyoruz —
-  // tam eşleşme aramak Android'de hiçbir planı tanımamaya yol açıyordu.
-  const base = productId.split(':')[0]
-  if (base === PRO_PRODUCT_IDS.monthly) return 'monthly'
-  if (base === PRO_PRODUCT_IDS.annual) return 'annual'
+  // Play'de kimlik "pro_1:monthly" gibi productId:basePlanId biçiminde gelir,
+  // App Store'da yalnızca "PRO_1". Base plan ekini atıp harf duyarsız
+  // karşılaştırıyoruz — tam eşleşme aramak Android'de hiçbir planı tanımıyordu.
+  const base = productId.split(':')[0]?.toLowerCase()
+  if (base === PRO_PRODUCT_IDS.monthly.toLowerCase()) return 'monthly'
+  if (base === PRO_PRODUCT_IDS.annual.toLowerCase()) return 'annual'
   return null
 }
 
@@ -98,7 +110,7 @@ export async function fetchProPlans(): Promise<ProPlan[]> {
 
   if (plans.length === 0) {
     try {
-      const products = await Purchases.getProducts([PRO_PRODUCT_IDS.monthly, PRO_PRODUCT_IDS.annual])
+      const products = await Purchases.getProducts(PRODUCT_ID_VARIANTS)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const product of (products ?? []) as any[]) {
         const period = periodOf(product.identifier)
