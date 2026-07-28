@@ -40,6 +40,49 @@ interface ParseRequest {
   user_id: string
 }
 
+// Tek bir öğün kaleminin makul üst sınırı. Bunun üstü model halüsinasyonudur;
+// toplamı bozmasın diye eleriz.
+const MAX_ITEM_KCAL = 10_000
+
+/**
+ * Claude'dan gelen ham JSON bir sistem sınırıdır — tip iddiası yeterli değil.
+ * Sayı yerine string ("250"), eksik alan veya saçma değer gelebiliyor; bunlar
+ * doğrudan toplama girerse kalori toplamı string'e dönüşüp bozuluyor.
+ */
+function sanitizeAiItem(raw: unknown): MealItem | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+
+  const name = typeof o['name'] === 'string' ? o['name'].trim() : ''
+  if (!name) return null
+
+  const num = (value: unknown): number => {
+    const n = typeof value === 'number'
+      ? value
+      : typeof value === 'string' ? parseFloat(value.replace(',', '.')) : NaN
+    return Number.isFinite(n) && n >= 0 ? n : 0
+  }
+
+  const calories = Math.round(num(o['calories']))
+  if (calories > MAX_ITEM_KCAL) {
+    console.error('AI kalemi makul sınırın üstünde, atlandı:', name, calories)
+    return null
+  }
+
+  const round1 = (value: unknown) => Math.round(num(value) * 10) / 10
+
+  return {
+    name,
+    amount: round1(o['amount']),
+    unit: typeof o['unit'] === 'string' && o['unit'].trim() ? o['unit'].trim() : 'g',
+    calories,
+    protein: round1(o['protein']),
+    carbs: round1(o['carbs']),
+    fat: round1(o['fat']),
+    fiber: round1(o['fiber']),
+  }
+}
+
 async function isProUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
   const { data } = await supabase
     .from('subscriptions')
@@ -145,15 +188,22 @@ serve(async (req: Request) => {
     const matchedItems: MealItem[] = []
     const unmatchedParts: string[] = []
 
-    // Ağırlık/hacim birimleri → sayı gram/ml olarak alınır
-    const WEIGHT_UNIT_RE = /\b(\d+(?:[.,]\d+)?)\s*(?:gram|gr|g(?=\s|$)|ml|litre?|lt|kilogram|kg)\b/i
+    // Ağırlık/hacim birimleri. Birim de yakalanır: kg/litre gram/ml'ye çevrilir.
+    // (Eskiden yalnızca sayı yakalanıyordu; "1 kg tavuk" 1 gram sayılıp 1000 kat
+    //  düşük kalori veriyordu.) Uzun alternatifler önce gelmeli ki "kg" → "g" olmasın.
+    const WEIGHT_UNIT_RE = /\b(\d+(?:[.,]\d+)?)\s*(kilogram|kg|gram|gr|g|mililitre|ml|litre|lt|l)\b/i
+    const UNIT_TO_BASE: Record<string, number> = {
+      kilogram: 1000, kg: 1000, gram: 1, gr: 1, g: 1,
+      mililitre: 1, ml: 1, litre: 1000, lt: 1000, l: 1000,
+    }
     // Sayım birimleri → N adet = N × serving_size
     const COUNT_UNIT_RE  = /\b(adet|tane|porsiyon|paket|kutu|şişe|bardak|kap|tabak|dilim[i]?|parça)\b/i
 
     function resolveAmount(part: string, servingSize: number): { amount: number; ratio: number } {
       const weightMatch = part.match(WEIGHT_UNIT_RE)
       if (weightMatch) {
-        const grams = parseFloat(weightMatch[1]!.replace(',', '.'))
+        const unit = weightMatch[2]!.toLowerCase()
+        const grams = parseFloat(weightMatch[1]!.replace(',', '.')) * (UNIT_TO_BASE[unit] ?? 1)
         return { amount: grams, ratio: servingSize > 0 ? grams / servingSize : grams }
       }
       const numMatch = part.match(/(\d+(?:[.,]\d+)?)/)
@@ -291,7 +341,10 @@ Format (sadece array):
           // JSON array'i yakala (bazen markdown code block içinde döner)
           const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/)
           if (jsonMatch) {
-            aiItems = JSON.parse(jsonMatch[0]) as MealItem[]
+            const parsed: unknown = JSON.parse(jsonMatch[0])
+            aiItems = Array.isArray(parsed)
+              ? parsed.map(sanitizeAiItem).filter((item): item is MealItem => item !== null)
+              : []
           }
         } catch {
           console.error('Claude yanıtı parse edilemedi:', textBlock.text)
