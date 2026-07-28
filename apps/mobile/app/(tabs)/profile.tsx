@@ -314,13 +314,17 @@ export default function ProfileScreen() {
         </GlassCard>
 
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}>
+          <TouchableOpacity
+            onPress={() => router.push('/paywall')}
+            activeOpacity={0.75}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
                 {membershipTitle}
               </Text>
               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                {membershipSubtitle}
+                {subscription.isPro ? membershipSubtitle : (lang === 'tr' ? 'Pro planlari incele' : 'See Pro plans')}
               </Text>
             </View>
             <View style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.full, backgroundColor: subscription.isPro ? `${palette.success}18` : colors.glassInner, borderWidth: 1, borderColor: subscription.isPro ? `${palette.success}35` : colors.border }}>
@@ -328,7 +332,8 @@ export default function ProfileScreen() {
                 {subscription.isPro ? 'PRO' : 'FREE'}
               </Text>
             </View>
-          </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
+          </TouchableOpacity>
         </GlassCard>
 
         {/* Physical info */}

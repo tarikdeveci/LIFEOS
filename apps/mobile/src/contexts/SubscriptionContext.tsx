@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/src/lib/supabase'
+import { isPro as storeEntitlementActive } from '@/src/utils/purchases'
 
 export interface SubscriptionState {
   isPro: boolean
@@ -48,12 +49,23 @@ export function SubscriptionProvider({ children }: Props) {
     ...FREE_STATE,
     isLoading: true,
   })
+  // Store (RevenueCat) tarafindaki hak. Supabase satiri PayTR web akisindan,
+  // bu ise App Store / Play satin almasindan gelir; ikisinden biri yeterli.
+  // Boylece magazadan satin alan kullanici webhook'u beklemeden Pro olur.
+  const [storePro, setStorePro] = useState(false)
+
+  const refreshStore = useCallback(async () => {
+    setStorePro(await storeEntitlementActive().catch(() => false))
+  }, [])
 
   const refresh = useCallback(async () => {
     if (!userId) {
       setState({ ...FREE_STATE, isLoading: false })
+      setStorePro(false)
       return
     }
+
+    void refreshStore()
 
     const { data } = await supabase
       .from('subscriptions')
@@ -62,7 +74,7 @@ export function SubscriptionProvider({ children }: Props) {
       .maybeSingle()
 
     setState(stateFromRow(data as Record<string, unknown> | null))
-  }, [userId])
+  }, [userId, refreshStore])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -116,7 +128,10 @@ export function SubscriptionProvider({ children }: Props) {
     }
   }, [userId])
 
-  const value = useMemo<SubscriptionState>(() => ({ ...state, refresh }), [state, refresh])
+  const value = useMemo<SubscriptionState>(
+    () => ({ ...state, isPro: state.isPro || storePro, refresh }),
+    [state, storePro, refresh],
+  )
 
   return (
     <SubscriptionContext.Provider value={value}>

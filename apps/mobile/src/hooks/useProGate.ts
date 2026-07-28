@@ -1,4 +1,5 @@
 import { Alert } from 'react-native'
+import { router } from 'expo-router'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 
@@ -15,6 +16,10 @@ export function useProGate(_userId?: string | null) {
       lang === 'tr'
         ? 'AI ozellikleri yalnizca Pro uyeliklerde aktif.'
         : 'AI features are only available with a Pro membership.',
+      [
+        { text: lang === 'tr' ? 'Vazgec' : 'Not now', style: 'cancel' },
+        { text: lang === 'tr' ? "Pro'ya gec" : 'Go Pro', onPress: () => router.push('/paywall') },
+      ],
     )
     return false
   }
