@@ -1,7 +1,7 @@
 # LifeOS — Mağaza Yayın Rehberi
 
-Son güncelleme: 2026-07-28. Durum bilgileri App Store Connect API, Google Play
-Developer API, RevenueCat API ve canlı HTTP kontrolleriyle doğrulandı.
+Son güncelleme: 2026-07-28 akşam. Durum bilgileri App Store Connect API, Google
+Play Developer API, RevenueCat API/paneli ve canlı HTTP kontrolleriyle doğrulandı.
 
 ---
 
@@ -9,21 +9,28 @@ Developer API, RevenueCat API ve canlı HTTP kontrolleriyle doğrulandı.
 
 | Alan | Durum |
 |---|---|
-| ASC sürüm 1.0 | `DEVELOPER_REJECTED` — 16 Tem'de gönderilmiş, geri çekilmiş |
-| ASC build | Build 4 yüklü ve `VALID`; sürüm hâlâ **build 3**'e bağlı |
-| ASC abonelikler | `PRO_1` + `PRO_2` → ikisi de **`MISSING_METADATA`** |
+| ASC sürüm 1.0 | `DEVELOPER_REJECTED` — düzenlenebilir, yeniden gönderilmeyi bekliyor |
+| ASC build | ✅ Build 5 (paywall'lı) yüklendi, `VALID`, **sürüme bağlandı** |
+| ASC abonelikler | `PRO_1` + `PRO_2` → ikisi de **`MISSING_METADATA`** ← **tek blocker** |
 | ASC ekran görüntüleri | 6 adet 1290×2796, `COMPLETE` |
 | ASC metinler / fiyat / yaş / iletişim | Tamam |
 | App Privacy formu | **Doğrulanmadı** (API'den okunamıyor) |
-| DSA tacir doğrulaması | Beklemede |
-| RevenueCat SDK key | Geçerli (doğrulandı) |
-| RevenueCat offering | `default` → `$rc_monthly→PRO_1`, `$rc_annual→PRO_2` (doğrulandı) |
-| RevenueCat in-app purchase key | **Hata veriyor** — bkz. Adım A |
-| RevenueCat webhook secret | **Panele yapıştırılmadı** |
-| Uygulama içi paywall | ✅ Yazıldı (28 Tem), henüz build'e girmedi |
-| lifeos.tr | ✅ Canlı, `/hesap-silme` 200 (28 Tem düzeltildi) |
+| DSA tacir doğrulaması | Beklemede — gönderimi engellemez |
+| RevenueCat bundle ID | ✅ `tr.lifeos.app` |
+| RevenueCat SDK key | ✅ Geçerli |
+| RevenueCat offering | ✅ `default` → `$rc_monthly→PRO_1`, `$rc_annual→PRO_2` |
+| RevenueCat entitlement | ✅ `pro`, 2 ürün bağlı |
+| RevenueCat in-app purchase key | ✅ Valid credentials |
+| RevenueCat ASC API key | ✅ Valid credentials (vendor no 94552100) |
+| RevenueCat webhook | ✅ Kuruldu + doğrulandı (401/401/200) |
+| Uygulama içi paywall | ✅ Yazıldı ve build 5'te |
+| lifeos.tr | ✅ Canlı, `/hesap-silme` 200 |
+| TestFlight beta grubu | ⚠️ Hiç grup/testçi yok — build görünmezse grup açmak gerekir |
 | Play kapalı test | 1.0.0 (13) yayında |
 | Play abonelik ürünleri | **Hiç yok** |
+
+> **Kalan tek gerçek blocker:** abonelik inceleme görselleri (Adım B).
+> Diğer her şey hazır.
 
 ---
 
