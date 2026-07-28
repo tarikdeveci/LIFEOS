@@ -22,7 +22,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "Profil fotoğrafı için kamera erişimi gerekiyor.",
