@@ -240,7 +240,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       const { data, error } = await supabase.functions.invoke('ai-suggest', {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
-          type: 'replan', language: lang, date, user_message: userMsg, buffer_minutes: AI_BUFFER_MINUTES,
+          type: 'replan', language: lang, date, today: todayDate(), user_message: userMsg, buffer_minutes: AI_BUFFER_MINUTES,
           current_time: new Date().toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
           existing_blocks: timeBlocks.map((b) => ({ id: b.id, start: b.start_time.slice(0, 5), end: b.end_time.slice(0, 5), label: b.label ?? b.block_type })),
         },

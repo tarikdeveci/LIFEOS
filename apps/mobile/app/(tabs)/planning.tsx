@@ -90,7 +90,9 @@ export default function PlanningScreen() {
 
   // Seçili güne ait local takvim etkinlikleri
   const localEventsForDate = useMemo(
-    () => localEvents.filter((e) => e.startsAt.startsWith(selectedDate)),
+    // localDate ile eşleştir: startsAt UTC'dir, ilk 10 karakteri gece yarısından
+    // sonraki etkinlikleri bir önceki güne düşürüyordu.
+    () => localEvents.filter((e) => e.localDate === selectedDate),
     [localEvents, selectedDate],
   )
 
@@ -117,7 +119,14 @@ export default function PlanningScreen() {
   async function handleManualCalendarSync() {
     try {
       await syncEvents()
-      Alert.alert('Takvim Senkronu', hasPermission ? 'Takvim senkronize edildi.' : 'Takvim izni verilmedi. Ayarlar ekranından izin verin.')
+      if (!hasPermission) {
+        Alert.alert('Takvim Senkronu', 'Takvim izni verilmedi. Ayarlar ekranından izin verin.')
+        return
+      }
+      // Okunamayan takvimi sessizce yutma — kullanıcı senkronun neden boş
+      // olduğunu göremiyordu.
+      const error = useCalendarStore.getState().lastSyncError
+      Alert.alert('Takvim Senkronu', error ? `Takvim senkronize edildi, ancak ${error}.` : 'Takvim senkronize edildi.')
     } catch {
       Alert.alert('Takvim Senkronu', 'Senkronizasyon başarısız')
     }

@@ -10,6 +10,18 @@ export interface SubscriptionState {
   periodEnd: string | null
   isLoading: boolean
   refresh: () => Promise<void>
+  /**
+   * Mağaza satın alması sonrası `subscriptions` satırının yazılmasını bekler.
+   *
+   * isPro artık "Supabase satırı VEYA RevenueCat hakkı" olduğu için satın alan
+   * kullanıcı anında Pro görünüyor — ama edge function'lar (parse-meal,
+   * ai-suggest) yalnızca satıra bakıyor. Satır RevenueCat webhook'u ile
+   * yazılıyor ve birkaç saniye gecikebiliyor; bu arada AI özellikleri 402
+   * döner. Satır gelene kadar kısa süre bekleyip bu yarışı kapatıyoruz.
+   *
+   * @returns satır yetiştiyse true, süre dolduysa false (satın alma yine geçerli)
+   */
+  waitForBackendSync: (timeoutMs?: number) => Promise<boolean>
 }
 
 const FREE_STATE = {
@@ -23,9 +35,13 @@ const SubscriptionContext = createContext<SubscriptionState>({
   ...FREE_STATE,
   isLoading: true,
   refresh: async () => {},
+  waitForBackendSync: async () => false,
 })
 
-function stateFromRow(row: Record<string, unknown> | null | undefined): Omit<SubscriptionState, 'refresh'> {
+/** Provider'in ic durumu — aksiyonlar haric, yalnizca veri alanlari */
+type SubscriptionData = Omit<SubscriptionState, 'refresh' | 'waitForBackendSync'>
+
+function stateFromRow(row: Record<string, unknown> | null | undefined): SubscriptionData {
   const active = row?.['status'] === 'pro_monthly' || row?.['status'] === 'pro_annual'
   const periodEnd = (row?.['current_period_end'] as string | null) ?? null
   const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
@@ -45,7 +61,7 @@ interface Props {
 
 export function SubscriptionProvider({ children }: Props) {
   const [userId, setUserId] = useState<string | null>(null)
-  const [state, setState] = useState<Omit<SubscriptionState, 'refresh'>>({
+  const [state, setState] = useState<SubscriptionData>({
     ...FREE_STATE,
     isLoading: true,
   })
@@ -128,9 +144,30 @@ export function SubscriptionProvider({ children }: Props) {
     }
   }, [userId])
 
+  const waitForBackendSync = useCallback(async (timeoutMs = 12_000): Promise<boolean> => {
+    if (!userId) return false
+
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      const { data } = await supabase
+        .from('subscriptions')
+        .select('plan, status, current_period_end')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      const next = stateFromRow(data as Record<string, unknown> | null)
+      if (next.isPro) {
+        setState(next)
+        return true
+      }
+      if (Date.now() >= deadline) return false
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+    }
+  }, [userId])
+
   const value = useMemo<SubscriptionState>(
-    () => ({ ...state, isPro: state.isPro || storePro, refresh }),
-    [state, storePro, refresh],
+    () => ({ ...state, isPro: state.isPro || storePro, refresh, waitForBackendSync }),
+    [state, storePro, refresh, waitForBackendSync],
   )
 
   return (

@@ -18,6 +18,8 @@ interface CalendarStore {
   localEvents: LocalCalendarEvent[]
   isSyncing: boolean
   lastSyncedAt: string | null
+  /** Son senkronda okunamayan takvim varsa kısa açıklama, yoksa null */
+  lastSyncError: string | null
 
   initialize: () => Promise<void>
   syncEvents: (daysAhead?: number) => Promise<void>
@@ -33,6 +35,7 @@ export const useCalendarStore = create<CalendarStore>()(
       localEvents: [],
       isSyncing: false,
       lastSyncedAt: null,
+      lastSyncError: null,
 
       initialize: async () => {
         if (!isCalendarSupported()) return
@@ -47,11 +50,12 @@ export const useCalendarStore = create<CalendarStore>()(
         const calendars = await getAvailableCalendars()
         set({ availableCalendars: calendars })
 
-        // İlk açılışta tüm takvimler seçili başlasın
-        const { selectedCalendarIds } = get()
-        if (selectedCalendarIds.length === 0) {
-          set({ selectedCalendarIds: calendars.map((c) => c.id) })
-        }
+        // Seçili kimlikler kalıcı saklanıyor ama takvimler silinip değişebiliyor.
+        // Bayat kimlikleri at; geriye hiçbiri kalmazsa hepsini yeniden seç,
+        // yoksa senkron sessizce boş dönmeye devam eder.
+        const available = new Set(calendars.map((c) => c.id))
+        const stillValid = get().selectedCalendarIds.filter((id) => available.has(id))
+        set({ selectedCalendarIds: stillValid.length > 0 ? stillValid : calendars.map((c) => c.id) })
 
         await get().syncEvents()
       },
@@ -60,7 +64,7 @@ export const useCalendarStore = create<CalendarStore>()(
         const { selectedCalendarIds, hasPermission } = get()
         if (!hasPermission || selectedCalendarIds.length === 0) return
 
-        set({ isSyncing: true })
+        set({ isSyncing: true, lastSyncError: null })
 
         const start = new Date()
         start.setHours(0, 0, 0, 0)
@@ -69,13 +73,21 @@ export const useCalendarStore = create<CalendarStore>()(
         end.setDate(end.getDate() + daysAhead)
         end.setHours(23, 59, 59, 999)
 
-        const rawEvents = await fetchLocalEvents(selectedCalendarIds, start, end)
-        const mapped = rawEvents.map(mapToLifeOSEvent)
+        const { events, failedCalendarIds } = await fetchLocalEvents(selectedCalendarIds, start, end)
+
+        // Okunamayan takvimleri seçimden düş ki bir dahakine tekrar denenmesin
+        if (failedCalendarIds.length > 0) {
+          const failed = new Set(failedCalendarIds)
+          set({ selectedCalendarIds: get().selectedCalendarIds.filter((id) => !failed.has(id)) })
+        }
 
         set({
-          localEvents: mapped,
+          localEvents: events.map(mapToLifeOSEvent),
           isSyncing: false,
           lastSyncedAt: new Date().toISOString(),
+          lastSyncError: failedCalendarIds.length > 0
+            ? `${failedCalendarIds.length} takvim okunamadı`
+            : null,
         })
       },
 

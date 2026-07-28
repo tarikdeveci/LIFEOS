@@ -196,24 +196,42 @@ serve(async (req: Request) => {
       kilogram: 1000, kg: 1000, gram: 1, gr: 1, g: 1,
       mililitre: 1, ml: 1, litre: 1000, lt: 1000, l: 1000,
     }
-    // Sayım birimleri → N adet = N × serving_size
-    const COUNT_UNIT_RE  = /\b(adet|tane|porsiyon|paket|kutu|şişe|bardak|kap|tabak|dilim[i]?|parça)\b/i
+    // Porsiyon birimleri → serving_size'ın ne olduğundan bağımsız olarak N × serving
+    const PORTION_UNIT_RE = /\b(porsiyon|paket|kutu|şişe|bardak|kap|tabak|kaşık|yk|tk)\b/i
+    // Adet birimleri → yalnızca serving_size tek parçaysa (is_countable) N × serving
+    const PIECE_UNIT_RE   = /\b(adet|tane|dilim[i]?|parça)\b/i
 
-    function resolveAmount(part: string, servingSize: number): { amount: number; ratio: number } {
+    // null → miktar güvenle çözülemedi, AI'ya devret
+    function resolveAmount(
+      part: string,
+      servingSize: number,
+      isCountable: boolean,
+    ): { amount: number; ratio: number } | null {
       const weightMatch = part.match(WEIGHT_UNIT_RE)
       if (weightMatch) {
         const unit = weightMatch[2]!.toLowerCase()
         const grams = parseFloat(weightMatch[1]!.replace(',', '.')) * (UNIT_TO_BASE[unit] ?? 1)
         return { amount: grams, ratio: servingSize > 0 ? grams / servingSize : grams }
       }
+
       const numMatch = part.match(/(\d+(?:[.,]\d+)?)/)
       const rawNum  = numMatch ? parseFloat(numMatch[1]!.replace(',', '.')) : 1
-      // Sayım birimi varsa veya sayı küçükse (≤10) → "N porsiyon" gibi davran
-      if (COUNT_UNIT_RE.test(part) || rawNum <= 10) {
-        const grams = rawNum * servingSize
-        return { amount: grams, ratio: rawNum }
+
+      // "2 porsiyon pilav" → porsiyon zaten serving_size'ın kendisi
+      if (PORTION_UNIT_RE.test(part)) {
+        return { amount: rawNum * servingSize, ratio: rawNum }
       }
-      // Sayı büyükse (>10) → direkt gram/ml kabul et
+
+      // Adet ifadesi ya da çıplak küçük sayı ("3 yumurta", "10 badem")
+      if (PIECE_UNIT_RE.test(part) || rawNum <= 10) {
+        // serving_size tek parçaysa çarpmak doğru: 3 × 60g yumurta
+        if (isCountable) return { amount: rawNum * servingSize, ratio: rawNum }
+        // Değilse tahmin yürütme: 10 × 30g badem = 300g olurdu (gerçek ~12g).
+        // Model porsiyon kurallarını biliyor, ona bırak.
+        return null
+      }
+
+      // Çıplak büyük sayı (>10) → gram/ml kabul et: "150 pilav"
       return { amount: rawNum, ratio: servingSize > 0 ? rawNum / servingSize : rawNum }
     }
 
@@ -280,17 +298,20 @@ serve(async (req: Request) => {
       }
 
       if (bestMatch && bestScore >= 0.5) {
-        const { amount, ratio } = resolveAmount(part, bestMatch.serving_size)
-        matchedItems.push({
-          name: bestMatch.name, amount, unit: bestMatch.serving_unit,
-          calories: Math.round(bestMatch.calories * ratio),
-          protein: Math.round(bestMatch.protein * ratio * 10) / 10,
-          carbs: Math.round(bestMatch.carbs * ratio * 10) / 10,
-          fat: Math.round(bestMatch.fat * ratio * 10) / 10,
-          fiber: Math.round(bestMatch.fiber * ratio * 10) / 10,
-          food_item_id: bestMatch.id,
-        })
-        matched = true
+        const resolved = resolveAmount(part, bestMatch.serving_size, bestMatch.is_countable === true)
+        if (resolved) {
+          const { amount, ratio } = resolved
+          matchedItems.push({
+            name: bestMatch.name, amount, unit: bestMatch.serving_unit,
+            calories: Math.round(bestMatch.calories * ratio),
+            protein: Math.round(bestMatch.protein * ratio * 10) / 10,
+            carbs: Math.round(bestMatch.carbs * ratio * 10) / 10,
+            fat: Math.round(bestMatch.fat * ratio * 10) / 10,
+            fiber: Math.round(bestMatch.fiber * ratio * 10) / 10,
+            food_item_id: bestMatch.id,
+          })
+          matched = true
+        }
       }
 
       if (!matched) {

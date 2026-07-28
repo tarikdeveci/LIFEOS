@@ -61,6 +61,10 @@ export default function PaywallScreen() {
 
     if (outcome === 'purchased') {
       await subscription.refresh()
+      // Webhook `subscriptions` satırını yazana kadar bekle; edge function'lar
+      // yalnızca o satıra bakıyor, yoksa AI özellikleri 402 döner.
+      // Yetişmese de satın alma geçerli — kullanıcıya başarı gösteririz.
+      await subscription.waitForBackendSync()
       Alert.alert(
         tr ? 'Teşekkürler' : 'Thank you',
         tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.',
@@ -80,6 +84,7 @@ export default function PaywallScreen() {
 
     if (outcome === 'restored') {
       await subscription.refresh()
+      await subscription.waitForBackendSync()
       Alert.alert(
         tr ? 'Geri yüklendi' : 'Restored',
         tr ? 'Pro üyeliğin geri yüklendi.' : 'Your Pro membership has been restored.',

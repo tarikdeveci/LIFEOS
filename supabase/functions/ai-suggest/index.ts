@@ -27,6 +27,13 @@ interface SuggestRequest {
   type: 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan' | 'nutrition_chat'
   language?: 'tr' | 'en'
   date?: string
+  /**
+   * İstemcinin YEREL bugün tarihi (YYYY-MM-DD). Sunucu UTC'de çalıştığı için
+   * toISOString() burada yanlış gün verir: UTC+3'te gece 00:00–03:00 arası
+   * bir önceki günü döndürür, bu da "hedef gün bugün mü" testini bozup
+   * planlamayı geçmiş saatlerden başlatır. İstemci göndermezse UTC'ye düşeriz.
+   */
+  today?: string
   task_id?: string
   fitness_goal?: string
   available_minutes?: number
@@ -124,7 +131,7 @@ serve(async (req: Request) => {
       })
     }
 
-    const { type, language, date, task_id, fitness_goal, available_minutes, recent_workouts, energy_level, buffer_minutes, existing_blocks, user_message, current_time, nutrition_context, workout_context }: SuggestRequest = await req.json()
+    const { type, language, date, today: clientToday, task_id, fitness_goal, available_minutes, recent_workouts, energy_level, buffer_minutes, existing_blocks, user_message, current_time, nutrition_context, workout_context }: SuggestRequest = await req.json()
     const allowed = await isProUser(supabase, user.id)
     if (!allowed) {
       return new Response(JSON.stringify({ error: 'AI access requires Pro' }), {
@@ -140,7 +147,7 @@ serve(async (req: Request) => {
 
     if (type === 'daily_plan') {
       // Günlük plan önerileri
-      const targetDate = date ?? new Date().toISOString().split('T')[0]!
+      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
 
       // Bugüne atanmış görevleri al
       const { data: tasks } = await supabase
@@ -298,7 +305,7 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
       })
     } else if (type === 'workout_plan') {
       // Bugün için antrenman planı önerileri
-      const targetDate = date ?? new Date().toISOString().split('T')[0]!
+      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
 
       // Son 7 günün antrenman geçmişi
       const { data: recentWorkoutData } = await supabase
@@ -517,8 +524,8 @@ ${catalogSummary}`,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     } else if (type === 'replan') {
-      const targetDate = date ?? new Date().toISOString().split('T')[0]!
-      const today = new Date().toISOString().split('T')[0]!
+      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
+      const today = clientToday ?? new Date().toISOString().split('T')[0]!
       const now = current_time ?? new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
       const planningCutoff = targetDate === today ? now : '00:00'
 

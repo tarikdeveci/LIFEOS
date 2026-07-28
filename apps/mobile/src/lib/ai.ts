@@ -1,3 +1,5 @@
+import { todayDate } from '@lifeos/shared'
+
 import { supabase } from './supabase'
 
 const BASE = process.env['EXPO_PUBLIC_SUPABASE_URL']!
@@ -18,7 +20,9 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
   const res = await fetch(`${BASE}/functions/v1/ai-suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    // Yerel bugün tarihi daima gönderilir: sunucu UTC'de çalışıyor ve
+    // toISOString() UTC+3'te gece yarısından sonra bir önceki günü veriyor.
+    body: JSON.stringify({ today: todayDate(), ...body }),
   })
   if (!res.ok) {
     if (res.status === 402 || res.status === 403) throw new Error('AI erisimi icin Pro abonelik gerekli')
