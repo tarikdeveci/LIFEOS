@@ -65,8 +65,12 @@ export interface ProPlan {
 }
 
 function periodOf(productId: string): ProPeriod | null {
-  if (productId === PRO_PRODUCT_IDS.monthly) return 'monthly'
-  if (productId === PRO_PRODUCT_IDS.annual) return 'annual'
+  // Play'de kimlik "PRO_1:aylik" gibi productId:basePlanId biçiminde gelir,
+  // App Store'da yalnızca "PRO_1". Base plan ekini atıp karşılaştırıyoruz —
+  // tam eşleşme aramak Android'de hiçbir planı tanımamaya yol açıyordu.
+  const base = productId.split(':')[0]
+  if (base === PRO_PRODUCT_IDS.monthly) return 'monthly'
+  if (base === PRO_PRODUCT_IDS.annual) return 'annual'
   return null
 }
 

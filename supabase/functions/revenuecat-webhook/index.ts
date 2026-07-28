@@ -36,7 +36,10 @@ function mapStore(store: string | undefined): string {
 // o yüzden null dönüp event'i atlıyoruz — sessizce yanlış veri yazmaktansa loglayalım.
 function planFromProductId(productId: string | undefined): 'pro_monthly' | 'pro_annual' | null {
   if (!productId) return null
-  const id = productId.toLowerCase()
+  // Play, ürün kimliğini "PRO_1:aylik" gibi productId:basePlanId biçiminde
+  // gönderebiliyor; App Store yalnızca "PRO_1". Tam eşleşme aramak Play
+  // satın almalarında null dönüp event'in sessizce atlanmasına yol açardı.
+  const id = productId.toLowerCase().split(':')[0]
   if (id === 'pro_1') return 'pro_monthly'
   if (id === 'pro_2') return 'pro_annual'
   return null
