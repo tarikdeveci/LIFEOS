@@ -14,6 +14,8 @@ const PUBLIC_ROUTES = [
   '/iptal-iade-kosullari',
   '/teslimat-kosullari',
   '/gizlilik-kvkk',
+  // Hesap silme rehberi (Play Veri Guvenligi formunda beyan edilen URL — oturumsuz erisilebilmeli)
+  '/hesap-silme',
 ]
 // Sadece oturumsuz kullanıcılara açık (oturum varsa dashboard'a yönlendir)
 const AUTH_ROUTES = ['/login', '/register']
