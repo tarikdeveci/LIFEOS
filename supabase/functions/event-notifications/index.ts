@@ -22,6 +22,24 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   )
 }
 
+// Geçersiz bir timezone Intl.DateTimeFormat'ta RangeError atar. Tek bir bozuk
+// kayıt yüzünden döngü patlarsa o koşuda HİÇBİR kullanıcı bildirim alamaz;
+// bu yüzden bilinmeyen değerler sessizce UTC'ye düşer.
+const tzCache = new Map<string, string>()
+function safeTimeZone(tz: string): string {
+  const cached = tzCache.get(tz)
+  if (cached) return cached
+  let resolved = 'UTC'
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date())
+    resolved = tz
+  } catch {
+    console.warn(`Gecersiz timezone: ${tz} — UTC kullaniliyor`)
+  }
+  tzCache.set(tz, resolved)
+  return resolved
+}
+
 // Verilen anın hedef saat diliminde UTC'ye göre kaç ms ötede olduğu.
 function tzOffsetMs(instant: Date, timeZone: string): number {
   const parts = Object.fromEntries(
@@ -53,7 +71,8 @@ function tzOffsetMs(instant: Date, timeZone: string): number {
 // Bunu gerçek UTC anına çevirir. Eskiden yerel saat doğrudan UTC sanılıyordu:
 // İstanbul'da 09:00'a kurulan blok 09:00 UTC = 12:00 yerel olarak hesaplanıyor,
 // hatırlatma tam 3 saat geç gidiyordu.
-function localWallTimeToInstant(dateStr: string, timeStr: string, timeZone: string): Date {
+function localWallTimeToInstant(dateStr: string, timeStr: string, rawTimeZone: string): Date {
+  const timeZone = safeTimeZone(rawTimeZone)
   const [h, m] = timeStr.split(':').map(Number)
   const [y, mo, d] = dateStr.split('-').map(Number) as [number, number, number]
   // Yerel duvar saatini önce "UTC'ymiş gibi" kur, sonra tz farkını düş.

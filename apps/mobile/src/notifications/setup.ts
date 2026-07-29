@@ -16,6 +16,37 @@ Notifications.setNotificationHandler({
 })
 
 /**
+ * Cihazın saat dilimini notification_preferences'a yazar.
+ *
+ * Bildirim saatleri sunucuda bu kolona göre hesaplanıyor. Kayıt anında alınan
+ * timezone yetmiyor: kullanıcı taşınabilir, seyahat edebilir, ya da kaydı bu
+ * alan hiç doldurulmadan önce açılmış olabilir. Her token kaydında tazeliyoruz.
+ */
+export async function syncTimezone(userId: string): Promise<void> {
+  let tz: string
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    return
+  }
+  if (!tz) return
+
+  const { data } = await supabase
+    .from('notification_preferences')
+    .select('timezone')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  // Gereksiz yazma yapma — sadece gerçekten değiştiyse güncelle
+  if (data?.timezone === tz) return
+
+  await supabase
+    .from('notification_preferences')
+    .update({ timezone: tz })
+    .eq('user_id', userId)
+}
+
+/**
  * Push notification izni iste ve token'ı Supabase'e kaydet
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
@@ -65,6 +96,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       { user_id: user.id, token, platform: Platform.OS as 'ios' | 'android' },
       { onConflict: 'user_id, platform' },
     )
+    await syncTimezone(user.id)
   }
 
   // Android kanal ayarla
