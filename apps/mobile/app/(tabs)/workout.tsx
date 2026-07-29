@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import { useWorkoutStore } from '@lifeos/shared'
@@ -23,11 +23,18 @@ const CATEGORY_LABELS: Record<string, string> = {
   strength: 'Kuvvet', cardio: 'Kardiyo', flexibility: 'Esneklik', mobility: 'Hareketlilik',
 }
 
+const HISTORY_STATUS: Record<string, { label: string; color: string }> = {
+  completed:   { label: '✓ Tamam',    color: palette.success },
+  in_progress: { label: '● Devam',    color: palette.workout },
+  planned:     { label: 'Planlandı',  color: palette.accent },
+  skipped:     { label: 'Atlandı',    color: palette.warning },
+}
+
 export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, addSet, removeSet } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -77,25 +84,29 @@ export default function WorkoutScreen() {
   }
 
   async function handleStart() {
-    if (!userId || !workoutName.trim()) return
+    if (!userId || starting || !workoutName.trim()) return
+    if (todayWorkout) { setShowStart(false); return }  // aynı güne ikinci antrenman açma
     setStarting(true)
     try {
-      await startWorkout(supabase, userId, { name: workoutName.trim(), date: todayStr })
+      await startWorkout(supabase, userId, { name: workoutName.trim(), date: todayStr, status: 'in_progress' })
       setWorkoutName(''); setShowStart(false)
+      await fetchHistory(supabase, userId)
     } catch { Alert.alert('Hata', 'Antrenman başlatılamadı') }
     finally { setStarting(false) }
   }
 
   async function handleAddSet() {
-    if (!todayWorkout || !selectedExercise) return
+    if (!todayWorkout || !selectedExercise || addingSet) return
     setAddingSet(true)
     try {
+      // set_number = bu egzersizin kaçıncı seti (toplam set sayısı değil)
+      const doneForExercise = todayWorkout.workout_sets?.filter((s) => s.exercise_id === selectedExercise.id).length ?? 0
       await addSet(supabase, {
         workout_id: todayWorkout.id,
         exercise_id: selectedExercise.id,
         reps: parseInt(setReps) || 10,
         weight_kg: setWeight ? parseFloat(setWeight) : undefined,
-        set_number: (todayWorkout.workout_sets?.length ?? 0) + 1,
+        set_number: doneForExercise + 1,
       })
       setSelectedExercise(null); setSetReps('10'); setSetWeight('')
     } catch { Alert.alert('Hata', 'Set eklenemedi') }
@@ -103,38 +114,83 @@ export default function WorkoutScreen() {
   }
 
   async function handleFinish() {
-    if (!todayWorkout) return
+    if (!todayWorkout || finishing) return
     setFinishing(true)
     try {
       await finishWorkout(supabase, todayWorkout.id, parseInt(duration) || 45)
       setShowFinish(false); setDuration('')
+      if (userId) await fetchHistory(supabase, userId)
     } catch { Alert.alert('Hata', 'Antrenman tamamlanamadı') }
     finally { setFinishing(false) }
   }
 
+  function handleDeleteWorkout() {
+    if (!todayWorkout) return
+    const setCount = todayWorkout.workout_sets?.length ?? 0
+    Alert.alert(
+      'Antrenmanı sil',
+      `"${todayWorkout.name ?? 'Bugünkü antrenman'}" ve ${setCount} set silinecek. Emin misin?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await removeWorkout(supabase, todayWorkout.id)
+                if (userId) await fetchHistory(supabase, userId)
+              } catch { Alert.alert('Hata', 'Antrenman silinemedi') }
+            })()
+          },
+        },
+      ],
+    )
+  }
+
   async function handleStartFromProgramDay(program: WorkoutProgram, dayId: string) {
-    if (!userId) return
+    if (!userId || starting) return  // çift dokunuş koruması
     const day = program.days?.find((d) => d.id === dayId)
     if (!day || day.is_rest) return
 
+    const dayExercises = [...(day.exercises ?? [])].sort((a, b) => a.order_index - b.order_index)
+    if (dayExercises.length === 0) {
+      Alert.alert('Bilgi', 'Bu günde tanımlı egzersiz yok')
+      return
+    }
+    if (todayWorkout?.status === 'completed') {
+      Alert.alert('Antrenman tamamlandı', 'Bugünkü antrenman zaten tamamlanmış durumda.')
+      return
+    }
+
     const dayName = day.day_name?.trim() || `Gün ${day.day_number}`
     setStarting(true)
+    setSelectedProgram(null)  // sheet'i hemen kapat — yükleme sürerken ikinci güne basılamasın
     try {
-      const workout = await startWorkout(supabase, userId, { name: `${program.name} · ${dayName}`, date: todayStr })
-      for (const ex of day.exercises ?? []) {
-        for (let setNo = 1; setNo <= ex.sets; setNo++) {
-          await addSet(supabase, {
-            workout_id: workout.id,
-            exercise_id: ex.exercise_id,
-            set_number: setNo,
-            reps: ex.reps ?? 10,
-          })
-        }
-      }
-      setSelectedProgram(null)
+      // Bugün için zaten bir antrenman varsa yenisini açma, setleri onun üstüne ekle.
+      const workout = todayWorkout ?? await startWorkout(supabase, userId, {
+        name: `${program.name} · ${dayName}`,
+        date: todayStr,
+        status: 'in_progress',
+      })
+
+      // Tek bir bulk insert — eskiden her set ayrı istekti (15+ round-trip)
+      const rows = dayExercises.flatMap((ex) => {
+        const setCount = Math.min(12, Math.max(1, ex.sets ?? 3))  // bozuk program datasına karşı sınır
+        return Array.from({ length: setCount }, (_, i) => ({
+          workout_id: workout.id,
+          exercise_id: ex.exercise_id,
+          set_number: i + 1,
+          reps: ex.reps ?? 10,
+          rest_seconds: ex.rest_seconds,
+        }))
+      })
+      await addSets(supabase, workout.id, rows)
+      await fetchHistory(supabase, userId)
       setTab('today')
     } catch {
       Alert.alert('Hata', 'Program günü başlatılamadı')
+      if (userId) await fetchTodayWorkout(supabase, userId, todayStr)
     } finally {
       setStarting(false)
     }
@@ -302,6 +358,9 @@ export default function WorkoutScreen() {
                         <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.success }}>{t.work_finish}</Text>
                       </TouchableOpacity>
                     )}
+                    <TouchableOpacity onPress={handleDeleteWorkout} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+                      <Ionicons name="trash-outline" size={14} color={colors.textMuted} />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -455,9 +514,9 @@ export default function WorkoutScreen() {
                         {w.duration_minutes ? ` · ${w.duration_minutes} dk` : ''}
                       </Text>
                     </View>
-                    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.md, backgroundColor: w.status === 'completed' ? `${palette.success}18` : `${palette.warning}18` }}>
-                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: w.status === 'completed' ? palette.success : palette.warning }}>
-                        {w.status === 'completed' ? '✓ Tamam' : 'Atlandı'}
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.md, backgroundColor: `${HISTORY_STATUS[w.status]?.color ?? palette.warning}18` }}>
+                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: HISTORY_STATUS[w.status]?.color ?? palette.warning }}>
+                        {HISTORY_STATUS[w.status]?.label ?? w.status}
                       </Text>
                     </View>
                   </View>
@@ -513,16 +572,28 @@ export default function WorkoutScreen() {
         scrollable
       >
         <View style={{ gap: spacing[2] }}>
-          {(selectedProgram?.days ?? []).filter((d) => !d.is_rest).map((day) => (
-            <TouchableOpacity
-              key={day.id}
-              onPress={() => void handleStartFromProgramDay(selectedProgram as WorkoutProgram, day.id)}
-              style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
-            >
-              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{day.day_name || `Gün ${day.day_number}`}</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{day.exercises?.length ?? 0} egzersiz</Text>
-            </TouchableOpacity>
-          ))}
+          {todayWorkout && todayWorkout.status !== 'completed' && (
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing[1] }}>
+              Bugün açık bir antrenman var — seçtiğin günün setleri onun üzerine eklenecek.
+            </Text>
+          )}
+          {(selectedProgram?.days ?? []).filter((d) => !d.is_rest).map((day) => {
+            const exCount = day.exercises?.length ?? 0
+            const setCount = (day.exercises ?? []).reduce((sum, ex) => sum + Math.min(12, Math.max(1, ex.sets ?? 3)), 0)
+            return (
+              <TouchableOpacity
+                key={day.id}
+                disabled={starting || exCount === 0}
+                onPress={() => void handleStartFromProgramDay(selectedProgram as WorkoutProgram, day.id)}
+                style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, opacity: starting || exCount === 0 ? 0.5 : 1 }}
+              >
+                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{day.day_name || `Gün ${day.day_number}`}</Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                  {exCount === 0 ? 'Egzersiz tanımlı değil' : `${exCount} egzersiz · ${setCount} set eklenecek`}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
         </View>
       </BottomSheet>
     </ScreenBackground>

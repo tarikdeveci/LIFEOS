@@ -72,14 +72,19 @@ export async function getWorkoutByDate(
   userId: string,
   date: string,
 ): Promise<Workout | null> {
+  // NOT: workouts tablosunda (user_id, date) unique değil. Eskiden `.maybeSingle()`
+  // kullanılıyordu ve aynı güne birden fazla kayıt düşmüşse tüm ekran hata veriyordu.
+  // En eski kaydı (asıl seans) alıp devam ediyoruz.
   const { data, error } = await supabase
     .from('workouts')
     .select('*, workout_sets(*, exercise:exercises(*, muscle_group:muscle_groups(*)))')
     .eq('user_id', userId)
     .eq('date', date)
-    .maybeSingle()
+    .order('created_at', { ascending: true })
+    .order('created_at', { referencedTable: 'workout_sets', ascending: true })
+    .limit(1)
   if (error) throw error
-  return data as Workout | null
+  return (data?.[0] ?? null) as Workout | null
 }
 
 export async function createWorkout(
@@ -144,6 +149,22 @@ export async function addWorkoutSet(
     .single()
   if (error) throw error
   return data as WorkoutSet
+}
+
+// Toplu set ekleme — program gününü başlatırken tek istekte insert eder.
+// Tek tek eklemek 15+ ardışık network round-trip demekti; kullanıcı beklerken
+// tekrar tuşa basıp setlerin katlanmasına yol açıyordu.
+export async function addWorkoutSets(
+  supabase: Supabase,
+  inputs: CreateWorkoutSetInput[],
+): Promise<WorkoutSet[]> {
+  if (inputs.length === 0) return []
+  const { data, error } = await supabase
+    .from('workout_sets')
+    .insert(inputs)
+    .select('*, exercise:exercises(*, muscle_group:muscle_groups(*))')
+  if (error) throw error
+  return data as WorkoutSet[]
 }
 
 export async function updateWorkoutSet(

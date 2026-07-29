@@ -20,6 +20,7 @@ import {
   updateWorkout,
   deleteWorkout,
   addWorkoutSet,
+  addWorkoutSets,
   updateWorkoutSet,
   deleteWorkoutSet,
   completeWorkout,
@@ -57,6 +58,7 @@ interface WorkoutState {
   skipWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
   removeWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
   addSet: (supabase: Supabase, input: CreateWorkoutSetInput) => Promise<WorkoutSet>
+  addSets: (supabase: Supabase, workoutId: string, inputs: CreateWorkoutSetInput[]) => Promise<WorkoutSet[]>
   updateSet: (supabase: Supabase, setId: string, updates: UpdateWorkoutSetInput) => Promise<void>
   removeSet: (supabase: Supabase, setId: string) => Promise<void>
   setWorkoutAiPlan: (supabase: Supabase, workoutId: string, plan: Workout['ai_plan']) => Promise<void>
@@ -144,7 +146,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   addSet: async (supabase, input) => {
     const newSet = await addWorkoutSet(supabase, input)
     set((state) => {
-      if (!state.todayWorkout) return state
+      // Set sadece ekranda açık olan antrenmana aitse listeye eklenir.
+      // Eskiden workout_id kontrolü yoktu: başka bir workout'a yazılan setler de
+      // todayWorkout'a birikiyor, sayaç gerçekte olmayan setlerle şişiyordu.
+      if (!state.todayWorkout || state.todayWorkout.id !== input.workout_id) return state
       return {
         todayWorkout: {
           ...state.todayWorkout,
@@ -153,6 +158,20 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }
     })
     return newSet
+  },
+
+  addSets: async (supabase, workoutId, inputs) => {
+    const created = await addWorkoutSets(supabase, inputs)
+    set((state) => {
+      if (!state.todayWorkout || state.todayWorkout.id !== workoutId) return state
+      return {
+        todayWorkout: {
+          ...state.todayWorkout,
+          workout_sets: [...(state.todayWorkout.workout_sets ?? []), ...created],
+        },
+      }
+    })
+    return created
   },
 
   updateSet: async (supabase, setId, updates) => {
