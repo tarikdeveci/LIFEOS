@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ScrollView, View, Text, TouchableOpacity, RefreshControl } from 'react-native'
 import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { useTaskStore, usePlanningStore, useNutritionStore } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'

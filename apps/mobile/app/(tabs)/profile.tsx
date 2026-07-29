@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
