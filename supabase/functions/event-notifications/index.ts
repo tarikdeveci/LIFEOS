@@ -22,23 +22,63 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   )
 }
 
-// HH:MM:SS formatındaki time_block saatini bugünün Date'ine çevirir
-function blockTimeToDate(dateStr: string, timeStr: string): Date {
+// Verilen anın hedef saat diliminde UTC'ye göre kaç ms ötede olduğu.
+function tzOffsetMs(instant: Date, timeZone: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(instant)
+      .map((p) => [p.type, p.value]),
+  )
+  const asIfUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  )
+  return asIfUtc - instant.getTime()
+}
+
+// time_blocks.date + start_time kullanıcının YEREL duvar saatidir.
+// Bunu gerçek UTC anına çevirir. Eskiden yerel saat doğrudan UTC sanılıyordu:
+// İstanbul'da 09:00'a kurulan blok 09:00 UTC = 12:00 yerel olarak hesaplanıyor,
+// hatırlatma tam 3 saat geç gidiyordu.
+function localWallTimeToInstant(dateStr: string, timeStr: string, timeZone: string): Date {
   const [h, m] = timeStr.split(':').map(Number)
-  const d = new Date(`${dateStr}T00:00:00Z`)
-  d.setUTCHours(h ?? 0, m ?? 0, 0, 0)
-  return d
+  const [y, mo, d] = dateStr.split('-').map(Number) as [number, number, number]
+  // Yerel duvar saatini önce "UTC'ymiş gibi" kur, sonra tz farkını düş.
+  const naive = Date.UTC(y, mo - 1, d, h ?? 0, m ?? 0, 0, 0)
+  // Tek geçiş çoğu durumda yeter; ikinci geçiş DST sınırındaki kaymayı düzeltir.
+  let instant = new Date(naive - tzOffsetMs(new Date(naive), timeZone))
+  instant = new Date(naive - tzOffsetMs(instant, timeZone))
+  return instant
+}
+
+function utcDateStr(instant: Date, offsetDays = 0): string {
+  return new Date(instant.getTime() + offsetDays * 86400_000).toISOString().slice(0, 10)
 }
 
 Deno.serve(async () => {
   const now = new Date()
-  const todayStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
 
-  // Bugünkü, bildirimi gönderilmemiş blokları çek
+  // Kullanıcılar farklı saat dilimlerinde olabilir; UTC "bugün" onların bugünüyle
+  // örtüşmeyebilir (İstanbul'da 01:00 iken UTC hâlâ dün). ±1 günlük pencere çekip
+  // asıl filtrelemeyi hesaplanan UTC anına göre yapıyoruz.
   const { data: blocks, error } = await supabase
     .from('time_blocks')
     .select('id, user_id, label, start_time, date, block_type')
-    .eq('date', todayStr)
+    .gte('date', utcDateStr(now, -1))
+    .lte('date', utcDateStr(now, 1))
     .is('notification_sent_at', null)
 
   if (error) {
@@ -54,7 +94,7 @@ Deno.serve(async () => {
   const [prefsResult, tokensResult] = await Promise.all([
     supabase
       .from('notification_preferences')
-      .select('user_id, block_reminder_enabled, block_reminder_minutes')
+      .select('user_id, block_reminder_enabled, block_reminder_minutes, timezone')
       .in('user_id', userIds),
     supabase
       .from('push_tokens')
@@ -83,17 +123,29 @@ Deno.serve(async () => {
     if (!prefs?.block_reminder_enabled) continue
 
     const reminderMinutes: number = prefs.block_reminder_minutes ?? 15
-    const blockStart = blockTimeToDate(block.date as string, block.start_time as string)
+    const tz = (prefs.timezone as string) || 'Europe/Istanbul'
+    const blockStart = localWallTimeToInstant(
+      block.date as string,
+      block.start_time as string,
+      tz,
+    )
     const notifyAt = new Date(blockStart.getTime() - reminderMinutes * 60 * 1000)
 
-    // ±2 dakika tolerans
-    if (Math.abs(notifyAt.getTime() - now.getTime()) > 2 * 60 * 1000) continue
+    // Cron 5 dakikada bir çalışıyor. Eski ±2 dakikalık pencere cron aralığının
+    // yarısından dardı: araya denk gelen hatırlatmalar hiç gönderilmiyordu.
+    // Artık "vakti gelmiş ve henüz gönderilmemiş" olan her şeyi alıyoruz;
+    // tekrarı notification_sent_at engelliyor. 10 dakikadan eskiler bayat sayılır.
+    const dueMs = now.getTime() - notifyAt.getTime()
+    if (dueMs < 0 || dueMs > 10 * 60 * 1000) continue
+
+    // Gerçek kalan süre — gecikmeli çalışmada "15 dakika kaldı" yazmasın
+    const minutesLeft = Math.max(0, Math.round((blockStart.getTime() - now.getTime()) / 60_000))
 
     const tokens = tokensByUser.get(uid) ?? []
     for (const token of tokens) {
       pushMessages.push({
         to: token,
-        title: `${reminderMinutes} dakika kaldı`,
+        title: minutesLeft > 0 ? `${minutesLeft} dakika kaldı` : 'Şimdi başlıyor',
         body: block.label as string,
         data: { blockId: block.id as string, type: 'block_reminder' },
         sound: 'default',
