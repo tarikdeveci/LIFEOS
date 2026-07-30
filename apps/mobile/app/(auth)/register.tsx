@@ -7,10 +7,12 @@ import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 export default function RegisterScreen() {
   const { colors } = useTheme()
+  const { t } = useLang()
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -57,7 +59,7 @@ export default function RegisterScreen() {
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Kayıt Ol</Text>
             <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>Temel bilgilerini gir</Text>
 
-            <Input label="Ad Soyad" value={displayName} onChangeText={setDisplayName} autoCapitalize="words" placeholder="Tarık Deveci" containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
+            <Input label={t.auth_full_name} value={displayName} onChangeText={setDisplayName} autoCapitalize="words" placeholder={t.auth_full_name_ph} containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
             <Input label="E-posta" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="ornek@email.com" containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
             <Input label="Şifre" value={password} onChangeText={setPassword} secureTextEntry placeholder="En az 8 karakter" containerStyle={{ marginBottom: spacing[5] }} onSubmitEditing={handleRegister} returnKeyType="done" />
 

@@ -1,27 +1,6 @@
 // Opsiyonel native modüller — expo prebuild + EAS Build sonrası kurulur.
 // Bu tipler eksik modüllerden gelen TypeScript hatalarını önler.
 
-declare module '@react-native-community/shared-preferences' {
-  const SharedGroupPreferences: {
-    setItem(key: string, value: string, groupName: string): Promise<void>
-    getItem(key: string, groupName: string): Promise<string | null>
-  }
-  export default SharedGroupPreferences
-}
-
-declare module 'react-native-widgetkit' {
-  export function reloadAllTimelines(): void
-  export function reloadTimelines(ofKind: string): void
-}
-
-declare module 'react-native-shared-preferences' {
-  const SharedPreferences: {
-    setItem(key: string, value: string): void
-    getItem(key: string, callback: (value: string | null) => void): void
-  }
-  export default SharedPreferences
-}
-
 declare module 'react-native-purchases' {
   interface CustomerInfo {
     entitlements: {

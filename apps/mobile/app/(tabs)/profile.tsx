@@ -9,6 +9,7 @@ import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
@@ -383,6 +384,9 @@ export default function ProfileScreen() {
             </View>
           </GlassCard>
         </TouchableOpacity>
+
+        {/* Sağlık */}
+        <HealthSettingsCard userId={userId} />
 
         {/* Language */}
         <GlassCard style={{ marginBottom: spacing[4] }}>

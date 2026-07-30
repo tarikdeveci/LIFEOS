@@ -22,8 +22,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
-      "buildNumber": "9",
+      "buildNumber": "10",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.tr.lifeos.app.widget"
+        ]
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Profil fotoğrafı için kamera erişimi gerekiyor.",
         "NSCalendarsUsageDescription": "Zaman bloklarını takvimden içe aktarmak için takvim erişimi gerekiyor.",
@@ -45,9 +50,16 @@
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR",
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_RESTING_HEART_RATE"
       ],
-      "versionCode": 16
+      "versionCode": 17
     },
     "plugins": [
       "expo-router",
@@ -68,6 +80,34 @@
           "mode": "production"
         }
       ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Adım, kalori, uyku ve nabız verilerini günlük özetinde göstermek için sağlık verilerine erişim gerekiyor.",
+          "NSHealthUpdateUsageDescription": "LifeOS sağlık verilerini yalnızca okur, hiçbir şey yazmaz.",
+          "background": false
+        }
+      ],
+      "react-native-health-connect",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "LifeOS",
+              "label": "LifeOS",
+              "description": "Aktif blok, kalan süre ve günün özeti",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      "@bacons/apple-targets",
       "expo-web-browser"
     ],
     "experiments": {

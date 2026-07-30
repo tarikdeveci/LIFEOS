@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useWidgetSync } from '@/src/hooks/useWidgetSync'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
@@ -102,6 +103,9 @@ function FloatingTabBar() {
 
 export default function TabsLayout() {
   const { t } = useLang()
+
+  // Store değişimlerini ana ekran/kilit ekranı widget'larına yansıt
+  useWidgetSync()
 
   return (
     <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>

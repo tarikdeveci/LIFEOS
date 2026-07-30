@@ -4,9 +4,12 @@ import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
 import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
+import { emptyWidgetSnapshot } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
 import { initRevenueCat } from '@/src/utils/purchases'
+import { useHealthStore } from '@/src/stores/healthStore'
+import { persistWidgetSnapshot } from '@/src/widgets/storage'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
@@ -40,6 +43,11 @@ function AppNavigator() {
       if (s?.user) {
         void registerForPushNotificationsAsync()
         void initRevenueCat(s.user.id)
+      }
+      // Çıkışta başka kullanıcının sağlık verisi ve widget'ı cihazda kalmasın
+      if (event === 'SIGNED_OUT') {
+        useHealthStore.getState().reset()
+        void persistWidgetSnapshot(emptyWidgetSnapshot())
       }
     })
 

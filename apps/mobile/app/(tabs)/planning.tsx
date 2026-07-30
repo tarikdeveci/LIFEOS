@@ -1,23 +1,25 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
-import { usePlanningStore } from '@lifeos/shared'
+import { usePlanningStore, getDayPosition } from '@lifeos/shared'
 import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { NowCard } from '@/src/components/planning/NowCard'
+import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useNow } from '@/src/hooks/useNow'
 import { useProGate } from '@/src/hooks/useProGate'
-import type { LocalCalendarEvent } from '@/src/utils/calendarSync'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
@@ -79,9 +81,14 @@ export default function PlanningScreen() {
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiChatMsgs, setAiChatMsgs] = useState<AiChatMsg[]>([])
+  const scrollRef = useRef<ScrollView | null>(null)
+  const nowAnchorY = useRef<number | null>(null)
 
   // Foreground'a her dönüşte takvimi senkronize et
   useCalendarAutoSync()
+
+  // 30sn'de bir tazelenir — aktif blok ve kalan süre canlı kalsın
+  const now = useNow()
 
   const todayStr = localIsoDate()
   const weekDays = getWeekDays(weekAnchor)
@@ -218,13 +225,31 @@ export default function PlanningScreen() {
     catch { Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi') }
   }
 
-  const dayBlocks = timeBlocks
-    .filter((b) => b.date === selectedDate)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+  const dayBlocks = useMemo(
+    () =>
+      timeBlocks
+        .filter((b) => b.date === selectedDate)
+        .sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    [timeBlocks, selectedDate],
+  )
+
+  const isViewingToday = selectedDate === todayStr
+  // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
+  const dayPosition = useMemo(
+    () => (isViewingToday ? getDayPosition(dayBlocks, now) : null),
+    [isViewingToday, dayBlocks, now],
+  )
+
+  function handleJumpToNow() {
+    const y = nowAnchorY.current
+    if (y === null) return
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing[5]), animated: true })
+  }
 
   return (
     <ScreenBackground>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
@@ -244,6 +269,16 @@ export default function PlanningScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Şu an neredeyiz — sadece bugün */}
+        {dayPosition && dayBlocks.length > 0 && (
+          <NowCard
+            position={dayPosition}
+            blockColors={BLOCK_COLORS}
+            blockLabels={BLOCK_LABELS}
+            onJumpToNow={handleJumpToNow}
+          />
+        )}
 
         {/* Energy level */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
@@ -310,16 +345,18 @@ export default function PlanningScreen() {
             </View>
           </View>
         ) : (
-          <View style={{ gap: spacing[3] }}>
-            {/* LifeOS zaman blokları */}
-            {dayBlocks.map((block) => (
-              <BlockRow key={block.id} block={block} onDelete={() => removeTimeBlock(supabase, block.id)} />
-            ))}
-            {/* Yerel takvim etkinlikleri (read-only) */}
-            {localEventsForDate.map((event) => (
-              <CalendarEventRow key={event.id} event={event} />
-            ))}
-          </View>
+          <DayBlockList
+            blocks={dayBlocks}
+            events={localEventsForDate}
+            isToday={isViewingToday}
+            now={now}
+            blockColors={BLOCK_COLORS}
+            blockLabels={BLOCK_LABELS}
+            onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
+            onNowAnchorLayout={(y) => {
+              nowAnchorY.current = y
+            }}
+          />
         )}
       </ScrollView>
 
@@ -382,59 +419,5 @@ export default function PlanningScreen() {
         </View>
       </BottomSheet>
     </ScreenBackground>
-  )
-}
-
-function BlockRow({ block, onDelete }: { block: TimeBlock; onDelete: () => void }) {
-  const { colors } = useTheme()
-  const color = BLOCK_COLORS[block.block_type as BlockType] ?? palette.accent
-  return (
-    <GlassCard padding={spacing[4]} noShadow>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
-        <View style={{ width: 3, height: 44, borderRadius: 2, backgroundColor: color }} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }} numberOfLines={1}>{block.label}</Text>
-          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}</Text>
-          <View style={{ marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: `${color}18` }}>
-            <Text style={{ fontSize: fontSize.xs, color, fontWeight: fontWeight.medium }}>{BLOCK_LABELS[block.block_type as BlockType] ?? block.block_type}</Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
-        </TouchableOpacity>
-      </View>
-    </GlassCard>
-  )
-}
-
-function CalendarEventRow({ event }: { event: LocalCalendarEvent }) {
-  const { colors } = useTheme()
-  const startTime = event.isAllDay
-    ? 'Tüm gün'
-    : new Date(event.startsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-  const endTime = event.isAllDay
-    ? ''
-    : ` – ${new Date(event.endsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
-
-  return (
-    <GlassCard padding={spacing[4]} noShadow style={{ opacity: 0.8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
-        <View style={{ width: 3, height: 44, borderRadius: 2, backgroundColor: colors.textSubtle }} />
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[1] }}>
-            <Ionicons name="calendar-outline" size={12} color={colors.textSubtle} />
-            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>
-              {event.title}
-            </Text>
-          </View>
-          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-            {startTime}{endTime}
-          </Text>
-          <View style={{ marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.glassInner }}>
-            <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontWeight: fontWeight.medium }}>Takvim</Text>
-          </View>
-        </View>
-      </View>
-    </GlassCard>
   )
 }
