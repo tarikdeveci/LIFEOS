@@ -22,7 +22,8 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
-      "buildNumber": "10",
+      "appleTeamId": "P2N597P2GX",
+      "buildNumber": "11",
       "googleServicesFile": "./GoogleService-Info.plist",
       "entitlements": {
         "com.apple.security.application-groups": [
