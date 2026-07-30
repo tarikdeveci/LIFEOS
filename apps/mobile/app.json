@@ -59,7 +59,7 @@
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_RESTING_HEART_RATE"
       ],
-      "versionCode": 17
+      "versionCode": 18
     },
     "plugins": [
       "expo-router",
@@ -108,7 +108,15 @@
         }
       ],
       "@bacons/apple-targets",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
