@@ -388,6 +388,28 @@ export default function ProfileScreen() {
         {/* Sağlık */}
         <HealthSettingsCard userId={userId} />
 
+        {/* API ve Otomasyon — web panelinde yönetilir */}
+        <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/settings')} activeOpacity={0.7}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
+                <Ionicons name="key-outline" size={18} color={palette.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                    {lang === 'tr' ? 'API ve Otomasyon' : 'API & Automation'}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    {lang === 'tr'
+                      ? 'Mail ve otomasyonlardan görev almak için anahtarları web panelinden oluştur'
+                      : 'Create keys in the web panel to receive tasks from email & automations'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         {/* Language */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>Dil / Language</Text>
@@ -513,6 +535,27 @@ export default function ProfileScreen() {
             </Text>
           </View>
           <Button label="Otomatik Hesapla" onPress={calculateNutritionTargets} variant="secondary" fullWidth />
+
+          {/* Kaynak / citation — App Store Guideline 1.4.1 (sağlık bilgisi kaynağı) */}
+          <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18 }}>
+              {lang === 'tr'
+                ? 'Kalori ve makro değerleri Harris-Benedict (BMR) denklemi ve Atwater faktörlerine göre tahmin edilir. Yalnızca bilgilendirme amaçlıdır, tıbbi tavsiye değildir.'
+                : 'Calorie and macro values are estimated using the Harris-Benedict (BMR) equation and Atwater factors. For informational purposes only, not medical advice.'}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing[4], marginTop: spacing[2] }}>
+              <TouchableOpacity onPress={() => void openExternalUrl('https://en.wikipedia.org/wiki/Harris%E2%80%93Benedict_equation')}>
+                <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
+                  {lang === 'tr' ? 'Kaynak: Harris-Benedict' : 'Source: Harris-Benedict'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void openExternalUrl('https://en.wikipedia.org/wiki/Atwater_system')}>
+                <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
+                  {lang === 'tr' ? 'Atwater faktörleri' : 'Atwater factors'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <Input label="Günlük Kalori (kcal)" value={nutrition.calories} onChangeText={(v) => setNutrition((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             <Input label="Protein (g)" value={nutrition.protein} onChangeText={(v) => setNutrition((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />

@@ -48,6 +48,8 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
   const block = snapshot.currentBlock
   const next = snapshot.nextBlock
   const accent = block ? BLOCK_COLORS[block.blockType] ?? COLORS.accent : COLORS.accent
+  // Snapshot yazıldığından beri geçen süreyi telafi et (iOS liveTiming ile simetrik)
+  const timing = block ? liveTiming(block, new Date()) : null
 
   return (
     <FlexWidget
@@ -78,14 +80,14 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
               style={{ fontSize: 12, color: COLORS.muted }}
             />
             <TextWidget
-              text={`   ${fmtRemaining(block.remainingMinutes)} kaldı`}
+              text={`   ${fmtRemaining(timing ? timing.remaining : block.remainingMinutes)} kaldı`}
               style={{ fontSize: 12, fontWeight: '600', color: accent }}
             />
           </FlexWidget>
           {/* İlerleme çubuğu */}
           <FlexWidget style={{ width: 'match_parent', height: 5, borderRadius: 3, backgroundColor: COLORS.border, marginTop: 8, overflow: 'hidden' }} clickAction="OPEN_APP">
             <FlexWidget
-              style={{ height: 5, borderRadius: 3, backgroundColor: accent, width: progressWidth(block.progress) }}
+              style={{ height: 5, borderRadius: 3, backgroundColor: accent, width: progressWidth(timing ? timing.progress : block.progress) }}
               clickAction="OPEN_APP"
             />
           </FlexWidget>
@@ -155,4 +157,35 @@ function progressWidth(progress: number): number {
   // Orta boy widget içeriği ~250dp; %0-100'ü buna ölçekle
   const usable = 250
   return Math.max(4, Math.round(Math.min(1, Math.max(0, progress)) * usable))
+}
+
+function parseHHMM(hhmm: string): number | null {
+  const parts = hhmm.split(':')
+  const h = Number(parts[0])
+  const m = Number(parts[1])
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+  return h * 60 + m
+}
+
+/**
+ * Snapshot yazıldığı andaki `remainingMinutes`/`progress` yerine, şu anki saate
+ * göre güncel değerleri hesaplar (iOS `liveTiming` fonksiyonunun JS karşılığı).
+ * Böylece widget handler her çağrıldığında (app güncellemesi veya periyodik
+ * update) donuk değil, akan bir kalan süre gösterir.
+ */
+function liveTiming(
+  block: NonNullable<WidgetSnapshot['currentBlock']>,
+  now: Date,
+): { remaining: number; progress: number } {
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const startMin = parseHHMM(block.startTime)
+  const rawEnd = parseHHMM(block.endTime)
+  if (startMin == null || rawEnd == null) {
+    return { remaining: block.remainingMinutes, progress: block.progress }
+  }
+  const endMin = rawEnd <= startMin ? 1440 : rawEnd // gece yarısını aşan blok
+  const duration = Math.max(1, endMin - startMin)
+  if (nowMin < startMin) return { remaining: duration, progress: 0 }
+  if (nowMin >= endMin) return { remaining: 0, progress: 1 }
+  return { remaining: endMin - nowMin, progress: (nowMin - startMin) / duration }
 }

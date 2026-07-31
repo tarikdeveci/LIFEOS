@@ -17,6 +17,7 @@ import { useLang } from '@/lib/contexts/LangContext'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 import Link from 'next/link'
+import ApiKeysSection from './ApiKeysSection'
 
 interface UserProfile {
   display_name: string
@@ -52,7 +53,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeSection, setActiveSection] = useState<'profile' | 'nutrition' | 'fitness' | 'notifications' | 'security'>('profile')
+  const [activeSection, setActiveSection] = useState<'profile' | 'nutrition' | 'fitness' | 'notifications' | 'security' | 'api'>('profile')
 
   const { lang, setLang, t } = useLang()
   const { theme, setTheme } = useTheme()
@@ -416,6 +417,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
     { key: 'fitness' as const, label: t.settings_fitness_tab },
     { key: 'notifications' as const, label: t.settings_notifications_tab },
     { key: 'security' as const, label: t.settings_security },
+    { key: 'api' as const, label: 'API' },
   ]
 
   return (
@@ -631,6 +633,20 @@ export default function SettingsClient({ userId }: { userId: string }) {
             </div>
           </div>
 
+          <p className="text-[11px] leading-relaxed text-muted">
+            {lang === 'tr'
+              ? 'Kalori ve makro hedefleri Harris-Benedict (BMR) denklemi ve Atwater faktörlerine göre tahmin edilir; yalnızca bilgilendirme amaçlıdır, tıbbi tavsiye değildir. '
+              : 'Calorie and macro targets are estimated using the Harris-Benedict (BMR) equation and Atwater factors; for informational purposes only, not medical advice. '}
+            <a
+              href="https://en.wikipedia.org/wiki/Harris%E2%80%93Benedict_equation"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline"
+            >
+              {lang === 'tr' ? 'Kaynak' : 'Source'}
+            </a>
+          </p>
+
           <div className="flex justify-end">
             <Button onClick={() => void handleSaveNutrition()} loading={saving}>
               {t.settings_save_nutrition}
@@ -762,6 +778,19 @@ export default function SettingsClient({ userId }: { userId: string }) {
                 >
                   {t.settings_apply_nutrition}
                 </button>
+                <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                  {lang === 'tr'
+                    ? 'Kalori ve makro değerleri Harris-Benedict (BMR) denklemi ve Atwater faktörlerine göre tahmin edilir; yalnızca bilgilendirme amaçlıdır, tıbbi tavsiye değildir. '
+                    : 'Calorie and macro values are estimated using the Harris-Benedict (BMR) equation and Atwater factors; for informational purposes only, not medical advice. '}
+                  <a
+                    href="https://en.wikipedia.org/wiki/Harris%E2%80%93Benedict_equation"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    {lang === 'tr' ? 'Kaynak' : 'Source'}
+                  </a>
+                </p>
               </div>
             )
           })()}
@@ -978,6 +1007,9 @@ export default function SettingsClient({ userId }: { userId: string }) {
           </div>
         </div>
       )}
+
+      {/* API anahtarları */}
+      {activeSection === 'api' && <ApiKeysSection />}
 
       {/* Abonelik */}
       <div className="glass rounded-2xl p-6 space-y-4">
