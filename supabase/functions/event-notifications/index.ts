@@ -160,7 +160,8 @@ Deno.serve(async () => {
     // Gerçek kalan süre — gecikmeli çalışmada "15 dakika kaldı" yazmasın
     const minutesLeft = Math.max(0, Math.round((blockStart.getTime() - now.getTime()) / 60_000))
 
-    const tokens = tokensByUser.get(uid) ?? []
+    // Aynı token birden fazla satırda duruyorsa hatırlatma iki kez gitmesin
+    const tokens = [...new Set(tokensByUser.get(uid) ?? [])]
     for (const token of tokens) {
       pushMessages.push({
         to: token,

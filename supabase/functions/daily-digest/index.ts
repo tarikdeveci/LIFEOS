@@ -192,17 +192,38 @@ Deno.serve(async () => {
 
     if (!tokens || tokens.length === 0) continue
 
+    // Aynı token birden fazla satırda duruyorsa aynı bildirim iki kez gitmesin
+    const uniqueTokens = [...new Set(tokens.map((t) => t.token as string))]
+
     const content = slot === 'morning'
       ? await buildMorning(uid, date, time)
       : slot === 'midday'
       ? await buildMidday(uid, date, time)
       : await buildEvening(uid, date)
 
+    // Gönderilecek bir şey yoksa kilidi de yazma — akşam özeti öğün girilmemişse
+    // null döner, o slot bugün hâlâ gönderilebilir sayılmalı.
     if (!content) continue
 
-    for (const { token } of tokens) {
+    // Idempotans kilidi: aynı kullanıcı + slot + yerel gün için tek gönderim.
+    // Cron aynı saat içinde iki kez tetiklenirse (yeniden deneme, elle test,
+    // ikinci bir zamanlayıcı) insert primary key'e çarpar ve bildirim
+    // tekrarlanmaz. Push'tan hemen önce yazılır ki yarış durumunda da tutsun.
+    const { error: lockError } = await supabase
+      .from('notification_log')
+      .insert({ user_id: uid, kind: `daily_digest_${slot}`, local_date: date })
+
+    if (lockError) {
+      // 23505 = unique_violation → bu slot bugün zaten gönderilmiş
+      if (lockError.code !== '23505') {
+        console.error(`notification_log insert failed for ${uid}/${slot}:`, lockError.message)
+      }
+      continue
+    }
+
+    for (const token of uniqueTokens) {
       pushMessages.push({
-        to: token as string,
+        to: token,
         title: content.title,
         body: content.body,
         data: { type: `daily_digest_${slot}` },
