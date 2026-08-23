@@ -23,7 +23,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
       "appleTeamId": "P2N597P2GX",
-      "buildNumber": "14",
+      "buildNumber": "17",
       "googleServicesFile": "./GoogleService-Info.plist",
       "entitlements": {
         "com.apple.security.application-groups": [
@@ -37,7 +37,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {

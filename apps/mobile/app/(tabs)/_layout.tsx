@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useWidgetSync } from '@/src/hooks/useWidgetSync'
+import { useBlockLiveActivity } from '@/src/hooks/useBlockLiveActivity'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
@@ -106,6 +107,7 @@ export default function TabsLayout() {
 
   // Store değişimlerini ana ekran/kilit ekranı widget'larına yansıt
   useWidgetSync()
+  useBlockLiveActivity()
 
   return (
     <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
