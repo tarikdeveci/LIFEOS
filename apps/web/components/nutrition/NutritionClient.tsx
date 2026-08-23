@@ -7,8 +7,7 @@ import {
   todayDate, relativeDateLabel, shiftIsoDate,
   useNutritionStore, useWorkoutStore,
   compareMacrosToTarget, APP_DEFAULTS,
-  MEAL_TYPE_LABELS, MEAL_TYPE_ICONS,
-} from '@lifeos/shared'
+  MEAL_TYPE_LABELS, MEAL_TYPE_ICONS, describeAiError } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
 import { MacroDashboard } from '@/components/nutrition/MacroProgress'
 import { MealCard } from '@/components/nutrition/MealCard'
@@ -133,8 +132,10 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
       if (error) throw error
       const reply = (data as { message: string }).message
       setChatMessages((p) => [...p, { role: 'assistant', text: reply }])
-    } catch {
-      setChatMessages((p) => [...p, { role: 'assistant', text: 'Bir hata oluştu, tekrar dene.' }])
+    } catch (err) {
+      const info = await describeAiError(err, lang)
+      if (info.detail) console.error('ai-suggest nutrition:', info.status, info.detail)
+      setChatMessages((p) => [...p, { role: 'assistant', text: info.message }])
     } finally {
       setChatLoading(false)
     }

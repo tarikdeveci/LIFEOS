@@ -9,8 +9,7 @@ import {
   usePlanningStore,
   useTaskStore,
   BLOCK_TYPE_LABELS, BLOCK_TYPE_COLORS, APP_DEFAULTS,
-  type BlockType,
-} from '@lifeos/shared'
+  type BlockType, describeAiError } from '@lifeos/shared'
 import { updateTaskDetails, assignTaskToDate } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
@@ -254,8 +253,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
       ) ?? []
       setChatMessages((p) => [...p, { role: 'assistant', text: result.message, actions }])
       if (actions.length > 0) setPendingActions(actions)
-    } catch {
-      setChatMessages((p) => [...p, { role: 'assistant', text: 'Bir hata oluştu, tekrar dene.' }])
+    } catch (err) {
+      const info = await describeAiError(err, lang)
+      if (info.detail) console.error('ai-suggest replan:', info.status, info.detail)
+      setChatMessages((p) => [...p, { role: 'assistant', text: info.message }])
     } finally { setChatLoading(false) }
   }, [chatInput, chatLoading, date, timeBlocks])
 

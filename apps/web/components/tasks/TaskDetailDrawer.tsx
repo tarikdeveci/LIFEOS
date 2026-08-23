@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import type { Task, TaskStatus, WsjfScores, UpdateTaskInput, ChecklistItem } from '@lifeos/shared'
-import { TASK_STATUS_LABELS } from '@lifeos/shared'
+import { TASK_STATUS_LABELS, describeAiError } from '@lifeos/shared'
 import { Sheet } from '@/components/ui/Sheet'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
@@ -138,8 +138,10 @@ export function TaskDetailDrawer({
           })
         }
       }
-    } catch {
-      setAiReasoning('AI önerisi alınamadı.')
+    } catch (err) {
+      const info = await describeAiError(err)
+      if (info.detail) console.error('ai-suggest task_priority:', info.status, info.detail)
+      setAiReasoning(info.message)
     } finally {
       setAiLoading(false)
     }

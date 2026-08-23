@@ -7,8 +7,7 @@ import {
   WORKOUT_CATEGORY_LABELS, WORKOUT_CATEGORY_COLORS,
   WORKOUT_STATUS_LABELS, WORKOUT_STATUS_COLORS,
   BODY_REGION_LABELS,
-  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan, type WorkoutProgram as CloudWorkoutProgram,
-} from '@lifeos/shared'
+  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan, type WorkoutProgram as CloudWorkoutProgram, describeAiError } from '@lifeos/shared'
 import { estimateCalories } from '@lifeos/shared/supabase'
 import type { Exercise, WorkoutSet } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
@@ -112,7 +111,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
   } = useWorkoutStore()
 
   const { showToast } = useToast()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { programs: localPrograms, saveProgram, deleteProgram } = useWorkoutPrograms(userId)
 
   const FITNESS_GOALS = [
@@ -248,8 +247,10 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
         await setWorkoutAiPlan(supabase, todayWorkout.id, suggestions)
         showToast('AI antrenman plani guncellendi', 'success')
       }
-    } catch {
-      showToast('AI onerisi alinamadi', 'error')
+    } catch (err) {
+      const info = await describeAiError(err, lang)
+      if (info.detail) console.error('ai-suggest workout_plan:', info.status, info.detail)
+      showToast(info.message, 'error')
     } finally {
       setAiLoading(false)
     }
@@ -296,9 +297,11 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
       if (result.program) {
         applyAssistantProgram(result.program)
       }
-    } catch {
-      setProgramChat((current) => [...current, { role: 'assistant', text: 'Program asistani su anda yanit veremedi.' }])
-      showToast('AI program asistani kullanilamadi', 'error')
+    } catch (err) {
+      const info = await describeAiError(err, lang)
+      if (info.detail) console.error('ai-suggest workout_program_chat:', info.status, info.detail)
+      setProgramChat((current) => [...current, { role: 'assistant', text: info.message }])
+      showToast(info.message, 'error')
     } finally {
       setAiProgLoading(false)
     }
