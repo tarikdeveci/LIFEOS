@@ -22,16 +22,34 @@ struct Provider: TimelineProvider {
         let snapshot = SnapshotStore.load() ?? .placeholder
         let now = Date()
 
-        // Kalan süre/ilerlemeyi canlı tutmak için önümüzdeki saat boyunca
-        // her 15 dakikaya bir giriş üret. Uygulama yazınca WidgetCenter zaten
-        // anında tazeler.
-        var entries: [LifeOSEntry] = []
-        for offset in stride(from: 0, through: 60, by: 15) {
-            if let entryDate = Calendar.current.date(byAdding: .minute, value: offset, to: now) {
-                entries.append(LifeOSEntry(date: entryDate, snapshot: snapshot))
-            }
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: now)
+        let nowMinute = cal.dateComponents([.hour, .minute], from: now)
+        let nowMin = (nowMinute.hour ?? 0) * 60 + (nowMinute.minute ?? 0)
+
+        // Uygulama arka planda yazamadığı için widget'ın kendi kendine akması
+        // gerekiyor: günün geri kalanı için 10 dakikada bir + her blok
+        // sınırında bir giriş üretiyoruz. Böylece blok geçişleri, kalan süre ve
+        // "sıradaki" bilgisi uygulama hiç açılmasa da doğru ilerler.
+        var minutes: Set<Int> = [nowMin]
+        var m = ((nowMin / 10) + 1) * 10
+        while m < 1440 && minutes.count < 90 {
+            minutes.insert(m)
+            m += 10
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        for boundary in snapshot.boundaryMinutes where boundary > nowMin {
+            minutes.insert(boundary)
+        }
+
+        var entries: [LifeOSEntry] = minutes.sorted().compactMap { minute in
+            guard let date = cal.date(byAdding: .minute, value: minute, to: startOfDay) else { return nil }
+            return LifeOSEntry(date: max(date, now), snapshot: snapshot)
+        }
+        if entries.isEmpty { entries = [LifeOSEntry(date: now, snapshot: snapshot)] }
+
+        // Gece yarısında yeni gün başlar: snapshot bayatlar, o an tazele.
+        let nextMidnight = cal.date(byAdding: .day, value: 1, to: startOfDay) ?? now.addingTimeInterval(3600)
+        completion(Timeline(entries: entries, policy: .after(nextMidnight)))
     }
 }
 
@@ -72,9 +90,9 @@ struct SmallHomeView: View {
     let entry: LifeOSEntry
     var body: some View {
         let s = entry.snapshot
+        let r = s.resolve(now: entry.date)
         VStack(alignment: .leading, spacing: 6) {
-            if let block = s.currentBlock {
-                let timing = liveTiming(for: block, now: entry.date)
+            if let block = r.current {
                 let color = blockColor(block.blockType)
                 HStack(spacing: 5) {
                     NowBadge(color: color)
@@ -84,20 +102,20 @@ struct SmallHomeView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(2)
-                Text("\(formatRemaining(timing.remaining)) kaldı")
+                Text("\(formatRemaining(r.remaining)) kaldı")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(color)
-                ProgressBar(progress: timing.progress, color: color)
+                ProgressBar(progress: r.progress, color: color)
                 Spacer(minLength: 0)
                 Text("\(s.startTimeText(block))")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
             } else {
-                Text(s.dayOver ? "Plan tamam" : "Boş zaman")
+                Text(r.stale ? "Plan yok" : (r.dayOver ? "Plan tamam" : "Boş zaman"))
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
-                if let next = s.nextBlock {
-                    Text("Sıradaki \(formatRemaining(Int(next.minutesUntilStart))) sonra")
+                if let next = r.next {
+                    Text("\(next.label) · \(formatRemaining(r.minutesUntilStart)) sonra")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .lineLimit(2)
@@ -121,10 +139,10 @@ struct MediumHomeView: View {
     let entry: LifeOSEntry
     var body: some View {
         let s = entry.snapshot
+        let r = s.resolve(now: entry.date)
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                if let block = s.currentBlock {
-                    let timing = liveTiming(for: block, now: entry.date)
+                if let block = r.current {
                     let color = blockColor(block.blockType)
                     HStack(spacing: 6) {
                         NowBadge(color: color)
@@ -136,17 +154,17 @@ struct MediumHomeView: View {
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
-                    Text("\(formatRemaining(timing.remaining)) kaldı")
+                    Text("\(formatRemaining(r.remaining)) kaldı")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(color)
-                    ProgressBar(progress: timing.progress, color: color)
+                    ProgressBar(progress: r.progress, color: color)
                 } else {
-                    Text(s.dayOver ? "Bugünün planı tamam" : "Şu an boş zaman")
+                    Text(r.stale ? "Bugün için plan yok" : (r.dayOver ? "Bugünün planı tamam" : "Şu an boş zaman"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
                 }
                 Spacer(minLength: 4)
-                if let next = s.nextBlock {
+                if let next = r.next {
                     HStack(spacing: 5) {
                         Circle().fill(blockColor(next.blockType)).frame(width: 6, height: 6)
                         Text("Sıradaki: \(next.label)")
@@ -216,23 +234,23 @@ struct AccessoryRectView: View {
     let entry: LifeOSEntry
     var body: some View {
         let s = entry.snapshot
+        let r = s.resolve(now: entry.date)
         VStack(alignment: .leading, spacing: 2) {
-            if let block = s.currentBlock {
-                let timing = liveTiming(for: block, now: entry.date)
+            if let block = r.current {
                 HStack(spacing: 4) {
                     Image(systemName: "circle.fill").font(.system(size: 7))
                     Text(block.label).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 }
-                Text("\(formatRemaining(timing.remaining)) kaldı · \(block.endTime)")
+                Text("\(formatRemaining(r.remaining)) kaldı · \(block.endTime)")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
-            } else if let next = s.nextBlock {
+            } else if let next = r.next {
                 Text("Sıradaki").font(.system(size: 11)).foregroundColor(.secondary)
                 Text(next.label).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text("\(next.startTime) · \(formatRemaining(Int(next.minutesUntilStart))) sonra")
+                Text("\(next.startTime) · \(formatRemaining(r.minutesUntilStart)) sonra")
                     .font(.system(size: 12)).foregroundColor(.secondary)
             } else {
-                Text(s.dayOver ? "Plan tamam" : "Boş zaman")
+                Text(r.stale ? "Plan yok" : (r.dayOver ? "Plan tamam" : "Boş zaman"))
                     .font(.system(size: 14, weight: .semibold))
                 Text("\(s.pendingTasks) görev bekliyor")
                     .font(.system(size: 12)).foregroundColor(.secondary)
@@ -341,5 +359,7 @@ struct LifeOSWidgetBundle: WidgetBundle {
     var body: some Widget {
         HomeWidget()
         LockWidget()
+        // Aktif blok için canlı bildirim (kilit ekranı + Dynamic Island)
+        LifeOSLiveActivity()
     }
 }

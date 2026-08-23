@@ -12,6 +12,7 @@
 
 import { FlexWidget, TextWidget } from 'react-native-android-widget'
 import type { HexColor } from 'react-native-android-widget'
+import { resolveWidgetNow } from '@lifeos/shared'
 import type { WidgetSnapshot } from '@lifeos/shared'
 
 const COLORS = {
@@ -45,11 +46,12 @@ function fmtRemaining(minutes: number): string {
 }
 
 export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
-  const block = snapshot.currentBlock
-  const next = snapshot.nextBlock
+  // Aktif/sıradaki bloğu snapshot'taki donmuş alanlardan değil, ŞU ANA göre
+  // yeniden seç. Uygulama kapalıyken de blok geçişleri doğru görünür.
+  const state = resolveWidgetNow(snapshot, new Date())
+  const block = state.currentBlock
+  const next = state.nextBlock
   const accent = block ? BLOCK_COLORS[block.blockType] ?? COLORS.accent : COLORS.accent
-  // Snapshot yazıldığından beri geçen süreyi telafi et (iOS liveTiming ile simetrik)
-  const timing = block ? liveTiming(block, new Date()) : null
 
   return (
     <FlexWidget
@@ -80,14 +82,14 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
               style={{ fontSize: 12, color: COLORS.muted }}
             />
             <TextWidget
-              text={`   ${fmtRemaining(timing ? timing.remaining : block.remainingMinutes)} kaldı`}
+              text={`   ${fmtRemaining(state.remainingMinutes)} kaldı`}
               style={{ fontSize: 12, fontWeight: '600', color: accent }}
             />
           </FlexWidget>
           {/* İlerleme çubuğu */}
           <FlexWidget style={{ width: 'match_parent', height: 5, borderRadius: 3, backgroundColor: COLORS.border, marginTop: 8, overflow: 'hidden' }} clickAction="OPEN_APP">
             <FlexWidget
-              style={{ height: 5, borderRadius: 3, backgroundColor: accent, width: progressWidth(timing ? timing.progress : block.progress) }}
+              style={{ height: 5, borderRadius: 3, backgroundColor: accent, width: progressWidth(state.progress) }}
               clickAction="OPEN_APP"
             />
           </FlexWidget>
@@ -95,12 +97,12 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
       ) : (
         <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }} clickAction="OPEN_APP">
           <TextWidget
-            text={snapshot.dayOver ? 'Bugünün planı tamam' : 'Şu an boş zaman'}
+            text={state.dayOver ? 'Bugünün planı tamam' : 'Şu an boş zaman'}
             style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}
           />
           {next ? (
             <TextWidget
-              text={`Sıradaki: ${truncate(next.label, 18)} · ${fmtRemaining(next.minutesUntilStart)} sonra`}
+              text={`Sıradaki: ${truncate(next.label, 18)} · ${fmtRemaining(state.minutesUntilStart)} sonra`}
               style={{ fontSize: 12, color: COLORS.muted, marginTop: 4 }}
             />
           ) : (
@@ -159,33 +161,4 @@ function progressWidth(progress: number): number {
   return Math.max(4, Math.round(Math.min(1, Math.max(0, progress)) * usable))
 }
 
-function parseHHMM(hhmm: string): number | null {
-  const parts = hhmm.split(':')
-  const h = Number(parts[0])
-  const m = Number(parts[1])
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null
-  return h * 60 + m
-}
 
-/**
- * Snapshot yazıldığı andaki `remainingMinutes`/`progress` yerine, şu anki saate
- * göre güncel değerleri hesaplar (iOS `liveTiming` fonksiyonunun JS karşılığı).
- * Böylece widget handler her çağrıldığında (app güncellemesi veya periyodik
- * update) donuk değil, akan bir kalan süre gösterir.
- */
-function liveTiming(
-  block: NonNullable<WidgetSnapshot['currentBlock']>,
-  now: Date,
-): { remaining: number; progress: number } {
-  const nowMin = now.getHours() * 60 + now.getMinutes()
-  const startMin = parseHHMM(block.startTime)
-  const rawEnd = parseHHMM(block.endTime)
-  if (startMin == null || rawEnd == null) {
-    return { remaining: block.remainingMinutes, progress: block.progress }
-  }
-  const endMin = rawEnd <= startMin ? 1440 : rawEnd // gece yarısını aşan blok
-  const duration = Math.max(1, endMin - startMin)
-  if (nowMin < startMin) return { remaining: duration, progress: 0 }
-  if (nowMin >= endMin) return { remaining: 0, progress: 1 }
-  return { remaining: endMin - nowMin, progress: (nowMin - startMin) / duration }
-}

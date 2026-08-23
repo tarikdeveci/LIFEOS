@@ -32,6 +32,9 @@ struct WidgetSnapshot: Codable {
     let date: String
     let currentBlock: WidgetBlock?
     let nextBlock: WidgetBlock?
+    /// Günün tüm blokları. Eski snapshot'larda yok (nil) — o zaman donmuş
+    /// currentBlock/nextBlock alanlarına düşülür.
+    let blocks: [WidgetBlock]?
     let dayOver: Bool
     let pendingTasks: Int
     let doneTasks: Int
@@ -61,6 +64,7 @@ struct WidgetSnapshot: Codable {
                 remainingMinutes: 45,
                 minutesUntilStart: 120
             ),
+            blocks: nil,
             dayOver: false,
             pendingTasks: 3,
             doneTasks: 2,
@@ -104,24 +108,99 @@ func minutesOfDay(_ hhmm: String) -> Int? {
     return h * 60 + m
 }
 
-// Aktif blok için, snapshot yazıldığından beri geçen süreyi telafi ederek
-// güncel kalan dakika ve ilerlemeyi hesaplar. Böylece uygulama yazmasa da
-// widget saat başı tazelenince doğru kalır.
-func liveTiming(for block: WidgetBlock, now: Date) -> (remaining: Int, progress: Double) {
-    let cal = Calendar.current
-    let comps = cal.dateComponents([.hour, .minute], from: now)
-    let nowMin = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
 
-    guard let startMin = minutesOfDay(block.startTime), let rawEnd = minutesOfDay(block.endTime) else {
-        return (Int(block.remainingMinutes), block.progress)
+// MARK: - "Şu an" çözümlemesi
+
+/// Snapshot + bir an → o ana ait blok durumu.
+struct ResolvedNow {
+    let current: WidgetBlock?
+    let next: WidgetBlock?
+    let dayOver: Bool
+    let progress: Double
+    let remaining: Int
+    let minutesUntilStart: Int
+    /// Snapshot başka bir güne aitse true — bayat plan gösterme
+    let stale: Bool
+}
+
+private let snapshotDayFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd"
+    return f
+}()
+
+extension WidgetSnapshot {
+    /// Aktif ve sıradaki bloğu `now`'a göre YENİDEN seçer.
+    ///
+    /// `currentBlock`/`nextBlock` snapshot yazıldığı ana donmuştur; uygulama
+    /// kapalıyken blok geçişi olmaz ve widget bitmiş bloğu göstermeye devam
+    /// eder. Gün listesi (`blocks`) varsa widget kendi saatinden hesaplar.
+    func resolve(now: Date) -> ResolvedNow {
+        if !date.isEmpty && date != snapshotDayFormatter.string(from: now) {
+            return ResolvedNow(current: nil, next: nil, dayOver: false,
+                               progress: 0, remaining: 0, minutesUntilStart: 0, stale: true)
+        }
+
+        guard let all = blocks, !all.isEmpty else {
+            // Eski snapshot — donmuş alanlarla idare et
+            return ResolvedNow(
+                current: currentBlock,
+                next: nextBlock,
+                dayOver: dayOver,
+                progress: currentBlock?.progress ?? 0,
+                remaining: Int(currentBlock?.remainingMinutes ?? 0),
+                minutesUntilStart: Int(nextBlock?.minutesUntilStart ?? 0),
+                stale: false
+            )
+        }
+
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: now)
+        let nowMin = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+
+        var current: WidgetBlock?
+        var next: WidgetBlock?
+        var progress: Double = 0
+        var remaining = 0
+        var untilStart = 0
+
+        for block in all {
+            guard let start = minutesOfDay(block.startTime), let rawEnd = minutesOfDay(block.endTime) else { continue }
+            // Gece yarısını aşan blok (23:30–00:15) gün sonuna kadar sayılır
+            let end = rawEnd <= start ? 1440 : rawEnd
+
+            if nowMin >= start && nowMin < end {
+                current = block
+                let duration = max(1, end - start)
+                progress = Double(nowMin - start) / Double(duration)
+                remaining = end - nowMin
+            } else if nowMin < start && next == nil {
+                next = block
+                untilStart = start - nowMin
+            }
+        }
+
+        return ResolvedNow(
+            current: current,
+            next: next,
+            dayOver: current == nil && next == nil,
+            progress: progress,
+            remaining: remaining,
+            minutesUntilStart: untilStart,
+            stale: false
+        )
     }
-    let endMin = rawEnd <= startMin ? 1440 : rawEnd
-    let duration = max(1, endMin - startMin)
 
-    if nowMin < startMin { return (duration, 0) }
-    if nowMin >= endMin { return (0, 1) }
-    let elapsed = nowMin - startMin
-    return (endMin - nowMin, Double(elapsed) / Double(duration))
+    /// Bugünün blok sınırları (başlangıç/bitiş dakikaları), sıralı.
+    var boundaryMinutes: [Int] {
+        guard let all = blocks else { return [] }
+        var out: Set<Int> = []
+        for block in all {
+            if let s = minutesOfDay(block.startTime) { out.insert(s) }
+            if let e = minutesOfDay(block.endTime) { out.insert(e) }
+        }
+        return out.sorted()
+    }
 }
 
 func formatRemaining(_ minutes: Int) -> String {
