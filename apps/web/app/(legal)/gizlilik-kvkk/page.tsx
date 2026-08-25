@@ -28,6 +28,7 @@ export default function GizlilikKvkkPage() {
         <ul className="ml-4 list-disc space-y-1">
           <li><strong className="text-white/80">Kimlik & İletişim:</strong> ad-soyad, e-posta adresi</li>
           <li><strong className="text-white/80">Kullanım verileri:</strong> görevler, planlar, beslenme ve antrenman kayıtları</li>
+          <li><strong className="text-white/80">Sağlık ve fitness verileri:</strong> açık izninizle Apple Health veya Health Connect üzerinden alınan adım, mesafe, aktif enerji, egzersiz, antrenman, uyku ve nabız özetleri</li>
           <li><strong className="text-white/80">İşlem verileri:</strong> abonelik durumu, ödeme işlem kayıtları</li>
           <li><strong className="text-white/80">Teknik veriler:</strong> IP adresi, cihaz ve tarayıcı bilgileri, çerezler</li>
         </ul>
@@ -54,7 +55,20 @@ export default function GizlilikKvkkPage() {
         </p>
       </Section>
 
-      <Section title="5. Çerezler (Cookies)">
+      <Section title="5. Apple Health ve Health Connect Verileri">
+        <p>
+          LifeOS, sağlık verilerine yalnızca siz bağlantıyı başlattığınızda ve sistem izin ekranından onay verdiğinizde
+          erişir. Erişim salt okunurdur; LifeOS, Apple Health veya Health Connect üzerine sağlık verisi yazmaz.
+        </p>
+        <p>
+          Ham sağlık örnekleri cihazınızda kalır. LifeOS; günlük sağlık özeti, hedef ilerlemesi, aktiviteye göre kalori
+          bütçesi, haftalık içgörüler ve toparlanma sinyalleri sunabilmek için yalnızca günlük toplulaştırılmış değerleri
+          hesabınızla ilişkili olarak Supabase altyapısında saklar. Bu veriler reklam, pazarlama veya veri satışı amacıyla
+          kullanılmaz ve hesabınızı sildiğinizde diğer hesap verilerinizle birlikte silinir.
+        </p>
+      </Section>
+
+      <Section title="6. Çerezler (Cookies)">
         <p>
           Site, oturum yönetimi ve temel işlevsellik için gerekli çerezleri kullanır. Tarayıcı
           ayarlarınızdan çerezleri yönetebilirsiniz; ancak zorunlu çerezler devre dışı bırakıldığında
@@ -62,7 +76,7 @@ export default function GizlilikKvkkPage() {
         </p>
       </Section>
 
-      <Section title="6. Haklarınız (KVKK m.11)">
+      <Section title="7. Haklarınız (KVKK m.11)">
         <p>Kişisel verilerinize ilişkin olarak aşağıdaki haklara sahipsiniz:</p>
         <ul className="ml-4 list-disc space-y-1">
           <li>Verilerinizin işlenip işlenmediğini öğrenme ve bilgi talep etme</li>
@@ -76,7 +90,7 @@ export default function GizlilikKvkkPage() {
           30 gün içinde sonuçlandırılır.
         </p>
       </Section>
-      <Section title="7. Hesap ve Veri Silme">
+      <Section title="8. Hesap ve Veri Silme">
         <p>
           LifeOS hesabınızı mobil uygulamadaki <strong className="text-white/80">Profil → Hesap ve Gizlilik</strong>{' '}
           bölümünden kalıcı olarak silebilirsiniz. Uygulamaya erişemiyorsanız{' '}

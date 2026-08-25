@@ -337,6 +337,9 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </GlassCard>
 
+        {/* Apple Health / Health Connect — izin öncesinde de görünür */}
+        <HealthSettingsCard userId={userId} />
+
         {/* Physical info */}
         <SectionCard title={lang === 'tr' ? 'Fiziksel Bilgiler' : 'Physical Info'} icon="body-outline" onEdit={() => setShowPhysical(true)} style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
@@ -384,9 +387,6 @@ export default function ProfileScreen() {
             </View>
           </GlassCard>
         </TouchableOpacity>
-
-        {/* Sağlık */}
-        <HealthSettingsCard userId={userId} />
 
         {/* API ve Otomasyon — web panelinde yönetilir */}
         <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/settings')} activeOpacity={0.7}>

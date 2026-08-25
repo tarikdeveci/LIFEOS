@@ -1,8 +1,11 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { Platform, View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import {
+  activityLevelFromSteps,
+  energyFromSleep,
   goalProgress,
   recoverySignal,
+  summarizeHealthDays,
   formatSteps,
   formatDistance,
   formatSleepDuration,
@@ -30,25 +33,45 @@ interface Props {
 export function HealthCard({ today, range, settings, isSyncing, onSync }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
+  const providerName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'
 
   const steps = today?.steps ?? null
   const stepProgress = goalProgress(steps, settings.step_goal)
   const sleepProgress = goalProgress(today?.sleep_minutes ?? null, settings.sleep_goal_minutes)
   const recovery = recoverySignal(range, todayDate())
+  const suggestedEnergy = energyFromSleep(today?.sleep_minutes ?? null, settings.sleep_goal_minutes)
+  const weekly = summarizeHealthDays(range)
+  const observedActivity = activityLevelFromSteps(weekly.averageSteps)
+  const activityLabel = observedActivity
+    ? {
+        sedentary: t.activity_sedentary,
+        lightly_active: t.activity_lightly,
+        moderately_active: t.activity_moderately,
+        very_active: t.activity_very,
+        extra_active: t.activity_extra,
+      }[observedActivity]
+    : null
 
   const hasAnyData =
     today &&
     (today.steps !== null ||
+      today.distance_m !== null ||
       today.active_energy_kcal !== null ||
+      today.exercise_minutes !== null ||
+      today.workout_count !== null ||
       today.sleep_minutes !== null ||
-      today.resting_heart_rate !== null)
+      today.resting_heart_rate !== null ||
+      today.avg_heart_rate !== null)
 
   return (
     <GlassCard style={{ marginBottom: spacing[4] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
           <Ionicons name="heart-outline" size={18} color={palette.danger} />
-          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.health_title}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{providerName}</Text>
+            <Text style={{ marginTop: 1, fontSize: fontSize.xs, color: colors.textSubtle }}>{t.health_summary}</Text>
+          </View>
         </View>
         <TouchableOpacity onPress={onSync} disabled={isSyncing} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name={isSyncing ? 'sync' : 'sync-outline'} size={18} color={isSyncing ? colors.textSubtle : palette.accent} />
@@ -82,7 +105,9 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
           {/* Metrik ızgarası */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             <HealthMetric icon="footsteps-outline" color={palette.info} label={t.health_distance} value={formatDistance(today?.distance_m ?? null, lang)} />
-            <HealthMetric icon="flame-outline" color={palette.warning} label={t.health_active_energy} value={today?.active_energy_kcal != null ? `${Math.round(today.active_energy_kcal)}` : '–'} />
+            <HealthMetric icon="flame-outline" color={palette.warning} label={t.health_active_energy} value={today?.active_energy_kcal != null ? `${Math.round(today.active_energy_kcal)} kcal` : '–'} />
+            <HealthMetric icon="timer-outline" color={palette.success} label={t.health_exercise_minutes} value={today?.exercise_minutes != null ? `${Math.round(today.exercise_minutes)} min` : '–'} />
+            <HealthMetric icon="barbell-outline" color={palette.workout} label={t.health_workouts} value={today?.workout_count != null ? `${today.workout_count}` : '–'} />
             <HealthMetric
               icon="moon-outline"
               color={palette.deferred}
@@ -94,39 +119,102 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
               icon="pulse-outline"
               color={palette.danger}
               label={t.health_resting_hr}
-              value={today?.resting_heart_rate != null ? `${Math.round(today.resting_heart_rate)}` : '–'}
+              value={today?.resting_heart_rate != null ? `${Math.round(today.resting_heart_rate)} bpm` : '–'}
+            />
+            <HealthMetric
+              icon="heart-circle-outline"
+              color={palette.danger}
+              label={t.health_avg_hr}
+              value={today?.avg_heart_rate != null ? `${Math.round(today.avg_heart_rate)} bpm` : '–'}
             />
           </View>
 
-          {/* Toparlanma sinyali */}
-          {recovery.status !== 'unknown' && (
+          {(suggestedEnergy !== null || recovery.status !== 'unknown') && (
+            <View style={{ marginTop: spacing[3], gap: spacing[2] }}>
+              {suggestedEnergy !== null && (
+                <InsightRow
+                  icon="battery-half-outline"
+                  color={palette.accent}
+                  text={`${t.health_energy_suggestion}: ${suggestedEnergy}/5`}
+                />
+              )}
+
+              {recovery.status !== 'unknown' && (
+                <InsightRow
+                  icon={recovery.status === 'good' ? 'shield-checkmark-outline' : 'warning-outline'}
+                  color={recovery.status === 'good' ? palette.success : palette.warning}
+                  text={`${recovery.status === 'good' ? t.health_recovery_good : t.health_recovery_watch}${
+                    recovery.deltaBpm != null && recovery.status === 'elevated' ? ` (+${recovery.deltaBpm} bpm)` : ''
+                  }`}
+                />
+              )}
+            </View>
+          )}
+
+          {weekly.dayCount > 0 && (
             <View
               style={{
                 marginTop: spacing[3],
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing[2],
                 padding: spacing[3],
                 borderRadius: radius.md,
-                backgroundColor: recovery.status === 'good' ? `${palette.success}12` : `${palette.warning}12`,
+                backgroundColor: colors.glassInner,
                 borderWidth: 1,
-                borderColor: recovery.status === 'good' ? `${palette.success}28` : `${palette.warning}28`,
+                borderColor: colors.border,
               }}
             >
-              <Ionicons
-                name={recovery.status === 'good' ? 'shield-checkmark-outline' : 'warning-outline'}
-                size={16}
-                color={recovery.status === 'good' ? palette.success : palette.warning}
-              />
-              <Text style={{ flex: 1, fontSize: fontSize.xs, color: colors.textSecondary }}>
-                {recovery.status === 'good' ? t.health_recovery_good : t.health_recovery_watch}
-                {recovery.deltaBpm != null && recovery.status === 'elevated' ? ` (+${recovery.deltaBpm} bpm)` : ''}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[2] }}>
+                <Ionicons name="analytics-outline" size={15} color={palette.accent} />
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                  {t.health_weekly_title}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+                <WeeklyMetric label={t.health_weekly_steps} value={formatSteps(weekly.averageSteps, lang)} />
+                <WeeklyMetric label={t.health_weekly_sleep} value={formatSleepDuration(weekly.averageSleepMinutes, lang)} />
+                <WeeklyMetric label={t.health_weekly_energy} value={`${weekly.totalActiveEnergyKcal} kcal`} />
+                <WeeklyMetric label={t.health_workouts} value={`${weekly.totalWorkouts}`} />
+              </View>
+              {activityLabel && (
+                <Text style={{ marginTop: spacing[2], fontSize: fontSize.xs, color: colors.textSecondary }}>
+                  {t.health_activity_level}: {activityLabel}
+                </Text>
+              )}
             </View>
           )}
         </>
       )}
     </GlassCard>
+  )
+}
+
+function InsightRow({ icon, color, text }: { icon: keyof typeof Ionicons.glyphMap; color: string; text: string }) {
+  const { colors } = useTheme()
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing[2],
+        padding: spacing[3],
+        borderRadius: radius.md,
+        backgroundColor: `${color}12`,
+        borderWidth: 1,
+        borderColor: `${color}28`,
+      }}
+    >
+      <Ionicons name={icon} size={16} color={color} />
+      <Text style={{ flex: 1, fontSize: fontSize.xs, color: colors.textSecondary }}>{text}</Text>
+    </View>
+  )
+}
+
+function WeeklyMetric({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme()
+  return (
+    <View style={{ flexGrow: 1, flexBasis: '46%', paddingVertical: spacing[1] }}>
+      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{label}</Text>
+      <Text style={{ marginTop: 1, fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{value}</Text>
+    </View>
   )
 }
 
@@ -210,5 +298,52 @@ function HealthMetric({
         </Text>
       </View>
     </View>
+  )
+}
+
+/**
+ * Sağlık senkronu kapalıyken ana ekranda duran giriş noktası.
+ * App Store Guideline 2.5.1: HealthKit kullanımı, izin istenmeden önce de
+ * arayüzde açıkça görünmeli. Profile sekmesi tab bar'da gizli olduğu için
+ * (href: null) tanıtımın Today ekranında da bulunması gerekiyor.
+ */
+export function HealthConnectPrompt({ onPress }: { onPress: () => void }) {
+  const { colors } = useTheme()
+  const { t } = useLang()
+  const providerName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={t.health_connect.replace('{provider}', providerName)}
+    >
+      <GlassCard style={{ marginBottom: spacing[4] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: radius.md,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: `${palette.danger}14`,
+            }}
+          >
+            <Ionicons name="heart-outline" size={19} color={palette.danger} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: colors.textPrimary }}>
+              {providerName}
+            </Text>
+            <Text style={{ marginTop: 2, fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 17 }}>
+              {t.health_prompt_desc.replace('{provider}', providerName)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+        </View>
+      </GlassCard>
+    </TouchableOpacity>
   )
 }
