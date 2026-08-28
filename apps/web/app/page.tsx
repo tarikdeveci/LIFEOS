@@ -7,75 +7,6 @@ import { getTranslations, type Language } from '@/lib/i18n'
 
 const STORAGE_KEY = 'lifeos_lang'
 
-interface DayBlock {
-  start: string
-  end: string
-  label: string
-  kind: 'focus' | 'meal' | 'workout' | 'routine'
-  now?: boolean
-}
-
-/**
- * Hero gorseli: temsili bir gun cetveli. Sahte tarayici penceresi ve gri
- * placeholder cubuklari yerine urunun kendi gorsel dili (zaman bloklari).
- */
-function buildDayBlocks(t: ReturnType<typeof getTranslations>): DayBlock[] {
-  return [
-    { start: '07:00', end: '07:45', label: t.day_breakfast, kind: 'meal' },
-    { start: '08:00', end: '10:30', label: t.day_focus, kind: 'focus', now: true },
-    { start: '10:30', end: '11:00', label: t.day_break, kind: 'routine' },
-    { start: '11:00', end: '12:30', label: t.day_review, kind: 'focus' },
-    { start: '12:30', end: '13:15', label: t.day_lunch, kind: 'meal' },
-    { start: '17:30', end: '18:30', label: t.day_training, kind: 'workout' },
-  ]
-}
-
-const BLOCK_TONE: Record<DayBlock['kind'], string> = {
-  focus: 'var(--signal)',
-  meal: '#5FB89B',
-  workout: '#D96A5A',
-  routine: 'rgba(255,255,255,0.28)',
-}
-
-function DayStrip({ label, nowLabel, blocks }: { label: string; nowLabel: string; blocks: DayBlock[] }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.09] bg-[#111112] p-5 sm:p-6">
-      <div className="mb-5 flex items-baseline justify-between">
-        <span className="text-sm font-semibold text-white/70">{label}</span>
-        <span className="font-mono text-xs tabular-nums text-white/55">07:00 &ndash; 19:00</span>
-      </div>
-
-      <ol className="space-y-2.5">
-        {blocks.map((block, i) => (
-          <li
-            key={block.start}
-            className="day-block flex items-center gap-3.5"
-            style={{ '--i': i } as React.CSSProperties}
-          >
-            <span className="w-11 shrink-0 font-mono text-[11px] tabular-nums text-white/55">
-              {block.start}
-            </span>
-            <span
-              className="h-8 shrink-0 rounded-[5px]"
-              style={{
-                width: block.now ? '3px' : '3px',
-                background: BLOCK_TONE[block.kind],
-                opacity: block.kind === 'routine' ? 0.5 : 1,
-              }}
-            />
-            <span className="min-w-0 flex-1 truncate text-sm text-white/70">{block.label}</span>
-            {block.now && (
-              <span className="shrink-0 rounded-full bg-[var(--signal)]/15 px-2.5 py-0.5 text-[11px] font-bold text-[var(--signal)]">
-                {nowLabel}
-              </span>
-            )}
-          </li>
-        ))}
-      </ol>
-    </div>
-  )
-}
-
 // App Store Connect kaydi: apps/mobile/eas.json -> submit.production.ios.ascAppId
 const APP_STORE_URL = 'https://apps.apple.com/tr/app/lifeos/id6789708836'
 
@@ -169,16 +100,16 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="landing-page-root brand-surface isolate min-h-screen font-sans">
+    <div className="landing-page-root isolate min-h-screen bg-[#080B14] font-sans text-white">
 
       {/* ─── NAV ──────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#0B0B0C]/80 backdrop-blur-xl">
+      <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#080B14]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <Image src="/logo.png" alt="LifeOS" width={32} height={32} className="rounded-xl" />
             <span className="text-[17px] font-extrabold tracking-tight">
-              Life<span className="text-[var(--signal)]">OS</span>
+              Life<span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">OS</span>
             </span>
           </div>
 
@@ -195,13 +126,13 @@ export default function LandingPage() {
             <div className="flex overflow-hidden rounded-lg border border-white/10 bg-white/5 text-xs font-semibold">
               <button
                 onClick={() => toggleLang('en')}
-                className={`px-3 py-1.5 transition ${lang === 'en' ? 'bg-[var(--signal)] text-[#17150F]' : 'text-white/55 hover:text-white'}`}
+                className={`px-3 py-1.5 transition ${lang === 'en' ? 'bg-indigo-600 text-white' : 'text-white/50 hover:text-white'}`}
               >
                 EN
               </button>
               <button
                 onClick={() => toggleLang('tr')}
-                className={`px-3 py-1.5 transition ${lang === 'tr' ? 'bg-[var(--signal)] text-[#17150F]' : 'text-white/55 hover:text-white'}`}
+                className={`px-3 py-1.5 transition ${lang === 'tr' ? 'bg-indigo-600 text-white' : 'text-white/50 hover:text-white'}`}
               >
                 TR
               </button>
@@ -211,7 +142,7 @@ export default function LandingPage() {
             </Link>
             <Link
               href="/register"
-              className="rounded-xl bg-[var(--signal)] px-4 py-2 text-sm font-semibold text-[#17150F] transition-colors hover:bg-[var(--signal-bright)]"
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
             >
               {t.nav_signup}
             </Link>
@@ -219,84 +150,162 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        {/* Sinyal serit: gunun "simdi" cizgisi. Dekoratif blur yerine urunun
-            kendi mantigi (triyaj) tasiyor. */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-[var(--signal)]/40 to-transparent sm:left-6" />
+      {/* ─── HERO ─────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden px-6 pb-24 pt-20">
+        {/* Background glow orbs */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-40 -top-40 h-[600px] w-[600px] rounded-full bg-indigo-600/20 blur-[120px]" />
+          <div className="absolute -right-40 top-20 h-[500px] w-[500px] rounded-full bg-violet-600/15 blur-[120px]" />
+          <div className="absolute bottom-0 left-1/2 h-[400px] w-[800px] -translate-x-1/2 rounded-full bg-indigo-500/10 blur-[100px]" />
+        </div>
 
-        <div className="mx-auto grid max-w-7xl items-center gap-16 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:pt-24">
-          {/* Sol alan: tipografi */}
-          <div className="max-w-xl">
-            <p className="mb-6 flex items-center gap-2.5 text-sm text-white/55">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--signal)]" />
-              {t.hero_badge}
-            </p>
-
-            <h1 className="mb-6 text-balance text-[clamp(2.6rem,6.4vw,4.75rem)] font-extrabold leading-[1.04] tracking-[-0.03em] text-white">
-              {t.hero_title_1}{' '}
-              <span className="text-[var(--signal)]">{t.hero_title_2}</span>
-            </h1>
-
-            <p className="mb-9 max-w-[52ch] text-pretty text-lg leading-relaxed text-white/60">
-              {t.hero_subtitle}
-            </p>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link
-                href="/register"
-                className="inline-flex items-center justify-center rounded-xl bg-[var(--signal)] px-7 py-3.5 text-base font-bold text-[#17150F] transition-colors hover:bg-[var(--signal-bright)]"
-              >
-                {t.hero_cta_primary}
-              </Link>
-              <a
-                href={APP_STORE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-7 py-3.5 text-base font-semibold text-white/80 transition-colors hover:border-white/35 hover:text-white"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M17.05 12.54c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.61-1.7-3.18-1.72-1.35-.14-2.64.79-3.33.79-.69 0-1.75-.77-2.87-.75-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.21 1.1-.04 1.51-.71 2.84-.71 1.33 0 1.7.71 2.86.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.23 1.18-2.42 1.2-2.48-.03-.01-2.3-.88-2.32-3.5zM14.9 5.9c.6-.74 1.01-1.75.9-2.77-.87.04-1.93.58-2.56 1.31-.56.65-1.05 1.69-.92 2.68.97.08 1.96-.49 2.58-1.22z" />
-                </svg>
-                {t.hero_cta_secondary}
-              </a>
-            </div>
-
-            <p className="mt-5 text-sm text-white/55">{t.hero_note}</p>
+        <div className="relative mx-auto max-w-5xl text-center">
+          {/* Badge */}
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-1.5">
+            <span className="text-xs font-semibold text-indigo-300">{t.hero_badge}</span>
           </div>
 
-          {/* Sag alan: gunun kendisi. Sahte tarayici penceresi ve gri cubuklar
-              yerine gercek bir zaman cetveli + gercek uygulama ekrani. */}
-          <div className="relative">
-            <DayStrip label={t.hero_day_label} nowLabel={t.hero_now} blocks={buildDayBlocks(t)} />
+          {/* Headline */}
+          <h1 className="mb-6 text-5xl font-black leading-[1.08] tracking-tight md:text-7xl">
+            <span className="text-white">{t.hero_title_1}</span>
+            <br />
+            <span className="bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-400 bg-clip-text text-transparent">
+              {t.hero_title_2}
+            </span>
+          </h1>
 
-            <div className="pointer-events-none absolute -bottom-6 -right-2 w-[38%] max-w-[190px] overflow-hidden rounded-[1.25rem] shadow-2xl shadow-black/70 sm:-right-4 sm:w-[34%] lg:-right-8">
-              <Image
-                src="/mobile/planning.png"
-                alt={t.hero_shot_alt}
-                width={430}
-                height={932}
-                priority
-                className="h-auto w-full"
-              />
+          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-white/50">
+            {t.hero_subtitle}
+          </p>
+
+          {/* CTAs */}
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/register"
+              className="group relative overflow-hidden rounded-2xl bg-indigo-600 px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-indigo-500/30 transition hover:bg-indigo-500"
+            >
+              <span className="relative z-10">{t.hero_cta_primary} →</span>
+            </Link>
+            <a
+              href="#features"
+              className="rounded-2xl border border-white/10 bg-white/5 px-8 py-3.5 text-base font-semibold text-white/70 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+            >
+              {t.hero_cta_secondary}
+            </a>
+          </div>
+          <p className="mt-4 text-xs text-white/30">{t.hero_note}</p>
+        </div>
+
+        {/* ─── Dashboard Preview Mockup ─── */}
+        <div className="relative mx-auto mt-16 max-w-5xl">
+          {/* Glow behind mockup */}
+          <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-indigo-600/20 to-transparent blur-3xl" />
+
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0D1117] shadow-2xl shadow-black/50">
+            {/* Fake browser bar */}
+            <div className="flex items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-3">
+              <div className="flex gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+                <div className="h-2.5 w-2.5 rounded-full bg-green-500/70" />
+              </div>
+              <div className="mx-auto flex h-5 w-56 items-center justify-center rounded-md bg-white/5 text-[10px] text-white/30">
+                app.lifeos.tr/dashboard
+              </div>
+            </div>
+
+            {/* Fake dashboard layout */}
+            <div className="flex h-72 gap-0">
+              {/* Sidebar */}
+              <div className="w-40 shrink-0 border-r border-white/5 bg-white/[0.02] p-3">
+                <div className="mb-4 flex items-center gap-1.5 px-1">
+                  <div className="h-5 w-5 rounded-lg bg-indigo-600/80" />
+                  <div className="h-2 w-12 rounded bg-white/20" />
+                </div>
+                {['Today', 'Tasks', 'Planning', 'Nutrition', 'Workout'].map((item, i) => (
+                  <div
+                    key={item}
+                    className={`mb-0.5 flex items-center gap-2 rounded-xl px-2 py-1.5 ${i === 0 ? 'bg-indigo-600/20' : ''}`}
+                  >
+                    <div className={`h-2.5 w-2.5 rounded-sm ${i === 0 ? 'bg-indigo-400' : 'bg-white/20'}`} />
+                    <div className={`h-1.5 rounded ${i === 0 ? 'w-10 bg-indigo-400/60' : 'w-10 bg-white/15'}`} />
+                  </div>
+                ))}
+              </div>
+
+              {/* Main content */}
+              <div className="flex flex-1 gap-3 p-4">
+                {/* Left column: Tasks */}
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-20 rounded bg-white/20" />
+                  {[90, 70, 85, 60, 75].map((w, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.04] p-2.5">
+                      <div className="h-3 w-3 shrink-0 rounded border border-white/20" />
+                      <div className={`h-2 rounded bg-white/25`} style={{ width: `${w}%` }} />
+                      <div className="ml-auto h-2 w-8 rounded bg-indigo-500/40" />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Right column: Stats + Timeline */}
+                <div className="w-48 space-y-2">
+                  {/* Macro rings */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.04] p-3">
+                    <div className="mb-2 h-2 w-16 rounded bg-white/20" />
+                    <div className="flex justify-around">
+                      {([['#6366F1', 62], ['#8B5CF6', 49], ['#06B6D4', 53]] as [string, number][]).map(([color, dash], i) => (
+                        <div key={i} className="flex flex-col items-center gap-1">
+                          <div className="relative h-8 w-8">
+                            <svg viewBox="0 0 32 32" className="h-8 w-8 -rotate-90">
+                              <circle cx="16" cy="16" r="12" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                              <circle
+                                cx="16" cy="16" r="12" fill="none"
+                                stroke={color} strokeWidth="3"
+                                strokeDasharray={`${dash} 75.4`}
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </div>
+                          <div className="h-1.5 w-4 rounded" style={{ background: color + '60' }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Timeline */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.04] p-3">
+                    <div className="mb-2 h-2 w-14 rounded bg-white/20" />
+                    {[['#6366F1', '09:00'], ['#8B5CF6', '10:30'], ['#06B6D4', '14:00']].map(([color, time], i) => (
+                      <div key={i} className="mb-1.5 flex items-center gap-2">
+                        <span className="text-[8px] text-white/30">{time}</span>
+                        <div className="h-4 flex-1 rounded" style={{ background: color + '30', borderLeft: `2px solid ${color}` }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* NE OLDUGU */}
-      <section className="border-y border-white/[0.07]">
-        <div className="mx-auto grid max-w-7xl gap-px bg-white/[0.07] px-6 sm:grid-cols-3">
-          {[
-            { k: t.pillar_1_title, v: t.pillar_1_desc },
-            { k: t.pillar_2_title, v: t.pillar_2_desc },
-            { k: t.pillar_3_title, v: t.pillar_3_desc },
-          ].map(({ k, v }) => (
-            <div key={k} className="bg-[#0B0B0C] px-1 py-9 sm:px-7">
-              <h3 className="mb-2 text-base font-bold text-white">{k}</h3>
-              <p className="max-w-[38ch] text-sm leading-relaxed text-white/55">{v}</p>
-            </div>
-          ))}
+      {/* ─── STATS ────────────────────────────────────────────────── */}
+      <section className="border-y border-white/5 bg-white/[0.02] py-12">
+        <div className="mx-auto max-w-4xl px-6">
+          <div className="grid grid-cols-3 gap-8 text-center">
+            {[
+              { value: '10K+', label: t.stat_tasks },
+              { value: '7', label: t.stat_ai },
+              { value: '2', label: t.stat_platforms },
+            ].map(({ value, label }) => (
+              <div key={label}>
+                <p className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-4xl font-black text-transparent">
+                  {value}
+                </p>
+                <p className="mt-1.5 text-sm text-white/40">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -306,28 +315,28 @@ export default function LandingPage() {
           <h2 className="mb-3 text-4xl font-black tracking-tight text-white">
             {t.features_title}
           </h2>
-          <p className="text-white/55">{t.features_subtitle}</p>
+          <p className="text-white/40">{t.features_subtitle}</p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((f) => (
             <div
               key={f.title}
-              className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.04] p-5 transition hover:border-[var(--signal)]/40 hover:bg-white/[0.07]"
+              className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.04] p-5 transition hover:border-indigo-500/30 hover:bg-white/[0.07]"
             >
               {/* Hover glow */}
               <div className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100">
-                
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/10 to-transparent" />
               </div>
 
               {f.pro && (
-                <span className="absolute right-3 top-3 rounded-full bg-[var(--signal)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-[#17150F]">
+                <span className="absolute right-3 top-3 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white">
                   Pro
                 </span>
               )}
               <div className="mb-3 text-2xl">{f.icon}</div>
               <h3 className="mb-1.5 text-sm font-bold text-white">{f.title}</h3>
-              <p className="text-xs leading-relaxed text-white/55">{f.desc}</p>
+              <p className="text-xs leading-relaxed text-white/45">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -338,24 +347,21 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl px-6">
           <div className="mb-16 text-center">
             <h2 className="mb-3 text-4xl font-black tracking-tight text-white">{t.how_title}</h2>
-            <p className="text-white/55">{t.how_subtitle}</p>
+            <p className="text-white/40">{t.how_subtitle}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             {[
-              { step: '01', title: t.how_1_title, desc: t.how_1_desc, tone: 'var(--signal)' },
-              { step: '02', title: t.how_2_title, desc: t.how_2_desc, tone: '#5FB89B' },
-              { step: '03', title: t.how_3_title, desc: t.how_3_desc, tone: '#D96A5A' },
-            ].map(({ step, title, desc, tone }) => (
-              <div key={step} className="relative rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
-                <div
-                  className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg font-mono text-sm font-bold tabular-nums text-[#17150F]"
-                  style={{ background: tone }}
-                >
+              { step: '01', title: t.how_1_title, desc: t.how_1_desc, color: 'from-indigo-600 to-indigo-500' },
+              { step: '02', title: t.how_2_title, desc: t.how_2_desc, color: 'from-violet-600 to-violet-500' },
+              { step: '03', title: t.how_3_title, desc: t.how_3_desc, color: 'from-purple-600 to-purple-500' },
+            ].map(({ step, title, desc, color }) => (
+              <div key={step} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.04] p-6">
+                <div className={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${color} text-sm font-black text-white`}>
                   {step}
                 </div>
                 <h3 className="mb-2 text-base font-bold text-white">{title}</h3>
-                <p className="text-sm leading-relaxed text-white/55">{desc}</p>
+                <p className="text-sm leading-relaxed text-white/45">{desc}</p>
               </div>
             ))}
           </div>
@@ -366,7 +372,7 @@ export default function LandingPage() {
       {/* MOBILE APP */}
       <section id="mobile" className="relative overflow-hidden py-24">
         <div className="pointer-events-none absolute inset-0">
-          
+          <div className="absolute right-1/4 top-1/2 h-[500px] w-[500px] -translate-y-1/2 rounded-full bg-violet-600/10 blur-[120px]" />
         </div>
 
         <div className="relative mx-auto grid max-w-6xl items-center gap-14 px-6 lg:grid-cols-2">
@@ -375,12 +381,12 @@ export default function LandingPage() {
               {t.mobile_eyebrow}
             </span>
             <h2 className="mb-4 text-4xl font-black tracking-tight text-white">{t.mobile_title}</h2>
-            <p className="mb-8 leading-relaxed text-white/55">{t.mobile_subtitle}</p>
+            <p className="mb-8 leading-relaxed text-white/45">{t.mobile_subtitle}</p>
 
             <ul className="mb-9 space-y-3">
               {[t.mobile_point_1, t.mobile_point_2, t.mobile_point_3, t.mobile_point_4].map((point) => (
                 <li key={point} className="flex items-start gap-3 text-sm text-white/60">
-                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-[var(--signal)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                   {point}
@@ -399,13 +405,13 @@ export default function LandingPage() {
                   <path d="M17.05 12.54c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.61-1.7-3.18-1.72-1.35-.14-2.64.79-3.33.79-.69 0-1.75-.77-2.87-.75-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.21 1.1-.04 1.51-.71 2.84-.71 1.33 0 1.7.71 2.86.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.23 1.18-2.42 1.2-2.48-.03-.01-2.3-.88-2.32-3.5zM14.9 5.9c.6-.74 1.01-1.75.9-2.77-.87.04-1.93.58-2.56 1.31-.56.65-1.05 1.69-.92 2.68.97.08 1.96-.49 2.58-1.22z" />
                 </svg>
                 <span className="flex flex-col leading-tight">
-                  <span className="text-[10px] font-normal text-black/65">App Store</span>
+                  <span className="text-[10px] font-normal text-black/50">App Store</span>
                   <span className="text-sm">{t.mobile_appstore}</span>
                 </span>
               </a>
 
               {/* Play Store yayini henuz yok; olmayan magazaya link vermiyoruz. */}
-              <span className="text-xs text-white/55">{t.mobile_android_soon}</span>
+              <span className="text-xs text-white/30">{t.mobile_android_soon}</span>
             </div>
           </div>
 
@@ -416,7 +422,7 @@ export default function LandingPage() {
               { src: '/mobile/nutrition.png', alt: t.mobile_shot_nutrition, cls: 'z-10 w-2/5' },
               { src: '/mobile/planning.png', alt: t.mobile_shot_planning, cls: 'mt-8 w-1/3 rotate-[4deg]' },
             ].map(({ src, alt, cls }) => (
-              <div key={src} className={`overflow-hidden rounded-2xl shadow-2xl shadow-black/60 ${cls}`}>
+              <div key={src} className={`overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/50 ${cls}`}>
                 <Image src={src} alt={alt} width={430} height={932} className="h-auto w-full" />
               </div>
             ))}
@@ -426,13 +432,13 @@ export default function LandingPage() {
 
       <section id="pricing" className="relative py-24">
         <div className="pointer-events-none absolute inset-0">
-          
+          <div className="absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-600/10 blur-[120px]" />
         </div>
 
         <div className="relative mx-auto max-w-5xl px-6">
           <div className="mb-14 text-center">
             <h2 className="mb-3 text-4xl font-black tracking-tight text-white">{t.pricing_title}</h2>
-            <p className="text-white/55">{t.pricing_subtitle}</p>
+            <p className="text-white/40">{t.pricing_subtitle}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -441,21 +447,21 @@ export default function LandingPage() {
                 key={plan.name}
                 className={`relative flex flex-col rounded-2xl border p-6 transition ${
                   plan.highlight
-                    ? 'border-[var(--signal)]/50 bg-white/[0.05]'
+                    ? 'border-indigo-500/60 bg-gradient-to-b from-indigo-950/80 to-[#080B14] shadow-xl shadow-indigo-500/20'
                     : 'border-white/[0.08] bg-white/[0.04]'
                 }`}
               >
                 {plan.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[var(--signal)] px-3 py-1 text-xs font-bold text-[#17150F]">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-1 text-xs font-bold text-white">
                     {plan.badge}
                   </span>
                 )}
 
                 <div className="mb-5">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/55">{plan.name}</p>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">{plan.name}</p>
                   <div className="flex items-end gap-1">
                     <span className="text-4xl font-black text-white">{plan.price}</span>
-                    <span className="mb-1 text-sm text-white/55">{plan.period}</span>
+                    <span className="mb-1 text-sm text-white/40">{plan.period}</span>
                   </div>
                 </div>
 
@@ -472,7 +478,7 @@ export default function LandingPage() {
                   href={plan.href}
                   className={`block rounded-xl py-2.5 text-center text-sm font-semibold transition ${
                     plan.highlight
-                      ? 'bg-[var(--signal)] text-[#17150F] hover:bg-[var(--signal-bright)]'
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-500'
                       : 'border border-white/10 bg-white/5 text-white hover:bg-white/10'
                   }`}
                 >
@@ -499,20 +505,20 @@ export default function LandingPage() {
       {/* ─── CTA ──────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden py-28">
         <div className="pointer-events-none absolute inset-0">
-          
-          
-          
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/60 via-violet-900/40 to-[#080B14]" />
+          <div className="absolute left-1/4 top-1/2 h-96 w-96 -translate-y-1/2 rounded-full bg-indigo-600/25 blur-[80px]" />
+          <div className="absolute right-1/4 top-1/2 h-96 w-96 -translate-y-1/2 rounded-full bg-violet-600/20 blur-[80px]" />
         </div>
 
         <div className="relative mx-auto max-w-2xl px-6 text-center">
-          <Image src="/logo.png" alt="LifeOS" width={56} height={56} className="mx-auto mb-6 rounded-2xl shadow-lg shadow-black/40" />
+          <Image src="/logo.png" alt="LifeOS" width={56} height={56} className="mx-auto mb-6 rounded-2xl shadow-lg shadow-indigo-500/30" />
           <h2 className="mb-4 text-4xl font-black tracking-tight text-white md:text-5xl">
             {t.cta_title}
           </h2>
-          <p className="mb-8 text-white/55">{t.cta_subtitle}</p>
+          <p className="mb-8 text-white/50">{t.cta_subtitle}</p>
           <Link
             href="/register"
-            className="inline-block rounded-xl bg-[var(--signal)] px-8 py-4 text-base font-bold text-[#17150F] transition-colors hover:bg-[var(--signal-bright)]"
+            className="inline-block rounded-2xl bg-white px-8 py-4 text-base font-bold text-indigo-600 shadow-xl shadow-black/30 transition hover:bg-indigo-50"
           >
             {t.cta_button}
           </Link>
@@ -526,11 +532,11 @@ export default function LandingPage() {
             <div className="flex items-center gap-2.5">
               <Image src="/logo.png" alt="LifeOS" width={24} height={24} className="rounded-lg" />
               <span className="text-sm font-bold text-white">
-                Life<span className="text-[var(--signal)]">OS</span>
+                Life<span className="text-indigo-400">OS</span>
               </span>
             </div>
 
-            <div className="flex gap-6 text-xs text-white/55">
+            <div className="flex gap-6 text-xs text-white/30">
               <Link href="/login" className="transition hover:text-white">{t.nav_login}</Link>
               <Link href="/register" className="transition hover:text-white">{t.nav_signup}</Link>
               <a href="#features" className="transition hover:text-white">{t.nav_features}</a>
@@ -538,23 +544,23 @@ export default function LandingPage() {
               <a href="#mobile" className="transition hover:text-white">{t.nav_mobile}</a>
             </div>
 
-            <p className="text-xs text-white/55">© {new Date().getFullYear()} LifeOS. {t.footer_rights}</p>
+            <p className="text-xs text-white/20">© {new Date().getFullYear()} LifeOS. {t.footer_rights}</p>
           </div>
 
           {/* Yasal linkler (PayTR canlı mod gerekliliği) */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-white/[0.04] pt-6 text-xs text-white/55">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-white/[0.04] pt-6 text-xs text-white/30">
             <Link href="/iletisim" className="transition hover:text-white">İletişim</Link>
-            <span aria-hidden="true" className="text-white/30">·</span>
+            <span className="text-white/10">·</span>
             <Link href="/mesafeli-satis-sozlesmesi" className="transition hover:text-white">Mesafeli Satış Sözleşmesi</Link>
-            <span aria-hidden="true" className="text-white/30">·</span>
+            <span className="text-white/10">·</span>
             <Link href="/iptal-iade-kosullari" className="transition hover:text-white">İptal & İade Koşulları</Link>
-            <span aria-hidden="true" className="text-white/30">·</span>
+            <span className="text-white/10">·</span>
             <Link href="/teslimat-kosullari" className="transition hover:text-white">Teslimat & Hizmet Koşulları</Link>
-            <span aria-hidden="true" className="text-white/30">·</span>
+            <span className="text-white/10">·</span>
             <Link href="/gizlilik-kvkk" className="transition hover:text-white">Gizlilik & KVKK</Link>
           </div>
 
-          <p className="mt-4 text-center text-xs text-white/55">
+          <p className="mt-4 text-center text-xs text-white/20">
             Detay İnovasyon Çevre Eğitim ve Danışmanlık Hizmetleri Ltd. Şti.
           </p>
         </div>
@@ -573,10 +579,10 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         className="flex w-full items-center justify-between gap-4 text-left"
       >
         <span className="text-sm font-semibold text-white/80">{q}</span>
-        <span className={`shrink-0 text-white/55 transition-transform ${open ? 'rotate-45' : ''}`}>+</span>
+        <span className={`shrink-0 text-white/30 transition-transform ${open ? 'rotate-45' : ''}`}>+</span>
       </button>
       {open && (
-        <p className="mt-3 text-sm leading-relaxed text-white/55">{a}</p>
+        <p className="mt-3 text-sm leading-relaxed text-white/40">{a}</p>
       )}
     </div>
   )

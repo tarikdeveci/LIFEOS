@@ -1,16 +1,13 @@
 import type { Metadata } from 'next'
-import { Archivo, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import './globals.css'
 
-// Archivo: grotesk with signage lineage, variable weight + width. Tek aile,
-// agirlik ve genislik kontrastiyla hiyerarsi kuruyor.
-const archivo = Archivo({
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-sans',
+  variable: '--font-inter',
   display: 'swap',
-  axes: ['wdth'],
 })
 
 const jetbrainsMono = JetBrains_Mono({
@@ -48,7 +45,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" suppressHydrationWarning className={`${archivo.variable} ${jetbrainsMono.variable}`}>
+    <html lang="tr" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans">
         <ErrorBoundary>
           <ToastProvider>{children}</ToastProvider>
