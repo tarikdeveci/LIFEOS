@@ -4,13 +4,14 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import { useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet, WorkoutProgram } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram, AiProgramPlan } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
@@ -30,11 +31,38 @@ const HISTORY_STATUS: Record<string, { label: string; color: string }> = {
   skipped:     { label: 'Atlandı',    color: palette.warning },
 }
 
+/** ai-suggest'in antrenman koçundan dönen program önerisi. */
+interface CoachProgramExercise { exercise_name: string; sets: number; reps: number; rest_seconds: number; notes: string | null }
+interface CoachProgramDay { day_name: string; exercises: CoachProgramExercise[] }
+interface CoachProgram {
+  name: string
+  description: string
+  split_type: WorkoutProgram['split_type']
+  days: CoachProgramDay[]
+}
+
+const COACH_SUGGESTIONS = [
+  'Bana haftalık program yaz',
+  'Haftada 3 gün, kas kazanmak istiyorum',
+  'Bugün ne çalışmalıyım?',
+  'Kalça ve bacak odaklı program',
+]
+
+/** Türkçe aksan ve noktalama farklarını eleyerek egzersiz adı eşler. */
+function foldName(value: string): string {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
 export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -57,10 +85,34 @@ export default function WorkoutScreen() {
   const [duration, setDuration] = useState('')
   const [finishing, setFinishing] = useState(false)
 
-  // AI
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
+  // AI koç sohbeti
+  const [showCoach, setShowCoach] = useState(false)
+  const [coachMsgs, setCoachMsgs] = useState<AiChatMessage[]>([])
+  const [coachInput, setCoachInput] = useState('')
+  const [coachLoading, setCoachLoading] = useState(false)
   const [selectedProgram, setSelectedProgram] = useState<WorkoutProgram | null>(null)
+  /** Program günü açık mı — hangi hareketlerin olduğunu başlatmadan görebilmek için */
+  const [expandedDay, setExpandedDay] = useState<string | null>(null)
+
+  // Kendi program oluşturma
+  const [showCreateProgram, setShowCreateProgram] = useState(false)
+  const [newProgramName, setNewProgramName] = useState('')
+  const [newDayNames, setNewDayNames] = useState<string[]>(['Gün 1', 'Gün 2', 'Gün 3'])
+  const [savingProgram, setSavingProgram] = useState(false)
+  /** Hangi güne hareket ekleniyor — egzersiz seçicisini açar */
+  const [addingToDay, setAddingToDay] = useState<string | null>(null)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerSets, setPickerSets] = useState('3')
+  const [pickerReps, setPickerReps] = useState('10')
+
+  /**
+   * selectedProgram bir anlık kopya; hareket eklendikten sonra store tazelenir
+   * ama kopya bayat kalır. Detay sayfası her zaman listedeki güncel kaydı okur.
+   */
+  const liveProgram = selectedProgram
+    ? (programs.find((p) => p.id === selectedProgram.id) ?? selectedProgram)
+    : null
+  const isOwnProgram = liveProgram !== null && liveProgram.user_id !== null
 
   // Library search + filter
   const [search, setSearch] = useState('')
@@ -148,6 +200,74 @@ export default function WorkoutScreen() {
     )
   }
 
+  async function handleCreateProgram() {
+    if (!userId || savingProgram) return
+    const name = newProgramName.trim()
+    const days = newDayNames.map((d) => d.trim()).filter(Boolean)
+    if (!name || days.length === 0) {
+      Alert.alert('Eksik bilgi', 'Program adı ve en az bir gün gerekli.')
+      return
+    }
+    setSavingProgram(true)
+    try {
+      await createProgramWithDays(supabase, userId, { name, split_type: 'custom', frequency_per_week: days.length }, days)
+      setShowCreateProgram(false)
+      Alert.alert('Program oluşturuldu', 'Şimdi programı açıp günlerine hareket ekleyebilirsin.')
+    } catch {
+      Alert.alert('Hata', 'Program oluşturulamadı')
+    } finally {
+      setSavingProgram(false)
+    }
+  }
+
+  async function handleAddExerciseToDay(exerciseId: string) {
+    if (!userId || !addingToDay) return
+    const day = liveProgram?.days?.find((d) => d.id === addingToDay)
+    const sets = Math.min(10, Math.max(1, parseInt(pickerSets, 10) || 3))
+    const reps = pickerReps.trim() ? Math.min(100, Math.max(1, parseInt(pickerReps, 10) || 10)) : null
+    try {
+      await addExerciseToDay(supabase, userId, addingToDay, {
+        exercise_id: exerciseId,
+        sets,
+        reps,
+        rest_seconds: 90,
+        order_index: (day?.exercises?.length ?? 0) + 1,
+      })
+      setAddingToDay(null)
+      setPickerSearch('')
+    } catch {
+      Alert.alert('Hata', 'Hareket eklenemedi')
+    }
+  }
+
+  async function handleRemoveProgramExercise(rowId: string) {
+    if (!userId) return
+    try {
+      await removeExerciseFromDay(supabase, userId, rowId)
+    } catch {
+      Alert.alert('Hata', 'Hareket silinemedi')
+    }
+  }
+
+  function handleDeleteProgram(program: WorkoutProgram) {
+    Alert.alert('Programı sil', `"${program.name}" kalıcı olarak silinecek. Emin misin?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => void (async () => {
+          try {
+            await deleteProgram(supabase, program.id)
+            setSelectedProgram(null)
+            setExpandedDay(null)
+          } catch {
+            Alert.alert('Hata', 'Program silinemedi')
+          }
+        })(),
+      },
+    ])
+  }
+
   async function handleStartFromProgramDay(program: WorkoutProgram, dayId: string) {
     if (!userId || starting) return  // çift dokunuş koruması
     const day = program.days?.find((d) => d.id === dayId)
@@ -166,6 +286,7 @@ export default function WorkoutScreen() {
     const dayName = day.day_name?.trim() || `Gün ${day.day_number}`
     setStarting(true)
     setSelectedProgram(null)  // sheet'i hemen kapat — yükleme sürerken ikinci güne basılamasın
+    setExpandedDay(null)
     try {
       // Bugün için zaten bir antrenman varsa yenisini açma, setleri onun üstüne ekle.
       const workout = todayWorkout ?? await startWorkout(supabase, userId, {
@@ -196,17 +317,84 @@ export default function WorkoutScreen() {
     }
   }
 
-  async function handleAiSuggest() {
-    if (!requirePro()) return
-    setAiLoading(true); setAiSuggestion(null)
-    try {
-      const data = await callAiSuggest<{ suggestions?: Array<{ message: string }> }>({
-        type: 'workout_plan', fitness_goal: 'muscle_gain', available_minutes: 60, energy_level: 3,
-        recent_workouts: workoutHistory.slice(0, 7).map((w) => ({ name: w.name, date: w.date })),
+  /**
+   * Koçun yazdığı programı kaydedilebilir plana çevirir. Edge function egzersiz
+   * adlarını kataloğa karşı doğruladığı için burada eşleşmeme beklenmiyor; yine de
+   * kütüphane bayatsa hareket düşer, program yarım kaydedilmez.
+   */
+  function toProgramPlan(program: CoachProgram): AiProgramPlan | null {
+    const byName = new Map(exercises.map((e) => [foldName(e.name), e.id]))
+    const days = program.days.flatMap((day) => {
+      const items = day.exercises.flatMap((ex) => {
+        const id = byName.get(foldName(ex.exercise_name))
+        if (!id) return []
+        return [{ exercise_id: id, sets: ex.sets, reps: ex.reps, rest_seconds: ex.rest_seconds, notes: ex.notes }]
       })
-      setAiSuggestion(data.suggestions?.[0]?.message ?? null)
-    } catch { setAiSuggestion('AI önerisi alınamadı.') }
-    finally { setAiLoading(false) }
+      return items.length > 0 ? [{ day_name: day.day_name, exercises: items }] : []
+    })
+    if (days.length === 0) return null
+    return { name: program.name, description: program.description, split_type: program.split_type, days }
+  }
+
+  function describeProgram(program: CoachProgram): string {
+    return program.days
+      .map((day) => {
+        const lines = day.exercises
+          .map((ex) => `  • ${ex.exercise_name} — ${ex.sets}x${ex.reps} · ${ex.rest_seconds}sn`)
+          .join('\n')
+        return `${day.day_name}\n${lines}`
+      })
+      .join('\n\n')
+  }
+
+  async function sendCoach(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || !userId || coachLoading) return
+    if (!requirePro()) return
+
+    const history = coachMsgs.slice(-8).map((m) => ({ role: m.role, text: m.content }))
+    setCoachMsgs((m) => [...m, { role: 'user', content: trimmed }])
+    setCoachInput('')
+    setCoachLoading(true)
+    try {
+      const data = await callAiSuggest<{ message?: string; program?: CoachProgram | null }>({
+        type: 'workout_program_chat',
+        user_message: trimmed,
+        workout_context: { history },
+      })
+
+      const program = data.program ?? null
+      const plan = program ? toProgramPlan(program) : null
+      const content = program
+        ? `${data.message ?? ''}\n\n${program.name}\n${describeProgram(program)}`.trim()
+        : (data.message ?? 'Yanıt alınamadı')
+
+      setCoachMsgs((m) => [...m, {
+        role: 'assistant',
+        content,
+        actions: plan
+          ? [{
+              label: `Programı kaydet (${plan.days.length} gün)`,
+              icon: 'bookmark-outline' as const,
+              doneLabel: 'Kaydedildi',
+              onPress: async () => {
+                try {
+                  await createProgramFromPlan(supabase, userId, plan)
+                  setShowCoach(false)
+                  setTab('programs')
+                } catch {
+                  Alert.alert('Hata', 'Program kaydedilemedi')
+                  throw new Error('save failed')
+                }
+              },
+            }]
+          : [],
+      }])
+    } catch {
+      setCoachMsgs((m) => [...m, { role: 'assistant', content: 'Koça ulaşılamadı. Pro aboneliğini ve bağlantını kontrol et.' }])
+    } finally {
+      setCoachLoading(false)
+    }
   }
 
   const filteredExercises = exercises.filter((e) => {
@@ -268,18 +456,28 @@ export default function WorkoutScreen() {
               <StatCard label={t.work_total} value={workoutHistory.length} />
             </View>
 
-            {!todayWorkout && (
-              <GlassCard style={{ marginBottom: spacing[4] }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiSuggestion ? spacing[3] : 0 }}>
-                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_ai_suggest}</Text>
-                  <TouchableOpacity onPress={handleAiSuggest} disabled={aiLoading || isCheckingPro} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, opacity: aiLoading || !isPro ? 0.6 : 1 }}>
-                    <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={13} color={palette.accent} />
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{aiLoading ? t.loading : isPro ? t.work_ai_suggest_btn : `Pro · ${t.work_ai_suggest_btn}`}</Text>
-                  </TouchableOpacity>
+            <GlassCard style={{ marginBottom: spacing[4] }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={18} color={palette.accent} />
                 </View>
-                {aiSuggestion && <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiSuggestion}</Text>}
-              </GlassCard>
-            )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Antrenman Koçu</Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    Soru sor veya haftalık program yazdır
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => { if (requirePro()) setShowCoach(true) }}
+                  disabled={isCheckingPro}
+                  style={{ paddingHorizontal: spacing[4], paddingVertical: spacing[2], borderRadius: radius.full, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}35`, opacity: isPro ? 1 : 0.6 }}
+                >
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
+                    {isPro ? 'Sohbet' : 'Pro'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
 
             {!todayWorkout && (
               <View style={{ paddingVertical: spacing[6], gap: spacing[5] }}>
@@ -476,6 +674,13 @@ export default function WorkoutScreen() {
         {/* ── PROGRAMS ── */}
         {tab === 'programs' && (
           <View style={{ gap: spacing[3] }}>
+            <TouchableOpacity
+              onPress={() => { setNewProgramName(''); setNewDayNames(['Gün 1', 'Gün 2', 'Gün 3']); setShowCreateProgram(true) }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.accent }}
+            >
+              <Ionicons name="add" size={18} color={palette.accent} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>Kendi Programını Oluştur</Text>
+            </TouchableOpacity>
             {programs.length === 0 ? (
               <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
                 <Ionicons name="list-outline" size={48} color={colors.textSubtle} />
@@ -488,7 +693,7 @@ export default function WorkoutScreen() {
                   key={prog.id}
                   program={prog}
                   splitLabel={SPLIT_LABELS[prog.split_type] ?? prog.split_type}
-                  onStart={() => setSelectedProgram(prog)}
+                  onStart={() => { setSelectedProgram(prog); setExpandedDay(null) }}
                 />
               ))
             )}
@@ -567,8 +772,8 @@ export default function WorkoutScreen() {
       {/* Program day picker */}
       <BottomSheet
         visible={!!selectedProgram}
-        onClose={() => setSelectedProgram(null)}
-        title={selectedProgram ? `${selectedProgram.name} · Gün Seç` : 'Program Günü Seç'}
+        onClose={() => { setSelectedProgram(null); setExpandedDay(null) }}
+        title={liveProgram ? liveProgram.name : 'Program'}
         scrollable
       >
         <View style={{ gap: spacing[2] }}>
@@ -577,25 +782,193 @@ export default function WorkoutScreen() {
               Bugün açık bir antrenman var — seçtiğin günün setleri onun üzerine eklenecek.
             </Text>
           )}
-          {(selectedProgram?.days ?? []).filter((d) => !d.is_rest).map((day) => {
-            const exCount = day.exercises?.length ?? 0
-            const setCount = (day.exercises ?? []).reduce((sum, ex) => sum + Math.min(12, Math.max(1, ex.sets ?? 3)), 0)
+          {(liveProgram?.days ?? []).filter((d) => !d.is_rest).map((day) => {
+            const exercises = [...(day.exercises ?? [])].sort((a, b) => a.order_index - b.order_index)
+            const exCount = exercises.length
+            const setCount = exercises.reduce((sum, ex) => sum + Math.min(12, Math.max(1, ex.sets ?? 3)), 0)
+            const isOpen = expandedDay === day.id
             return (
-              <TouchableOpacity
+              <View
                 key={day.id}
-                disabled={starting || exCount === 0}
-                onPress={() => void handleStartFromProgramDay(selectedProgram as WorkoutProgram, day.id)}
-                style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, opacity: starting || exCount === 0 ? 0.5 : 1 }}
+                style={{ borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: isOpen ? palette.accent : colors.border, overflow: 'hidden' }}
               >
-                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{day.day_name || `Gün ${day.day_number}`}</Text>
-                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                  {exCount === 0 ? 'Egzersiz tanımlı değil' : `${exCount} egzersiz · ${setCount} set eklenecek`}
-                </Text>
-              </TouchableOpacity>
+                {/* Başlığa dokunmak günü AÇAR, başlatmaz. Eskiden dokunmak
+                    antrenmanı anında başlatıyordu; programın içinde ne olduğunu
+                    görmenin hiçbir yolu yoktu. */}
+                <TouchableOpacity
+                  onPress={() => setExpandedDay(isOpen ? null : day.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], paddingHorizontal: spacing[3] }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{day.day_name || `Gün ${day.day_number}`}</Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                      {exCount === 0 ? 'Egzersiz tanımlı değil' : `${exCount} egzersiz · ${setCount} set`}
+                    </Text>
+                  </View>
+                  <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+
+                {isOpen && (
+                  <View style={{ paddingHorizontal: spacing[3], paddingBottom: spacing[3], gap: spacing[2] }}>
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+                    {exercises.map((ex, i) => (
+                      <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+                        <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, width: 18 }}>{i + 1}.</Text>
+                        <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary }} numberOfLines={1}>
+                          {ex.exercise?.name ?? 'Egzersiz'}
+                        </Text>
+                        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+                          {ex.sets}×{ex.reps ?? '—'} · {ex.rest_seconds}sn
+                        </Text>
+                        {isOwnProgram && (
+                          <TouchableOpacity onPress={() => void handleRemoveProgramExercise(ex.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Ionicons name="close-circle" size={17} color={colors.textSubtle} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+
+                    {exCount === 0 && (
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                        {isOwnProgram ? 'Bu güne henüz hareket eklemedin.' : 'Bu günde tanımlı hareket yok.'}
+                      </Text>
+                    )}
+
+                    {/* Global template'ler düzenlenemez (RLS zaten engeller); düğme
+                        yalnızca kullanıcının kendi programında görünür. */}
+                    {isOwnProgram && (
+                      <TouchableOpacity
+                        onPress={() => { setAddingToDay(day.id); setPickerSearch(''); setPickerSets('3'); setPickerReps('10') }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingVertical: spacing[2], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderStrong }}
+                      >
+                        <Ionicons name="add" size={16} color={palette.accent} />
+                        <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>Hareket Ekle</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {exCount > 0 && (
+                      <TouchableOpacity
+                        disabled={starting}
+                        onPress={() => void handleStartFromProgramDay(liveProgram as WorkoutProgram, day.id)}
+                        style={{ marginTop: spacing[1], paddingVertical: spacing[3], borderRadius: radius.lg, alignItems: 'center', backgroundColor: palette.accent, opacity: starting ? 0.5 : 1 }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>
+                          {starting ? 'Başlatılıyor...' : 'Bu günle başla'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
             )
           })}
+
+          {isOwnProgram && liveProgram && (
+            <TouchableOpacity onPress={() => handleDeleteProgram(liveProgram)} style={{ paddingVertical: spacing[3], alignItems: 'center' }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.danger }}>Programı Sil</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </BottomSheet>
+
+      {/* Kendi programını oluştur */}
+      <BottomSheet
+        visible={showCreateProgram}
+        onClose={() => setShowCreateProgram(false)}
+        title="Kendi Programını Oluştur"
+        scrollable
+      >
+        <View style={{ gap: spacing[3] }}>
+          <Input label="Program adı" value={newProgramName} onChangeText={setNewProgramName} placeholder="Örn: Kalça Günü Ağırlıklı" />
+
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary }}>
+            Haftalık günler ({newDayNames.length})
+          </Text>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+            Önce günleri kur, sonra programı açıp her güne hareket ekle.
+          </Text>
+
+          {newDayNames.map((name, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+              <Input
+                value={name}
+                onChangeText={(value) => setNewDayNames((days) => days.map((d, index) => index === i ? value : d))}
+                placeholder={`Gün ${i + 1}`}
+                containerStyle={{ flex: 1 }}
+              />
+              {newDayNames.length > 1 && (
+                <TouchableOpacity onPress={() => setNewDayNames((days) => days.filter((_, index) => index !== i))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={20} color={colors.textSubtle} />
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+
+          {newDayNames.length < 7 && (
+            <TouchableOpacity
+              onPress={() => setNewDayNames((days) => [...days, `Gün ${days.length + 1}`])}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingVertical: spacing[2], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderStrong }}
+            >
+              <Ionicons name="add" size={16} color={palette.accent} />
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>Gün Ekle</Text>
+            </TouchableOpacity>
+          )}
+
+          <Button
+            label={savingProgram ? 'Oluşturuluyor...' : 'Programı Oluştur'}
+            onPress={() => void handleCreateProgram()}
+            loading={savingProgram}
+            fullWidth
+          />
+        </View>
+      </BottomSheet>
+
+      {/* Güne hareket ekle — kütüphaneden seç */}
+      <BottomSheet
+        visible={!!addingToDay}
+        onClose={() => setAddingToDay(null)}
+        title="Hareket Ekle"
+        scrollable
+      >
+        <View style={{ gap: spacing[3] }}>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <Input label="Set" value={pickerSets} onChangeText={setPickerSets} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
+            <Input label="Tekrar" value={pickerReps} onChangeText={setPickerReps} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
+          </View>
+          <Input label="Egzersiz ara" value={pickerSearch} onChangeText={setPickerSearch} placeholder="hip thrust, squat..." />
+          {exercises
+            .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
+            .slice(0, 25)
+            .map((e) => (
+              <TouchableOpacity
+                key={e.id}
+                onPress={() => void handleAddExerciseToDay(e.id)}
+                style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{e.name}</Text>
+                {e.muscle_group?.name && (
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{e.muscle_group.name}</Text>
+                )}
+              </TouchableOpacity>
+            ))}
+        </View>
+      </BottomSheet>
+
+      <AiChatSheet
+        visible={showCoach}
+        onClose={() => setShowCoach(false)}
+        title="Antrenman Koçu"
+        accent={palette.accent}
+        messages={coachMsgs}
+        loading={coachLoading}
+        input={coachInput}
+        onChangeInput={setCoachInput}
+        onSend={() => { void sendCoach(coachInput) }}
+        placeholder="Program iste veya soru sor..."
+        emptyHint="Geçmiş antrenmanlarına ve egzersiz kütüphanene bakarak konuşuyorum. İstersen haftalık program yazıp tek dokunuşla kaydedebilirim."
+        suggestions={COACH_SUGGESTIONS}
+        onSuggestionPress={(text) => { void sendCoach(text) }}
+      />
     </ScreenBackground>
   )
 }
@@ -648,7 +1021,8 @@ function ProgramCard({ program, splitLabel, onStart }: { program: WorkoutProgram
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: palette.workout }}
       >
         <Ionicons name="play-circle-outline" size={16} color="#fff" />
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu Programla Başla</Text>
+        {/* Artık doğrudan başlatmıyor: önce günleri ve hareketleri gösteriyor. */}
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Programı İncele</Text>
       </TouchableOpacity>
     </GlassCard>
   )

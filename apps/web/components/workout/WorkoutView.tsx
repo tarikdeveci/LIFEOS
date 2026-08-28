@@ -7,7 +7,8 @@ import {
   WORKOUT_CATEGORY_LABELS, WORKOUT_CATEGORY_COLORS,
   WORKOUT_STATUS_LABELS, WORKOUT_STATUS_COLORS,
   BODY_REGION_LABELS,
-  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan, type WorkoutProgram as CloudWorkoutProgram, describeAiError } from '@lifeos/shared'
+  type WorkoutCategory, type BodyRegion, type AiWorkoutPlan, type WorkoutProgram as CloudWorkoutProgram,
+  type AiProgramPlan, describeAiError } from '@lifeos/shared'
 import { estimateCalories } from '@lifeos/shared/supabase'
 import type { Exercise, WorkoutSet } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
@@ -35,11 +36,34 @@ const BARBELL_EXACT_NAMES = new Set(['bench press', 'inkline bench press', 'dead
 interface ProgramExercise { exercise_id: string; exercise_name: string; sets: number; reps: number; weight_kg: number }
 interface WorkoutProgram { id: string; name: string; description: string; exercises: ProgramExercise[]; created_at: string }
 interface WorkoutAssistantMessage { role: 'user' | 'assistant'; text: string }
+interface WorkoutAssistantExercise {
+  exercise_name: string
+  sets: number
+  reps: number
+  weight_kg?: number
+  rest_seconds?: number
+  notes?: string | null
+}
+interface WorkoutAssistantDay { day_name: string; exercises: WorkoutAssistantExercise[] }
+/**
+ * Koç artık çok günlü program dönüyor (`days`). Yayındaki eski istemciler için
+ * fonksiyon düz `exercises` listesini de göndermeye devam ediyor; ikisini de
+ * kabul ediyoruz ki hangi tarafın önce güncellendiği önemli olmasın.
+ */
 interface WorkoutAssistantProgram {
   name: string
-  description: string
-  exercises: Array<{ exercise_name: string; sets: number; reps: number; weight_kg: number }>
+  description?: string
+  split_type?: CloudWorkoutProgram['split_type']
+  days?: WorkoutAssistantDay[]
+  exercises?: WorkoutAssistantExercise[]
 }
+
+const COACH_SUGGESTIONS = [
+  'Haftada 4 gun, kas kutlesi icin program yaz',
+  'Evde sadece dambil var, 3 gunluk program',
+  'Push/pull/legs programi hazirla',
+  'Bel agrim var, alt vucut icin ne onerirsin?',
+]
 
 function normalizeExerciseName(value: string): string {
   return value
@@ -107,7 +131,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     fetchLibrary, fetchTodayWorkout, fetchHistory,
     startWorkout, finishWorkout, skipWorkout, removeWorkout,
     addSet, updateSet, removeSet, setWorkoutAiPlan,
-    programs: cloudPrograms, fetchPrograms,
+    programs: cloudPrograms, fetchPrograms, createProgramFromPlan,
   } = useWorkoutStore()
 
   const { showToast } = useToast()
@@ -142,6 +166,9 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
   const [aiPrompt, setAiPrompt]                       = useState('')
   const [aiProgLoading, setAiProgLoading]             = useState(false)
   const [programChat, setProgramChat]                 = useState<WorkoutAssistantMessage[]>([])
+  /** Koçun son yazdığı program taslağı — kaydedilmeyi ya da düzenlenmeyi bekliyor. */
+  const [pendingProgram, setPendingProgram]           = useState<WorkoutAssistantProgram | null>(null)
+  const [savingPlan, setSavingPlan]                   = useState(false)
 
   const [showStartModal, setShowStartModal] = useState(false)
   const [workoutName, setWorkoutName] = useState('')
@@ -157,24 +184,87 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
   const [setsExpanded, setSetsExpanded] = useState(false)
   const hasActiveWorkout = todayWorkout?.status === 'in_progress'
 
-  const applyAssistantProgram = useCallback((program: WorkoutAssistantProgram) => {
-    const mappedExercises = program.exercises.flatMap((exercise) => {
-      const target = normalizeExerciseName(exercise.exercise_name)
-      const match = exercises.find((item) => {
-        const candidate = normalizeExerciseName(item.name)
-        return candidate === target || candidate.includes(target) || target.includes(candidate)
+  const findExercise = useCallback((name: string) => {
+    const target = normalizeExerciseName(name)
+    return exercises.find((item) => {
+      const candidate = normalizeExerciseName(item.name)
+      return candidate === target || candidate.includes(target) || target.includes(candidate)
+    })
+  }, [exercises])
+
+  /**
+   * Koçun program taslağını kaydedilebilir plana çevirir: her hareket adı
+   * kütüphanedeki gerçek egzersiz id'sine bağlanır, eşleşmeyen satır düşer.
+   * Eski düz `exercises` yanıtı tek günlük program gibi ele alınır.
+   */
+  const toProgramPlan = useCallback((program: WorkoutAssistantProgram): AiProgramPlan | null => {
+    const rawDays: WorkoutAssistantDay[] = program.days?.length
+      ? program.days
+      : program.exercises?.length
+        ? [{ day_name: program.name || 'Gun 1', exercises: program.exercises }]
+        : []
+
+    const days = rawDays.flatMap((day) => {
+      const items = day.exercises.flatMap((exercise) => {
+        const match = findExercise(exercise.exercise_name)
+        if (!match) return []
+        return [{
+          exercise_id: match.id,
+          sets: exercise.sets,
+          reps: exercise.reps ?? null,
+          rest_seconds: exercise.rest_seconds ?? 90,
+          notes: exercise.notes ?? null,
+        }]
       })
+      return items.length > 0 ? [{ day_name: day.day_name, exercises: items }] : []
+    })
 
+    if (days.length === 0) return null
+
+    return {
+      name: program.name,
+      description: program.description,
+      split_type: program.split_type,
+      days,
+    }
+  }, [findExercise])
+
+  const describeProgram = useCallback((program: WorkoutAssistantProgram): string => {
+    const rawDays: WorkoutAssistantDay[] = program.days?.length
+      ? program.days
+      : program.exercises?.length
+        ? [{ day_name: program.name || 'Gun 1', exercises: program.exercises }]
+        : []
+
+    return rawDays
+      .map((day) => {
+        const lines = day.exercises
+          .map((e) => `  • ${e.exercise_name} — ${e.sets}x${e.reps}${e.rest_seconds ? ` (${e.rest_seconds}sn ara)` : ''}`)
+          .join('\n')
+        return `${day.day_name}\n${lines}`
+      })
+      .join('\n\n')
+  }, [])
+
+  /** Taslağı manuel sekmeye taşır — kullanıcı kaydetmeden önce düzenlemek isterse. */
+  const applyAssistantProgram = useCallback((program: WorkoutAssistantProgram) => {
+    const rawDays: WorkoutAssistantDay[] = program.days?.length
+      ? program.days
+      : program.exercises?.length
+        ? [{ day_name: program.name || 'Gun 1', exercises: program.exercises }]
+        : []
+
+    const mappedExercises = rawDays.flatMap((day) => day.exercises.flatMap((exercise) => {
+      const match = findExercise(exercise.exercise_name)
       if (!match) return []
-
       return [{
         exercise_id: match.id,
         exercise_name: match.name,
         sets: exercise.sets,
         reps: exercise.reps,
-        weight_kg: exercise.weight_kg,
+        weight_kg: exercise.weight_kg ?? 0,
       }]
-    })
+    }))
 
     if (mappedExercises.length === 0) {
       showToast('AI taslagi kutuphane egzersizleri ile eslesmedi', 'error')
@@ -182,11 +272,31 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     }
 
     setProgName(program.name)
-    setProgDesc(program.description)
+    setProgDesc(program.description ?? '')
     setProgExercises(mappedExercises)
     setProgTab('manual')
-    showToast('AI taslagi programa aktarildi', 'success')
-  }, [exercises, showToast])
+    showToast('AI taslagi manuel sekmeye aktarildi', 'success')
+  }, [findExercise, showToast])
+
+  const pendingPlan: AiProgramPlan | null = pendingProgram ? toProgramPlan(pendingProgram) : null
+
+  const handleSaveCoachProgram = useCallback(async () => {
+    const plan = pendingProgram ? toProgramPlan(pendingProgram) : null
+    if (!plan) return
+    setSavingPlan(true)
+    try {
+      await createProgramFromPlan(supabase, userId, plan)
+      setPendingProgram(null)
+      setProgramChat([])
+      setShowNewProgram(false)
+      setActiveTab('programs')
+      showToast(`"${plan.name}" programi kaydedildi`, 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Program kaydedilemedi', 'error')
+    } finally {
+      setSavingPlan(false)
+    }
+  }, [pendingProgram, toProgramPlan, createProgramFromPlan, userId, showToast])
 
   useEffect(() => {
     void fetchLibrary(supabase)
@@ -254,11 +364,15 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     } finally {
       setAiLoading(false)
     }
-  }, [todayWorkout, workoutHistory, date, fitnessGoal, setWorkoutAiPlan, showToast])
+  }, [todayWorkout, workoutHistory, date, fitnessGoal, lang, setWorkoutAiPlan, showToast])
 
-  const handleAiProgramAssistant = useCallback(async () => {
-    const prompt = aiPrompt.trim()
-    if (!prompt) return
+  const handleAiProgramAssistant = useCallback(async (preset?: string) => {
+    const prompt = (preset ?? aiPrompt).trim()
+    if (!prompt || aiProgLoading) return
+
+    // Gecmis sunucuya gonderilmezse her mesaj sifirdan basliyor ve
+    // "carsambayi da ekle" gibi bir duzeltme baglamsiz kaliyor.
+    const history = programChat.slice(-8)
 
     setAiProgLoading(true)
     setProgramChat((current) => [...current, { role: 'user', text: prompt }])
@@ -278,7 +392,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           type: 'workout_program_chat',
           user_message: prompt,
           workout_context: {
-            history: programChat,
+            history,
             available_exercises: exercises.map((exercise) => ({
               name: exercise.name,
               category: exercise.category,
@@ -291,12 +405,21 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
 
       if (error) throw error
 
-      const result = data as { message?: string; program?: WorkoutAssistantProgram }
-      const assistantText = result.message?.trim() || 'Bir program taslagi hazirlandi.'
-      setProgramChat((current) => [...current, { role: 'assistant', text: assistantText }])
-      if (result.program) {
-        applyAssistantProgram(result.program)
+      const result = data as { message?: string; program?: WorkoutAssistantProgram | null }
+      const baseText = result.message?.trim() || 'Bir program taslagi hazirlandi.'
+      const program = result.program ?? null
+      const plan = program ? toProgramPlan(program) : null
+
+      if (program && !plan) {
+        showToast('AI taslagi kutuphane egzersizleri ile eslesmedi', 'error')
       }
+
+      const assistantText = program
+        ? `${baseText}\n\n${program.name}\n${describeProgram(program)}`
+        : baseText
+
+      setProgramChat((current) => [...current, { role: 'assistant', text: assistantText }])
+      setPendingProgram(plan ? program : null)
     } catch (err) {
       const info = await describeAiError(err, lang)
       if (info.detail) console.error('ai-suggest workout_program_chat:', info.status, info.detail)
@@ -305,7 +428,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     } finally {
       setAiProgLoading(false)
     }
-  }, [aiPrompt, applyAssistantProgram, exercises, programChat, showToast])
+  }, [aiPrompt, aiProgLoading, describeProgram, exercises, lang, programChat, showToast, toProgramPlan])
 
   // ---------- Set ekle ----------
   const handleAddSet = useCallback(async () => {
@@ -939,29 +1062,68 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           {progTab === 'ai' ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-                <p className="text-sm font-medium text-primary">Program Asistani</p>
-                <p className="mt-1 text-xs text-muted">Hedefi, ekipmani ve haftalik frekansi yaz. AI program taslagi olustursun.</p>
+                <p className="text-sm font-medium text-primary">Antrenman Kocu</p>
+                <p className="mt-1 text-xs text-muted">
+                  Hedefini, ekipmanini ve haftalik frekansini yaz; koc kutuphanedeki hareketlerle
+                  haftalik program yazsin. Sohbeti surdurerek programi degistirebilirsin.
+                </p>
               </div>
 
-              {programChat.length > 0 && (
+              {programChat.length === 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {COACH_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => void handleAiProgramAssistant(suggestion)}
+                      className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent hover:text-primary"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : (
                 <div className="max-h-72 space-y-2 overflow-y-auto rounded-2xl border border-border/60 bg-surface p-3">
                   {programChat.map((message, index) => (
-                    <div key={`${message.role}-${index}`} className={`rounded-2xl px-3 py-2 text-sm ${message.role === 'user' ? 'ml-10 bg-accent text-white' : 'mr-10 bg-background text-primary'}`}>
+                    <div key={`${message.role}-${index}`} className={`whitespace-pre-line rounded-2xl px-3 py-2 text-sm ${message.role === 'user' ? 'ml-10 bg-accent text-white' : 'mr-10 bg-background text-primary'}`}>
                       {message.text}
                     </div>
                   ))}
+                  {aiProgLoading && (
+                    <div className="mr-10 rounded-2xl bg-background px-3 py-2 text-sm text-muted">Yaziyor...</div>
+                  )}
+                </div>
+              )}
+
+              {pendingPlan && (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/40 bg-accent/5 p-3">
+                  <p className="flex-1 text-xs text-muted">
+                    <span className="font-medium text-primary">{pendingPlan.name}</span>
+                    {' · '}{pendingPlan.days.length} gun · {pendingPlan.days.reduce((sum, d) => sum + d.exercises.length, 0)} hareket
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => pendingProgram && applyAssistantProgram(pendingProgram)}>
+                    Duzenle
+                  </Button>
+                  <Button size="sm" loading={savingPlan} onClick={() => void handleSaveCoachProgram()}>
+                    Programi kaydet
+                  </Button>
                 </div>
               )}
 
               <textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    void handleAiProgramAssistant()
+                  }
+                }}
                 placeholder={t.work_ai_placeholder}
-                className="min-h-[120px] w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-primary outline-none placeholder:text-muted/50 focus:border-accent focus:bg-surface"
+                className="min-h-[80px] w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-primary outline-none placeholder:text-muted/50 focus:border-accent focus:bg-surface"
               />
 
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setProgramChat([])}>{t.work_clear}</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setProgramChat([]); setPendingProgram(null) }}>{t.work_clear}</Button>
                 <Button size="sm" onClick={() => void handleAiProgramAssistant()} loading={aiProgLoading} disabled={!aiPrompt.trim()}>
                   {t.work_generate}
                 </Button>

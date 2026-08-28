@@ -20,7 +20,9 @@ type FoodResult = { name: string; name_en?: string | null; calories: number; pro
 
 interface NutritionClientProps { userId: string }
 
-interface ChatMsg { role: 'user' | 'assistant'; text: string }
+/** Koçun mesajın altına iliştirdiği "bunu öğün olarak ekle" önerisi. */
+interface CoachAction { action: 'log_meal'; meal_type: MealType; text: string }
+interface ChatMsg { role: 'user' | 'assistant'; text: string; actions?: CoachAction[] }
 
 function isParseMealResponse(value: unknown): value is ParseMealResponse {
   if (!value || typeof value !== 'object') return false
@@ -31,6 +33,45 @@ function isParseMealResponse(value: unknown): value is ParseMealResponse {
     && Array.isArray(candidate['trace'])
     && !!candidate['ai']
     && typeof candidate['ai'] === 'object'
+}
+
+function CoachActionButton({ action, onRun }: { action: CoachAction; onRun: (a: CoachAction) => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const handleClick = async () => {
+    if (busy || done) return
+    setBusy(true)
+    setFailed(false)
+    try {
+      await onRun(action)
+      setDone(true)
+    } catch {
+      // Basarisizsa "eklendi"ye gecmiyoruz ki kullanici tekrar deneyebilsin.
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void handleClick()}
+      disabled={busy || done}
+      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+        done
+          ? 'border-gray-200 bg-gray-50 text-gray-400'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+      }`}
+    >
+      {done
+        ? '✓ Günlüğe eklendi'
+        : busy
+          ? 'Ekleniyor...'
+          : `${failed ? 'Tekrar dene: ' : '+ '}${MEAL_TYPE_LABELS[action.meal_type]} olarak ekle`}
+    </button>
+  )
 }
 
 export default function NutritionClient({ userId }: NutritionClientProps) {
@@ -105,8 +146,8 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
     }
   }, [removeMeal])
 
-  const handleSendChat = useCallback(async () => {
-    const msg = chatInput.trim()
+  const handleSendChat = useCallback(async (preset?: string) => {
+    const msg = (preset ?? chatInput).trim()
     if (!msg || chatLoading) return
     setChatInput('')
     setChatMessages((p) => [...p, { role: 'user', text: msg }])
@@ -135,6 +176,10 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
           type: 'nutrition_chat',
           language: lang,
           user_message: msg,
+          today: date,
+          // Sunucu UTC'de calisiyor; "aksam ne yiyeyim" sorusunun cevabi
+          // kullanicinin yerel saatine bagli.
+          current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           nutrition_context: {
             target: tgt,
             consumed,
@@ -144,8 +189,9 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
         },
       })
       if (error) throw error
-      const reply = (data as { message: string }).message
-      setChatMessages((p) => [...p, { role: 'assistant', text: reply }])
+      const result = data as { message: string; actions?: CoachAction[] }
+      const actions = (result.actions ?? []).filter((a) => a.action === 'log_meal' && a.text?.trim())
+      setChatMessages((p) => [...p, { role: 'assistant', text: result.message, ...(actions.length > 0 ? { actions } : {}) }])
     } catch (err) {
       const info = await describeAiError(err, lang)
       if (info.detail) console.error('ai-suggest nutrition:', info.status, info.detail)
@@ -153,7 +199,21 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
     } finally {
       setChatLoading(false)
     }
-  }, [chatInput, chatLoading, chatMessages, dailySummary, target, meals, lang])
+  }, [chatInput, chatLoading, chatMessages, dailySummary, target, meals, lang, date])
+
+  /** Koçun onerdigi ogunu parse-meal'den gecirip gunluge yazar. */
+  const handleCoachAction = useCallback(async (action: CoachAction) => {
+    const parsed = await handleParseMeal(action.text)
+    if (parsed.items.length === 0) throw new Error('Öğün çözümlenemedi')
+    await addMeal(supabase, userId, {
+      date,
+      meal_type: action.meal_type,
+      raw_input: action.text,
+      items: parsed.items,
+      ...(parsed.trace ? { parse_trace: parsed.trace } : {}),
+      ...(parsed.version ? { parse_version: parsed.version } : {}),
+    })
+  }, [handleParseMeal, addMeal, userId, date])
 
   const handleFoodSearch = useCallback(async (query: string) => {
     setFoodSearch(query)
@@ -445,7 +505,7 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
                       <div className="flex flex-wrap gap-1.5">
                         {[t.nutr_q1, t.nutr_q2, t.nutr_q3].map((q) => (
                           <button key={q}
-                            onClick={() => { setChatInput(q); setTimeout(() => void handleSendChat(), 0) }}
+                            onClick={() => void handleSendChat(q)}
                             className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100">
                             {q}
                           </button>
@@ -463,12 +523,17 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
                         🥗
                       </div>
                     )}
-                    <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'rounded-br-sm bg-accent text-white'
-                        : 'rounded-bl-sm bg-gray-100 text-gray-800'
-                    }`}>
-                      {msg.text}
+                    <div className="flex max-w-[80%] flex-col gap-1.5">
+                      <div className={`whitespace-pre-line rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'self-end rounded-br-sm bg-accent text-white'
+                          : 'rounded-bl-sm bg-gray-100 text-gray-800'
+                      }`}>
+                        {msg.text}
+                      </div>
+                      {msg.actions?.map((action, ai) => (
+                        <CoachActionButton key={ai} action={action} onRun={handleCoachAction} />
+                      ))}
                     </div>
                   </div>
                 ))}

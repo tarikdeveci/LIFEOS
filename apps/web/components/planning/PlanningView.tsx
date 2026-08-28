@@ -231,6 +231,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const handleSendChat = useCallback(async () => {
     if (!chatInput.trim() || chatLoading) return
     const userMsg = chatInput.trim()
+    // Sohbet gecmisi sunucuya gonderilir: aksi halde her mesaj sifirdan
+    // basliyor ve "biraz daha gec yap" gibi bir duzeltme baglamsiz kaliyor.
+    const history = chatMessages.slice(-8).map((m) => ({ role: m.role, text: m.text }))
     setChatInput(''); setChatMessages((p) => [...p, { role: 'user', text: userMsg }]); setChatLoading(true)
     try {
       let { data: { session } } = await supabase.auth.getSession()
@@ -239,7 +242,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       const { data, error } = await supabase.functions.invoke('ai-suggest', {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
-          type: 'replan', language: lang, date, today: todayDate(), user_message: userMsg, buffer_minutes: AI_BUFFER_MINUTES,
+          type: 'replan', language: lang, date, today: todayDate(), user_message: userMsg, buffer_minutes: AI_BUFFER_MINUTES, history,
           current_time: new Date().toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
           existing_blocks: timeBlocks.map((b) => ({ id: b.id, start: b.start_time.slice(0, 5), end: b.end_time.slice(0, 5), label: b.label ?? b.block_type })),
         },
@@ -258,7 +261,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       if (info.detail) console.error('ai-suggest replan:', info.status, info.detail)
       setChatMessages((p) => [...p, { role: 'assistant', text: info.message }])
     } finally { setChatLoading(false) }
-  }, [chatInput, chatLoading, date, timeBlocks])
+  }, [chatInput, chatLoading, chatMessages, date, lang, timeBlocks])
 
   const handleApplyPendingActions = useCallback(async () => {
     if (!pendingActions) return

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Keyboard } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
@@ -12,12 +12,14 @@ import type {
   ParseTraceEntry,
   QuestionChoice,
   FoodSearchResult,
+  NutritionFeedbackKind,
 } from '@lifeos/shared'
 import {
   buildItemFromChoice,
   saveFoodAlias,
   savePortionMemory,
   searchFoodChoices,
+  submitNutritionFeedback,
 } from '@lifeos/shared/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -26,13 +28,40 @@ import { Button } from '@/src/components/ui/Button'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-interface ChatMsg { role: 'user' | 'assistant'; content: string }
+/** ai-suggest'in beslenme koçundan dönen aksiyon. */
+interface CoachAction { action: 'log_meal'; meal_type: MealType; text: string }
+
+const MEAL_LABELS: Record<MealType, string> = {
+  breakfast: 'Kahvaltı',
+  lunch: 'Öğle',
+  dinner: 'Akşam',
+  snack: 'Ara öğün',
+}
+
+const CHAT_SUGGESTIONS = [
+  'Kaç kalori kaldı?',
+  'Akşama ne yesem?',
+  'Protein hedefimi tuttum mu?',
+  'Bu haftaki gidişatım nasıl?',
+]
+
+/**
+ * Bildirim tek dokunuşta biter: serbest metin istenmez. Etiketler kullanıcının
+ * neyi yanlış bulduğunu ayırt etmeye yeter, gerisi ize bakılarak teşhis edilir.
+ */
+const FEEDBACK_KINDS: { kind: NutritionFeedbackKind; label: string }[] = [
+  { kind: 'missing_item', label: 'Bir şey eksik' },
+  { kind: 'wrong_food', label: 'Yanlış yiyecek' },
+  { kind: 'wrong_portion', label: 'Gramaj yanlış' },
+  { kind: 'wrong_macros', label: 'Kalori yanlış' },
+]
 
 function questionKey(question: MealQuestion): string {
   return `${question.kind}:${question.phrase}:${question.raw}`
@@ -84,6 +113,12 @@ export default function NutritionScreen() {
   const [aiDegraded, setAiDegraded] = useState(false)
   const [adding, setAdding] = useState(false)
 
+  // "Bu yanlış" bildirimi. Hattın soru sorduğu kalemler zaten food_gaps'e
+  // düşüyor; buradaki amaç hattın EMİN olduğu ama yanıldığı kalemleri
+  // yakalamak — başka hiçbir yerde iz bırakmıyorlar.
+  const [feedbackFor, setFeedbackFor] = useState<number | null>(null)
+  const [feedbackSent, setFeedbackSent] = useState<Record<number, boolean>>({})
+
   // Food search
   const [foodSearch, setFoodSearch] = useState('')
   const [foodResults, setFoodResults] = useState<FoodSearchResult[]>([])
@@ -106,7 +141,7 @@ export default function NutritionScreen() {
 
   // AI Chat
   const [showChat, setShowChat] = useState(false)
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([])
+  const [chatMsgs, setChatMsgs] = useState<AiChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
 
@@ -242,6 +277,7 @@ export default function NutritionScreen() {
   async function handleReparseEditMeal() {
     if (!editingMeal || !userId || !editRawInput.trim()) return
     setEditLoading(true)
+    Keyboard.dismiss()
     try {
       const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
       setEditItems(result.items)
@@ -264,6 +300,15 @@ export default function NutritionScreen() {
     setParsedItems(null)
     setParsedQuestions([])
     setItemApprovals([])
+    setFeedbackFor(null)
+    setFeedbackSent({})
+    // Tekrar hesaplama temiz sayfadan başlar: önceki turun yarım kalan gramaj
+    // taslakları ve izi yeni sonuca karışmamalı.
+    setAmountDrafts({})
+    setParseTrace(null)
+    // Yazma bitti, sıra kontrolde: klavye kapanınca sayfa ~300px büyüyor ve
+    // çözümleme sonuçları dar bir şeride sıkışmak yerine bir bakışta görünüyor.
+    Keyboard.dismiss()
     try {
       const result = await callParseMeal({ raw_input: rawInput, user_id: userId })
       setParsedItems(result.items)
@@ -300,6 +345,8 @@ export default function NutritionScreen() {
       setParsedItems(null)
       setParsedQuestions([])
       setItemApprovals([])
+      setFeedbackFor(null)
+      setFeedbackSent({})
       setAmountDrafts({})
       setParseTrace(null)
       setParseVersion(null)
@@ -307,6 +354,36 @@ export default function NutritionScreen() {
       setShowAdd(false)
     } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
     finally { setAdding(false) }
+  }
+
+  /**
+   * Tek dokunuşla bildirim: serbest metin istemez. Etiket, gramaj, kalori ve
+   * çözümleme izi o anki hâliyle dondurulur — sözlük sonradan düzelse bile
+   * neyin şikâyet edildiği okunabilir kalır. Hata olursa öğün akışı bozulmaz.
+   */
+  async function sendItemFeedback(index: number, item: MealItem, kind: NutritionFeedbackKind) {
+    if (!userId) return
+    setFeedbackFor(null)
+    setFeedbackSent((sent) => ({ ...sent, [index]: true }))
+
+    const phrase = item.phrase ?? item.name
+    try {
+      await submitNutritionFeedback(supabase, userId, {
+        raw_input: rawInput.trim() || null,
+        phrase,
+        item_label: item.name,
+        item_source: item.source === 'corpus' ? 'corpus' : 'curated',
+        item_ref_id: item.corpus_fdc_id ?? item.food_item_id ?? null,
+        item_grams: item.grams ?? item.amount,
+        item_kcal: item.calories,
+        kind,
+        parse_version: parseVersion,
+        trace: parseTrace?.find((entry) => entry.phrase === phrase) ?? null,
+      })
+    } catch {
+      setFeedbackSent((sent) => ({ ...sent, [index]: false }))
+      Alert.alert('Bildirim gönderilemedi', 'Bağlantını kontrol edip tekrar dener misin?')
+    }
   }
 
   function dismissQuestion(index: number, key: string) {
@@ -372,33 +449,82 @@ export default function NutritionScreen() {
     }
   }
 
-  async function handleChat() {
-    if (!chatInput.trim() || !userId) return
+  /**
+   * Koçun önerdiği öğünü besin çözümleyicisinden geçirip güne kaydeder.
+   * Koç serbest metin üretiyor ("180g yoğurt, 30g ceviz"); aynı hat elle
+   * eklemede de kullanıldığı için makrolar tutarlı çıkıyor.
+   */
+  async function logMealFromCoach(mealTypeForLog: MealType, text: string) {
+    if (!userId) return
+    const result = await callParseMeal({ raw_input: text, user_id: userId })
+    if (result.items.length === 0) throw new Error('Çözümlenemedi')
+    await addMeal(supabase, userId, {
+      date: todayStr,
+      meal_type: mealTypeForLog,
+      raw_input: text,
+      items: result.items,
+      ...(result.trace ? { parse_trace: result.trace } : {}),
+      ...(result.version ? { parse_version: result.version } : {}),
+    })
+  }
+
+  async function sendChat(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || !userId || chatLoading) return
     if (!requirePro()) return
-    const userMsg: ChatMsg = { role: 'user', content: chatInput.trim() }
-    setChatMsgs((m) => [...m, userMsg])
+
+    // Geçmiş, kullanıcının yeni mesajı eklenmeden önce alınır: sunucu son turu
+    // ayrıca user_message olarak ekliyor, iki kez göndermek modeli tekrarlatıyor.
+    const history = chatMsgs.slice(-8).map((m) => ({ role: m.role, text: m.content }))
+    setChatMsgs((m) => [...m, { role: 'user', content: trimmed }])
     setChatInput('')
     setChatLoading(true)
     try {
-      const todayMeals = meals.filter((m) => m.date === todayStr)
-      const data = await callAiSuggest<{ message?: string }>({
+      const dayMeals = meals.filter((m) => m.date === todayStr)
+      const data = await callAiSuggest<{ message?: string; actions?: CoachAction[] }>({
         type: 'nutrition_chat',
-        target,
-        consumed: {
-          cal:   dailySummary?.calories ?? 0,
-          prot:  dailySummary?.protein  ?? 0,
-          carbs: dailySummary?.carbs    ?? 0,
-          fat:   dailySummary?.fat      ?? 0,
+        current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        user_message: trimmed,
+        nutrition_context: {
+          target: target
+            ? { calories: target.calories, protein: target.protein, carbs: target.carbs, fat: target.fat, fiber: target.fiber }
+            : undefined,
+          consumed: {
+            calories: dailySummary?.calories ?? 0,
+            protein: dailySummary?.protein ?? 0,
+            carbs: dailySummary?.carbs ?? 0,
+            fat: dailySummary?.fat ?? 0,
+            fiber: dailySummary?.fiber ?? 0,
+          },
+          meals_today: dayMeals.map((m) => ({ meal_type: m.meal_type, items: m.items })),
+          history,
         },
-        meals_today: todayMeals.map((m) => ({ meal_type: m.meal_type, items: m.items })),
-        history: chatMsgs.slice(-8).map((m) => ({ role: m.role, content: m.content })),
-        user_message: userMsg.content,
       })
-      setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? 'Yanıt alınamadı' }])
+
+      const actions = (data.actions ?? [])
+        .filter((a) => a.action === 'log_meal' && !!a.text)
+        .map((a) => ({
+          label: `${MEAL_LABELS[a.meal_type] ?? 'Öğün'} olarak kaydet`,
+          icon: 'add-circle-outline' as const,
+          doneLabel: 'Kaydedildi',
+          onPress: async () => {
+            try {
+              await logMealFromCoach(a.meal_type, a.text)
+              await load(userId)
+            } catch {
+              Alert.alert('Hata', 'Öğün kaydedilemedi')
+              throw new Error('log failed')
+            }
+          },
+        }))
+
+      setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? 'Yanıt alınamadı', actions }])
     } catch {
       setChatMsgs((m) => [...m, { role: 'assistant', content: 'Hata oluştu, tekrar dene.' }])
     } finally { setChatLoading(false) }
   }
+
+  function handleChat() { void sendChat(chatInput) }
 
   const todayMeals = meals.filter((m) => m.date === todayStr)
   const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
@@ -527,6 +653,8 @@ export default function NutritionScreen() {
           setParsedItems(null)
           setParsedQuestions([])
           setItemApprovals([])
+          setFeedbackFor(null)
+          setFeedbackSent({})
           setAmountDrafts({})
           setParseTrace(null)
           setParseVersion(null)
@@ -582,9 +710,16 @@ export default function NutritionScreen() {
                 autoFocus
               />
 
-              {!parsedItems && (
-                <Button label={parsing ? t.nutr_analyzing : 'Hesapla'} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
-              )}
+              {/* Sonuç geldikten sonra da görünür kalır: çözümleme yanlışsa
+                  kullanıcı metni düzeltip tekrar çalıştırabilmeli. Buton
+                  gizlendiğinde tek çıkış yolu modalı kapatmaktı. */}
+              <Button
+                label={parsing ? t.nutr_analyzing : parsedItems ? 'Tekrar hesapla' : 'Hesapla'}
+                onPress={handleParse}
+                loading={parsing}
+                variant="secondary"
+                fullWidth
+              />
             </>
           ) : (
             <View style={{ gap: spacing[3] }}>
@@ -643,8 +778,8 @@ export default function NutritionScreen() {
           {parsedItems && (
             <View style={{ gap: spacing[2] }}>
               {aiDegraded && (
-                <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: '#FEF3C7' }}>
-                  <Text style={{ fontSize: fontSize.xs, color: '#92400E', lineHeight: 18 }}>
+                <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: 'rgba(245,158,11,0.12)' }}>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textSecondary, lineHeight: 18 }}>
                     AI katmanı kullanılamıyor. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor.
                   </Text>
                 </View>
@@ -658,32 +793,57 @@ export default function NutritionScreen() {
                   </View>
                   {item.calories_min !== undefined && item.calories_max !== undefined && (
                     <Text style={{ marginTop: 3, fontSize: fontSize.xs, color: colors.textSubtle }}>
-                      {item.calories_min}–{item.calories_max} kcal · {item.source === 'corpus' ? 'USDA, kontrol et' : item.portion_rung}
+                      {item.calories_min}–{item.calories_max} kcal · {item.source === 'corpus' ? (item.source_label ? `USDA: ${item.source_label}` : 'USDA, kontrol et') : item.portion_rung}
                     </Text>
                   )}
                   {item.disposition === 'confirm' && !itemApprovals[i] && (
                     <TouchableOpacity
                       onPress={() => setItemApprovals((approvals) => approvals.map((approved, index) => index === i ? true : approved))}
-                      style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: '#D97706' }}
+                      style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: palette.accent }}
                     >
                       <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
                     </TouchableOpacity>
                   )}
                   {item.disposition === 'confirm' && itemApprovals[i] && (
-                    <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: '#059669' }}>Onaylandı</Text>
+                    <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: palette.success }}>Onaylandı</Text>
+                  )}
+
+                  {feedbackSent[i] ? (
+                    <Text style={{ marginTop: 6, fontSize: fontSize.xs, color: palette.success }}>
+                      Bildirildi — teşekkürler, bu kalemi düzelteceğiz.
+                    </Text>
+                  ) : feedbackFor === i ? (
+                    <View style={{ marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+                      {FEEDBACK_KINDS.map(({ kind, label }) => (
+                        <TouchableOpacity
+                          key={kind}
+                          onPress={() => void sendItemFeedback(i, item, kind)}
+                          style={{ paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(99,102,241,0.10)', borderWidth: 1, borderColor: colors.border }}
+                        >
+                          <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium }}>{label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity onPress={() => setFeedbackFor(null)} style={{ paddingHorizontal: spacing[2], paddingVertical: 6 }}>
+                        <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Vazgeç</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity onPress={() => setFeedbackFor(i)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Bu yanlış mı?</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               ))}
 
               {parsedQuestions.length > 0 && (
                 <View style={{ gap: spacing[2], marginTop: spacing[2] }}>
-                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#92400E' }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
                     Emin olamadıklarım ({parsedQuestions.length}) — tahmin yürütmedim
                   </Text>
                   {parsedQuestions.map((question, questionIndex) => {
                     const key = questionKey(question)
                     return (
-                      <View key={key} style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', gap: spacing[2] }}>
+                      <View key={key} style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: 'rgba(99,102,241,0.08)', borderWidth: 1, borderColor: colors.border, gap: spacing[2] }}>
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>
                           {question.kind === 'amount'
                             ? `“${question.raw}” — ${question.food_label ?? question.phrase} kaç gram?`
@@ -694,7 +854,7 @@ export default function NutritionScreen() {
                           <TouchableOpacity
                             key={`${choice.source}:${choice.id}`}
                             onPress={() => void handleQuestionChoice(questionIndex, question, choice)}
-                            style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 9, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border }}
+                            style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 9, backgroundColor: colors.bgSurface, borderWidth: 1, borderColor: colors.border }}
                           >
                             <Text style={{ fontSize: fontSize.xs, color: colors.textSecondary }}>
                               {choice.label} · {choice.kcal_per_100g} kcal/100g
@@ -753,33 +913,21 @@ export default function NutritionScreen() {
       </BottomSheet>
 
       {/* AI Chat */}
-      <BottomSheet visible={showChat} onClose={() => setShowChat(false)} title="Beslenme Asistanı" scrollable>
-        <View style={{ gap: spacing[3] }}>
-          {chatMsgs.length === 0 && (
-            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
-                Bugünkü beslenmen hakkında soru sorabilirsin. Örn: "Kaç kalori kaldı?", "Protein ihtiyacımı karşıladım mı?"
-              </Text>
-            </View>
-          )}
-          {chatMsgs.map((msg, i) => (
-            <View key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', padding: spacing[3], borderRadius: radius.lg, backgroundColor: msg.role === 'user' ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: msg.role === 'user' ? palette.accent : colors.border }}>
-              <Text style={{ fontSize: fontSize.sm, color: msg.role === 'user' ? '#fff' : colors.textSecondary, lineHeight: 20 }}>{msg.content}</Text>
-            </View>
-          ))}
-          {chatLoading && (
-            <View style={{ alignSelf: 'flex-start', padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner }}>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yazıyor...</Text>
-            </View>
-          )}
-          <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
-            <Input value={chatInput} onChangeText={setChatInput} placeholder="Sorun..." containerStyle={{ flex: 1 }} onSubmitEditing={handleChat} returnKeyType="send" />
-            <TouchableOpacity onPress={handleChat} disabled={chatLoading || !chatInput.trim()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: chatInput.trim() ? palette.accent : colors.glassInner, alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-              <Ionicons name="arrow-up" size={20} color={chatInput.trim() ? '#fff' : colors.textSubtle} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </BottomSheet>
+      <AiChatSheet
+        visible={showChat}
+        onClose={() => setShowChat(false)}
+        title="Beslenme Koçu"
+        accent={palette.accent}
+        messages={chatMsgs}
+        loading={chatLoading}
+        input={chatInput}
+        onChangeInput={setChatInput}
+        onSend={handleChat}
+        placeholder="Ne sormak istersin?"
+        emptyHint="Bugünkü hedeflerine ve yediklerine bakarak cevap veriyorum. Ne yediğini yazarsan tek dokunuşla kaydedebilirim."
+        suggestions={CHAT_SUGGESTIONS}
+        onSuggestionPress={(text) => { void sendChat(text) }}
+      />
 
       {/* Edit meal */}
       <BottomSheet
@@ -830,13 +978,13 @@ export default function NutritionScreen() {
                 </View>
                 {item.calories_min !== undefined && item.calories_max !== undefined && (
                   <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: colors.textSubtle }}>
-                    {item.calories_min}–{item.calories_max} kcal {item.source === 'corpus' ? '· USDA' : ''}
+                    {item.calories_min}–{item.calories_max} kcal {item.source === 'corpus' ? `· USDA${item.source_label ? ': ' + item.source_label : ''}` : ''}
                   </Text>
                 )}
                 {item.disposition === 'confirm' && !editApprovals[index] && (
                   <TouchableOpacity
                     onPress={() => setEditApprovals((approvals) => approvals.map((approved, approvalIndex) => approvalIndex === index ? true : approved))}
-                    style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: '#D97706' }}
+                    style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: palette.accent }}
                   >
                     <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
                   </TouchableOpacity>

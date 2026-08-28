@@ -143,3 +143,28 @@ export interface CreateProgramInput {
   split_type?: WorkoutProgram['split_type']
   frequency_per_week?: number
 }
+
+/**
+ * AI koçunun ürettiği program planı. Edge function egzersiz adlarını kataloğa
+ * karşı doğruladığı için burada isim değil, istemcide çözülmüş exercise_id
+ * taşınır — kaydederken eşleşmeyen satır kalmasın.
+ */
+export interface AiProgramPlanExercise {
+  exercise_id: string
+  sets: number
+  reps: number | null
+  rest_seconds: number
+  notes: string | null
+}
+
+export interface AiProgramPlanDay {
+  day_name: string
+  exercises: AiProgramPlanExercise[]
+}
+
+export interface AiProgramPlan {
+  name: string
+  description?: string
+  split_type?: WorkoutProgram['split_type']
+  days: AiProgramPlanDay[]
+}

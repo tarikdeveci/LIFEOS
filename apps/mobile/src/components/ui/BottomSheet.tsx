@@ -18,7 +18,15 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
   const insets = useSafeAreaInsets()
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const bottomOffset = keyboardHeight > 0 ? Math.max(keyboardHeight - insets.bottom, 0) : insets.bottom
-  const sheetMaxHeight = Math.max(screenHeight * 0.45, screenHeight - bottomOffset - spacing[4])
+
+  // Sayfa flex-end ile klavyenin üstüne yaslanır, dolayısıyla kullanabileceği
+  // alan yalnızca bu kadardır. Eski hesapta `Math.max(screenHeight * 0.45, ...)`
+  // tabanı vardı: klavye ekrana oranla yüksek olduğunda (küçük telefonlar) bu
+  // taban mevcut alanı aşıyor ve sayfayı YUKARIDAN kırpıyordu — başlık ve
+  // kapatma düğmesi ekran dışında kalıyordu. Taban kaldırıldı; içerik zaten
+  // kısa olduğunda sayfa kendiliğinden küçülür.
+  const available = screenHeight - bottomOffset - spacing[4]
+  const sheetMaxHeight = Math.min(available, screenHeight * 0.92)
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -52,7 +60,7 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
             borderLeftWidth: 1,
             borderRightWidth: 1,
             borderColor: colors.glassBorder,
-            maxHeight: Math.min(screenHeight * 0.88, sheetMaxHeight),
+            maxHeight: sheetMaxHeight,
           }}
         >
           {/* Handle */}

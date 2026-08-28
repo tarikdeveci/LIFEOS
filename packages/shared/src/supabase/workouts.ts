@@ -12,6 +12,8 @@ import type {
   WorkoutStatus,
   WorkoutProgram,
   CreateProgramInput,
+  ProgramDay,
+  ProgramExercise,
 } from '../types/workout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -294,5 +296,58 @@ export async function deleteWorkoutProgram(
     .delete()
     .eq('id', programId)
 
+  if (error) throw error
+}
+
+/**
+ * Programa gün ekler. Şema kullanıcı programlarını zaten destekliyordu
+ * (workout_programs.user_id + RLS); eksik olan yalnızca yazma fonksiyonlarıydı.
+ */
+export async function createProgramDay(
+  supabase: Supabase,
+  programId: string,
+  dayNumber: number,
+  dayName: string,
+): Promise<ProgramDay> {
+  const { data, error } = await supabase
+    .from('program_days')
+    .insert({ program_id: programId, day_number: dayNumber, day_name: dayName })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as ProgramDay
+}
+
+export async function deleteProgramDay(supabase: Supabase, dayId: string): Promise<void> {
+  const { error } = await supabase.from('program_days').delete().eq('id', dayId)
+  if (error) throw error
+}
+
+/** Gün içindeki hareket. order_index çağıran tarafından verilir: sıra kullanıcının. */
+export async function createProgramExercise(
+  supabase: Supabase,
+  programDayId: string,
+  input: {
+    exercise_id: string
+    sets: number
+    reps: number | null
+    rest_seconds: number
+    order_index: number
+    notes?: string | null
+  },
+): Promise<ProgramExercise> {
+  const { data, error } = await supabase
+    .from('program_exercises')
+    .insert({ program_day_id: programDayId, ...input })
+    .select('*, exercise:exercises(*)')
+    .single()
+
+  if (error) throw error
+  return data as ProgramExercise
+}
+
+export async function deleteProgramExercise(supabase: Supabase, exerciseRowId: string): Promise<void> {
+  const { error } = await supabase.from('program_exercises').delete().eq('id', exerciseRowId)
   if (error) throw error
 }

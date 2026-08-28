@@ -1,10 +1,28 @@
 // supabase/functions/ai-suggest/index.ts
-// Claude AI ile görev önceliklendirme ve günlük plan önerileri
+// Claude AI ile görev önceliklendirme, planlama ve koç sohbetleri
 // Client'tan çağrılır (auth header ile)
+//
+// Prompt'lar ve yanıt ayrıştırma _shared/ai/coach.ts içinde. Buradaki iş:
+// yetkilendirme, veritabanından bağlam toplama, modele gitme, yanıtı döndürme.
 
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
+import {
+  buildNutritionCoachPrompt,
+  buildPlannerPrompt,
+  buildWorkoutCoachPrompt,
+  parseNutritionCoachResult,
+  parsePlannerResult,
+  parseWorkoutCoachResult,
+  type ChatTurn,
+  type Lang,
+  type Macros,
+  type PlannerTask,
+  type WorkoutCatalogEntry,
+} from '../_shared/ai/coach.ts'
+
+const CHAT_MODEL = 'claude-opus-4-6'
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -23,9 +41,85 @@ function getCorsHeaders(req: Request): Record<string, string> {
   }
 }
 
+/**
+ * Yayındaki istemciler iki farklı geçmiş biçimi gönderiyor: web `{role, text}`,
+ * App Store'daki mobil sürüm `{role, content}`. İkisini de kabul ediyoruz —
+ * biçimi tek tarafa zorlamak eski sürümlerde sohbet hafızasını siler.
+ */
+function normalizeHistory(raw: unknown): ChatTurn[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry): ChatTurn[] => {
+    if (!entry || typeof entry !== 'object') return []
+    const record = entry as Record<string, unknown>
+    const text = typeof record['text'] === 'string'
+      ? record['text']
+      : typeof record['content'] === 'string' ? record['content'] : ''
+    if (!text.trim()) return []
+    return [{ role: record['role'] === 'assistant' ? 'assistant' : 'user', text }]
+  })
+}
+
+function num(value: unknown, fallback = 0): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+/**
+ * Tüketilen makro nesnesi de iki biçimde geliyor: yeni istemciler
+ * `{calories, protein, ...}`, eski mobil sürüm `{cal, prot, carbs, fat}`.
+ */
+function normalizeMacros(raw: unknown, fallback: Macros): Macros {
+  if (!raw || typeof raw !== 'object') return fallback
+  const r = raw as Record<string, unknown>
+  const pick = (...keys: string[]): number | null => {
+    for (const key of keys) {
+      if (r[key] !== undefined && r[key] !== null) return num(r[key])
+    }
+    return null
+  }
+  return {
+    calories: pick('calories', 'cal', 'kcal') ?? fallback.calories,
+    protein: pick('protein', 'prot', 'protein_g') ?? fallback.protein,
+    carbs: pick('carbs', 'carbs_g', 'carbohydrates') ?? fallback.carbs,
+    fat: pick('fat', 'fat_g') ?? fallback.fat,
+    fiber: pick('fiber', 'fiber_g') ?? fallback.fiber,
+  }
+}
+
+interface MealSummary {
+  meal_type: string
+  items: { name: string; amount: number; unit: string; calories: number }[]
+}
+
+function normalizeMeals(raw: unknown): MealSummary[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry): MealSummary[] => {
+    if (!entry || typeof entry !== 'object') return []
+    const record = entry as Record<string, unknown>
+    const items = Array.isArray(record['items'])
+      ? record['items'].flatMap((rawItem): MealSummary['items'] => {
+          if (!rawItem || typeof rawItem !== 'object') return []
+          const item = rawItem as Record<string, unknown>
+          const name = typeof item['name'] === 'string' ? item['name'] : ''
+          if (!name) return []
+          return [{
+            name,
+            amount: num(item['amount']),
+            unit: typeof item['unit'] === 'string' ? item['unit'] : 'g',
+            calories: num(item['calories']),
+          }]
+        })
+      : []
+    return [{
+      meal_type: typeof record['meal_type'] === 'string' ? record['meal_type'] : 'snack',
+      items,
+    }]
+  })
+}
+
 interface SuggestRequest {
   type: 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan' | 'nutrition_chat'
-  language?: 'tr' | 'en'
+  language?: Lang
   date?: string
   /**
    * İstemcinin YEREL bugün tarihi (YYYY-MM-DD). Sunucu UTC'de çalıştığı için
@@ -43,35 +137,21 @@ interface SuggestRequest {
   existing_blocks?: { id?: string; start: string; end: string; label: string }[]
   user_message?: string
   current_time?: string
-  // nutrition_chat
+  history?: unknown
+  // nutrition_chat — yeni istemciler nutrition_context, eskiler düz alanlar gönderir
   nutrition_context?: {
-    target: { calories: number; protein: number; carbs: number; fat: number; fiber: number }
-    consumed: { calories: number; protein: number; carbs: number; fat: number; fiber: number }
-    meals_today: { meal_type: string; items: { name: string; amount: number; unit: string; calories: number }[] }[]
-    history?: { role: 'user' | 'assistant'; text: string }[]
+    target?: unknown
+    consumed?: unknown
+    meals_today?: unknown
+    history?: unknown
   }
+  target?: unknown
+  consumed?: unknown
+  meals_today?: unknown
   workout_context?: {
-    available_exercises: { name: string; category?: string; muscle_group?: string; is_bodyweight?: boolean }[]
-    history?: { role: 'user' | 'assistant'; text: string }[]
+    available_exercises?: WorkoutCatalogEntry[]
+    history?: unknown
   }
-}
-
-interface WorkoutProgramExercise {
-  exercise_name: string
-  sets: number
-  reps: number
-  weight_kg: number
-}
-
-interface WorkoutProgramPayload {
-  name: string
-  description: string
-  exercises: WorkoutProgramExercise[]
-}
-
-interface WorkoutProgramResult {
-  message: string
-  program: WorkoutProgramPayload | null
 }
 
 async function isProUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
@@ -92,13 +172,31 @@ function normalizeExerciseName(value: string): string {
   return value
     .toLocaleLowerCase('tr-TR')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
 
+/** Modelden gelen ilk text bloğunun metni; yoksa boş string. */
+function firstText(response: { content: Array<{ type: string; text?: string }> }): string {
+  const block = response.content.find((b) => b.type === 'text')
+  return block?.type === 'text' && typeof block.text === 'string' ? block.text : ''
+}
+
+function shiftDate(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return dt.toISOString().split('T')[0]!
+}
+
 serve(async (req: Request) => {
   const corsHeaders = getCorsHeaders(req)
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -107,12 +205,7 @@ serve(async (req: Request) => {
   try {
     // Auth token'dan kullanıcı ID'si al
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!authHeader) return json({ error: 'Unauthorized' }, 401)
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -124,30 +217,26 @@ serve(async (req: Request) => {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!user) return json({ error: 'Unauthorized' }, 401)
 
-    const { type, language, date, today: clientToday, task_id, fitness_goal, available_minutes, recent_workouts, energy_level, buffer_minutes, existing_blocks, user_message, current_time, nutrition_context, workout_context }: SuggestRequest = await req.json()
+    const body: SuggestRequest = await req.json()
+    const {
+      type, language, date, today: clientToday, task_id, fitness_goal, available_minutes,
+      energy_level, buffer_minutes, existing_blocks, user_message, current_time,
+      nutrition_context, workout_context,
+    } = body
+
     const allowed = await isProUser(supabase, user.id)
-    if (!allowed) {
-      return new Response(JSON.stringify({ error: 'AI access requires Pro' }), {
-        status: 402,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!allowed) return json({ error: 'AI access requires Pro' }, 402)
 
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
-
-    // Dil talimatı — tüm system prompt'lara eklenir
-    const langInstr = language === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'
+    const lang: Lang = language === 'en' ? 'en' : 'tr'
+    const langInstr = lang === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'
+    const today = clientToday ?? new Date().toISOString().split('T')[0]!
 
     if (type === 'daily_plan') {
       // Günlük plan önerileri
-      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
+      const targetDate = date ?? today
 
       // Bugüne atanmış görevleri al
       const { data: tasks } = await supabase
@@ -227,25 +316,19 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
         ],
       })
 
-      const textBlock = response.content.find((block) => block.type === 'text')
+      const text = firstText(response)
       let suggestions: unknown[] = []
-
-      if (textBlock && textBlock.type === 'text') {
-        try {
-          const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/)
-          if (jsonMatch) {
-            suggestions = JSON.parse(jsonMatch[0])
-          }
-        } catch {
-          suggestions = [{ type: 'general', message: textBlock.text }]
-        }
+      try {
+        const jsonMatch = text.match(/\[[\s\S]*\]/)
+        if (jsonMatch) suggestions = JSON.parse(jsonMatch[0])
+      } catch {
+        suggestions = [{ type: 'general', message: text }]
       }
 
-      return new Response(JSON.stringify({ suggestions }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } else if (type === 'task_priority' && task_id) {
+      return json({ suggestions })
+    }
+
+    if (type === 'task_priority' && task_id) {
       // Tek görev için WSJF skoru önerisi
       const { data: task } = await supabase
         .from('tasks')
@@ -253,12 +336,7 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
         .eq('id', task_id)
         .single()
 
-      if (!task) {
-        return new Response(JSON.stringify({ error: 'Görev bulunamadı' }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
+      if (!task) return json({ error: 'Görev bulunamadı' }, 404)
 
       const response = await client.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -272,7 +350,7 @@ Parametreler (1-5 arası):
 - friction_score: Yapılmasının önündeki engel
 
 Sadece JSON döndür:
-{"value_score": N, "urgency_score": N, "risk_score": N, "effort_score": N, "friction_score": N, "reasoning": "${language === 'en' ? 'Short explanation' : 'Kısa açıklama'}"}`,
+{"value_score": N, "urgency_score": N, "risk_score": N, "effort_score": N, "friction_score": N, "reasoning": "${lang === 'en' ? 'Short explanation' : 'Kısa açıklama'}"}`,
         messages: [
           {
             role: 'user',
@@ -285,34 +363,25 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
         ],
       })
 
-      const textBlock = response.content.find((block) => block.type === 'text')
+      const text = firstText(response)
       let suggestion: unknown = {}
-
-      if (textBlock && textBlock.type === 'text') {
-        try {
-          const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            suggestion = JSON.parse(jsonMatch[0])
-          }
-        } catch {
-          suggestion = { reasoning: textBlock.text }
-        }
+      try {
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) suggestion = JSON.parse(jsonMatch[0])
+      } catch {
+        suggestion = { reasoning: text }
       }
 
-      return new Response(JSON.stringify({ suggestion }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } else if (type === 'workout_plan') {
-      // Bugün için antrenman planı önerileri
-      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
+      return json({ suggestion })
+    }
 
-      // Son 7 günün antrenman geçmişi
+    if (type === 'workout_plan') {
+      // Bugün için antrenman planı önerileri
       const { data: recentWorkoutData } = await supabase
         .from('workouts')
         .select('date, name, status, workout_sets(exercise:exercises(name, muscle_group:muscle_groups(name)))')
         .eq('user_id', user.id)
-        .gte('date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!)
+        .gte('date', shiftDate(today, -7))
         .order('date', { ascending: false })
         .limit(7)
 
@@ -328,7 +397,7 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
         .join('\n') ?? 'Geçmiş antrenman yok'
 
       const response = await client.messages.create({
-        model: 'claude-opus-4-6',
+        model: CHAT_MODEL,
         max_tokens: 1500,
         system: `Sen LifeOS'un kişisel fitness koçusun. ${langInstr}
 Kullanıcının antrenman geçmişine göre bugün ne yapması gerektiğini öneri olarak sun.
@@ -354,329 +423,272 @@ Lütfen:
 1. Bugün hangi kas grubunu çalışmalı?
 2. Hangi egzersizleri yapmalı? (3-5 egzersiz)
 3. Kaç set/tekrar?
-4. Gerekiyorsa dinlenme günü öner`
+4. Gerekiyorsa dinlenme günü öner`,
         }],
       })
 
-      const textBlock = response.content.find((b) => b.type === 'text')
+      const text = firstText(response)
       let suggestions: unknown[] = []
-
-      if (textBlock && textBlock.type === 'text') {
-        try {
-          const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/)
-          if (jsonMatch) suggestions = JSON.parse(jsonMatch[0])
-        } catch {
-          suggestions = [{ type: 'general', message: textBlock.text }]
-        }
+      try {
+        const jsonMatch = text.match(/\[[\s\S]*\]/)
+        if (jsonMatch) suggestions = JSON.parse(jsonMatch[0])
+      } catch {
+        suggestions = [{ type: 'general', message: text }]
       }
 
-      return new Response(JSON.stringify({ suggestions }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } else if (type === 'workout_program_chat') {
-      const exerciseCatalog = workout_context?.available_exercises ?? []
+      return json({ suggestions })
+    }
 
-      if (exerciseCatalog.length === 0) {
-        return new Response(JSON.stringify({
-          message: 'Egzersiz kutuphanesi henuz hazir degil. Kutuphane yuklenince tekrar deneyin.',
+    if (type === 'workout_program_chat') {
+      // Katalog sunucudan okunur: istemciye güvenip 200 satır göndertmek hem
+      // isteği şişiriyor hem de eski sürümlerde eksik alan bırakıyordu.
+      const { data: catalogRows } = await supabase
+        .from('exercises')
+        .select('name, category, is_bodyweight, muscle_group:muscle_groups(name)')
+        .order('name', { ascending: true })
+
+      const catalog: WorkoutCatalogEntry[] = catalogRows?.length
+        ? catalogRows.map((row) => ({
+            name: row.name as string,
+            category: (row.category as string | null) ?? undefined,
+            muscle_group: (row.muscle_group as { name: string } | null)?.name ?? undefined,
+            is_bodyweight: (row.is_bodyweight as boolean | null) ?? false,
+          }))
+        : (workout_context?.available_exercises ?? [])
+
+      if (catalog.length === 0) {
+        return json({
+          message: 'Egzersiz kütüphanesi henüz hazır değil. Kütüphane yüklenince tekrar dene.',
           program: null,
-        } satisfies WorkoutProgramResult), {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
 
-      const catalogNames = new Map(
-        exerciseCatalog.map((exercise) => [normalizeExerciseName(exercise.name), exercise.name]),
-      )
+      const catalogByNormalized = new Map(catalog.map((e) => [normalizeExerciseName(e.name), e.name]))
+      const resolveName = (requested: string): string | null => {
+        const key = normalizeExerciseName(requested)
+        const exact = catalogByNormalized.get(key)
+        if (exact) return exact
+        // Model "Barbell Squat" derken katalogda "Squat" olabilir; tek yönlü
+        // kapsama yeterince güvenli çünkü kısa isim uzunun içinde geçiyor.
+        for (const [candidate, original] of catalogByNormalized) {
+          if (candidate.includes(key) || key.includes(candidate)) return original
+        }
+        return null
+      }
 
-      const catalogSummary = exerciseCatalog.length > 0
-        ? exerciseCatalog
-            .slice(0, 200)
-            .map((exercise) => `- ${exercise.name} | kategori: ${exercise.category ?? 'bilinmiyor'} | bolge: ${exercise.muscle_group ?? 'bilinmiyor'} | ekipman: ${exercise.is_bodyweight ? 'vucut agirligi' : 'ekipmanli'}`)
-            .join('\n')
-        : 'Katalog mevcut degil — genel bilginle egzersiz isimlerini Türkçe yaz.'
+      const { data: recentRows } = await supabase
+        .from('workouts')
+        .select('date, name, status, workout_sets(exercise:exercises(muscle_group:muscle_groups(name)))')
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .gte('date', shiftDate(today, -14))
+        .order('date', { ascending: false })
+        .limit(10)
 
-      const historySummary = workout_context?.history?.length
-        ? workout_context.history.map((entry) => `${entry.role === 'user' ? 'Kullanıcı' : 'Asistan'}: ${entry.text}`).join('\n')
-        : 'Geçmiş mesaj yok'
+      const recentWorkouts = (recentRows ?? []).map((w) => ({
+        date: w.date as string,
+        name: (w.name as string | null) ?? 'Antrenman',
+        muscle_groups: [...new Set(
+          (w.workout_sets as { exercise: { muscle_group: { name: string } | null } | null }[] | null)
+            ?.flatMap((s) => s?.exercise?.muscle_group?.name ?? []) ?? [],
+        )],
+      }))
 
-      const programResponse = await client.messages.create({
-        model: 'claude-opus-4-6',
-        max_tokens: 1800,
-        system: `Sen LifeOS antrenman program asistanısın.
-${langInstr} Sadece geçerli JSON döndür, başka metin ekleme.
+      const { data: programRows } = await supabase
+        .from('workout_programs')
+        .select('name')
+        .eq('user_id', user.id)
+        .limit(10)
 
-Yanıt formatı:
-{
-  "message": "Kullanıcıya kısa cevap",
-  "program": {
-    "name": "Program adı",
-    "description": "Kısa açıklama",
-    "exercises": [
-      { "exercise_name": "Katalogdaki isim", "sets": 3, "reps": 10, "weight_kg": 0 }
-    ]
-  }
-}
-
-Kurallar:
-- Sadece verilen egzersiz kataloğundan isim seç.
-- 4 ila 8 egzersiz öner.
-- weight_kg bilinmiyorsa 0 ver.
-- Kullanıcı isterse full body, upper/lower, push-pull-legs gibi uygun şablon kur.
-- message alanında ne kurduğunu ve nedenini kısa açıkla.`,
-        messages: [{
-          role: 'user',
-          content: `Kullanıcı isteği: ${user_message ?? 'Dengeli bir program oluştur'}
-
-Önceki konuşma:
-${historySummary}
-
-Kullanılabilir egzersiz kataloğu:
-${catalogSummary}`,
-        }],
+      const { system, messages } = buildWorkoutCoachPrompt({
+        lang,
+        catalog,
+        recentWorkouts,
+        existingProgramNames: (programRows ?? []).map((p) => p.name as string),
+        history: normalizeHistory(workout_context?.history ?? body.history),
+        userMessage: user_message?.trim() || 'Bana haftalık bir antrenman programı yaz.',
       })
 
-      const programBlock = programResponse.content.find((block) => block.type === 'text')
-      let programResult: WorkoutProgramResult = {
-        message: 'Program taslagi hazirlanamadi',
-        program: null,
-      }
-
-      if (programBlock && programBlock.type === 'text') {
-        try {
-          const match = programBlock.text.match(/\{[\s\S]*\}/)
-          if (match) {
-            const parsed = JSON.parse(match[0]) as {
-              message?: unknown
-              program?: {
-                name?: unknown
-                description?: unknown
-                exercises?: Array<{
-                  exercise_name?: unknown
-                  sets?: unknown
-                  reps?: unknown
-                  weight_kg?: unknown
-                }>
-              }
-            }
-
-            const parsedExercises = Array.isArray(parsed.program?.exercises)
-              ? parsed.program.exercises.flatMap((exercise): WorkoutProgramExercise[] => {
-                  if (typeof exercise.exercise_name !== 'string') return []
-                  const matchedName = catalogNames.get(normalizeExerciseName(exercise.exercise_name))
-                  if (!matchedName) return []
-
-                  const sets = typeof exercise.sets === 'number' && exercise.sets > 0
-                    ? Math.round(exercise.sets)
-                    : 3
-                  const reps = typeof exercise.reps === 'number' && exercise.reps > 0
-                    ? Math.round(exercise.reps)
-                    : 10
-                  const weightKg = typeof exercise.weight_kg === 'number' && exercise.weight_kg >= 0
-                    ? exercise.weight_kg
-                    : 0
-
-                  return [{
-                    exercise_name: matchedName,
-                    sets,
-                    reps,
-                    weight_kg: weightKg,
-                  }]
-                })
-              : []
-
-            programResult = {
-              message: typeof parsed.message === 'string' && parsed.message.trim().length > 0
-                ? parsed.message.trim()
-                : 'Bir program taslagi hazirlandi.',
-              program: parsedExercises.length > 0
-                ? {
-                    name: typeof parsed.program?.name === 'string' && parsed.program.name.trim().length > 0
-                      ? parsed.program.name.trim()
-                      : 'AI Program',
-                    description: typeof parsed.program?.description === 'string'
-                      ? parsed.program.description.trim()
-                      : '',
-                    exercises: parsedExercises,
-                  }
-                : null,
-            }
-          }
-        } catch {
-          programResult = {
-            message: programBlock.text,
-            program: null,
-          }
-        }
-      }
-
-      if (!programResult.program && programResult.message.trim().length === 0) {
-        programResult = {
-          message: 'Program taslagi olusturulurken uygun egzersiz secilemedi. Istegi biraz daha netlestirip tekrar dene.',
-          program: null,
-        }
-      }
-
-      return new Response(JSON.stringify(programResult), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      const response = await client.messages.create({
+        model: CHAT_MODEL,
+        max_tokens: 3000,
+        system,
+        messages,
       })
-    } else if (type === 'replan') {
-      const targetDate = date ?? clientToday ?? new Date().toISOString().split('T')[0]!
-      const today = clientToday ?? new Date().toISOString().split('T')[0]!
+
+      const result = parseWorkoutCoachResult(firstText(response), resolveName)
+      if (!result.message) {
+        result.message = 'Yanıt oluşturulamadı, isteğini biraz daha netleştirip tekrar dene.'
+      }
+      return json(result)
+    }
+
+    if (type === 'replan') {
+      const targetDate = date ?? today
       const now = current_time ?? new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
       const planningCutoff = targetDate === today ? now : '00:00'
 
-      const { data: tasks } = await supabase
-        .from('tasks').select('id, title, status, effort_score, estimated_minutes, priority_score')
-        .eq('scheduled_date', targetDate).not('status', 'in', '(done,deferred)').order('priority_score', { ascending: false })
+      const { data: scheduledRows } = await supabase
+        .from('tasks')
+        .select('id, title, estimated_minutes, priority_score, scheduled_date')
+        .eq('user_id', user.id)
+        .eq('scheduled_date', targetDate)
+        .not('status', 'in', '(done,deferred)')
+        .order('priority_score', { ascending: false })
+        .limit(20)
 
-      const pastBlocks   = (existing_blocks ?? []).filter((b) => b.end <= planningCutoff)
-      const futureBlocks = (existing_blocks ?? []).filter((b) => b.end > planningCutoff)
+      // Bekleyen görevler: koç boşluk gördüğünde buradan çekebilsin diye.
+      // Eskiden yalnızca güne atanmış görevler veriliyordu ve "günümü doldur"
+      // isteğinde ekleyecek bir şey bulamıyordu.
+      const { data: backlogRows } = await supabase
+        .from('tasks')
+        .select('id, title, estimated_minutes, priority_score, scheduled_date')
+        .eq('user_id', user.id)
+        .is('scheduled_date', null)
+        .not('status', 'in', '(done,deferred)')
+        .order('priority_score', { ascending: false })
+        .limit(10)
 
-      const pastSummary = pastBlocks.length > 0
-        ? pastBlocks.map((b) => `✓ ${b.start}–${b.end}: ${b.label}`).join('\n')
-        : '(Yok)'
-
-      // Pass future blocks as JSON array so AI can reliably read IDs
-      const futureBlocksJson = JSON.stringify(
-        futureBlocks.map((b) => ({ id: b.id ?? null, start: b.start, end: b.end, label: b.label })),
-        null, 2
-      )
-
-      const tasksList = tasks?.map((t) => `  - "${t.title}" (~${t.estimated_minutes ?? 60}dk, id: ${t.id})`).join('\n') ?? '  (Görev yok)'
-
-      const replanResponse = await client.messages.create({
-        model: 'claude-opus-4-6',
-        max_tokens: 2000,
-        system: `Sen LifeOS agentic planlama asistanısın.
-${langInstr} Sadece mevcut saatten itibaren plan yap.
-
-YANIT FORMATI — yalnızca geçerli JSON döndür, başka metin ekleme:
-{
-  "message": "Kullanıcıya kısa açıklama",
-  "actions": []
-}
-
-Kullanılabilir action tipleri:
-1. Blok ekle:   {"action":"add","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}}
-2. Blok sil:    {"action":"remove","block_id":"<id>"}        ← id'yi aşağıdaki JSON'dan aynen kopyala
-3. Blok taşı:   {"action":"move","block_id":"<id>","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}}
-
-TARIH KURALI: Kullanıcı yarın/ertesi gün gibi göreli tarih söylerse action.block.date alanına gerçek YYYY-MM-DD tarihini yaz. Tarih belirtilmediyse ${targetDate} kullan.
-ÇAKIŞMA KURALI: Yeni blok eklerken önce çakışanları remove et (id'sini JSON'dan al), sonra add et.`,
-        messages: [{
-          role: 'user',
-          content: `Kullanıcı: "${user_message ?? 'Günümü planla'}"
-
-Şu anki saat: ${now} | Planlanacak tarih: ${targetDate} | Planlama başlangıcı: ${planningCutoff}
-
-Tamamlanan bloklar (dokunma):
-${pastSummary}
-
-Kalan bloklar — id'leri remove/move için kullan:
-${futureBlocksJson}
-
-Bekleyen görevler:
-${tasksList}
-
-Max 22:00. Bloklar arası buffer: ${buffer_minutes ?? 15}dk.`,
-        }],
+      const toPlannerTask = (row: Record<string, unknown>): PlannerTask => ({
+        id: row['id'] as string,
+        title: row['title'] as string,
+        estimated_minutes: (row['estimated_minutes'] as number | null) ?? null,
+        priority_score: (row['priority_score'] as number | null) ?? null,
+        scheduled_date: (row['scheduled_date'] as string | null) ?? null,
       })
 
-      const rBlock = replanResponse.content.find((b) => b.type === 'text')
-      let replanResult: { message: string; actions: unknown[] } = { message: '', actions: [] }
-      if (rBlock && rBlock.type === 'text') {
-        try {
-          const m = rBlock.text.match(/\{[\s\S]*\}/)
-          if (m) replanResult = JSON.parse(m[0])
-          else replanResult = { message: rBlock.text, actions: [] }
-        } catch { replanResult = { message: rBlock.text, actions: [] } }
-      }
+      const { data: planRow } = await supabase
+        .from('daily_plans')
+        .select('energy_level')
+        .eq('user_id', user.id)
+        .eq('date', targetDate)
+        .maybeSingle()
 
-      return new Response(JSON.stringify(replanResult), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } else if (type === 'nutrition_chat') {
-      const ctx = nutrition_context
-      if (!ctx) {
-        return new Response(JSON.stringify({ error: 'nutrition_context gerekli' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      const rem = {
-        calories: Math.max(0, ctx.target.calories - ctx.consumed.calories),
-        protein:  Math.max(0, ctx.target.protein  - ctx.consumed.protein),
-        carbs:    Math.max(0, ctx.target.carbs    - ctx.consumed.carbs),
-        fat:      Math.max(0, ctx.target.fat      - ctx.consumed.fat),
-        fiber:    Math.max(0, ctx.target.fiber    - ctx.consumed.fiber),
-      }
-
-      const mealsSummary = ctx.meals_today.length > 0
-        ? ctx.meals_today.map((m) =>
-            `${m.meal_type}: ${m.items.map((i) => `${i.name} (${i.amount}${i.unit}, ${i.calories}kcal)`).join(', ')}`
-          ).join('\n')
-        : '(Henüz öğün kaydedilmedi)'
-
-      const history = (ctx.history ?? []).map((h) => ({
-        role: h.role as 'user' | 'assistant',
-        content: h.text,
-      }))
-
-      const ncResp = await client.messages.create({
-        model: 'claude-opus-4-6',
-        max_tokens: 800,
-        system: `Sen LifeOS beslenme koçusun. ${langInstr} Kısa ve pratik ol.
-
-Kullanıcının günlük hedefleri:
-- Kalori: ${ctx.target.calories} kcal, Protein: ${ctx.target.protein}g, Karb: ${ctx.target.carbs}g, Yağ: ${ctx.target.fat}g, Lif: ${ctx.target.fiber}g
-
-Bugün tüketilen:
-- Kalori: ${Math.round(ctx.consumed.calories)} kcal, Protein: ${Math.round(ctx.consumed.protein)}g, Karb: ${Math.round(ctx.consumed.carbs)}g, Yağ: ${Math.round(ctx.consumed.fat)}g, Lif: ${Math.round(ctx.consumed.fiber)}g
-
-Kalan hedefler:
-- Kalori: ${Math.round(rem.calories)} kcal, Protein: ${Math.round(rem.protein)}g, Karb: ${Math.round(rem.carbs)}g, Yağ: ${Math.round(rem.fat)}g, Lif: ${Math.round(rem.fiber)}g
-
-Bugünkü öğünler:
-${mealsSummary}
-
-Kurallar:
-- ${language === 'en' ? 'Suggest accessible and practical food options' : 'Yiyecek önerirken Türk mutfağına yakın ve ulaşılabilir seçenekler sun'}
-- Makro değerleri tahmini olarak belirt (örn: "~25g protein")
-- Hedef doluysa veya aşılmışsa bunu belirt
-- 3-4 cümleyi aşma, gereksiz uzatma`,
-        messages: [
-          ...history,
-          { role: 'user', content: user_message ?? 'Ne yiyebilirim?' },
-        ],
+      const blocks = existing_blocks ?? []
+      const { system, messages } = buildPlannerPrompt({
+        lang,
+        targetDate,
+        today,
+        now,
+        planningCutoff,
+        energyLevel: (planRow?.energy_level as number | null) ?? energy_level ?? null,
+        bufferMinutes: buffer_minutes ?? 15,
+        pastBlocks: blocks.filter((b) => b.end <= planningCutoff),
+        futureBlocks: blocks.filter((b) => b.end > planningCutoff),
+        scheduledTasks: (scheduledRows ?? []).map(toPlannerTask),
+        backlogTasks: (backlogRows ?? []).map(toPlannerTask),
+        history: normalizeHistory(body.history),
+        userMessage: user_message?.trim() || 'Günümü planla',
       })
 
-      const ncBlock = ncResp.content.find((b) => b.type === 'text')
-      return new Response(
-        JSON.stringify({ message: ncBlock?.type === 'text' ? ncBlock.text : '' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      const response = await client.messages.create({
+        model: CHAT_MODEL,
+        max_tokens: 2500,
+        system,
+        messages,
+      })
+
+      const knownIds = new Set(blocks.flatMap((b) => (b.id ? [b.id] : [])))
+      return json(parsePlannerResult(firstText(response), knownIds))
     }
 
-    return new Response(JSON.stringify({ error: 'Geçersiz istek tipi' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    if (type === 'nutrition_chat') {
+      const ctx = nutrition_context ?? {}
+      const targetRaw = ctx.target ?? body.target
+      const consumedRaw = ctx.consumed ?? body.consumed
+      const mealsRaw = ctx.meals_today ?? body.meals_today
+
+      // Hedef istemciden gelmediyse veritabanından oku — eski mobil sürüm
+      // hedefi hiç göndermiyordu ve koç varsayılan sayılarla konuşuyordu.
+      let target: Macros = { calories: 2000, protein: 150, carbs: 250, fat: 70, fiber: 25 }
+      if (targetRaw) {
+        target = normalizeMacros(targetRaw, target)
+      } else {
+        const { data: targetRow } = await supabase
+          .from('nutrition_targets')
+          .select('calories, protein_g, carbs_g, fat_g, fiber_g')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle()
+        if (targetRow) {
+          target = {
+            calories: num(targetRow.calories, target.calories),
+            protein: num(targetRow.protein_g, target.protein),
+            carbs: num(targetRow.carbs_g, target.carbs),
+            fat: num(targetRow.fat_g, target.fat),
+            fiber: num(targetRow.fiber_g, target.fiber),
+          }
+        }
+      }
+
+      const consumed = normalizeMacros(consumedRaw, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 })
+
+      // Haftalık trend sunucuda hesaplanır: istemcinin elinde yalnızca bugünün
+      // özeti var, geçmişi göndertmek her sohbet turunda fazladan sorgu demek.
+      const { data: weekRows } = await supabase
+        .from('meals')
+        .select('date, total_calories, total_protein, total_carbs, total_fat, total_fiber')
+        .eq('user_id', user.id)
+        .gte('date', shiftDate(today, -6))
+        .lte('date', today)
+
+      const byDate = new Map<string, Macros>()
+      for (const row of weekRows ?? []) {
+        const key = row.date as string
+        const acc = byDate.get(key) ?? { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+        byDate.set(key, {
+          calories: acc.calories + num(row.total_calories),
+          protein: acc.protein + num(row.total_protein),
+          carbs: acc.carbs + num(row.total_carbs),
+          fat: acc.fat + num(row.total_fat),
+          fiber: acc.fiber + num(row.total_fiber),
+        })
+      }
+      const days = [...byDate.values()]
+      const weeklyAverage: Macros | null = days.length > 0
+        ? {
+            calories: days.reduce((s, d) => s + d.calories, 0) / days.length,
+            protein: days.reduce((s, d) => s + d.protein, 0) / days.length,
+            carbs: days.reduce((s, d) => s + d.carbs, 0) / days.length,
+            fat: days.reduce((s, d) => s + d.fat, 0) / days.length,
+            fiber: days.reduce((s, d) => s + d.fiber, 0) / days.length,
+          }
+        : null
+
+      const { system, messages } = buildNutritionCoachPrompt({
+        lang,
+        target,
+        consumed,
+        mealsToday: normalizeMeals(mealsRaw),
+        weeklyAverage,
+        weeklyDaysLogged: days.length,
+        localTime: current_time ?? '—',
+        history: normalizeHistory(ctx.history ?? body.history),
+        userMessage: user_message?.trim() || 'Ne yiyebilirim?',
+      })
+
+      const response = await client.messages.create({
+        model: CHAT_MODEL,
+        max_tokens: 1500,
+        system,
+        messages,
+      })
+
+      const result = parseNutritionCoachResult(firstText(response))
+      if (!result.message) {
+        result.message = 'Yanıt oluşturulamadı, tekrar dene.'
+      }
+      return json(result)
+    }
+
+    return json({ error: 'Geçersiz istek tipi' }, 400)
   } catch (error) {
     console.error('ai-suggest error:', error)
     const message = error instanceof Error ? error.message : String(error)
-    const stack = error instanceof Error ? error.stack : undefined
-    console.error('ai-suggest stack:', stack)
+    console.error('ai-suggest stack:', error instanceof Error ? error.stack : undefined)
     return new Response(
       JSON.stringify({ error: 'AI öneri oluşturulurken hata oluştu', detail: message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })

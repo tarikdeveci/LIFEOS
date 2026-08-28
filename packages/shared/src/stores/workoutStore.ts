@@ -10,6 +10,7 @@ import type {
   UpdateWorkoutSetInput,
   WorkoutProgram,
   CreateProgramInput,
+  AiProgramPlan,
 } from '../types/workout'
 import {
   getMuscleGroups,
@@ -27,6 +28,9 @@ import {
   getWorkoutPrograms,
   createWorkoutProgram,
   deleteWorkoutProgram,
+  createProgramDay,
+  createProgramExercise,
+  deleteProgramExercise,
 } from '../supabase/workouts'
 import { todayDate } from '../utils/date'
 
@@ -65,6 +69,21 @@ interface WorkoutState {
   fetchPrograms: (supabase: Supabase, userId: string) => Promise<void>
   addProgram: (supabase: Supabase, userId: string, input: CreateProgramInput) => Promise<WorkoutProgram>
   deleteProgram: (supabase: Supabase, programId: string) => Promise<void>
+  /** Program + günlerini tek adımda kurar, sonra listeyi tazeler. */
+  createProgramWithDays: (supabase: Supabase, userId: string, input: CreateProgramInput, dayNames: string[]) => Promise<void>
+  addExerciseToDay: (
+    supabase: Supabase,
+    userId: string,
+    dayId: string,
+    input: { exercise_id: string; sets: number; reps: number | null; rest_seconds: number; order_index: number },
+  ) => Promise<void>
+  removeExerciseFromDay: (supabase: Supabase, userId: string, exerciseRowId: string) => Promise<void>
+  /**
+   * AI'ın yazdığı programı gün ve hareketleriyle birlikte tek adımda kaydeder.
+   * addExerciseToDay'i döngüde çağırmak her hareket için listeyi tazeliyordu:
+   * 5 gün x 6 hareket = 30 gereksiz sorgu. Burada tek tazeleme yeterli.
+   */
+  createProgramFromPlan: (supabase: Supabase, userId: string, plan: AiProgramPlan) => Promise<WorkoutProgram>
 
   // Realtime
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
@@ -225,6 +244,53 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   deleteProgram: async (supabase, programId) => {
     await deleteWorkoutProgram(supabase, programId)
     set((state) => ({ programs: state.programs.filter((p) => p.id !== programId) }))
+  },
+
+  // Program yapısı iç içe (program → gün → hareket → egzersiz). Yazma sonrası
+  // yerelde parça parça güncellemek yerine listeyi tazeliyoruz: program sayısı
+  // az, tazeleme ucuz, ve iç içe state'i elle güncellemenin hata yüzeyi geniş.
+  createProgramWithDays: async (supabase, userId, input, dayNames) => {
+    const program = await createWorkoutProgram(supabase, userId, input)
+    for (const [index, name] of dayNames.entries()) {
+      await createProgramDay(supabase, program.id, index + 1, name)
+    }
+    await get().fetchPrograms(supabase, userId)
+  },
+
+  addExerciseToDay: async (supabase, userId, dayId, input) => {
+    await createProgramExercise(supabase, dayId, input)
+    await get().fetchPrograms(supabase, userId)
+  },
+
+  removeExerciseFromDay: async (supabase, userId, exerciseRowId) => {
+    await deleteProgramExercise(supabase, exerciseRowId)
+    await get().fetchPrograms(supabase, userId)
+  },
+
+  createProgramFromPlan: async (supabase, userId, plan) => {
+    const program = await createWorkoutProgram(supabase, userId, {
+      name: plan.name,
+      description: plan.description,
+      split_type: plan.split_type,
+      frequency_per_week: plan.days.length,
+    })
+
+    for (const [dayIndex, day] of plan.days.entries()) {
+      const created = await createProgramDay(supabase, program.id, dayIndex + 1, day.day_name)
+      for (const [exerciseIndex, exercise] of day.exercises.entries()) {
+        await createProgramExercise(supabase, created.id, {
+          exercise_id: exercise.exercise_id,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          rest_seconds: exercise.rest_seconds,
+          order_index: exerciseIndex,
+          notes: exercise.notes,
+        })
+      }
+    }
+
+    await get().fetchPrograms(supabase, userId)
+    return program
   },
 
   handleRealtimeEvent: (event) => {
