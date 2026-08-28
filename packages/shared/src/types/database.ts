@@ -350,6 +350,77 @@ export type Database = {
         }
         Relationships: []
       }
+      nutrition_feedback: {
+        Row: {
+          created_at: string
+          expected_grams: number | null
+          expected_kcal: number | null
+          id: string
+          item_grams: number | null
+          item_kcal: number | null
+          item_label: string | null
+          item_ref_id: string | null
+          item_source: string | null
+          kind: string
+          meal_id: string | null
+          note: string | null
+          parse_version: string | null
+          phrase: string
+          raw_input: string | null
+          status: string
+          trace: Json | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expected_grams?: number | null
+          expected_kcal?: number | null
+          id?: string
+          item_grams?: number | null
+          item_kcal?: number | null
+          item_label?: string | null
+          item_ref_id?: string | null
+          item_source?: string | null
+          kind: string
+          meal_id?: string | null
+          note?: string | null
+          parse_version?: string | null
+          phrase: string
+          raw_input?: string | null
+          status?: string
+          trace?: Json | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expected_grams?: number | null
+          expected_kcal?: number | null
+          id?: string
+          item_grams?: number | null
+          item_kcal?: number | null
+          item_label?: string | null
+          item_ref_id?: string | null
+          item_source?: string | null
+          kind?: string
+          meal_id?: string | null
+          note?: string | null
+          parse_version?: string | null
+          phrase?: string
+          raw_input?: string | null
+          status?: string
+          trace?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nutrition_feedback_meal_id_fkey"
+            columns: ["meal_id"]
+            isOneToOne: false
+            referencedRelation: "meals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portion_memory: {
         Row: {
           grams: number

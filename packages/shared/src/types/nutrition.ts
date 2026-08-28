@@ -51,6 +51,12 @@ export interface MealItem extends Macros {
   food_item_id?: string // food_items tablosunda match varsa
 
   // --- çözümleme hattından gelen alanlar (elle eklenen kalemlerde yok) ---
+  /**
+   * Korpus satırının İngilizce açıklaması. Korpus eşleşmelerinde `name`
+   * kullanıcının kendi ifadesidir (Türkçe); bu alan hangi USDA satırının
+   * eşleştiğini gösterir, "onayla" kararı buna bakılarak verilir.
+   */
+  source_label?: string
   grams?: number
   calories_min?: number
   calories_max?: number
@@ -219,4 +225,41 @@ export interface CreateMealInput {
   /** hangi kalemin neden o değeri aldığı — teşhis için saklanır */
   parse_trace?: ParseTraceEntry[]
   parse_version?: string
+}
+
+// ============================
+// Geri bildirim
+// ============================
+
+/**
+ * Kullanıcının bir çözümleme sonucuna itirazının türü.
+ *
+ * food_gaps hattın çözemediklerini toplar; bunlar ise hattın ÇÖZDÜĞÜ ama
+ * yanlış çözdüğü vakalar — soru sorulmadığı için başka hiçbir yere düşmezler.
+ */
+export type NutritionFeedbackKind =
+  | 'wrong_food'
+  | 'missing_item'
+  | 'wrong_portion'
+  | 'wrong_macros'
+  | 'other'
+
+export interface NutritionFeedbackInput {
+  /** Kaydedilmiş öğüne bağlıysa; henüz kaydedilmemiş çözümlemede boş kalır */
+  meal_id?: string | null
+  raw_input?: string | null
+  /** İtiraz edilen kalemin ifadesi */
+  phrase: string
+  item_label?: string | null
+  item_source?: 'curated' | 'corpus' | null
+  item_ref_id?: string | null
+  item_grams?: number | null
+  item_kcal?: number | null
+  kind: NutritionFeedbackKind
+  note?: string | null
+  expected_kcal?: number | null
+  expected_grams?: number | null
+  parse_version?: string | null
+  /** Bildirim anındaki iz — sözlük sonradan düzelse bile teşhis kaybolmasın */
+  trace?: ParseTraceEntry | null
 }

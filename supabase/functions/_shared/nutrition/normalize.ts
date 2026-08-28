@@ -233,7 +233,13 @@ export function parseQuantity(rawPart: string): QuantityParse {
 // Bölme
 // ============================
 
-const SPLIT_RE = /[,\n;]+|\s+ve\s+|\s+\+\s+/
+// Virgül/"ve" dışında Türkçe bileşik tabak kalıpları da ayırıcıdır. Bunlar
+// olmadan "pilav üstü et döner" tek kaleme düşüyor, sözlükte "et döner"e
+// oturuyor ve pilav sessizce kayboluyordu: tabağın yarısı hiç sayılmadığı için
+// toplam kalori gerçeğin çok altında çıkıyordu. Ayırıcıların hepsi boşlukla
+// çevrili aranır, böylece "ile" son eki (-yle/-la) yanlışlıkla bölmez.
+const SPLIT_RE =
+  /[,\n;]+|\s+ve\s+|\s+ile\s+|\s+\+\s+|\s+üst[üu]\s+|\s+[üu]zeri(?:ne)?\s+|\s+yan[ıi]nda\s+|\s+eşliğinde\s+/i
 
 /** Girişi kalemlere böler. Ayırıcı yoksa her yeni miktar ifadesinden önce böler. */
 export function splitInput(text: string): string[] {
@@ -291,19 +297,91 @@ export function detectFlags(rawPart: string): ExtractFlag[] {
 // food_corpus açıklamaları İngilizce. Bu köprü YALNIZCA arama metnini değiştirir;
 // dönen satır yine doğrulayıcıdan geçmek zorunda, dolayısıyla yerelleştirme tek
 // başına besin değeri üretemez.
+// Her giriş korpusa karşı sınandı: karşılığı olmayan terim eklenmedi (barbunya
+// için "cranberry/borlotti beans" korpusta yok, besin değeri en yakın olan
+// pinto'ya bağlandı). Köprü olmadan bu 13 bin satır Türkçe yazan kullanıcı için
+// erişilemez durumdaydı — "roka" ile "arugula, raw" arasındaki trigram
+// benzerliği sıfır.
 const TR_EN_BRIDGE: Record<string, string> = {
+  // Dünya mutfağı
   kinoa: 'quinoa', kuskus: 'couscous', susi: 'sushi', guakamole: 'guacamole',
   'pad tay': 'pad thai', lazanya: 'lasagna', humus: 'hummus', falafel: 'falafel',
   tofu: 'tofu', edamame: 'edamame', burrito: 'burrito', taco: 'taco',
-  ramen: 'ramen', pesto: 'pesto', risotto: 'risotto', gnocchi: 'gnocchi',
+  ramen: 'ramen', pesto: 'pesto', gnocchi: 'gnocchi',
   waffle: 'waffle', pankek: 'pancake', omlet: 'omelet', smoothie: 'smoothie',
-  granola: 'granola', musli: 'muesli', kraker: 'cracker', cips: 'chips',
+  kraker: 'cracker', cips: 'chips',
+  // "risotto" ve "muesli" korpusta hiç geçmiyordu; ölü giriş yerine en yakın
+  // gerçek satıra bağlandılar.
+  risotto: 'rice white', granola: 'cereal granola', musli: 'cereal granola',
+
+  // Temel gruplar
   tavuk: 'chicken', et: 'beef', balik: 'fish', karides: 'shrimp',
   peynir: 'cheese', yogurt: 'yogurt', sut: 'milk', yumurta: 'egg',
   ekmek: 'bread', pilav: 'rice', makarna: 'pasta', patates: 'potato',
   salata: 'salad', corba: 'soup', meyve: 'fruit', sebze: 'vegetable',
-  zeytinyagi: 'olive oil', tereyagi: 'butter', bal: 'honey', receL: 'jam',
-  fistik: 'peanut', badem: 'almond', ceviz: 'walnut', findik: 'hazelnut',
+  zeytinyagi: 'olive oil', tereyagi: 'butter', bal: 'honey',
+  // Anahtar küçük harf olmalı: eskiden "receL" yazıldığı için hiç eşleşmiyordu.
+  recel: 'jam',
+
+  // Tohum, kuruyemiş, süperbesin
+  chia: 'chia seeds', 'chia tohumu': 'chia seeds',
+  keten: 'flaxseed', 'keten tohumu': 'flaxseed',
+  'kabak cekirdegi': 'pumpkin seeds', aycekirdegi: 'sunflower seeds',
+  susam: 'sesame seeds', tahin: 'tahini', karabugday: 'buckwheat',
+  fistik: 'peanut', 'antep fistigi': 'pistachio', kaju: 'cashew',
+  badem: 'almond', ceviz: 'walnut', findik: 'hazelnut',
+
+  // Yeşillik ve sebze
+  roka: 'arugula', semizotu: 'purslane', marul: 'lettuce', maydanoz: 'parsley',
+  dereotu: 'dill', nane: 'mint', tere: 'cress', pazi: 'chard',
+  kereviz: 'celery', turp: 'radish', lahana: 'cabbage', karnabahar: 'cauliflower',
+  kabak: 'zucchini', patlican: 'eggplant', bamya: 'okra', enginar: 'artichoke',
+  pirasa: 'leek', ispanak: 'spinach', brokoli: 'broccoli', mantar: 'mushrooms',
+  sogan: 'onion', sarimsak: 'garlic', domates: 'tomato', salatalik: 'cucumber',
+  biber: 'pepper',
+
+  // Baklagil
+  mercimek: 'lentils', nohut: 'chickpeas', fasulye: 'beans',
+  barbunya: 'pinto beans', bezelye: 'peas', bakla: 'fava beans',
+
+  // Meyve
+  nar: 'pomegranate', incir: 'figs', kayisi: 'apricots', erik: 'plums',
+  seftali: 'peaches', armut: 'pears', kiraz: 'cherries', visne: 'cherries sour',
+  ayva: 'quince', hurma: 'dates', avokado: 'avocado', kivi: 'kiwifruit',
+  ananas: 'pineapple', mandalina: 'tangerine', greyfurt: 'grapefruit',
+  limon: 'lemon', karpuz: 'watermelon', kavun: 'melon', uzum: 'grapes',
+  cilek: 'strawberries', muz: 'banana', elma: 'apple', portakal: 'orange',
+
+  // Tahıl
+  yulaf: 'oats', arpa: 'barley', cavdar: 'rye', misir: 'corn',
+  bulgur: 'bulgur', irmik: 'semolina',
+
+  // Süt ürünleri
+  kefir: 'kefir', krema: 'cream',
+
+  // Et ve deniz ürünleri
+  hindi: 'turkey', kuzu: 'lamb', dana: 'beef', sucuk: 'sausage',
+  pastirma: 'pastrami', salam: 'salami', sosis: 'sausage',
+  hamsi: 'anchovy', sardalya: 'sardine', uskumru: 'mackerel',
+  alabalik: 'trout', midye: 'mussel', ahtapot: 'octopus', kalamar: 'squid',
+  ton: 'tuna', 'ton baligi': 'tuna',
+
+  // Diğer
+  pekmez: 'molasses', zeytin: 'olives', tursu: 'pickles', sirke: 'vinegar',
+}
+
+/**
+ * Korpus satırları İngilizce açıklamalı ("Seeds, chia seeds, dried"). Türkçe
+ * bilen kullanıcıya bunu göstermek kötü; öğün listesinde kendi yazdığı ifade
+ * görünmeli. İngilizce açıklama kaybolmaz, kaynak olarak ayrıca taşınır.
+ *
+ * Büyük harf Türkçe kurallarıyla yapılır: "incir" → "İncir" (tr-TR olmadan
+ * "Incir" çıkardı).
+ */
+export function displayLabelFromPhrase(phrase: string, fallback: string): string {
+  const trimmed = phrase.trim()
+  if (!trimmed) return fallback
+  return trimmed.charAt(0).toLocaleUpperCase('tr-TR') + trimmed.slice(1)
 }
 
 /** Korpusta aranacak sorgu metnini üretir (İngilizce terimlere köprülenmiş). */

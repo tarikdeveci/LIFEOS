@@ -470,6 +470,45 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </GlassCard>
 
+        {/*
+          Besin veri kaynakları. Open Food Facts ODbL altında dağıtılır ve atıf
+          ZORUNLUDUR — bu kart lisans yükümlülüğüdür, dekorasyon değil.
+        */}
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[3] }}>
+            <Ionicons name="library-outline" size={19} color={palette.accent} />
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+              {lang === 'tr' ? 'Besin Veri Kaynakları' : 'Nutrition Data Sources'}
+            </Text>
+          </View>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18, marginBottom: spacing[3] }}>
+            {lang === 'tr'
+              ? 'Besin değerleri LifeOS küratörlü sözlüğünün yanı sıra iki açık kaynaktan gelir. Küratörsüz kaynaklardan gelen eşleşmeler onayına sunulur.'
+              : 'Nutrition values come from the LifeOS curated dictionary plus two open sources. Matches from uncurated sources are shown for your confirmation.'}
+          </Text>
+          <TouchableOpacity onPress={() => void openExternalUrl('https://fdc.nal.usda.gov/')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3] }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>USDA FoodData Central</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                {lang === 'tr' ? 'Hammadde ve yemek analizleri · kamu malı' : 'Ingredient and dish analyses · public domain'}
+              </Text>
+            </View>
+            <Ionicons name="open-outline" size={17} color={colors.textMuted} />
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <TouchableOpacity onPress={() => void openExternalUrl('https://world.openfoodfacts.org/')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing[3] }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>Open Food Facts</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                {lang === 'tr'
+                  ? 'Paketli ürünler · Open Database License (ODbL) altında kullanılır'
+                  : 'Packaged products · used under the Open Database License (ODbL)'}
+              </Text>
+            </View>
+            <Ionicons name="open-outline" size={17} color={colors.textMuted} />
+          </TouchableOpacity>
+        </GlassCard>
+
         <Button label={t.profile_logout} onPress={handleSignOut} variant="danger" fullWidth />
       </ScrollView>
 

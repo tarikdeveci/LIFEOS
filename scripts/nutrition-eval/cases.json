@@ -181,6 +181,36 @@
       "probes": "İngilizce isim",
       "expect": [{ "food": "Protein shake", "servings": 1 }]
     },
+    {
+      "id": "A13",
+      "stratum": "ambiguous",
+      "input": "pilav üstü et döner",
+      "probes": "bileşik tabak: 'üstü' ayırıcısı. Bölünmezse ifade tek kaleme düşüp 'et döner'e oturuyor, pilav sessizce kayboluyor ve tabağın yarısı hiç sayılmıyordu.",
+      "expect": [
+        { "food": "Pilav (pirinç)", "servings": 1 },
+        { "food": "Döner (et)", "servings": 1 }
+      ]
+    },
+    {
+      "id": "A14",
+      "stratum": "ambiguous",
+      "input": "köfte yanında pilav",
+      "probes": "'yanında' ayırıcısı — garnitür ayrı kalemdir",
+      "expect": [
+        { "food": "Köfte (ızgara)", "servings": 1 },
+        { "food": "Pilav (pirinç)", "servings": 1 }
+      ]
+    },
+    {
+      "id": "A15",
+      "stratum": "ambiguous",
+      "input": "çay ile simit",
+      "probes": "'ile' ayırıcısı. Boşlukla çevrili aranır, böylece -yle/-la son eki yanlış bölme yapmaz.",
+      "expect": [
+        { "food": "Çay (şekersiz)", "servings": 1 },
+        { "food": "Simit", "servings": 1 }
+      ]
+    },
 
     {
       "id": "X01",

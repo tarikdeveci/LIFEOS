@@ -156,6 +156,8 @@ export interface ParsedMealItem {
   fat: number
   fiber: number
   food_item_id?: string
+  /** korpus satırının İngilizce açıklaması; `name` kullanıcının ifadesi olduğunda kaynağı gösterir */
+  source_label?: string
 
   // --- yeni: aralık, kaynak ve hangi basamağın cevapladığı ---
   grams: number

@@ -12,6 +12,7 @@ import type {
   Macros,
   QuestionChoice,
   FoodSearchResult,
+  NutritionFeedbackInput,
 } from '../types/nutrition'
 
 type Supabase = SupabaseClient<Database>
@@ -520,4 +521,40 @@ export async function buildItemFromChoice(
     confidence: 0.95,
     disposition: 'auto',
   }
+}
+
+/**
+ * "Bu yanlış" bildirimini küratörlük kuyruğuna yazar.
+ *
+ * Bildirim anındaki etiket, gramaj, kalori ve iz birlikte dondurulur: sözlük
+ * sonradan düzeltilse bile neyin şikâyet edildiği okunabilir kalmalı. Sonuç
+ * kullanıcıya gösterilen akışı bloklamaz — çağıran taraf hatayı yutabilir.
+ */
+export async function submitNutritionFeedback(
+  supabase: Supabase,
+  userId: string,
+  input: NutritionFeedbackInput,
+): Promise<void> {
+  const phrase = input.phrase.trim()
+  if (!phrase) return
+
+  const { error } = await supabase.from('nutrition_feedback').insert({
+    user_id: userId,
+    meal_id: input.meal_id ?? null,
+    raw_input: input.raw_input ?? null,
+    phrase,
+    item_label: input.item_label ?? null,
+    item_source: input.item_source ?? null,
+    item_ref_id: input.item_ref_id ?? null,
+    item_grams: input.item_grams ?? null,
+    item_kcal: input.item_kcal ?? null,
+    kind: input.kind,
+    note: input.note?.trim() || null,
+    expected_kcal: input.expected_kcal ?? null,
+    expected_grams: input.expected_grams ?? null,
+    parse_version: input.parse_version ?? null,
+    trace: (input.trace ?? null) as never,
+  })
+
+  if (error) throw error
 }

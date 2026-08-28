@@ -4,6 +4,7 @@
 // sorulur. Kimlik belirsizse kapalı bir liste sunulur (serbest metin değil: liste
 // dışı cevap yine çözümlenemez bir ifade üretir). Miktar belirsizse gramaj sorulur.
 
+import { displayLabelFromPhrase } from './normalize.ts'
 import type {
   ExtractedItem,
   MealQuestion,
@@ -46,7 +47,12 @@ export function questionFor(
       raw: item.raw,
       reason: portion.rung,
       choices: [],
-      food_label: resolution.ref.label,
+      // Kimlik zaten çözülmüş, soru yalnızca gramaj. Korpus satırının İngilizce
+      // açıklamasını sormak yerine kullanıcının kendi ifadesini kullanıyoruz;
+      // aday listesi değil tek bir yiyecek söz konusu, ayırt etme derdi yok.
+      food_label: resolution.ref.kind === 'corpus'
+        ? displayLabelFromPhrase(item.phrase, resolution.ref.label)
+        : resolution.ref.label,
       ...(resolution.ref.kind === 'curated'
         ? { food_item_id: resolution.ref.id }
         : { corpus_fdc_id: resolution.ref.id }),

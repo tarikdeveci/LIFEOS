@@ -7,7 +7,9 @@ INSERT INTO food_items (name, aliases, serving_size, serving_unit, calories, pro
 -- ============================
 -- Protein kaynakları
 -- ============================
-('Yumurta (haşlanmış)', ARRAY['yumurta','haslama yumurta','haşlanmış yumurta'], 60, 'g', 78, 6.3, 0.6, 5.3, 0, 'protein', true),
+-- 50 g = bir adet iri yumurtanın yenebilir kısmı; 78 kcal ve 6.3 g protein
+-- bu porsiyona aittir (USDA: 155 kcal/100g). Eskiden 60 g yazılıydı.
+('Yumurta (haşlanmış)', ARRAY['yumurta','haslama yumurta','haşlanmış yumurta'], 50, 'g', 78, 6.3, 0.6, 5.3, 0, 'protein', true),
 ('Yumurta (sahanda)', ARRAY['sahanda yumurta','sahanda'], 60, 'g', 110, 6.3, 0.6, 8.5, 0, 'protein', true),
 ('Tavuk göğsü (pişmiş)', ARRAY['tavuk göğsü','tavuk','chicken breast','tavuk göğüs'], 100, 'g', 165, 31, 0, 3.6, 0, 'protein', true),
 ('Tavuk but (pişmiş)', ARRAY['tavuk but','but'], 100, 'g', 209, 26, 0, 10.9, 0, 'protein', true),
@@ -33,7 +35,9 @@ INSERT INTO food_items (name, aliases, serving_size, serving_unit, calories, pro
 -- ============================
 ('Ekmek (beyaz, 1 dilim)', ARRAY['ekmek','beyaz ekmek','ekmek dilim'], 30, 'g', 79, 2.7, 14.7, 1, 0.6, 'grain', true),
 ('Tam buğday ekmeği (1 dilim)', ARRAY['tam buğday','tam buğday ekmek','tam buğday ekmeği'], 30, 'g', 70, 3.5, 12, 1.1, 1.9, 'grain', true),
-('Pilav (pirinç)', ARRAY['pilav','pirinç pilav','pirinç','pirınc'], 150, 'g', 195, 3.5, 42, 1.5, 0.5, 'grain', true),
+-- USDA FNDDS "Rice, white, cooked, fat added" = 148 kcal/100g. Türk pilavı yağla
+-- yapılır; eski 130 kcal/100g sade haşlanmış pirincin değeriydi.
+('Pilav (pirinç)', ARRAY['pilav','pirinç pilav','pirinç','pirınc'], 150, 'g', 222, 3.9, 40.8, 4.2, 0.6, 'grain', true),
 ('Bulgur pilavı', ARRAY['bulgur','bulgur pilavı','bulgur pilav'], 150, 'g', 170, 5.5, 34, 1.5, 6.3, 'grain', true),
 ('Makarna (pişmiş)', ARRAY['makarna','pasta','spagetti'], 200, 'g', 262, 9, 50, 1.6, 2.4, 'grain', true),
 ('Yulaf ezmesi (kuru)', ARRAY['yulaf','yulaf ezmesi','oat','oatmeal'], 40, 'g', 152, 5.3, 27, 2.7, 4, 'grain', true),
@@ -94,10 +98,27 @@ INSERT INTO food_items (name, aliases, serving_size, serving_unit, calories, pro
 ('Menemen', ARRAY['menemen'], 200, 'g', 180, 10, 8, 12, 2, 'protein', true),
 ('Çiğ köfte (1 porsiyon)', ARRAY['çiğ köfte','cig kofte'], 150, 'g', 250, 8, 40, 6, 5, 'grain', true),
 ('Tost (kaşarlı)', ARRAY['tost','kaşarlı tost','kasarli tost'], 120, 'g', 300, 12, 30, 15, 1, 'grain', true),
-('Triplex Smash Burger', ARRAY['triplex smash burger','smash burger','triplex burger'], 210, 'g', 550, 28, 38, 30, 1.5, 'protein', true),
-('Sweetchill Tavuk Burger', ARRAY['sweetchill tavuk burger','sweetchill burger','tavuk burger'], 180, 'g', 420, 26, 32, 18, 1, 'protein', true),
+-- Restoran ürünleri: alias'lar dar tutulur. 'tavuk burger' / 'smash burger'
+-- gibi genel terimler belirli bir menü kalemine yönlendirmemeli.
+('Triplex Smash Burger', ARRAY['triplex smash burger','triplex burger'], 210, 'g', 550, 28, 38, 30, 1.5, 'protein', true),
+('Sweetchill Tavuk Burger', ARRAY['sweetchill tavuk burger','sweetchill burger'], 180, 'g', 420, 26, 32, 18, 1, 'protein', true),
 ('Pâté', ARRAY['pâté','pate','karaciğer pâtesi','ciğer pâtesi'], 50, 'g', 210, 12, 2, 17, 0, 'protein', true),
-('Mango', ARRAY['mango','muz gibi','fusetea mango'], 330, 'ml', 150, 0.5, 38, 0.2, 2.5, 'fruit', true);
+-- 330 ml'lik hazır içecek. Eskiden adı 'Mango', kategorisi 'fruit' ve alias'ı
+-- 'mango' olduğu için meyveyi arayan kullanıcı buzlu çay alıyordu.
+('Mango içeceği (Fuse Tea)', ARRAY['fusetea mango','fuse tea mango','mango icecegi','mango içeceği'], 330, 'ml', 150, 0.5, 38, 0.2, 2.5, 'beverage', true),
+
+-- ============================
+-- Salatalar — bileşik tabaklar, USDA korpusunda karşılıkları yok.
+-- Değerler bileşenlerden toplandı (USDA/100g: domates 18, salatalık 15,
+-- soğan 40, biber 20, maydanoz 36, roka 25, semizotu 20, yoğurt 61,
+-- zeytinyağı 884), böylece her sayı denetlenebilir.
+-- ============================
+-- 200g: domates 80 + salatalık 60 + soğan 20 + biber 20 + maydanoz 5 + zeytinyağı 10ml
+('Çoban salatası', ARRAY['çoban salatası','coban salatasi','çoban salata','coban salata'], 200, 'g', 126, 1.7, 8.4, 10.3, 2.1, 'vegetable', true),
+-- 150g: roka 100 + zeytinyağı 10ml + limon
+('Roka salatası', ARRAY['roka salatası','roka salatasi','roka salata'], 150, 'g', 114, 2.6, 4.0, 10.7, 1.6, 'vegetable', true),
+-- 200g: semizotu 120 + yoğurt 70 + zeytinyağı 5ml
+('Semizotu salatası (yoğurtlu)', ARRAY['semizotu salatası','semizotu salatasi','semizotu','yoğurtlu semizotu'], 200, 'g', 111, 4.9, 7.3, 7.6, 0.9, 'vegetable', true);
 
 -- ============================
 -- DEMO VERI (TASK + PLANNING + NUTRITION)

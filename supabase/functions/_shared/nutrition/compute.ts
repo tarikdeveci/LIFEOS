@@ -5,6 +5,7 @@
 // bir `FoodRef` taşımıyorsa hesaplanamaz, hesaplanamayan kalem de sonuç listesine
 // giremez — soruya dönüşür.
 
+import { displayLabelFromPhrase } from './normalize.ts'
 import type {
   Disposition,
   ExtractedItem,
@@ -48,7 +49,11 @@ export function computeItem(
   const per = ref.per100g
 
   return {
-    name: ref.label,
+    // Küratörlü satırın adı zaten Türkçe. Korpus satırının açıklaması İngilizce
+    // olduğu için kullanıcının kendi ifadesi gösterilir; İngilizce açıklama
+    // source_label olarak taşınır ve "onayla" kararında kaynak olarak görünür.
+    name: ref.kind === 'corpus' ? displayLabelFromPhrase(item.phrase, ref.label) : ref.label,
+    ...(ref.kind === 'corpus' ? { source_label: ref.label } : {}),
     amount: portion.displayAmount,
     unit: portion.displayUnit,
     calories: round0(per.kcal * factor),
