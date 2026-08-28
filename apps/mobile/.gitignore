@@ -10,3 +10,7 @@ google-services-key.json
 *.p8
 *.p12
 *.mobileprovision
+# Native projeler prebuild ciktisi (CNG): kaynak degil, uretilen kod.
+# `npx expo prebuild` / `expo run:android` her seferinde yeniden uretir.
+/android
+/ios

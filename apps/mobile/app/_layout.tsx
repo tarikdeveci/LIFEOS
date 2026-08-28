@@ -9,6 +9,7 @@ import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
 import { initRevenueCat } from '@/src/utils/purchases'
 import { useHealthStore } from '@/src/stores/healthStore'
+import { hasSeenOnboarding } from '@/src/onboarding/storage'
 import { persistWidgetSnapshot } from '@/src/widgets/storage'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
@@ -64,9 +65,25 @@ function AppNavigator() {
 
   useEffect(() => {
     if (!initialized) return
-    if (session && passwordRecoveryRef.current) router.replace('/(auth)/reset-password' as never)
-    else if (session) router.replace('/(tabs)/today')
-    else router.replace('/(auth)/login')
+    if (session && passwordRecoveryRef.current) {
+      router.replace('/(auth)/reset-password' as never)
+      return
+    }
+    if (!session) {
+      router.replace('/(auth)/login')
+      return
+    }
+
+    // Turu daha once gormeyen kullanici once tanitima girer. Depolama
+    // okunamazsa tur gosterilir; akis hicbir durumda kilitlenmez.
+    let active = true
+    const userId = session.user.id
+    void hasSeenOnboarding(userId).then((seen) => {
+      if (!active) return
+      // /onboarding yeni bir rota; expo-router tip uretimi guncellenene kadar cast gerekiyor.
+      router.replace((seen ? '/(tabs)/today' : '/onboarding') as never)
+    })
+    return () => { active = false }
   }, [session, initialized])
 
   return (
@@ -76,6 +93,7 @@ function AppNavigator() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" />
         <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
       </Stack>
