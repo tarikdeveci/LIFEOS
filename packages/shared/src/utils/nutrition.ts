@@ -140,3 +140,27 @@ export const KCAL_PER_G = {
   fat: 9,
   fiber: 2,
 } as const
+
+/**
+ * Yiyecek ifadesini alias/porsiyon hafızası anahtarına çevirir.
+ *
+ * ÖNEMLİ: Bu fonksiyon `supabase/functions/_shared/nutrition/normalize.ts`
+ * içindeki `normalizePhrase` ile BİREBİR aynı sonucu vermek zorunda — anahtarlar
+ * iki taraf arasında paylaşılıyor. Deno edge function workspace paketini import
+ * edemediği için mantık iki yerde duruyor; birini değiştiren diğerini de değiştirmeli.
+ */
+export function normalizeFoodPhrase(input: string): string {
+  const foldMap: Record<string, string> = {
+    ı: 'i', İ: 'i', ş: 's', Ş: 's', ğ: 'g', Ğ: 'g',
+    ü: 'u', Ü: 'u', ö: 'o', Ö: 'o', ç: 'c', Ç: 'c',
+    â: 'a', î: 'i', û: 'u', é: 'e', è: 'e', á: 'a', ñ: 'n',
+  }
+  const lowered = input.toLocaleLowerCase('tr')
+  let folded = ''
+  for (const ch of lowered) folded += foldMap[ch] ?? ch
+
+  return folded
+    .replace(/[^a-z0-9%\s.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

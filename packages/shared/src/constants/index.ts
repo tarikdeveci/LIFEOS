@@ -1,6 +1,6 @@
 import type { TaskStatus } from '../types/task'
 import type { BlockType } from '../types/planning'
-import type { MealType } from '../types/nutrition'
+import type { MealType, PortionRung, ResolveRung } from '../types/nutrition'
 import type { WorkoutCategory, WorkoutStatus, BodyRegion } from '../types/workout'
 
 // Status renkleri (Tailwind class adları)
@@ -133,3 +133,29 @@ export const COLORS = {
   background: '#FAFBFC',
   surface:    '#FFFFFF',
 } as const
+
+// ============================
+// Çözümleme merdiveni etiketleri
+// ============================
+// Kullanıcı "bu sayı nereden geldi" sorusunun cevabını kalemin yanında görür;
+// aralığın genişliği gösterilmekle kalmaz, açıklanır.
+
+export const RESOLVE_RUNG_LABELS: Record<ResolveRung, string> = {
+  user_alias: 'senin düzeltmen',
+  global_alias: 'birebir eşleşme',
+  lexical: 'sözlük eşleşmesi',
+  lexical_verified: 'AI doğruladı',
+  corpus_verified: 'USDA kaydı (AI doğruladı)',
+  choices: 'seçim bekliyor',
+  unresolved: 'tanınmadı',
+}
+
+export const PORTION_RUNG_LABELS: Record<PortionRung, string> = {
+  stated_mass: 'yazdığın gramaj',
+  stated_volume: 'yazdığın hacim',
+  user_memory: 'senin porsiyonun',
+  household_measure: 'ev ölçüsü',
+  serving_default: '1 porsiyon varsayıldı',
+  model_estimate: 'AI tahmini',
+  unknown: 'bilinmiyor',
+}

@@ -5,6 +5,7 @@ export const LANG_STORAGE_KEY = 'lifeos_lang'
 const translations = {
   en: {
     // Nav
+    nav_mobile: 'Mobile app',
     nav_features: 'Features',
     nav_pricing: 'Pricing',
     nav_login: 'Sign In',
@@ -99,6 +100,18 @@ const translations = {
     cta_button: 'Create Free Account →',
 
     // Footer
+    mobile_eyebrow: 'iPhone & iPad',
+    mobile_title: 'Your whole system, in your pocket',
+    mobile_subtitle: 'The LifeOS mobile app is live on the App Store. Tasks, day plan, nutrition and workouts stay in sync with your web dashboard in real time.',
+    mobile_point_1: 'Plan your day and check tasks off wherever you are',
+    mobile_point_2: 'Log meals in seconds and follow your macros',
+    mobile_point_3: 'Apple Health sync: steps, sleep and active energy',
+    mobile_point_4: 'Reminders that fire before every time block',
+    mobile_appstore: 'Download on the App Store',
+    mobile_android_soon: 'Android version coming soon',
+    mobile_shot_tasks: 'LifeOS mobile task list',
+    mobile_shot_planning: 'LifeOS mobile day plan',
+    mobile_shot_nutrition: 'LifeOS mobile nutrition tracking',
     footer_rights: 'All rights reserved.',
 
     // Dashboard / Sidebar
@@ -470,6 +483,7 @@ const translations = {
     qtask_create: 'Create Task',
   },
   tr: {
+    nav_mobile: 'Mobil uygulama',
     nav_features: 'Özellikler',
     nav_pricing: 'Fiyatlar',
     nav_login: 'Giriş Yap',
@@ -556,6 +570,18 @@ const translations = {
     cta_subtitle: 'Kredi kartı gerekmez. Dakikalar içinde kurulum.',
     cta_button: 'Ücretsiz Hesap Oluştur →',
 
+    mobile_eyebrow: 'iPhone ve iPad',
+    mobile_title: 'Tüm sistemin cebinde',
+    mobile_subtitle: "LifeOS mobil uygulaması App Store'da yayında. Görevler, günlük plan, beslenme ve antrenman web panonla anlık olarak senkron kalır.",
+    mobile_point_1: 'Nerede olursan ol gününü planla, görevleri kapat',
+    mobile_point_2: 'Öğünlerini saniyeler içinde gir, makrolarını takip et',
+    mobile_point_3: 'Apple Health senkronu: adım, uyku ve aktif kalori',
+    mobile_point_4: 'Her zaman bloğundan önce çalan hatırlatıcılar',
+    mobile_appstore: "App Store'dan indir",
+    mobile_android_soon: 'Android sürümü yakında',
+    mobile_shot_tasks: 'LifeOS mobil görev listesi',
+    mobile_shot_planning: 'LifeOS mobil günlük plan',
+    mobile_shot_nutrition: 'LifeOS mobil beslenme takibi',
     footer_rights: 'Tüm hakları saklıdır.',
 
     dash_today: 'Bugün',

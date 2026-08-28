@@ -1,4 +1,5 @@
 import { todayDate } from '@lifeos/shared'
+import type { ParseMealResponse } from '@lifeos/shared'
 
 import { supabase } from './supabase'
 
@@ -31,7 +32,7 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
   return res.json() as Promise<T>
 }
 
-export async function callParseMeal(body: Record<string, unknown>): Promise<ParseMealResult> {
+export async function callParseMeal(body: Record<string, unknown>): Promise<ParseMealResponse> {
   const token = await getToken()
   const res = await fetch(`${BASE}/functions/v1/parse-meal`, {
     method: 'POST',
@@ -39,28 +40,20 @@ export async function callParseMeal(body: Record<string, unknown>): Promise<Pars
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    if (res.status === 402 || res.status === 403) throw new Error('AI erisimi icin Pro abonelik gerekli')
     throw new Error(`Parse meal hatası: ${res.status}`)
   }
-  return res.json() as Promise<ParseMealResult>
+  const data: unknown = await res.json()
+  if (!isParseMealResponse(data)) throw new Error('Parse meal yanıtı beklenen biçimde değil')
+  return data
 }
 
-export interface ParseMealResult {
-  items: ParsedItem[]
-  total_calories: number
-  total_protein: number
-  total_carbs: number
-  total_fat: number
-  total_fiber: number
-}
-
-export interface ParsedItem {
-  name: string
-  amount: number
-  unit: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
+function isParseMealResponse(value: unknown): value is ParseMealResponse {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return Array.isArray(candidate['items'])
+    && Array.isArray(candidate['questions'])
+    && typeof candidate['version'] === 'string'
+    && Array.isArray(candidate['trace'])
+    && !!candidate['ai']
+    && typeof candidate['ai'] === 'object'
 }

@@ -7,6 +7,9 @@ import { getTranslations, type Language } from '@/lib/i18n'
 
 const STORAGE_KEY = 'lifeos_lang'
 
+// App Store Connect kaydi: apps/mobile/eas.json -> submit.production.ios.ascAppId
+const APP_STORE_URL = 'https://apps.apple.com/tr/app/lifeos/id6789708836'
+
 export default function LandingPage() {
   const [lang, setLangState] = useState<Language>('en')
 
@@ -114,6 +117,7 @@ export default function LandingPage() {
           <div className="hidden items-center gap-8 md:flex">
             <a href="#features" className="text-sm text-white/60 transition hover:text-white">{t.nav_features}</a>
             <a href="#pricing" className="text-sm text-white/60 transition hover:text-white">{t.nav_pricing}</a>
+            <a href="#mobile" className="text-sm text-white/60 transition hover:text-white">{t.nav_mobile}</a>
           </div>
 
           {/* Right */}
@@ -365,6 +369,67 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PRICING ──────────────────────────────────────────────── */}
+      {/* MOBILE APP */}
+      <section id="mobile" className="relative overflow-hidden py-24">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute right-1/4 top-1/2 h-[500px] w-[500px] -translate-y-1/2 rounded-full bg-violet-600/10 blur-[120px]" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-6xl items-center gap-14 px-6 lg:grid-cols-2">
+          <div>
+            <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-white/60">
+              {t.mobile_eyebrow}
+            </span>
+            <h2 className="mb-4 text-4xl font-black tracking-tight text-white">{t.mobile_title}</h2>
+            <p className="mb-8 leading-relaxed text-white/45">{t.mobile_subtitle}</p>
+
+            <ul className="mb-9 space-y-3">
+              {[t.mobile_point_1, t.mobile_point_2, t.mobile_point_3, t.mobile_point_4].map((point) => (
+                <li key={point} className="flex items-start gap-3 text-sm text-white/60">
+                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {point}
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-3 rounded-2xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-white/90"
+              >
+                <svg className="h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M17.05 12.54c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.61-1.7-3.18-1.72-1.35-.14-2.64.79-3.33.79-.69 0-1.75-.77-2.87-.75-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.25 2.74 2.21 1.1-.04 1.51-.71 2.84-.71 1.33 0 1.7.71 2.86.69 1.18-.02 1.93-1.08 2.65-2.14.84-1.23 1.18-2.42 1.2-2.48-.03-.01-2.3-.88-2.32-3.5zM14.9 5.9c.6-.74 1.01-1.75.9-2.77-.87.04-1.93.58-2.56 1.31-.56.65-1.05 1.69-.92 2.68.97.08 1.96-.49 2.58-1.22z" />
+                </svg>
+                <span className="flex flex-col leading-tight">
+                  <span className="text-[10px] font-normal text-black/50">App Store</span>
+                  <span className="text-sm">{t.mobile_appstore}</span>
+                </span>
+              </a>
+
+              {/* Play Store yayini henuz yok; olmayan magazaya link vermiyoruz. */}
+              <span className="text-xs text-white/30">{t.mobile_android_soon}</span>
+            </div>
+          </div>
+
+          {/* Uygulama ekranlari - ortadaki one cikar */}
+          <div className="flex items-center justify-center gap-3 sm:gap-4">
+            {[
+              { src: '/mobile/tasks.png', alt: t.mobile_shot_tasks, cls: 'mt-8 w-1/3 rotate-[-4deg]' },
+              { src: '/mobile/nutrition.png', alt: t.mobile_shot_nutrition, cls: 'z-10 w-2/5' },
+              { src: '/mobile/planning.png', alt: t.mobile_shot_planning, cls: 'mt-8 w-1/3 rotate-[4deg]' },
+            ].map(({ src, alt, cls }) => (
+              <div key={src} className={`overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/50 ${cls}`}>
+                <Image src={src} alt={alt} width={430} height={932} className="h-auto w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="pricing" className="relative py-24">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-600/10 blur-[120px]" />
@@ -476,6 +541,7 @@ export default function LandingPage() {
               <Link href="/register" className="transition hover:text-white">{t.nav_signup}</Link>
               <a href="#features" className="transition hover:text-white">{t.nav_features}</a>
               <a href="#pricing" className="transition hover:text-white">{t.nav_pricing}</a>
+              <a href="#mobile" className="transition hover:text-white">{t.nav_mobile}</a>
             </div>
 
             <p className="text-xs text-white/20">© {new Date().getFullYear()} LifeOS. {t.footer_rights}</p>

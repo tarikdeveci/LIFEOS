@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import type { CreateMealInput, MealItem, MealType, Meal } from '@lifeos/shared'
+import type { CreateMealInput, MealType, Meal, ParseMealResponse } from '@lifeos/shared'
 import {
   todayDate, relativeDateLabel, shiftIsoDate,
   useNutritionStore, useWorkoutStore,
@@ -21,6 +21,17 @@ type FoodResult = { name: string; name_en?: string | null; calories: number; pro
 interface NutritionClientProps { userId: string }
 
 interface ChatMsg { role: 'user' | 'assistant'; text: string }
+
+function isParseMealResponse(value: unknown): value is ParseMealResponse {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return Array.isArray(candidate['items'])
+    && Array.isArray(candidate['questions'])
+    && typeof candidate['version'] === 'string'
+    && Array.isArray(candidate['trace'])
+    && !!candidate['ai']
+    && typeof candidate['ai'] === 'object'
+}
 
 export default function NutritionClient({ userId }: NutritionClientProps) {
   const { date, meals, target, dailySummary, loading, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
@@ -68,7 +79,7 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
     setEditingMeal(null)
   }, [editMeal])
 
-  const handleParseMeal = useCallback(async (rawInput: string): Promise<MealItem[]> => {
+  const handleParseMeal = useCallback(async (rawInput: string): Promise<ParseMealResponse> => {
     let { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       const { data: refreshData } = await supabase.auth.refreshSession()
@@ -81,8 +92,11 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
       body: JSON.stringify({ raw_input: rawInput, user_id: userId }),
     })
     if (!response.ok) throw new Error('Öğün ayrıştırma başarısız oldu')
-    const data = await response.json()
-    return data.items ?? []
+    const data: unknown = await response.json()
+    if (!isParseMealResponse(data)) {
+      throw new Error('Öğün ayrıştırma yanıtı beklenen biçimde değil.')
+    }
+    return data
   }, [userId])
 
   const handleDeleteMeal = useCallback(async (mealId: string) => {
@@ -139,7 +153,7 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
     } finally {
       setChatLoading(false)
     }
-  }, [chatInput, chatLoading, chatMessages, dailySummary, target, meals])
+  }, [chatInput, chatLoading, chatMessages, dailySummary, target, meals, lang])
 
   const handleFoodSearch = useCallback(async (query: string) => {
     setFoodSearch(query)
@@ -340,8 +354,22 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
         </>
       )}
 
-      <MealAddModal open={showAddMeal} onClose={() => setShowAddMeal(false)} onSubmit={handleCreateMeal} onParseMeal={handleParseMeal} />
-      <MealAddModal open={!!editingMeal} onClose={() => setEditingMeal(null)} onSubmit={handleCreateMeal} onParseMeal={handleParseMeal} editMeal={editingMeal} onUpdate={handleUpdateMeal} />
+      <MealAddModal
+        open={showAddMeal}
+        onClose={() => setShowAddMeal(false)}
+        userId={userId}
+        onSubmit={handleCreateMeal}
+        onParseMeal={handleParseMeal}
+      />
+      <MealAddModal
+        open={!!editingMeal}
+        onClose={() => setEditingMeal(null)}
+        userId={userId}
+        onSubmit={handleCreateMeal}
+        onParseMeal={handleParseMeal}
+        editMeal={editingMeal}
+        onUpdate={handleUpdateMeal}
+      />
 
       {/* Nutrition AI Chat — floating panel */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">

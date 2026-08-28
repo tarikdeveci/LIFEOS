@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Platform, View, Text, TouchableOpacity } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import {
   activityLevelFromSteps,
@@ -26,6 +28,9 @@ interface Props {
   onSync: () => void
 }
 
+/** Kart açık mı kapalı mı — cihazda kalıcı, varsayılan kapalı. */
+const COLLAPSE_KEY = 'lifeos_health_card_expanded'
+
 /**
  * Today ekranındaki sağlık özeti kartı.
  * Sadece sağlık senkronu açıkken (settings.enabled) gösterilmeli.
@@ -34,6 +39,24 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const providerName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'
+  // Kart tüm ekranı kaplamasın: varsayılan kapalı, tercih cihazda saklanır.
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    AsyncStorage.getItem(COLLAPSE_KEY)
+      .then((stored) => { if (active && stored === '1') setExpanded(true) })
+      .catch(() => { /* tercih okunamazsa kapalı kalır */ })
+    return () => { active = false }
+  }, [])
+
+  function toggle() {
+    setExpanded((current) => {
+      const next = !current
+      void AsyncStorage.setItem(COLLAPSE_KEY, next ? '1' : '0').catch(() => {})
+      return next
+    })
+  }
 
   const steps = today?.steps ?? null
   const stepProgress = goalProgress(steps, settings.step_goal)
@@ -63,22 +86,46 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
       today.resting_heart_rate !== null ||
       today.avg_heart_rate !== null)
 
+  // Kapalı hâlin tek satırı: günün en çok bakılan üç değeri.
+  const collapsedSummary = [
+    steps !== null ? `${formatSteps(steps, lang)} ${t.health_steps.toLowerCase()}` : null,
+    today?.active_energy_kcal != null ? `${Math.round(today.active_energy_kcal)} kcal` : null,
+    today?.sleep_minutes != null ? formatSleepDuration(today.sleep_minutes, lang) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   return (
     <GlassCard style={{ marginBottom: spacing[4] }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+      <TouchableOpacity
+        onPress={toggle}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: expanded || !hasAnyData ? spacing[4] : 0 }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
           <Ionicons name="heart-outline" size={18} color={palette.danger} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{providerName}</Text>
-            <Text style={{ marginTop: 1, fontSize: fontSize.xs, color: colors.textSubtle }}>{t.health_summary}</Text>
+            {/* Kapalıyken başlığın altı özetin kendisi olur; kart tek satıra iner. */}
+            <Text style={{ marginTop: 1, fontSize: fontSize.xs, color: colors.textSubtle }} numberOfLines={1}>
+              {expanded || !hasAnyData ? t.health_summary : collapsedSummary}
+            </Text>
           </View>
         </View>
         <TouchableOpacity onPress={onSync} disabled={isSyncing} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name={isSyncing ? 'sync' : 'sync-outline'} size={18} color={isSyncing ? colors.textSubtle : palette.accent} />
         </TouchableOpacity>
-      </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={colors.textSubtle}
+          style={{ marginLeft: spacing[3] }}
+        />
+      </TouchableOpacity>
 
-      {!hasAnyData ? (
+      {!expanded && hasAnyData ? null : !hasAnyData ? (
         <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
           {t.health_no_data}
         </Text>

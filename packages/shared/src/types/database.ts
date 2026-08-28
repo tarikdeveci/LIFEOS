@@ -132,6 +132,7 @@ export type Database = {
           fat: number
           fiber: number
           id: string
+          is_countable: boolean
           is_verified: boolean | null
           name: string
           name_en: string | null
@@ -149,6 +150,7 @@ export type Database = {
           fat?: number
           fiber?: number
           id?: string
+          is_countable?: boolean
           is_verified?: boolean | null
           name: string
           name_en?: string | null
@@ -166,12 +168,127 @@ export type Database = {
           fat?: number
           fiber?: number
           id?: string
+          is_countable?: boolean
           is_verified?: boolean | null
           name?: string
           name_en?: string | null
           protein?: number
           serving_size?: number
           serving_unit?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      food_aliases: {
+        Row: {
+          corpus_fdc_id: string | null
+          created_at: string | null
+          food_item_id: string | null
+          id: string
+          phrase: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          corpus_fdc_id?: string | null
+          created_at?: string | null
+          food_item_id?: string | null
+          id?: string
+          phrase: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          corpus_fdc_id?: string | null
+          created_at?: string | null
+          food_item_id?: string | null
+          id?: string
+          phrase?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "food_aliases_corpus_fdc_id_fkey"
+            columns: ["corpus_fdc_id"]
+            isOneToOne: false
+            referencedRelation: "food_corpus"
+            referencedColumns: ["fdc_id"]
+          },
+          {
+            foreignKeyName: "food_aliases_food_item_id_fkey"
+            columns: ["food_item_id"]
+            isOneToOne: false
+            referencedRelation: "food_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      food_corpus: {
+        Row: {
+          carbs: number
+          created_at: string | null
+          dataset: string
+          description: string
+          fat: number
+          fdc_id: string
+          fiber: number
+          kcal: number
+          measure_grams: number[]
+          protein: number
+          search_text: string
+        }
+        Insert: {
+          carbs?: number
+          created_at?: string | null
+          dataset: string
+          description: string
+          fat?: number
+          fdc_id: string
+          fiber?: number
+          kcal: number
+          measure_grams?: number[]
+          protein?: number
+          search_text: string
+        }
+        Update: {
+          carbs?: number
+          created_at?: string | null
+          dataset?: string
+          description?: string
+          fat?: number
+          fdc_id?: string
+          fiber?: number
+          kcal?: number
+          measure_grams?: number[]
+          protein?: number
+          search_text?: string
+        }
+        Relationships: []
+      }
+      food_gaps: {
+        Row: {
+          hits: number
+          id: string
+          last_seen: string | null
+          phrase: string
+          reason: string
+          user_id: string | null
+        }
+        Insert: {
+          hits?: number
+          id?: string
+          last_seen?: string | null
+          phrase: string
+          reason: string
+          user_id?: string | null
+        }
+        Update: {
+          hits?: number
+          id?: string
+          last_seen?: string | null
+          phrase?: string
+          reason?: string
           user_id?: string | null
         }
         Relationships: []
@@ -184,6 +301,8 @@ export type Database = {
           items: Json | null
           meal_type: Database["public"]["Enums"]["meal_type"]
           notes: string | null
+          parse_trace: Json | null
+          parse_version: string | null
           raw_input: string | null
           total_calories: number | null
           total_carbs: number | null
@@ -200,6 +319,8 @@ export type Database = {
           items?: Json | null
           meal_type: Database["public"]["Enums"]["meal_type"]
           notes?: string | null
+          parse_trace?: Json | null
+          parse_version?: string | null
           raw_input?: string | null
           total_calories?: number | null
           total_carbs?: number | null
@@ -216,12 +337,35 @@ export type Database = {
           items?: Json | null
           meal_type?: Database["public"]["Enums"]["meal_type"]
           notes?: string | null
+          parse_trace?: Json | null
+          parse_version?: string | null
           raw_input?: string | null
           total_calories?: number | null
           total_carbs?: number | null
           total_fat?: number | null
           total_fiber?: number | null
           total_protein?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      portion_memory: {
+        Row: {
+          grams: number
+          phrase: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          grams: number
+          phrase: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          grams?: number
+          phrase?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -918,6 +1062,26 @@ export type Database = {
     }
     Functions: {
       is_pro_user: { Args: { check_user_id: string }; Returns: boolean }
+      record_food_gap: {
+        Args: { p_phrase: string; p_reason: string; p_user: string }
+        Returns: undefined
+      }
+      search_food_corpus: {
+        Args: { lim?: number; q: string }
+        Returns: {
+          carbs: number
+          dataset: string
+          description: string
+          fat: number
+          fdc_id: string
+          fiber: number
+          kcal: number
+          measure_grams: number[]
+          protein: number
+          score: number
+          search_text: string
+        }[]
+      }
     }
     Enums: {
       block_type: "task" | "routine" | "break" | "focus" | "meal" | "workout"

@@ -1,20 +1,30 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
 import { todayDate, toDateString } from '../utils/date'
+import { normalizeFoodPhrase } from '../utils/nutrition'
 import type {
   Meal,
+  MealItem,
   FoodItem,
   NutritionTarget,
   MacroSummary,
   CreateMealInput,
   Macros,
+  QuestionChoice,
+  FoodSearchResult,
 } from '../types/nutrition'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Supabase = SupabaseClient<any>
+type Supabase = SupabaseClient<Database>
 type MealInsert = Database['public']['Tables']['meals']['Insert']
 type MealUpdate = Database['public']['Tables']['meals']['Update']
 type FoodItemInsert = Database['public']['Tables']['food_items']['Insert']
+interface CorpusSearchRow {
+  fdc_id: string
+  description: string
+  kcal: number
+  dataset: string
+  measure_grams: number[] | null
+}
 interface MealTotals {
   total_calories: number
   total_protein: number
@@ -58,6 +68,13 @@ export async function createMeal(
   }
   if (resolvedDate) payload.date = resolvedDate
 
+  if (input.parse_trace) {
+    payload.parse_trace = input.parse_trace as unknown as import('../types/database').Json
+  }
+  if (input.parse_version) {
+    payload.parse_version = input.parse_version
+  }
+
   const { data, error } = await supabase
     .from('meals')
     .insert(payload)
@@ -79,6 +96,12 @@ export async function updateMeal(
   if (updates.meal_type !== undefined) payload.meal_type = updates.meal_type
   if (updates.raw_input !== undefined) payload.raw_input = updates.raw_input
   if (updates.notes !== undefined) payload.notes = updates.notes
+  if (updates.parse_trace !== undefined) {
+    payload.parse_trace = updates.parse_trace as unknown as import('../types/database').Json
+  }
+  if (updates.parse_version !== undefined) {
+    payload.parse_version = updates.parse_version
+  }
 
   if (updates.items) {
     const totals = calculateTotals(updates.items)
@@ -218,6 +241,62 @@ export async function searchFoodItems(
   return results.slice(0, 20)
 }
 
+/**
+ * Elle ekleme akışının arama katmanı: küratörlü `food_items` ve küratörsüz
+ * `food_corpus` satırlarını tek kapalı listede birleştirir.
+ *
+ * Model çağrısı yok — ücretsiz kullanıcı da bu yolla öğün ekleyebilir. Besin
+ * değeri yine seçilen satırdan hesaplanır (`buildItemFromChoice`); bu fonksiyon
+ * sadece hangi satırların seçilebilir olduğunu döndürür.
+ */
+export async function searchFoodChoices(
+  supabase: Supabase,
+  query: string,
+  userId: string,
+  limit = 20,
+): Promise<FoodSearchResult[]> {
+  const raw = query.trim()
+  if (raw.length < 2) return []
+
+  const curated = await searchFoodItems(supabase, raw, userId)
+  const results: FoodSearchResult[] = curated.map((food) => ({
+    id: food.id,
+    source: 'curated',
+    label: food.name,
+    // food_items değerleri porsiyon başına tutulur; 100 g'a normalize ediyoruz.
+    kcal_per_100g:
+      food.serving_size > 0 ? Math.round((food.calories / food.serving_size) * 100) : food.calories,
+    default_grams: food.serving_size > 0 ? food.serving_size : 100,
+    verified: food.is_verified,
+  }))
+
+  // Korpus araması `search_text` üstünden: küçük harfli, noktalamasız.
+  const corpusQuery = normalizeFoodPhrase(raw)
+  if (corpusQuery.length >= 2 && results.length < limit) {
+    const { data } = await supabase
+      .from('food_corpus')
+      .select('fdc_id, description, kcal, dataset, measure_grams')
+      .ilike('search_text', `%${corpusQuery}%`)
+      // survey (FNDDS) satırları insanların gerçekten yediği yemekler; önce onlar.
+      .order('dataset', { ascending: true })
+      .limit(limit - results.length)
+
+    for (const row of (data ?? []) as unknown as CorpusSearchRow[]) {
+      const measure = row.measure_grams?.find((g) => g > 0)
+      results.push({
+        id: row.fdc_id,
+        source: 'corpus',
+        label: row.description,
+        kcal_per_100g: Math.round(row.kcal),
+        default_grams: measure && measure > 0 ? measure : 100,
+        dataset: row.dataset,
+      })
+    }
+  }
+
+  return results.slice(0, limit)
+}
+
 export async function createFoodItem(
   supabase: Supabase,
   userId: string,
@@ -294,5 +373,151 @@ function calculateTotals(
     total_carbs: items.reduce((s, i) => s + i.carbs, 0),
     total_fat: items.reduce((s, i) => s + i.fat, 0),
     total_fiber: items.reduce((s, i) => s + i.fiber, 0),
+  }
+}
+
+// ============================
+// Çözümleme düzeltmeleri (migration 032)
+// ============================
+//
+// Kullanıcının düzelttiği kimlik ve onayladığı gramaj kalıcı hâle gelir; aynı
+// ifade bir daha ne modele sorulur ne de kullanıcıya. Merdivenin 1. ve 3.
+// basamakları bu iki tablodan besleniyor.
+
+/** Kullanıcının seçtiği eşleşmeyi kalıcı alias'a çevirir (rung: user_alias). */
+export async function saveFoodAlias(
+  supabase: Supabase,
+  userId: string,
+  phrase: string,
+  target: { food_item_id?: string; corpus_fdc_id?: string },
+): Promise<void> {
+  const key = normalizeFoodPhrase(phrase)
+  if (!key) return
+
+  const { error } = await supabase
+    .from('food_aliases')
+    .upsert(
+      {
+        user_id: userId,
+        phrase: key,
+        food_item_id: target.food_item_id ?? null,
+        corpus_fdc_id: target.corpus_fdc_id ?? null,
+      },
+      { onConflict: 'user_id,phrase' },
+    )
+
+  if (error) throw error
+}
+
+/** Elle girilen gramajı bu kullanıcının o ifade için alışkanlığı olarak saklar. */
+export async function savePortionMemory(
+  supabase: Supabase,
+  userId: string,
+  phrase: string,
+  grams: number,
+): Promise<void> {
+  const key = normalizeFoodPhrase(phrase)
+  if (!key || !(grams > 0)) return
+
+  const { error } = await supabase
+    .from('portion_memory')
+    .upsert(
+      { user_id: userId, phrase: key, grams, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,phrase' },
+    )
+
+  if (error) throw error
+}
+
+/**
+ * Kullanıcının kapalı listeden seçtiği satırı öğün kalemine çevirir.
+ * Besin değeri yine veritabanı satırından hesaplanır — seçim sadece hangi satır
+ * olduğunu belirler.
+ */
+export async function buildItemFromChoice(
+  supabase: Supabase,
+  choice: QuestionChoice,
+  grams?: number,
+): Promise<MealItem> {
+  const USER_SET_TOLERANCE = 0.05
+  const SERVING_DEFAULT_TOLERANCE = 0.3
+  const hasUserGrams = grams !== undefined && grams > 0
+  const tolerance = hasUserGrams ? USER_SET_TOLERANCE : SERVING_DEFAULT_TOLERANCE
+
+  if (choice.source === 'curated') {
+    const { data, error } = await supabase
+      .from('food_items')
+      .select('*')
+      .eq('id', choice.id)
+      .single()
+    if (error) throw error
+
+    const food = data as unknown as FoodItem
+    const size = food.serving_size > 0 ? food.serving_size : 100
+    const g = hasUserGrams ? grams : size
+    const factor = g / size
+
+    return {
+      name: food.name,
+      amount: Math.round(g),
+      unit: food.serving_unit === 'ml' ? 'ml' : 'g',
+      calories: Math.round(food.calories * factor),
+      protein: Math.round(food.protein * factor * 10) / 10,
+      carbs: Math.round(food.carbs * factor * 10) / 10,
+      fat: Math.round(food.fat * factor * 10) / 10,
+      fiber: Math.round(food.fiber * factor * 10) / 10,
+      food_item_id: food.id,
+      grams: Math.round(g * 10) / 10,
+      calories_min: Math.round(food.calories * factor * (1 - tolerance)),
+      calories_max: Math.round(food.calories * factor * (1 + tolerance)),
+      source: 'curated',
+      resolve_rung: 'user_alias',
+      portion_rung: hasUserGrams ? 'user_memory' : 'serving_default',
+      portion_tolerance: tolerance,
+      confidence: 0.95,
+      disposition: 'auto',
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('food_corpus')
+    .select('fdc_id, description, kcal, protein, carbs, fat, fiber, measure_grams')
+    .eq('fdc_id', choice.id)
+    .single()
+  if (error) throw error
+
+  const row = data as unknown as {
+    fdc_id: string
+    description: string
+    kcal: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber: number
+    measure_grams: number[] | null
+  }
+  const fallback = row.measure_grams?.[0] && row.measure_grams[0] > 0 ? row.measure_grams[0] : 100
+  const g = hasUserGrams ? grams : fallback
+  const factor = g / 100
+
+  return {
+    name: row.description,
+    amount: Math.round(g),
+    unit: 'g',
+    calories: Math.round(row.kcal * factor),
+    protein: Math.round(row.protein * factor * 10) / 10,
+    carbs: Math.round(row.carbs * factor * 10) / 10,
+    fat: Math.round(row.fat * factor * 10) / 10,
+    fiber: Math.round(row.fiber * factor * 10) / 10,
+    corpus_fdc_id: row.fdc_id,
+    grams: Math.round(g * 10) / 10,
+    calories_min: Math.round(row.kcal * factor * (1 - tolerance)),
+    calories_max: Math.round(row.kcal * factor * (1 + tolerance)),
+    source: 'corpus',
+    resolve_rung: 'user_alias',
+    portion_rung: hasUserGrams ? 'user_memory' : 'serving_default',
+    portion_tolerance: tolerance,
+    confidence: 0.95,
+    disposition: 'auto',
   }
 }

@@ -3,9 +3,22 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
-import type { ParsedItem } from '@/src/lib/ai'
-import { useNutritionStore } from '@lifeos/shared'
-import type { MealType, Meal, MealItem } from '@lifeos/shared'
+import { todayDate, useNutritionStore } from '@lifeos/shared'
+import type {
+  MealType,
+  Meal,
+  MealItem,
+  MealQuestion,
+  ParseTraceEntry,
+  QuestionChoice,
+  FoodSearchResult,
+} from '@lifeos/shared'
+import {
+  buildItemFromChoice,
+  saveFoodAlias,
+  savePortionMemory,
+  searchFoodChoices,
+} from '@lifeos/shared/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -20,6 +33,26 @@ import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
+
+function questionKey(question: MealQuestion): string {
+  return `${question.kind}:${question.phrase}:${question.raw}`
+}
+
+function resolveTraceQuestion(
+  entries: ParseTraceEntry[] | null,
+  question: MealQuestion,
+  item: MealItem,
+): ParseTraceEntry[] | null {
+  if (!entries) return null
+  return entries.map((entry) => entry.phrase === question.phrase && entry.raw === question.raw
+    ? {
+        ...entry,
+        resolve_rung: item.resolve_rung ?? 'user_alias',
+        portion_rung: item.portion_rung ?? 'unknown',
+        confidence: item.confidence ?? 0.95,
+      }
+    : entry)
+}
 
 export default function NutritionScreen() {
   const { colors } = useTheme()
@@ -42,18 +75,33 @@ export default function NutritionScreen() {
   const [rawInput, setRawInput] = useState('')
   const [mealType, setMealType] = useState<MealType>('lunch')
   const [parsing, setParsing] = useState(false)
-  const [parsedItems, setParsedItems] = useState<ParsedItem[] | null>(null)
+  const [parsedItems, setParsedItems] = useState<MealItem[] | null>(null)
+  const [parsedQuestions, setParsedQuestions] = useState<MealQuestion[]>([])
+  const [itemApprovals, setItemApprovals] = useState<boolean[]>([])
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
+  const [parseTrace, setParseTrace] = useState<ParseTraceEntry[] | null>(null)
+  const [parseVersion, setParseVersion] = useState<string | null>(null)
+  const [aiDegraded, setAiDegraded] = useState(false)
   const [adding, setAdding] = useState(false)
 
   // Food search
   const [foodSearch, setFoodSearch] = useState('')
-  const [foodResults, setFoodResults] = useState<Array<{ id: string; name: string; name_en: string | null; calories: number; protein: number; serving_size: number; serving_unit: string }>>([])
+  const [foodResults, setFoodResults] = useState<FoodSearchResult[]>([])
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Elle ekleme akışı — model çağrısı yok, ücretsiz kullanıcı için de açık.
+  const [addMode, setAddMode] = useState<'text' | 'search'>('text')
+  const [pendingChoice, setPendingChoice] = useState<FoodSearchResult | null>(null)
+  const [pendingGrams, setPendingGrams] = useState('')
+  const [addingChoice, setAddingChoice] = useState(false)
 
   // Edit modal
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [editRawInput, setEditRawInput] = useState('')
   const [editItems, setEditItems] = useState<MealItem[]>([])
+  const [editApprovals, setEditApprovals] = useState<boolean[]>([])
+  const [editTrace, setEditTrace] = useState<ParseTraceEntry[] | null>(null)
+  const [editVersion, setEditVersion] = useState<string | null>(null)
   const [editLoading, setEditLoading] = useState(false)
 
   // AI Chat
@@ -62,7 +110,7 @@ export default function NutritionScreen() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayDate()
 
   const load = useCallback(async (uid: string) => {
     await fetchDayNutrition(supabase, uid, todayStr)
@@ -84,22 +132,63 @@ export default function NutritionScreen() {
   function handleFoodSearch(q: string) {
     setFoodSearch(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (!q.trim()) { setFoodResults([]); return }
+    if (!q.trim() || !userId) { setFoodResults([]); return }
+    const uid = userId
     searchTimer.current = setTimeout(async () => {
-      const term = q.trim()
-      const { data } = await supabase
-        .from('food_items')
-        .select('id, name, name_en, calories, protein, serving_size, serving_unit')
-        .or(`name.ilike.%${term}%,name_en.ilike.%${term}%`)
-        .limit(6)
-      setFoodResults((data ?? []) as unknown as typeof foodResults)
+      try {
+        setFoodResults(await searchFoodChoices(supabase, q, uid, 12))
+      } catch {
+        setFoodResults([])
+      }
     }, 300)
+  }
+
+  /**
+   * Aramadan seçilen satırı öğün sepetine ekler. Besin değeri yine veritabanı
+   * satırından hesaplanır; model çağrısı yok, bu yüzden ücretsiz kullanıcıda da
+   * çalışır. Kullanıcı satırı bizzat seçtiği için ayrıca onay istenmez.
+   */
+  async function handleAddChoice() {
+    if (!pendingChoice || !userId) return
+    const typed = Number(pendingGrams)
+    const grams = Number.isFinite(typed) && typed > 0 ? typed : pendingChoice.default_grams
+    setAddingChoice(true)
+    try {
+      const item = await buildItemFromChoice(supabase, pendingChoice, grams)
+      setParsedItems((items) => [...(items ?? []), item])
+      setItemApprovals((approvals) => [...approvals, true])
+      // Seçim + gramaj kullanıcının alışkanlığı olarak hatırlanır; bir dahaki
+      // sefere serbest metin hattı da aynı satırı bulur.
+      await saveFoodAlias(supabase, userId, pendingChoice.label,
+        pendingChoice.source === 'curated'
+          ? { food_item_id: pendingChoice.id }
+          : { corpus_fdc_id: pendingChoice.id })
+      await savePortionMemory(supabase, userId, pendingChoice.label, grams)
+      setPendingChoice(null)
+      setPendingGrams('')
+      setFoodSearch('')
+      setFoodResults([])
+    } catch {
+      Alert.alert('Hata', 'Yiyecek eklenemedi.')
+    } finally {
+      setAddingChoice(false)
+    }
+  }
+
+  function openManualAdd(choice: FoodSearchResult) {
+    setAddMode('search')
+    setPendingChoice(choice)
+    setPendingGrams(String(choice.default_grams))
+    setShowAdd(true)
   }
 
   function openEditMeal(meal: Meal) {
     setEditingMeal(meal)
     setEditRawInput(meal.raw_input ?? '')
     setEditItems(meal.items ?? [])
+    setEditApprovals((meal.items ?? []).map((item) => item.disposition !== 'confirm'))
+    setEditTrace(meal.parse_trace ?? null)
+    setEditVersion(meal.parse_version ?? null)
   }
 
   function updateEditItemAmount(index: number, amountRaw: string) {
@@ -124,14 +213,23 @@ export default function NutritionScreen() {
 
   async function handleSaveMealEdit() {
     if (!editingMeal) return
+    if (editApprovals.some((approved) => !approved)) {
+      Alert.alert('Onay gerekli', 'Küratörsüz kaynaktan gelen eşleşmeleri kaydetmeden önce onayla.')
+      return
+    }
     setEditLoading(true)
     try {
       await editMeal(supabase, editingMeal.id, {
         raw_input: editRawInput.trim(),
         items: editItems,
+        ...(editTrace ? { parse_trace: editTrace } : {}),
+        ...(editVersion ? { parse_version: editVersion } : {}),
       })
       setEditingMeal(null)
       setEditItems([])
+      setEditApprovals([])
+      setEditTrace(null)
+      setEditVersion(null)
       setEditRawInput('')
       if (userId) await load(userId)
     } catch {
@@ -143,11 +241,16 @@ export default function NutritionScreen() {
 
   async function handleReparseEditMeal() {
     if (!editingMeal || !userId || !editRawInput.trim()) return
-    if (!requirePro()) return
     setEditLoading(true)
     try {
       const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
-      setEditItems(result.items as MealItem[])
+      setEditItems(result.items)
+      setEditApprovals(result.items.map((item) => item.disposition !== 'confirm'))
+      setEditTrace(result.trace)
+      setEditVersion(result.version)
+      if (result.questions.length > 0) {
+        Alert.alert('Kontrol gerekli', `${result.questions.length} kalem güvenle çözülemedi ve öğüne eklenmedi.`)
+      }
     } catch {
       Alert.alert('Hata', 'Öğün yeniden analiz edilemedi')
     } finally {
@@ -156,13 +259,19 @@ export default function NutritionScreen() {
   }
 
   async function handleParse() {
-    if (!rawInput.trim()) return
-    if (!requirePro()) return
+    if (!rawInput.trim() || !userId) return
     setParsing(true)
     setParsedItems(null)
+    setParsedQuestions([])
+    setItemApprovals([])
     try {
       const result = await callParseMeal({ raw_input: rawInput, user_id: userId })
       setParsedItems(result.items)
+      setParsedQuestions(result.questions)
+      setItemApprovals(result.items.map((item) => item.disposition !== 'confirm'))
+      setParseTrace(result.trace)
+      setParseVersion(result.version)
+      setAiDegraded(result.ai.pro && !result.ai.enabled)
     } catch {
       Alert.alert('Hata', 'Öğün analiz edilemedi')
     } finally {
@@ -172,16 +281,95 @@ export default function NutritionScreen() {
 
   async function handleAddMeal() {
     if (!userId) return
+    if (itemApprovals.some((approved) => !approved)) {
+      Alert.alert('Onay gerekli', 'Küratörsüz kaynaktan gelen eşleşmeleri kaydetmeden önce onayla.')
+      return
+    }
     setAdding(true)
     try {
       const items = parsedItems ?? []
+      // Elle ekleme akışında serbest metin girilmez; kalem adları özet olur.
+      const summary = rawInput.trim() || items.map((item) => item.name).join(', ')
       await addMeal(supabase, userId, {
-        date: todayStr, meal_type: mealType, raw_input: rawInput.trim(),
-        items: items as never[],
+        date: todayStr, meal_type: mealType, raw_input: summary,
+        items,
+        ...(parseTrace ? { parse_trace: parseTrace } : {}),
+        ...(parseVersion ? { parse_version: parseVersion } : {}),
       })
-      setRawInput(''); setParsedItems(null); setShowAdd(false)
+      setRawInput('')
+      setParsedItems(null)
+      setParsedQuestions([])
+      setItemApprovals([])
+      setAmountDrafts({})
+      setParseTrace(null)
+      setParseVersion(null)
+      setAiDegraded(false)
+      setShowAdd(false)
     } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
     finally { setAdding(false) }
+  }
+
+  function dismissQuestion(index: number, key: string) {
+    setParsedQuestions((questions) => questions.filter((_, questionIndex) => questionIndex !== index))
+    setAmountDrafts((drafts) => {
+      const next = { ...drafts }
+      delete next[key]
+      return next
+    })
+  }
+
+  async function handleQuestionChoice(index: number, question: MealQuestion, choice: QuestionChoice) {
+    if (!userId) return
+    try {
+      const item = await buildItemFromChoice(supabase, choice)
+      await saveFoodAlias(
+        supabase,
+        userId,
+        question.phrase,
+        choice.source === 'curated' ? { food_item_id: choice.id } : { corpus_fdc_id: choice.id },
+      )
+      setParsedItems((items) => [...(items ?? []), { ...item, phrase: question.phrase }])
+      setItemApprovals((approvals) => [...approvals, true])
+      setParseTrace((entries) => resolveTraceQuestion(entries, question, item))
+      dismissQuestion(index, questionKey(question))
+    } catch {
+      Alert.alert('Hata', 'Seçim uygulanamadı.')
+    }
+  }
+
+  async function handleQuestionAmount(index: number, question: MealQuestion) {
+    if (!userId) return
+    const key = questionKey(question)
+    const grams = Number((amountDrafts[key] ?? '').replace(',', '.'))
+    const id = question.food_item_id ?? question.corpus_fdc_id
+    if (!Number.isFinite(grams) || grams <= 0 || !id) return
+
+    try {
+      const item = await buildItemFromChoice(
+        supabase,
+        {
+          id,
+          source: question.food_item_id ? 'curated' : 'corpus',
+          label: question.food_label ?? question.phrase,
+          kcal_per_100g: 0,
+        },
+        grams,
+      )
+      await savePortionMemory(supabase, userId, question.phrase, grams)
+      const resolvedItem: MealItem = {
+        ...item,
+        phrase: question.phrase,
+        resolve_rung: question.resolve_rung ?? item.resolve_rung,
+        disposition: question.resolve_rung === 'corpus_verified' ? 'confirm' : 'auto',
+        confidence: question.resolve_rung === 'corpus_verified' ? 0.6 : item.confidence,
+      }
+      setParsedItems((items) => [...(items ?? []), resolvedItem])
+      setItemApprovals((approvals) => [...approvals, resolvedItem.disposition !== 'confirm'])
+      setParseTrace((entries) => resolveTraceQuestion(entries, question, resolvedItem))
+      dismissQuestion(index, key)
+    } catch {
+      Alert.alert('Hata', 'Miktar uygulanamadı.')
+    }
   }
 
   async function handleChat() {
@@ -288,22 +476,7 @@ export default function NutritionScreen() {
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
               {foodResults.map((food) => (
-                <TouchableOpacity
-                  key={food.id}
-                  onPress={() => { setRawInput(food.name); setFoodSearch(''); setFoodResults([]); setShowAdd(true) }}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>
-                      {lang === 'en' && food.name_en ? food.name_en : food.name}
-                    </Text>
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: 1 }}>
-                      {lang === 'en' ? food.name : (food.name_en ?? '')}
-                    </Text>
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{Math.round(food.calories)} kcal · {Math.round(food.protein)}g protein ({food.serving_size}{food.serving_unit})</Text>
-                  </View>
-                  <Ionicons name="add-circle-outline" size={22} color={palette.meal} />
-                </TouchableOpacity>
+                <FoodChoiceRow key={`${food.source}-${food.id}`} food={food} onPress={() => openManualAdd(food)} />
               ))}
             </View>
           )}
@@ -347,7 +520,25 @@ export default function NutritionScreen() {
       </ScrollView>
 
       {/* Add meal */}
-      <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setParsedItems(null) }} title={t.nutr_add_meal} scrollable>
+      <BottomSheet
+        visible={showAdd}
+        onClose={() => {
+          setShowAdd(false)
+          setParsedItems(null)
+          setParsedQuestions([])
+          setItemApprovals([])
+          setAmountDrafts({})
+          setParseTrace(null)
+          setParseVersion(null)
+          setAiDegraded(false)
+          setPendingChoice(null)
+          setPendingGrams('')
+          setFoodSearch('')
+          setFoodResults([])
+        }}
+        title={t.nutr_add_meal}
+        scrollable
+      >
         <View style={{ gap: spacing[4] }}>
           <View>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>{t.nutr_meal_type}</Text>
@@ -360,30 +551,188 @@ export default function NutritionScreen() {
             </View>
           </View>
 
-          <Input
-            label={t.nutr_what_did_you_eat}
-            value={rawInput}
-            onChangeText={setRawInput}
-            placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
-            multiline
-            numberOfLines={3}
-            style={{ minHeight: 80, textAlignVertical: 'top' }}
-            autoFocus
-          />
+          {/* Ekleme yolu: serbest metin (çözümleme hattı) ya da listeden seçim.
+              Listeden seçim model çağırmaz, bu yüzden ücretsiz planda da açıktır. */}
+          <View style={{ flexDirection: 'row', gap: spacing[2], padding: 3, borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+            {([
+              { key: 'text' as const, label: t.nutr_mode_text, icon: 'create-outline' as const },
+              { key: 'search' as const, label: t.nutr_mode_search, icon: 'search-outline' as const },
+            ]).map(({ key, label, icon }) => (
+              <TouchableOpacity
+                key={key}
+                onPress={() => setAddMode(key)}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: radius.md, backgroundColor: addMode === key ? palette.accent : 'transparent' }}
+              >
+                <Ionicons name={icon} size={15} color={addMode === key ? '#fff' : colors.textMuted} />
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: addMode === key ? '#fff' : colors.textMuted }}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-          {!parsedItems && (
-            <Button label={parsing ? t.nutr_analyzing : isPro ? t.nutr_ai_analyze : `Pro · ${t.nutr_ai_analyze}`} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
+          {addMode === 'text' ? (
+            <>
+              <Input
+                label={t.nutr_what_did_you_eat}
+                value={rawInput}
+                onChangeText={setRawInput}
+                placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
+                multiline
+                numberOfLines={3}
+                style={{ minHeight: 80, textAlignVertical: 'top' }}
+                autoFocus
+              />
+
+              {!parsedItems && (
+                <Button label={parsing ? t.nutr_analyzing : 'Hesapla'} onPress={handleParse} loading={parsing} variant="secondary" fullWidth />
+              )}
+            </>
+          ) : (
+            <View style={{ gap: spacing[3] }}>
+              <Input
+                label={t.nutr_search_food}
+                value={foodSearch}
+                onChangeText={handleFoodSearch}
+                placeholder="Yumurta, ekmek, peynir..."
+              />
+
+              {pendingChoice ? (
+                <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, gap: spacing[3] }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing[2] }}>
+                    <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{pendingChoice.label}</Text>
+                    <TouchableOpacity onPress={() => { setPendingChoice(null); setPendingGrams('') }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Ionicons name="close" size={16} color={colors.textSubtle} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+                    {pendingChoice.kcal_per_100g} kcal / 100 g
+                    {pendingChoice.source === 'corpus' ? ' · USDA' : ''}
+                  </Text>
+                  <Input
+                    label={t.nutr_grams}
+                    value={pendingGrams}
+                    onChangeText={setPendingGrams}
+                    keyboardType="numeric"
+                    placeholder={String(pendingChoice.default_grams)}
+                  />
+                  <Button
+                    label={t.nutr_add_to_meal}
+                    onPress={handleAddChoice}
+                    loading={addingChoice}
+                    variant="secondary"
+                    fullWidth
+                  />
+                </View>
+              ) : foodResults.length > 0 ? (
+                <View style={{ gap: 2 }}>
+                  {foodResults.map((food) => (
+                    <FoodChoiceRow
+                      key={`${food.source}-${food.id}`}
+                      food={food}
+                      onPress={() => { setPendingChoice(food); setPendingGrams(String(food.default_grams)) }}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
+                  {t.nutr_search_hint}
+                </Text>
+              )}
+            </View>
           )}
 
           {parsedItems && (
             <View style={{ gap: spacing[2] }}>
+              {aiDegraded && (
+                <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: '#FEF3C7' }}>
+                  <Text style={{ fontSize: fontSize.xs, color: '#92400E', lineHeight: 18 }}>
+                    AI katmanı kullanılamıyor. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor.
+                  </Text>
+                </View>
+              )}
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} {t.nutr_nutrients_found}</Text>
               {parsedItems.map((item, i) => (
-                <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                  <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
-                  <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.calories} kcal</Text>
+                <View key={`${item.name}-${i}`} style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
+                    <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.calories} kcal</Text>
+                  </View>
+                  {item.calories_min !== undefined && item.calories_max !== undefined && (
+                    <Text style={{ marginTop: 3, fontSize: fontSize.xs, color: colors.textSubtle }}>
+                      {item.calories_min}–{item.calories_max} kcal · {item.source === 'corpus' ? 'USDA, kontrol et' : item.portion_rung}
+                    </Text>
+                  )}
+                  {item.disposition === 'confirm' && !itemApprovals[i] && (
+                    <TouchableOpacity
+                      onPress={() => setItemApprovals((approvals) => approvals.map((approved, index) => index === i ? true : approved))}
+                      style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: '#D97706' }}
+                    >
+                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.disposition === 'confirm' && itemApprovals[i] && (
+                    <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: '#059669' }}>Onaylandı</Text>
+                  )}
                 </View>
               ))}
+
+              {parsedQuestions.length > 0 && (
+                <View style={{ gap: spacing[2], marginTop: spacing[2] }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#92400E' }}>
+                    Emin olamadıklarım ({parsedQuestions.length}) — tahmin yürütmedim
+                  </Text>
+                  {parsedQuestions.map((question, questionIndex) => {
+                    const key = questionKey(question)
+                    return (
+                      <View key={key} style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', gap: spacing[2] }}>
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>
+                          {question.kind === 'amount'
+                            ? `“${question.raw}” — ${question.food_label ?? question.phrase} kaç gram?`
+                            : `“${question.raw}” — bu hangisi?`}
+                        </Text>
+
+                        {question.kind === 'choice' && question.choices.map((choice) => (
+                          <TouchableOpacity
+                            key={`${choice.source}:${choice.id}`}
+                            onPress={() => void handleQuestionChoice(questionIndex, question, choice)}
+                            style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: 9, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ fontSize: fontSize.xs, color: colors.textSecondary }}>
+                              {choice.label} · {choice.kcal_per_100g} kcal/100g
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+
+                        {question.kind === 'choice' && question.choices.length === 0 && (
+                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Bu yiyecek veritabanında yok.</Text>
+                        )}
+
+                        {question.kind === 'amount' && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+                            <Input
+                              value={amountDrafts[key] ?? ''}
+                              onChangeText={(value) => setAmountDrafts((drafts) => ({ ...drafts, [key]: value }))}
+                              placeholder="gram"
+                              keyboardType="decimal-pad"
+                              containerStyle={{ flex: 1 }}
+                            />
+                            <TouchableOpacity
+                              onPress={() => void handleQuestionAmount(questionIndex, question)}
+                              style={{ paddingHorizontal: spacing[4], paddingVertical: 11, borderRadius: 10, backgroundColor: palette.accent }}
+                            >
+                              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Ekle</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        <TouchableOpacity onPress={() => dismissQuestion(questionIndex, key)}>
+                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Atla</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  })}
+                </View>
+              )}
+
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing[2] }}>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_total}</Text>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: palette.warning }}>
@@ -393,7 +742,13 @@ export default function NutritionScreen() {
             </View>
           )}
 
-          <Button label={adding ? t.nutr_saving : t.nutr_save} onPress={handleAddMeal} loading={adding} fullWidth />
+          <Button
+            label={adding ? t.nutr_saving : t.nutr_save}
+            onPress={handleAddMeal}
+            loading={adding}
+            disabled={(parsedItems?.length ?? 0) === 0 || itemApprovals.some((approved) => !approved)}
+            fullWidth
+          />
         </View>
       </BottomSheet>
 
@@ -429,7 +784,14 @@ export default function NutritionScreen() {
       {/* Edit meal */}
       <BottomSheet
         visible={!!editingMeal}
-        onClose={() => { setEditingMeal(null); setEditItems([]); setEditRawInput('') }}
+        onClose={() => {
+          setEditingMeal(null)
+          setEditItems([])
+          setEditApprovals([])
+          setEditTrace(null)
+          setEditVersion(null)
+          setEditRawInput('')
+        }}
         title="Öğün Düzenle"
         scrollable
       >
@@ -445,7 +807,7 @@ export default function NutritionScreen() {
           />
 
           <Button
-            label={editLoading ? 'AI yeniden hesaplıyor...' : isPro ? '✦ AI ile Yeniden Hesapla' : 'Pro · AI ile Yeniden Hesapla'}
+            label={editLoading ? 'Yeniden hesaplanıyor...' : 'Yeniden Hesapla'}
             onPress={() => void handleReparseEditMeal()}
             loading={editLoading}
             variant="secondary"
@@ -466,6 +828,19 @@ export default function NutritionScreen() {
                   <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.unit}</Text>
                   <Text style={{ fontSize: fontSize.sm, color: palette.warning }}>{Math.round(item.calories)} kcal</Text>
                 </View>
+                {item.calories_min !== undefined && item.calories_max !== undefined && (
+                  <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: colors.textSubtle }}>
+                    {item.calories_min}–{item.calories_max} kcal {item.source === 'corpus' ? '· USDA' : ''}
+                  </Text>
+                )}
+                {item.disposition === 'confirm' && !editApprovals[index] && (
+                  <TouchableOpacity
+                    onPress={() => setEditApprovals((approvals) => approvals.map((approved, approvalIndex) => approvalIndex === index ? true : approved))}
+                    style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: '#D97706' }}
+                  >
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </View>
@@ -474,10 +849,42 @@ export default function NutritionScreen() {
             label={editLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
             onPress={() => void handleSaveMealEdit()}
             loading={editLoading}
+            disabled={editItems.length === 0 || editApprovals.some((approved) => !approved)}
             fullWidth
           />
         </View>
       </BottomSheet>
     </ScreenBackground>
+  )
+}
+
+/**
+ * Arama sonucundaki tek satır. Küratörsüz (USDA) satırlar rozetle ayrılır ki
+ * kullanıcı değerin nereden geldiğini görsün.
+ */
+function FoodChoiceRow({ food, onPress }: { food: FoodSearchResult; onPress: () => void }) {
+  const { colors } = useTheme()
+  const isCorpus = food.source === 'corpus'
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[2], paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: colors.border }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }} numberOfLines={2}>{food.label}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginTop: 2 }}>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
+            {food.kcal_per_100g} kcal / 100 g
+          </Text>
+          {isCorpus && (
+            <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.full, backgroundColor: `${palette.warning}1F` }}>
+              <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: palette.warning }}>USDA</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <Ionicons name="add-circle-outline" size={22} color={palette.meal} />
+    </TouchableOpacity>
   )
 }
