@@ -63,7 +63,8 @@ export interface LocalCalendarEvent {
    *
    * `startsAt` UTC ISO'dur; gün filtresini onun ilk 10 karakterine göre yapmak
    * UTC+3'te 00:00–02:59 arası etkinlikleri bir önceki güne düşürüyordu.
-   * Gün eşleştirmesi daima bu alan üzerinden yapılmalı.
+   * Gün eşleştirmesi daima bu alan üzerinden yapılmalı — nasıl hesaplandığı
+   * için `mapToLifeOSEvent` içindeki tüm gün notuna bak.
    */
   localDate: string
   isAllDay: boolean
@@ -90,9 +91,19 @@ export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
     typeof endDate === 'string' ? endDate : (endDate as Date).toISOString()
 
   const isAllDay = event.allDay ?? false
-  // Tüm gün etkinlikleri UTC gece yarısında saklanır; yerele çevirmek onları
-  // kaydırır. Onlarda ISO'nun gün kısmı zaten doğru gündür.
-  const localDate = isAllDay ? startsAt.slice(0, 10) : toLocalDateString(start)
+  // Tüm gün etkinliğinin gününü platform belirler; ikisini aynı şekilde okumak
+  // günü kaydırıyor:
+  //   iOS   — EKEvent, tüm gün etkinliğini YEREL gece yarısında tutar. UTC+3'te
+  //           30 Ağustos etkinliği 29 Ağustos 21:00Z olur; ISO'nun gün kısmını
+  //           almak etkinliği bir gün geriye çekiyordu (kullanıcı bugünün
+  //           listesinde yarının etkinliklerini görüyordu).
+  //   Android — takvim sağlayıcısı tüm gün etkinliklerini UTC gece yarısında
+  //           tutar; yerele çevirmek negatif ofsetli saat dilimlerinde günü
+  //           geriye kaydırır. Orada ISO'nun gün kısmı doğrudur.
+  // Saatli etkinliklerde iki platform da aynı: yerel gün doğru gündür.
+  const localDate = isAllDay && Platform.OS === 'android'
+    ? startsAt.slice(0, 10)
+    : toLocalDateString(start)
 
   return {
     id: `local_${event.id}`,

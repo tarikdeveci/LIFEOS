@@ -235,8 +235,9 @@ export default function WorkoutScreen() {
       })
       setAddingToDay(null)
       setPickerSearch('')
-    } catch {
-      Alert.alert('Hata', 'Hareket eklenemedi')
+    } catch (err) {
+      // Sebebi yutmak hatayi gorunmez kiliyordu; RLS/kolon hatasi da olsa yaz.
+      Alert.alert('Hata', err instanceof Error ? err.message : 'Hareket eklenemedi')
     }
   }
 
@@ -769,13 +770,50 @@ export default function WorkoutScreen() {
         </View>
       </BottomSheet>
 
-      {/* Program day picker */}
+      {/*
+        Program detayı ve hareket seçici AYNI sayfada, iç içe geçmiş iki
+        BottomSheet olarak değil: iOS zaten görünür bir modalin üstüne ikinci
+        modal açmıyor ("Hareket Ekle"ye basınca hiçbir şey olmuyordu). Seçici
+        açıkken gün listesinin yerini alıyor, geri düğmesiyle dönülüyor.
+      */}
       <BottomSheet
         visible={!!selectedProgram}
-        onClose={() => { setSelectedProgram(null); setExpandedDay(null) }}
-        title={liveProgram ? liveProgram.name : 'Program'}
+        onClose={() => { setSelectedProgram(null); setExpandedDay(null); setAddingToDay(null) }}
+        title={addingToDay ? 'Hareket Ekle' : (liveProgram ? liveProgram.name : 'Program')}
         scrollable
       >
+        {addingToDay ? (
+          <View style={{ gap: spacing[3] }}>
+            <TouchableOpacity
+              onPress={() => { setAddingToDay(null); setPickerSearch('') }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[1] }}
+            >
+              <Ionicons name="chevron-back" size={16} color={palette.accent} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>Programa dön</Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <Input label="Set" value={pickerSets} onChangeText={setPickerSets} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
+              <Input label="Tekrar" value={pickerReps} onChangeText={setPickerReps} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
+            </View>
+            <Input label="Egzersiz ara" value={pickerSearch} onChangeText={setPickerSearch} placeholder="hip thrust, squat..." />
+            {exercises
+              .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
+              .slice(0, 25)
+              .map((e) => (
+                <TouchableOpacity
+                  key={e.id}
+                  onPress={() => void handleAddExerciseToDay(e.id)}
+                  style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{e.name}</Text>
+                  {e.muscle_group?.name && (
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{e.muscle_group.name}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+          </View>
+        ) : (
         <View style={{ gap: spacing[2] }}>
           {todayWorkout && todayWorkout.status !== 'completed' && (
             <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing[1] }}>
@@ -869,6 +907,7 @@ export default function WorkoutScreen() {
             </TouchableOpacity>
           )}
         </View>
+        )}
       </BottomSheet>
 
       {/* Kendi programını oluştur */}
@@ -920,37 +959,6 @@ export default function WorkoutScreen() {
             loading={savingProgram}
             fullWidth
           />
-        </View>
-      </BottomSheet>
-
-      {/* Güne hareket ekle — kütüphaneden seç */}
-      <BottomSheet
-        visible={!!addingToDay}
-        onClose={() => setAddingToDay(null)}
-        title="Hareket Ekle"
-        scrollable
-      >
-        <View style={{ gap: spacing[3] }}>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <Input label="Set" value={pickerSets} onChangeText={setPickerSets} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
-            <Input label="Tekrar" value={pickerReps} onChangeText={setPickerReps} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
-          </View>
-          <Input label="Egzersiz ara" value={pickerSearch} onChangeText={setPickerSearch} placeholder="hip thrust, squat..." />
-          {exercises
-            .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
-            .slice(0, 25)
-            .map((e) => (
-              <TouchableOpacity
-                key={e.id}
-                onPress={() => void handleAddExerciseToDay(e.id)}
-                style={{ paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
-              >
-                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{e.name}</Text>
-                {e.muscle_group?.name && (
-                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{e.muscle_group.name}</Text>
-                )}
-              </TouchableOpacity>
-            ))}
         </View>
       </BottomSheet>
 
