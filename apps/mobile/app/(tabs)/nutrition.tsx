@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Keyboa
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
+import { recordValueMoment } from '@/src/lib/review'
 import { todayDate, useNutritionStore } from '@lifeos/shared'
 import type {
   MealType,
@@ -352,6 +353,9 @@ export default function NutritionScreen() {
       setParseVersion(null)
       setAiDegraded(false)
       setShowAdd(false)
+      // Öğün kaydedildi — kullanıcının uygulamadan değer gördüğü an. Beklenmez:
+      // puanlama istemi kaydın tamamlanmasını geciktirmemeli.
+      void recordValueMoment()
     } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
     finally { setAdding(false) }
   }
