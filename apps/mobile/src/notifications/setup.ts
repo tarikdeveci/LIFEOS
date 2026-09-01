@@ -92,10 +92,32 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   } = await supabase.auth.getUser()
 
   if (user) {
-    await supabase.from('push_tokens').upsert(
-      { user_id: user.id, token, platform: Platform.OS as 'ios' | 'android' },
-      { onConflict: 'user_id, platform' },
+    const platform = Platform.OS as 'ios' | 'android'
+
+    // onConflict boşluksuz olmalı: PostgREST bunu kolon listesi olarak ayrıştırır,
+    // "user_id, platform" ikinci kolonu " platform" diye okur. Hata da hiç
+    // kontrol edilmiyordu, yani kayıt sessizce düşebiliyordu.
+    const { error } = await supabase.from('push_tokens').upsert(
+      { user_id: user.id, token, platform },
+      { onConflict: 'user_id,platform' },
     )
+    if (error) console.warn('Push token kaydedilemedi:', error.message)
+
+    // Aynı kullanıcının eski token satırları kalırsa her biri ayrı bir teslim
+    // olur ve tek bildirim birden çok kez düşer. Yeniden kurulum, yeni build ve
+    // dev/TestFlight kopyaları bu satırları üretir.
+    //
+    // Aynı token'ı BAŞKA bir kullanıcı tutuyorsa burada temizlenemez: RLS
+    // başkasının satırını sildirmez. Onu 037'deki push_tokens_claim trigger'ı
+    // sunucu tarafında devralır.
+    const { error: cleanupError } = await supabase
+      .from('push_tokens')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('platform', platform)
+      .neq('token', token)
+    if (cleanupError) console.warn('Eski push token silinemedi:', cleanupError.message)
+
     await syncTimezone(user.id)
   }
 
@@ -119,6 +141,33 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   return token
+}
+
+/**
+ * Çıkış yapmadan ÖNCE çağrılır: bu cihazın token satırını kullanıcıdan koparır.
+ *
+ * Silinmezse hesap cihazda kalmaya devam eder. Aynı cihaza başka bir hesapla
+ * girildiğinde token iki kullanıcıya birden bağlı olur; her ikisinin bildirimi
+ * de aynı cihaza düşer — hem bildirim tekrarlanır hem de cihaz, o an giriş
+ * yapmamış hesabın görev ve beslenme özetini gösterir.
+ *
+ * (user_id, platform) benzersiz olduğu için tek satır siler; token'ı ayrıca
+ * okumaya gerek yok.
+ */
+export async function unregisterPushTokenAsync(): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  const { error } = await supabase
+    .from('push_tokens')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('platform', Platform.OS as 'ios' | 'android')
+
+  // Çıkışı bloklamaz: token silinemese bile kullanıcı oturumu kapatabilmeli.
+  if (error) console.warn('Push token silinemedi:', error.message)
 }
 
 /**

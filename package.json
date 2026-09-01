@@ -14,12 +14,14 @@
     "build:web": "turbo run build --filter=@lifeos/web",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "typecheck:functions": "deno check supabase/functions/**/*.ts",
     "clean": "turbo run clean && rimraf node_modules",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --linked > packages/shared/src/types/database.ts",
     "db:corpus": "node scripts/import-food-corpus.mjs",
     "eval:nutrition": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/run.ts",
+    "audit:foods": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/audit-catalog.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore"
   },
   "devDependencies": {

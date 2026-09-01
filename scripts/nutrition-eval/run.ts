@@ -405,8 +405,8 @@ async function main() {
   }
 
   console.log(
-    '\nUYARI: Bu sayılar 34 vakalık küçük ve doygun bir set üzerinde. Yüksek bir oran\n' +
-    '"sistem doğru" demek değil, "bu set bu hattı ayırt edemiyor" demek olabilir.\n' +
+    `\nUYARI: Bu sayılar ${results.length} vakalık küçük ve doygun bir set üzerinde. Yüksek bir\n` +
+    'oran "sistem doğru" demek değil, "bu set bu hattı ayırt edemiyor" demek olabilir.\n' +
     'Bir hata bulduğunda önce buraya bir vaka ekle, sonra düzelt.\n',
   )
 

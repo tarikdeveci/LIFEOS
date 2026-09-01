@@ -27,6 +27,11 @@ export function fold(input: string): string {
 /** Katlanmış, noktalaması temizlenmiş, tek boşluklu hâl. */
 export function normalizePhrase(input: string): string {
   return fold(input)
+    // Türkçe'de ondalık ayırıcı virgüldür. Noktaya çevrilmezse bir sonraki adımda
+    // silinir ve "1,5 porsiyon" → "1 5 porsiyon" olur; miktar 5 okunur, öğün üç
+    // katına çıkar. Yalnızca İKİ rakamın arasındaki virgül ondalıktır — ayırıcı
+    // olarak yazılan virgülün iki yanından en az biri rakam değildir.
+    .replace(/(\d),(\d)/g, '$1.$2')
     .replace(/[^a-z0-9%\s.]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -146,12 +151,100 @@ export interface QuantityParse {
 // eşleşmeyi bozuyorlar: "kahvaltida yumurta" hiçbir alias'a birebir uymuyor,
 // "yumurta" uyuyor. Yemek adlarının parçası olabilecek sözcükler (örn. "yemek")
 // bilerek listede yok.
+// "yemeginde"/"yemekte"/"ogunde" çekimli hâllerdir, yemek ADI olamazlar — bu
+// yüzden listede yer alabiliyorlar. Çıplak "yemek" hâlâ dışarıda: "nohut yemeği"
+// gerçek bir yiyecektir ve \b sınırları sayesinde bu ekler ona dokunmaz.
 const CONTEXT_RE =
-  /\b(kahvaltida|kahvaltida|kahvalti|oglen|ogleyin|ogle|aksam|aksamleyin|sabah|gece|bugun|dun|yedim|yedik|yiyorum|ictim|ictik|iciyorum|aldim|tukettim|olarak)\b/g
+  /\b(kahvaltida|kahvalti|oglen|ogleyin|ogle|aksam|aksamleyin|sabah|gece|bugun|dun|yemeginde|yemekte|ogunde|yedim|yedik|yiyorum|ictim|ictik|iciyorum|aldim|tukettim|olarak)\b/g
 
 const UNIT_ALTERNATION = Object.keys(UNITS)
   .sort((a, b) => b.length - a.length)
   .join('|')
+
+// "bir buçuk" / "2 buçuk" TEK bir miktardır. Açılmazsa aşağıdaki sayı+birim
+// eşleşmesi "buçuk porsiyon"a kilitlenir: 1.5 yerine 0.5 okunur ve öğün üçte
+// birine iner. "yarım" tek başına zaten 0.5, önüne sayı almaz.
+const HALF_RE = new RegExp(
+  `\\b(\\d+(?:[.,]\\d+)?|${
+    Object.keys(NUMBER_WORDS).filter((word) => word !== 'bucuk' && word !== 'yarim').join('|')
+  })\\s+bucuk\\b`,
+  'g',
+)
+
+function expandHalves(text: string): string {
+  return text.replace(HALF_RE, (_match, num: string) => {
+    const base = /^\d/.test(num) ? parseFloat(num.replace(',', '.')) : NUMBER_WORDS[num] ?? 0
+    return ` ${base + 0.5} `
+  })
+}
+
+function isBulkUnit(unitKey: string): boolean {
+  const info = UNITS[unitKey]
+  return info !== undefined && (info.kind === 'mass' || info.kind === 'volume')
+}
+
+interface Extraction {
+  quantity: number | null
+  /** UNITS anahtarı — baz katsayısı HENÜZ uygulanmadı. */
+  unit: string | null
+  /** miktar ayıklandıktan sonra kalan metin */
+  rest: string
+}
+
+/** Metinden TEK bir miktar ifadesi söker. Merdiven: sayı+birim → sözcük+birim → çıplak birim → çıplak sayı. */
+function extractOnce(text: string): Extraction {
+  // 1) sayı + birim ("180 g", "1.5 litre", "2 dilim")
+  const numUnit = new RegExp(`\\b(\\d+(?:[.,]\\d+)?)\\s*(${UNIT_ALTERNATION})\\b`, 'i')
+  const numUnitMatch = text.match(numUnit)
+  if (numUnitMatch) {
+    return {
+      quantity: parseFloat(numUnitMatch[1]!.replace(',', '.')),
+      unit: numUnitMatch[2]!,
+      rest: text.replace(numUnitMatch[0], ' '),
+    }
+  }
+
+  // 2) sayı sözcüğü + birim ("bir kase", "iki dilim")
+  const wordUnit = new RegExp(
+    `\\b(${Object.keys(NUMBER_WORDS).join('|')})\\s+(${UNIT_ALTERNATION})\\b`,
+    'i',
+  )
+  const wordUnitMatch = text.match(wordUnit)
+  if (wordUnitMatch) {
+    return {
+      quantity: NUMBER_WORDS[wordUnitMatch[1]!] ?? null,
+      unit: wordUnitMatch[2]!,
+      rest: text.replace(wordUnitMatch[0], ' '),
+    }
+  }
+
+  // 3) çıplak birim ("bardak sut") → 1 birim
+  const bareUnit = new RegExp(`\\b(${UNIT_ALTERNATION})\\b`, 'i')
+  const bareUnitMatch = text.match(bareUnit)
+  if (bareUnitMatch) {
+    return { quantity: 1, unit: bareUnitMatch[1]!, rest: text.replace(bareUnitMatch[0], ' ') }
+  }
+
+  // 4) çıplak sayı ("3 yumurta", "150 pilav") — birimi porsiyon merdiveni karara bağlar
+  const bareNum = text.match(/\b(\d+(?:[.,]\d+)?)\b/)
+  if (bareNum) {
+    return {
+      quantity: parseFloat(bareNum[1]!.replace(',', '.')),
+      unit: null,
+      rest: text.replace(bareNum[0], ' '),
+    }
+  }
+  const wordNum = text.match(new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'i'))
+  if (wordNum) {
+    return {
+      quantity: NUMBER_WORDS[wordNum[1]!] ?? null,
+      unit: null,
+      rest: text.replace(wordNum[0], ' '),
+    }
+  }
+
+  return { quantity: null, unit: null, rest: text }
+}
 
 /**
  * "2 dilim tam bugday ekmegi" → { quantity: 2, unit: 'dilim', phrase: 'tam bugday ekmegi' }
@@ -162,57 +255,33 @@ const UNIT_ALTERNATION = Object.keys(UNITS)
 export function parseQuantity(rawPart: string): QuantityParse {
   let text = ` ${normalizePhrase(rawPart)} `
   for (const [pattern, replacement] of MULTIWORD_UNITS) text = text.replace(pattern, replacement)
-  text = text.replace(/\s+/g, ' ')
+  text = expandHalves(text).replace(/\s+/g, ' ')
 
-  let quantity: number | null = null
-  let unit: string | null = null
+  const first = extractOnce(text)
+  let quantity = first.quantity
+  let unit = first.unit
+  let rest = first.rest
 
-  // 1) sayı + birim ("180 g", "1.5 litre", "2 dilim")
-  const numUnit = new RegExp(`\\b(\\d+(?:[.,]\\d+)?)\\s*(${UNIT_ALTERNATION})\\b`, 'i')
-  const numUnitMatch = text.match(numUnit)
-  if (numUnitMatch) {
-    quantity = parseFloat(numUnitMatch[1]!.replace(',', '.'))
-    unit = numUnitMatch[2]!
-    text = text.replace(numUnitMatch[0], ' ')
-  }
-
-  // 2) sayı sözcüğü + birim ("bir kase", "iki dilim")
-  if (quantity === null) {
-    const wordUnit = new RegExp(
-      `\\b(${Object.keys(NUMBER_WORDS).join('|')})\\s+(${UNIT_ALTERNATION})\\b`,
-      'i',
-    )
-    const wordUnitMatch = text.match(wordUnit)
-    if (wordUnitMatch) {
-      quantity = NUMBER_WORDS[wordUnitMatch[1]!] ?? null
-      unit = wordUnitMatch[2]!
-      text = text.replace(wordUnitMatch[0], ' ')
-    }
-  }
-
-  // 3) çıplak birim ("bardak sut") → 1 birim
-  if (quantity === null) {
-    const bareUnit = new RegExp(`\\b(${UNIT_ALTERNATION})\\b`, 'i')
-    const bareUnitMatch = text.match(bareUnit)
-    if (bareUnitMatch) {
-      quantity = 1
-      unit = bareUnitMatch[1]!
-      text = text.replace(bareUnitMatch[0], ' ')
-    }
-  }
-
-  // 4) çıplak sayı ("3 yumurta", "150 pilav") — birimi porsiyon merdiveni karara bağlar
-  if (quantity === null) {
-    const bareNum = text.match(/\b(\d+(?:[.,]\d+)?)\b/)
-    if (bareNum) {
-      quantity = parseFloat(bareNum[1]!.replace(',', '.'))
-      text = text.replace(bareNum[0], ' ')
-    } else {
-      const wordNum = text.match(new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'i'))
-      if (wordNum) {
-        quantity = NUMBER_WORDS[wordNum[1]!] ?? null
-        text = text.replace(wordNum[0], ' ')
+  // Tek kalem İKİ miktar ifadesi taşıyabilir: "3 tane 100 gram köfte". Tek geçişte
+  // ikincisi ifadede kalır ("100 gram kofte") ve kalem hiçbir yiyeceğe oturmaz.
+  //
+  // Birleştirme yalnızca İKİSİNİN DE açık birimi varsa yapılır. Bu şart olmadan
+  // "%3 yağlı süt 200 ml" ifadesindeki "3" ikinci miktar sanılır ve hacim 600 ml
+  // olur — oysa o rakam yiyecek adının parçasıdır.
+  if (quantity !== null && unit !== null) {
+    const second = extractOnce(rest)
+    if (second.quantity !== null && second.unit !== null) {
+      const firstIsBulk = isBulkUnit(unit)
+      const secondIsBulk = isBulkUnit(second.unit)
+      // adet × kütle = toplam kütle. Aynı türdeyseler ilki geçerli sayılır;
+      // ikincisi her hâlükârda ifadeden düşer, yoksa yiyecek adına yapışır.
+      if (secondIsBulk && !firstIsBulk) {
+        quantity = quantity * second.quantity
+        unit = second.unit
+      } else if (firstIsBulk && !secondIsBulk) {
+        quantity = quantity * second.quantity
       }
+      rest = second.rest
     }
   }
 
@@ -225,7 +294,7 @@ export function parseQuantity(rawPart: string): QuantityParse {
   return {
     quantity,
     unit: info?.key ?? null,
-    phrase: text.replace(CONTEXT_RE, ' ').replace(/\s+/g, ' ').trim(),
+    phrase: rest.replace(CONTEXT_RE, ' ').replace(/\s+/g, ' ').trim(),
   }
 }
 
@@ -238,22 +307,122 @@ export function parseQuantity(rawPart: string): QuantityParse {
 // oturuyor ve pilav sessizce kayboluyordu: tabağın yarısı hiç sayılmadığı için
 // toplam kalori gerçeğin çok altında çıkıyordu. Ayırıcıların hepsi boşlukla
 // çevrili aranır, böylece "ile" son eki (-yle/-la) yanlışlıkla bölmez.
+//
+// Virgül iki iş birden yapar: liste ayırıcısı VE Türkçe ondalık işareti. İki
+// rakamın arasındaki virgül ondalıktır, ayırıcı değil — "1,5 porsiyon" oradan
+// bölünürse "5 porsiyon" okunur. Ayırıcı olarak yazılan virgülün iki yanından
+// en az biri rakam değildir, kural bu farkı kullanır.
 const SPLIT_RE =
-  /[,\n;]+|\s+ve\s+|\s+ile\s+|\s+\+\s+|\s+üst[üu]\s+|\s+[üu]zeri(?:ne)?\s+|\s+yan[ıi]nda\s+|\s+eşliğinde\s+/i
+  /(?:[\n;]|(?<!\d),|,(?!\d))+|\s+ve\s+|\s+ile\s+|\s+\+\s+|\s+üst[üu]\s+|\s+[üu]zeri(?:ne)?\s+|\s+yan[ıi]nda\s+|\s+eşliğinde\s+/i
 
-/** Girişi kalemlere böler. Ayırıcı yoksa her yeni miktar ifadesinden önce böler. */
+// Çok kelimeli birimlerin parçaları. Tek başlarına birim değiller ama yiyecek
+// adı da değiller: "bal 1 yemek kaşığı" ifadesinde "yemek kaşığı"nı yiyecek
+// sanan bir bölücü, yetim bir "1 yemek kaşığı" kalemi üretir.
+const UNIT_WORDS = new Set<string>([
+  ...Object.keys(UNITS),
+  'yemek', 'tatli', 'cay', 'kasigi', 'bardagi', 'fincani',
+])
+
+// Bir miktar grubunu KAPATABİLECEK sözcükler. 'yemek'/'tatli'/'cay' bilerek dışarıda:
+// bunlar ancak "yemek kaşığı" tamlamasının başında birimdir, tek başlarına grup
+// bitirmezler. Listede olsalardı "…beyaz peynir çay" miktarla bitiyor sanılırdı.
+const UNIT_TAIL_WORDS = new Set<string>([
+  ...Object.keys(UNITS),
+  'kasigi', 'bardagi', 'fincani',
+])
+
+/** Sözcüğü karşılaştırmaya hazır hâle getirir: katlanmış, noktalaması atılmış. */
+function foldToken(token: string): string {
+  return fold(token).replace(/[^a-z0-9.,%]/g, '')
+}
+
+function isNumberToken(folded: string): boolean {
+  return /^\d+(?:[.,]\d+)?$/.test(folded)
+}
+
+/** Yeni bir kalem başlatabilecek çıpa: çıplak sayı ya da sayı sözcüğü. */
+function isAnchor(folded: string): boolean {
+  if (isNumberToken(folded)) return true
+  // "buçuk" tek başına kalem başlatmaz: "bir buçuk porsiyon" tek bir miktardır.
+  if (folded === 'bucuk') return false
+  return Object.hasOwn(NUMBER_WORDS, folded)
+}
+
+/** Yiyecek adının parçası olabilecek sözcük — ne sayı ne birim. */
+function isFoodish(folded: string): boolean {
+  return folded.length > 1 && !isAnchor(folded) && folded !== 'bucuk' && !UNIT_WORDS.has(folded)
+}
+
+/**
+ * Ayırıcısız girdiyi miktar çıpalarından böler: "2 yumurta 1 muz".
+ *
+ * Virgül beklemek bizim eksiğimizdi, kullanıcının hatası değil. Ama her çıpadan
+ * bölmek de yanlış: bölme yalnızca çıpanın İKİ yanında da yiyecek adı varsa
+ * yapılır. Bu koşul olmadan "tam buğday ekmeği 2 dilim" ifadesi ikiye ayrılıp
+ * yetim bir "2 dilim" kalemi doğuruyor.
+ */
+function anchorCuts(folded: string[]): number[] {
+  const cuts: number[] = []
+  for (let i = 1; i < folded.length; i++) {
+    if (!isAnchor(folded[i]!)) continue
+    // "1.5" zaten tek token; "%3 yağlı" ve "1 5" gibi bitişik sayılar çıpa değil.
+    if (folded[i - 1]!.endsWith('%') || isAnchor(folded[i - 1]!)) continue
+
+    const start = cuts.length > 0 ? cuts[cuts.length - 1]! : 0
+    if (!folded.slice(start, i).some(isFoodish)) continue
+    if (!folded.slice(i).some(isFoodish)) continue
+    cuts.push(i)
+  }
+  return cuts
+}
+
+/**
+ * Miktarını arkaya yazan girdiyi böler: "yumurta 2 adet ekmek 1 dilim".
+ *
+ * Bu biçimde çıpadan bölmek kesimi yanlış yere koyar: "yulaf 40 gram muz 1 adet"
+ * ifadesi "yulaf" + "40 gram muz 1 adet" olur, 40 gram yulafa değil muza yazılır
+ * ve muz büsbütün kaybolur. Kesim yiyecek adının ÖNÜNDEN, tamamlanmış bir
+ * sayı+birim grubunun ardından yapılır; grubun öncesinde de bir yiyecek adı
+ * bulunmak zorundadır — bu şart "tam buğday ekmeği 2 dilim" ifadesini korur.
+ */
+function trailingGroupCuts(folded: string[]): number[] {
+  const cuts: number[] = []
+  for (let i = 2; i < folded.length; i++) {
+    if (!isFoodish(folded[i]!)) continue
+    if (!UNIT_TAIL_WORDS.has(folded[i - 1]!)) continue
+    if (!isAnchor(folded[i - 2]!)) continue
+
+    const start = cuts.length > 0 ? cuts[cuts.length - 1]! : 0
+    if (!folded.slice(start, i - 2).some(isFoodish)) continue
+    cuts.push(i)
+  }
+  return cuts
+}
+
+/** Girişi kalemlere böler. Ayırıcı yoksa miktar kalıplarından bölmeyi dener. */
 export function splitInput(text: string): string[] {
   const bySeparator = text.split(SPLIT_RE).map((p) => p.trim()).filter(Boolean)
   if (bySeparator.length > 1) return bySeparator
 
-  // (?<![\d.,]) olmadan "1.5 litre" ifadesi ".5"in önünden de bölünüyor ve
-  // "5 litre" olarak okunuyordu — üç kat kalori.
-  const byQuantity = text
-    .split(/(?=(?<![\d.,])\b\d+(?:[.,]\d+)?\s*(?:gram|gr|g(?=\s)|adet|tane|dilim|ml|litre|lt|kg|porsiyon|bardak|kase)\s)/i)
-    .map((p) => p.trim())
-    .filter(Boolean)
+  const single = [text.trim()].filter(Boolean)
+  const tokens = text.trim().split(/\s+/).filter(Boolean)
+  if (tokens.length < 3) return single
+  const folded = tokens.map(foldToken)
 
-  return byQuantity.length > 1 ? byQuantity : [text.trim()].filter(Boolean)
+  // Girdi bir miktar grubuyla bitiyorsa kullanıcı miktarı arkaya yazıyor demektir
+  // ve çıpa kesimi yanlış tarafa düşer. Kalıp tutmazsa çıpaya geri dönülür.
+  const last = folded[folded.length - 1]!
+  const writesQuantityLast = UNIT_TAIL_WORDS.has(last) || isAnchor(last)
+  let cuts = writesQuantityLast ? trailingGroupCuts(folded) : []
+  if (cuts.length === 0) cuts = anchorCuts(folded)
+  if (cuts.length === 0) return single
+
+  const bounds = [0, ...cuts, tokens.length]
+  const parts: string[] = []
+  for (let b = 0; b < bounds.length - 1; b++) {
+    parts.push(tokens.slice(bounds[b], bounds[b + 1]).join(' '))
+  }
+  return parts
 }
 
 // ============================

@@ -32,6 +32,8 @@ interface IndexedFood {
 export interface LexicalIndex {
   foods: IndexedFood[]
   idf: Map<string, number>
+  /** Birebir yüzey metni → yiyecek. Çakışmada ağırlık, eşitlikte id kazanır. */
+  bySurface: Map<string, CuratedFood>
 }
 
 function trigrams(text: string): Set<string> {
@@ -49,6 +51,9 @@ function dice(a: Set<string>, b: Set<string>): number {
 }
 
 export function buildLexicalIndex(foods: CuratedFood[]): LexicalIndex {
+  const bySurface = new Map<string, CuratedFood>()
+  const surfaceWeight = new Map<string, number>()
+
   const indexed: IndexedFood[] = foods.map((food) => {
     const surfaces: Surface[] = []
     const push = (text: string | null, weight: number) => {
@@ -56,6 +61,29 @@ export function buildLexicalIndex(foods: CuratedFood[]): LexicalIndex {
       const normalized = normalizePhrase(text)
       if (!normalized) return
       surfaces.push({ text: normalized, tokens: tokenize(normalized), weight })
+
+      // Aynı yüzeyi birden çok satır iddia edebiliyor (küratörlü katmanda 255
+      // satıra karşılık 58 çakışan yüzey var: "tereyagi" hem Tereyağı (1 yk)
+      // hem Tereyağı, "fasulye" hem Kuru fasulye hem Fasulye (haşlanmış)).
+      //
+      // Eskiden "ilk yazan kazanır"dı ve o sıra food_items sorgusunun DÖNÜŞ
+      // SIRASIYDI — sorguda ORDER BY yok, yani fiziksel satır sırası. Bir UPDATE
+      // ya da VACUUM sonrası aynı girdi başka bir yiyeceğe oturabilirdi; aynı
+      // metin bugün 14 g tereyağı, yarın 100 g.
+      //
+      // İki kurallı ve deterministik: önce ağırlık (ifade bir satırın ADIYSA,
+      // başkasının alias'ı olmasını yener), eşitlikte id. İkisi de satır
+      // sırasından bağımsız.
+      const best = surfaceWeight.get(normalized)
+      const winner = bySurface.get(normalized)
+      if (
+        best === undefined ||
+        weight > best ||
+        (weight === best && winner !== undefined && food.id < winner.id)
+      ) {
+        bySurface.set(normalized, food)
+        surfaceWeight.set(normalized, weight)
+      }
     }
     push(food.name, 1)
     push(food.name_en, 0.95)
@@ -76,7 +104,7 @@ export function buildLexicalIndex(foods: CuratedFood[]): LexicalIndex {
   const idf = new Map<string, number>()
   for (const [token, count] of df) idf.set(token, Math.log(1 + total / count))
 
-  return { foods: indexed, idf }
+  return { foods: indexed, idf, bySurface }
 }
 
 function idfOf(idf: Map<string, number>, token: string): number {
@@ -186,10 +214,47 @@ export function marginOf(candidates: Candidate[]): number {
 export function exactAliasMatch(index: LexicalIndex, phrase: string): FoodRef | null {
   const target = normalizePhrase(phrase)
   if (!target) return null
-  for (const entry of index.foods) {
-    for (const surface of entry.surfaces) {
-      if (surface.text === target) return curatedRef(entry.food)
+  const food = index.bySurface.get(target)
+  return food ? curatedRef(food) : null
+}
+
+/**
+ * "yumurta beyaz peynir" → ["yumurta", "beyaz peynir"]
+ *
+ * Ne ayırıcı ne miktar içeren girdide bölmenin tek dayanağı sözlüktür. Kural
+ * katmanı böyle bir ifadeyi tek kaleme düşürüyor, sözlüksel skor da onu en
+ * benzeyen TEK satıra oturtuyordu: ikinci yiyecek soru bile sorulmadan
+ * kayboluyor, kalori eksik çıkıyordu.
+ *
+ * Kabul ölçütü bilerek katı: her parça bir alias'la BİREBİR eşleşmeli ve
+ * parçalar ifadenin tamamını kaplamalı. Tek bir sözcük artarsa bölme yapılmaz —
+ * yanlış bölmek, bölmemekten pahalıdır. En uzun eşleşme önce denendiği için
+ * "tavuk göğsü" tek parça kalır, "tavuk" + "göğsü" diye ayrılmaz.
+ */
+export function segmentByLexicon(index: LexicalIndex, phrase: string): string[] {
+  const text = normalizePhrase(phrase)
+  if (!text) return []
+
+  // İfadenin kendisi bir yüzeyse bütün hâli her zaman kazanır.
+  if (index.bySurface.has(text)) return []
+
+  const words = text.split(' ').filter(Boolean)
+  if (words.length < 2) return []
+
+  const segments: string[] = []
+  let cursor = 0
+  while (cursor < words.length) {
+    let length = 0
+    for (let end = words.length; end > cursor; end--) {
+      if (index.bySurface.has(words.slice(cursor, end).join(' '))) {
+        length = end - cursor
+        break
+      }
     }
+    if (length === 0) return []
+    segments.push(words.slice(cursor, cursor + length).join(' '))
+    cursor += length
   }
-  return null
+
+  return segments.length >= 2 ? segments : []
 }

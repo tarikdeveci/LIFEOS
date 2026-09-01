@@ -56,7 +56,7 @@
       "stratum": "easy",
       "input": "100 g yulaf ezmesi",
       "probes": "kuru/pişmiş ayrımı olan gıda",
-      "expect": [{ "food": "Yulaf ezmesi (kuru)", "grams": 100 }]
+      "expect": [{ "food": "Yulaf Ezmesi", "grams": 100 }]
     },
     {
       "id": "E09",
@@ -179,7 +179,7 @@
       "stratum": "ambiguous",
       "input": "protein shake",
       "probes": "İngilizce isim",
-      "expect": [{ "food": "Protein shake", "servings": 1 }]
+      "expect": [{ "food": "Protein Shake", "servings": 1 }]
     },
     {
       "id": "A13",
@@ -210,6 +210,172 @@
         { "food": "Çay (şekersiz)", "servings": 1 },
         { "food": "Simit", "servings": 1 }
       ]
+    },
+
+    {
+      "id": "S01",
+      "stratum": "ambiguous",
+      "input": "2 yumurta 1 muz",
+      "probes": "ayırıcısız iki kalem, ikisi de çıplak sayılı. Virgül yazmak kullanıcının işi değil.",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 2 },
+        { "food": "Muz", "servings": 1 }
+      ]
+    },
+    {
+      "id": "S02",
+      "stratum": "ambiguous",
+      "input": "3 yumurta 200 ml süt",
+      "probes": "ayırıcısız: çıplak sayı + birimli miktar karışık",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 3 },
+        { "food": "Süt (tam yağlı)", "grams": 200 }
+      ]
+    },
+    {
+      "id": "S03",
+      "stratum": "ambiguous",
+      "input": "2 dilim tam buğday ekmeği beyaz peynir",
+      "probes": "ayırıcısız: miktarlı kalemin ardından miktarsız kalem",
+      "expect": [
+        { "food": "Tam buğday ekmeği (1 dilim)", "servings": 2 },
+        { "food": "Beyaz peynir", "servings": 1 }
+      ]
+    },
+    {
+      "id": "S04",
+      "stratum": "ambiguous",
+      "input": "yumurta beyaz peynir",
+      "probes": "ayırıcı da miktar da yok — bölme ancak sözlükle yapılabilir. Çok kelimeli isim ('beyaz peynir') parçalanmamalı.",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 1 },
+        { "food": "Beyaz peynir", "servings": 1 }
+      ]
+    },
+    {
+      "id": "S05",
+      "stratum": "ambiguous",
+      "input": "bir bardak süt bir simit",
+      "probes": "ayırıcısız, çıpalar sayı sözcüğü",
+      "expect": [
+        { "food": "Süt (tam yağlı)", "servings": 1 },
+        { "food": "Simit", "servings": 1 }
+      ]
+    },
+    {
+      "id": "S06",
+      "stratum": "ambiguous",
+      "input": "tam buğday ekmeği 2 dilim",
+      "probes": "KORUMA: miktar sonda. Çıpadan bölünürse 'tam buğday ekmeği' + yetim '2 dilim' çıkar; bölünmemeli.",
+      "expect": [{ "food": "Tam buğday ekmeği (1 dilim)", "servings": 2 }]
+    },
+    {
+      "id": "S07",
+      "stratum": "ambiguous",
+      "input": "2 yumurta 2 dilim tam buğday ekmeği beyaz peynir çay",
+      "probes": "Arayüzdeki örnek metnin ta kendisi. Placeholder'da söz verilen girdi çalışmak zorunda: çıpayla bölme ve sözlükle bölütleme aynı ifadede arka arkaya çalışır.",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 2 },
+        { "food": "Tam buğday ekmeği (1 dilim)", "servings": 2 },
+        { "food": "Beyaz peynir", "servings": 1 },
+        { "food": "Çay (şekersiz)", "servings": 1 }
+      ]
+    },
+
+    {
+      "id": "D01",
+      "stratum": "adversarial",
+      "input": "1,5 porsiyon makarna",
+      "probes": "Türkçe ondalık ayırıcı virgüldür. Virgül hem liste ayırıcısı hem ondalık işareti — rakamların arasındaki virgül ayırıcı SAYILMAMALI. Ayrılırsa '5 porsiyon' okunur, 3.3 kat şişer.",
+      "expect": [{ "food": "Makarna (pişmiş)", "servings": 1.5 }]
+    },
+    {
+      "id": "D02",
+      "stratum": "adversarial",
+      "input": "0,5 litre su",
+      "probes": "ondalık virgül + litre katsayısı birlikte. Virgül yutulursa 500 ml yerine 5000 ml çıkar — 10 kat.",
+      "expect": [{ "food": "Su", "grams": 500 }]
+    },
+    {
+      "id": "D03",
+      "stratum": "adversarial",
+      "input": "2,5 dilim ekmek",
+      "probes": "ondalık virgül + sayılabilir gıda",
+      "expect": [{ "food": "Ekmek (beyaz, 1 dilim)", "servings": 2.5 }]
+    },
+    {
+      "id": "D04",
+      "stratum": "ambiguous",
+      "input": "1,5 porsiyon makarna, 2 yumurta",
+      "probes": "Aynı girdide virgülün İKİ işi birden: ilki ondalık, ikincisi ayırıcı. Ayrımı yapamayan bir düzeltme buradan geçemez.",
+      "expect": [
+        { "food": "Makarna (pişmiş)", "servings": 1.5 },
+        { "food": "Yumurta (haşlanmış)", "servings": 2 }
+      ]
+    },
+    {
+      "id": "D05",
+      "stratum": "ambiguous",
+      "input": "2 yumurta, 1 muz",
+      "probes": "KORUMA: virgül ayırıcı olarak çalışmaya devam etmeli. Ondalık düzeltmesi bunu bozmamalı.",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 2 },
+        { "food": "Muz", "servings": 1 }
+      ]
+    },
+    {
+      "id": "D06",
+      "stratum": "ambiguous",
+      "input": "bir buçuk porsiyon makarna",
+      "probes": "'bir buçuk' tek bir miktardır: 1.5. 'buçuk porsiyon' eşleşmesine düşerse 0.5 okunur ve üçte bire iner.",
+      "expect": [{ "food": "Makarna (pişmiş)", "servings": 1.5 }]
+    },
+    {
+      "id": "D07",
+      "stratum": "ambiguous",
+      "input": "3 tane 100 gram köfte",
+      "probes": "İki miktar ifadesi tek kalemde: adet × kütle. Tek geçişli ayıklama ikincisini ifadede bırakır ('100 gram kofte') ve kalem hiç eşleşmez.",
+      "expect": [{ "food": "Köfte (ızgara)", "grams": 300 }]
+    },
+    {
+      "id": "D08",
+      "stratum": "ambiguous",
+      "input": "yumurta 2 adet ekmek 1 dilim",
+      "probes": "Miktarı arkaya yazma alışkanlığı, iki kalem. Çıpadan bölme bunu yanlış yerden keser: kesim yiyecek adının önünden, tamamlanmış miktar grubunun ardından olmalı.",
+      "expect": [
+        { "food": "Yumurta (haşlanmış)", "servings": 2 },
+        { "food": "Ekmek (beyaz, 1 dilim)", "servings": 1 }
+      ]
+    },
+    {
+      "id": "D09",
+      "stratum": "ambiguous",
+      "input": "yulaf 40 gram muz 1 adet",
+      "probes": "D08'in aynısı ama kütle birimiyle. Yanlış kesim '40 gram'ı muza bağlar: yulaf porsiyona düşer, muz 40 grama iner.",
+      "expect": [
+        { "food": "Yulaf ezmesi (kuru)", "grams": 40 },
+        { "food": "Muz", "servings": 1 }
+      ]
+    },
+
+    {
+      "id": "C01",
+      "stratum": "ambiguous",
+      "input": "öğle yemeğinde 1 porsiyon mercimek çorbası 150 gram tavuk göğsü",
+      "probes": "Öğün bağlamı cümlenin başında. Çıpadan bölme burayı ayrı bir parçaya düşürüyor; bağlam sözlüğü 'yemeğinde'yi tanımazsa yetim bir kalem doğar ve kullanıcı yemediği bir şey için soru görür.",
+      "expect": [
+        { "food": "Mercimek çorbası", "servings": 1 },
+        { "food": "Tavuk göğsü (pişmiş)", "grams": 150 }
+      ],
+      "expect_questions": 0
+    },
+    {
+      "id": "C02",
+      "stratum": "adversarial",
+      "input": "1 porsiyon nohut yemeği",
+      "probes": "KORUMA: 'yemek' yemek ADININ parçası olabilir. Bağlam sözlüğüne eklenen 'yemeğinde/yemekte' bunu yutmamalı.",
+      "expect": [{ "food": "Nohut yemeği", "servings": 1 }],
+      "expect_questions": 0
     },
 
     {

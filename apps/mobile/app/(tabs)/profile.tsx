@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
+import { unregisterPushTokenAsync } from '@/src/notifications/setup'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
@@ -243,7 +244,16 @@ export default function ProfileScreen() {
   function handleSignOut() {
     Alert.alert('Çıkış', 'Oturumu kapatmak istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Çıkış Yap', style: 'destructive', onPress: () => supabase.auth.signOut() },
+      {
+        text: 'Çıkış Yap',
+        style: 'destructive',
+        onPress: async () => {
+          // Token oturum kapanmadan silinmeli: silme RLS altında çalışıyor,
+          // signOut'tan sonra kimlik kalmaz ve satır cihazda asılı kalır.
+          await unregisterPushTokenAsync()
+          await supabase.auth.signOut()
+        },
+      },
     ])
   }
 

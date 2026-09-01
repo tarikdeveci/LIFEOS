@@ -6,26 +6,14 @@
 //   akşam  (evening_hour) → günün beslenme özeti
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+import { type PushMessage, type PushSupabase, sendExpoPush } from '../_shared/push.ts'
+
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
 
 type Slot = 'morning' | 'midday' | 'evening'
-
-interface PushMessage {
-  to: string
-  title: string
-  body: string
-  data?: Record<string, string>
-  sound?: string
-}
-
-function chunkArray<T>(arr: T[], size: number): T[][] {
-  return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-    arr.slice(i * size, i * size + size),
-  )
-}
 
 // Kullanıcının kendi saat diliminde şu anki tarih/saat.
 // Sunucu UTC'de çalıştığı için new Date().getHours() ve toISOString() kullanılamaz:
@@ -171,6 +159,10 @@ Deno.serve(async () => {
 
   const pushMessages: PushMessage[] = []
   const bySlot: Record<Slot, number> = { morning: 0, midday: 0, evening: 0 }
+  // Kilit push'tan önce yazılıyor; gönderim tutmazsa geri alınabilmesi için
+  // kimin hangi slotu kilitlediği ve hangi token'lara yazıldığı saklanır.
+  // Bir kullanıcı koşu başına tek slot alır, uid anahtar olarak yeterli.
+  const locked = new Map<string, { slot: Slot; date: string; tokens: string[] }>()
 
   for (const pref of prefs ?? []) {
     const tz = (pref.timezone as string) ?? 'Europe/Istanbul'
@@ -185,11 +177,17 @@ Deno.serve(async () => {
 
     const uid = pref.user_id as string
 
-    const { data: tokens } = await supabase
+    const { data: tokens, error: tokensError } = await supabase
       .from('push_tokens')
       .select('token')
       .eq('user_id', uid)
 
+    // Hata yutulursa "token yok" ile ayırt edilemez ve kullanıcı sessizce
+    // atlanır; fonksiyon yine 200 + sent:0 döner, cron başarılı sanır.
+    if (tokensError) {
+      console.error(`push_tokens okunamadi (${uid}):`, tokensError.message)
+      continue
+    }
     if (!tokens || tokens.length === 0) continue
 
     // Aynı token birden fazla satırda duruyorsa aynı bildirim iki kez gitmesin
@@ -230,21 +228,47 @@ Deno.serve(async () => {
         sound: 'default',
       })
     }
+    locked.set(uid, { slot, date, tokens: uniqueTokens })
     bySlot[slot]++
   }
 
-  if (pushMessages.length > 0) {
-    for (const chunk of chunkArray(pushMessages, 100)) {
-      await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk),
-      })
-    }
+  const { sent, dropped, failed } = await sendExpoPush(
+    pushMessages,
+    supabase as unknown as PushSupabase,
+  )
+
+  // Teslim edilemeyen digest'in kilidi kalırsa o slot bugün bir daha denenmez ve
+  // bildirim büsbütün kaybolur. Bütün token'ları başarısız olan kullanıcının
+  // kilidi geri alınır; saat başı koşan cron aynı saat içinde tekrar dener.
+  // Silme kullanıcı bazında tek tek yapılır: `in()` listelerinin çarpımı başka
+  // kullanıcıların aynı gün/slot satırlarını da silerdi.
+  const failedTokens = new Set(failed)
+  for (const [uid, entry] of locked) {
+    if (entry.tokens.length === 0) continue
+    if (!entry.tokens.every((token) => failedTokens.has(token))) continue
+
+    bySlot[entry.slot]--
+    const { error: rollbackError } = await supabase
+      .from('notification_log')
+      .delete()
+      .eq('user_id', uid)
+      .eq('kind', `daily_digest_${entry.slot}`)
+      .eq('local_date', entry.date)
+    if (rollbackError) console.error(`Kilit geri alinamadi (${uid}):`, rollbackError.message)
   }
 
+  // notification_log artık blok hatırlatmalarının da kilidi: günde kullanıcı
+  // başına birkaç satır yazılıyor. Saat başı çalışan tek yer burası olduğu için
+  // budama da burada. Hata sonucu etkilemez — bildirim gitti bile.
+  const cutoff = new Date(Date.now() - 30 * 86400_000).toISOString()
+  const { error: pruneError } = await supabase
+    .from('notification_log')
+    .delete()
+    .lt('sent_at', cutoff)
+  if (pruneError) console.error('notification_log budanamadi:', pruneError.message)
+
   return new Response(
-    JSON.stringify({ sent: pushMessages.length, slots: bySlot }),
+    JSON.stringify({ sent, dropped, slots: bySlot }),
     { headers: { 'Content-Type': 'application/json' } },
   )
 })

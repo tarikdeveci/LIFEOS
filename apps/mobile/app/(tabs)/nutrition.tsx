@@ -703,7 +703,7 @@ export default function NutritionScreen() {
                 label={t.nutr_what_did_you_eat}
                 value={rawInput}
                 onChangeText={setRawInput}
-                placeholder="2 yumurta, tam buğday ekmek, beyaz peynir..."
+                placeholder="2 yumurta 1 dilim tam buğday ekmeği beyaz peynir"
                 multiline
                 numberOfLines={3}
                 style={{ minHeight: 80, textAlignVertical: 'top' }}

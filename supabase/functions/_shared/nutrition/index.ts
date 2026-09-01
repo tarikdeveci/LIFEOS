@@ -2,7 +2,7 @@
 // API'si kullanır, model adaptörlerini import ETMEZ — hepsi dışarıdan enjekte edilir.
 // Eval de üretim de aynı fonksiyonu çağırır, tek fark enjekte edilen bağımlılıklar.
 
-import { buildLexicalIndex } from './lexical.ts'
+import { buildLexicalIndex, segmentByLexicon } from './lexical.ts'
 import { normalizePhrase } from './normalize.ts'
 import { resolveItem, type ResolveContext } from './resolve.ts'
 import { resolvePortion } from './portion.ts'
@@ -77,6 +77,30 @@ export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMe
     verifier: deps.verifier,
   }
 
+  // Ayırıcısı ve miktarı olmayan girdi ("yumurta beyaz peynir") çıkarıcıda tek
+  // kalem olarak kalır. Sözlükte birebir karşılığı olan parçalara ayrılabiliyorsa
+  // burada ayrılır; ayrılamıyorsa ifadeye dokunulmaz. Sözlük ancak bu noktada
+  // elimizde olduğu için bölme çıkarıcıda değil burada yapılıyor.
+  const expanded: ExtractedItem[] = []
+  for (const item of extracted) {
+    const segments = segmentByLexicon(ctx.index, item.phrase)
+    if (segments.length < 2) {
+      expanded.push(item)
+      continue
+    }
+    segments.forEach((segment, index) => {
+      expanded.push({
+        ...item,
+        phrase: segment,
+        // Yazılan miktar ilk kaleme bağlanır: "2 dilim tam buğday ekmeği beyaz
+        // peynir" iki dilim ekmektir, iki peynir değil. Sonraki kalemler miktarsız
+        // kalır ve porsiyon merdivenine düşer.
+        quantity: index === 0 ? item.quantity : null,
+        unit: index === 0 ? item.unit : null,
+      })
+    })
+  }
+
   const items: ParsedMealItem[] = []
   const questions: MealQuestion[] = []
   const trace: ItemTrace[] = []
@@ -85,7 +109,21 @@ export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMe
   let matchedFromDb = 0
   let touchedModel = 0
 
-  for (const item of extracted) {
+  // Sınırı aşan kalemler SESSİZCE düşmez. Sessiz kısaltma eksik kalorinin en
+  // sinsi biçimidir: toplam makul görünür, öğünün bir kısmı hiç sayılmamıştır.
+  // Düşenler hem küratörlük kuyruğuna hem de kullanıcının önüne soru olarak gider.
+  for (const dropped of expanded.slice(MAX_ITEMS)) {
+    gaps.push({ phrase: dropped.phrase, reason: 'item_limit' })
+    questions.push({
+      kind: 'choice',
+      phrase: dropped.phrase,
+      raw: dropped.raw,
+      reason: 'unresolved',
+      choices: [],
+    })
+  }
+
+  for (const item of expanded.slice(0, MAX_ITEMS)) {
     const resolution = await resolveItem(item, ctx)
     const phraseKey = normalizePhrase(item.phrase)
 

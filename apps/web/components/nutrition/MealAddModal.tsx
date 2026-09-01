@@ -396,7 +396,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
                   value={rawInput}
                   onChange={(e) => setRawInput(e.target.value)}
                   rows={4}
-                  placeholder="Örn: 2 yumurta, 2 dilim tam buğday ekmeği, beyaz peynir, çay"
+                  placeholder="Örn: 2 yumurta 2 dilim tam buğday ekmeği beyaz peynir çay"
                 />
                 <div className="flex justify-between gap-2">
                   {isEdit
