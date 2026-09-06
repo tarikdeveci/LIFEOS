@@ -229,6 +229,16 @@ serve(async (req: Request) => {
     const allowed = await isProUser(supabase, user.id)
     if (!allowed) return json({ error: 'AI access requires Pro' }, 402)
 
+    // Ölçüm burada, istemcide değil: web'de AI çağrısı beş ayrı bileşene
+    // dağılmış durumda ve mobil ayrı bir yoldan geliyor. Tek yerden ölçmek
+    // hem eksiksiz hem de gerçekten çalışan çağrıyı sayıyor.
+    // `supabase` kullanıcının JWT'siyle çalışıyor, RLS insert politikasından
+    // geçiyor. Await ediliyor: yanıt dönünce bekleyen iş iptal edilebilir ve
+    // gecikmesi Anthropic çağrısının yanında ölçülemez.
+    try {
+      await supabase.from('events').insert({ user_id: user.id, name: 'ai_used', props: { kind: type } })
+    } catch { /* ölçüm asıl işi bozmaz */ }
+
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
     const lang: Lang = language === 'en' ? 'en' : 'tr'
     const langInstr = lang === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'

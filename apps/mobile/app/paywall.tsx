@@ -9,6 +9,8 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { supabase } from '@/src/lib/supabase'
+import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan } from '@/src/utils/purchases'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
@@ -33,6 +35,15 @@ export default function PaywallScreen() {
 
   const [plans, setPlans] = useState<ProPlan[] | null>(null)
   const [selected, setSelected] = useState<ProPeriod>('annual')
+
+  // Paywall gerçekten gösterildi — dönüşüm oranının paydası bu. Ekran
+  // açılışında bir kez; ödeme tarafını RevenueCat ölçtüğü için buraya
+  // yalnızca "gördü" bilgisi yazılıyor.
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      if (data.user) void track(supabase, data.user.id, 'paywall_view')
+    })
+  }, [])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {

@@ -11,11 +11,15 @@ const STORAGE_KEY = 'lifeos_lang'
 const APP_STORE_URL = 'https://apps.apple.com/tr/app/lifeos/id6789708836'
 
 export default function LandingPage() {
-  const [lang, setLangState] = useState<Language>('en')
+  // Varsayılan Türkçe: bu çeyrekte hedef pazar Türkiye ve gelen trafiğin
+  // neredeyse tamamı TR. Kaydedilmiş tercih yoksa tarayıcı dili İngilizce
+  // olanlar yine İngilizce görüyor.
+  const [lang, setLangState] = useState<Language>('tr')
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Language | null
-    if (stored === 'tr' || stored === 'en') setLangState(stored)
+    if (stored === 'tr' || stored === 'en') { setLangState(stored); return }
+    if (!navigator.language.toLowerCase().startsWith('tr')) setLangState('en')
   }, [])
 
   function toggleLang(l: Language) {
@@ -25,15 +29,15 @@ export default function LandingPage() {
 
   const t = getTranslations(lang)
 
+  // Sekiz kart tek bir vaat anlatmıyordu: sayfa "her şeyi yapan uygulama"
+  // diyordu ve ziyaretçi neyi çözdüğümüzü seçemiyordu. Üç kart günün nasıl
+  // kurulduğunu sırayla anlatıyor — sırala, yerleştir, kayınca yeniden kur.
+  // Beslenme, antrenman ve mobil üründe duruyor; fiyat ve SSS bölümlerinde
+  // ayrıca geçiyor, hero'nun mesajıyla yarışmıyor.
   const features = [
     { icon: '⚡', title: t.feat_wsjf_title, desc: t.feat_wsjf_desc, pro: false },
     { icon: '🗓️', title: t.feat_timeblocks_title, desc: t.feat_timeblocks_desc, pro: false },
-    { icon: '🥗', title: t.feat_nutrition_title, desc: t.feat_nutrition_desc, pro: false },
-    { icon: '🤖', title: t.feat_ai_nutrition_title, desc: t.feat_ai_nutrition_desc, pro: true },
     { icon: '✨', title: t.feat_ai_plan_title, desc: t.feat_ai_plan_desc, pro: true },
-    { icon: '🎯', title: t.feat_ai_wsjf_title, desc: t.feat_ai_wsjf_desc, pro: true },
-    { icon: '💪', title: t.feat_workout_title, desc: t.feat_workout_desc, pro: false },
-    { icon: '📱', title: t.feat_mobile_title, desc: t.feat_mobile_desc, pro: false },
   ]
 
   const plans = [
@@ -178,20 +182,16 @@ export default function LandingPage() {
             {t.hero_subtitle}
           </p>
 
-          {/* CTAs */}
-          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+          {/* Tek CTA. İkinci düğme ("Özellikleri Gör") birincinin tıklamasını
+              yiyordu: sayfayı zaten aşağı kaydırabilen kullanıcıya buton
+              gerekmiyor, ama karar anında iki eşit ağırlıklı seçenek var. */}
+          <div className="flex items-center justify-center">
             <Link
               href="/register"
               className="group relative overflow-hidden rounded-2xl bg-indigo-600 px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-indigo-500/30 transition hover:bg-indigo-500"
             >
               <span className="relative z-10">{t.hero_cta_primary} →</span>
             </Link>
-            <a
-              href="#features"
-              className="rounded-2xl border border-white/10 bg-white/5 px-8 py-3.5 text-base font-semibold text-white/70 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-            >
-              {t.hero_cta_secondary}
-            </a>
           </div>
           <p className="mt-4 text-xs text-white/30">{t.hero_note}</p>
         </div>
@@ -318,7 +318,7 @@ export default function LandingPage() {
           <p className="text-white/40">{t.features_subtitle}</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <div
               key={f.title}

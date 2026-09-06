@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { Platform } from 'react-native'
 import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
 import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
 import { emptyWidgetSnapshot } from '@lifeos/shared'
+import { configureEvents } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
 import { initRevenueCat } from '@/src/utils/purchases'
@@ -17,6 +19,10 @@ import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
+
+// Ölçüm olaylarına platform yazılsın: Play yayına çıktığında iOS ve Android
+// hunileri ayrı okunabilmeli, tek birleşik oran hangisinin tıkandığını gizler.
+configureEvents(Platform.OS)
 
 function AppNavigator() {
   const { isDark } = useTheme()

@@ -1,6 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
+import { track } from '@lifeos/shared/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 
 interface ProGateProps {
@@ -10,6 +13,16 @@ interface ProGateProps {
 
 export function ProGate({ children, featureName = 'Bu özellik' }: ProGateProps) {
   const { isPro, loading } = useSubscription()
+  const locked = !loading && !isPro
+
+  // Paywall gerçekten gösterildi — dönüşüm oranının paydası bu. Hook koşulsuz
+  // çağrılır (React kuralı), yazma yalnızca kilitli durumda yapılır.
+  useEffect(() => {
+    if (!locked) return
+    void supabase.auth.getUser().then(({ data }) => {
+      if (data.user) void track(supabase, data.user.id, 'paywall_view', { feature: featureName })
+    })
+  }, [locked, featureName])
 
   if (loading) {
     return (
@@ -19,7 +32,7 @@ export function ProGate({ children, featureName = 'Bu özellik' }: ProGateProps)
     )
   }
 
-  if (!loading && !isPro) {
+  if (locked) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-accent/30 bg-accent/5 p-8 text-center">
         <div className="mb-3 text-3xl">✨</div>

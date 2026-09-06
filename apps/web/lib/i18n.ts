@@ -12,10 +12,10 @@ const translations = {
     nav_signup: 'Get Started',
 
     // Hero
-    hero_badge: 'AI-powered personal productivity',
-    hero_title_1: 'Your life,',
-    hero_title_2: 'systemized.',
-    hero_subtitle: 'Task management, time blocking, nutrition tracking, and AI-powered decision support — all in one place, beautifully synced across web and mobile.',
+    hero_badge: 'AI-powered day planner',
+    hero_title_1: 'You already have a to-do list.',
+    hero_title_2: 'LifeOS builds your day.',
+    hero_subtitle: 'It ranks your tasks with WSJF, drops them into your calendar, and replans when the day slips. Meals and workouts are blocks in the same plan.',
     hero_cta_primary: 'Start for Free',
     hero_cta_secondary: 'See Features',
     hero_note: 'No credit card required · Free plan forever',
@@ -26,8 +26,8 @@ const translations = {
     stat_platforms: 'Platforms',
 
     // Features
-    features_title: 'Everything you need',
-    features_subtitle: 'No more juggling between apps. One platform, deeply integrated.',
+    features_title: 'How the day gets built',
+    features_subtitle: 'Three steps. The rest of the app hangs off them.',
     feat_wsjf_title: 'WSJF Prioritization',
     feat_wsjf_desc: 'Score tasks by value, urgency, risk and effort. Always know what to work on next.',
     feat_timeblocks_title: 'Time Blocking',
@@ -489,10 +489,10 @@ const translations = {
     nav_login: 'Giriş Yap',
     nav_signup: 'Başla',
 
-    hero_badge: 'AI destekli kişisel verimlilik',
-    hero_title_1: 'Hayatınızı',
-    hero_title_2: 'sistematik yönetin.',
-    hero_subtitle: 'Görev yönetimi, zaman planlama, beslenme takibi ve AI destekli karar yardımı — hepsi tek bir yerde, web ve mobilde anlık senkronizasyon.',
+    hero_badge: 'Yapay zekâ destekli gün planlayıcı',
+    hero_title_1: 'Yapılacaklar listen zaten var.',
+    hero_title_2: 'LifeOS gününü kurar.',
+    hero_subtitle: 'Görevlerini WSJF ile sıralar, takvimine yerleştirir, gün içinde kayınca yeniden planlar. Öğün ve antrenman da aynı planın içinde birer blok.',
     hero_cta_primary: 'Ücretsiz Başla',
     hero_cta_secondary: 'Özellikleri Gör',
     hero_note: 'Kredi kartı gerekmez · Ücretsiz plan sonsuzdur',
@@ -501,8 +501,8 @@ const translations = {
     stat_ai: 'AI Özelliği',
     stat_platforms: 'Platform',
 
-    features_title: 'İhtiyacınız olan her şey',
-    features_subtitle: 'Dağınık uygulamalar yerine tek bir platform. Hepsi birbiriyle bağlantılı.',
+    features_title: 'Gün nasıl kuruluyor',
+    features_subtitle: 'Üç adım. Uygulamanın geri kalanı bunların üstüne oturuyor.',
     feat_wsjf_title: 'WSJF Önceliklendirme',
     feat_wsjf_desc: 'Görevleri değer, aciliyet, risk ve eforla skorlayın. Her zaman neye odaklanacağınızı bilin.',
     feat_timeblocks_title: 'Zaman Bloklama',

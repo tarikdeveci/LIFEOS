@@ -16,25 +16,30 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 })
 
+// Sayfa Türkçe (html lang="tr") ama başlık ve açıklama İngilizce ve eski
+// konumlandırmadaydı ("her şeyi yapan uygulama"). Arama sonucunda ve paylaşım
+// kartında görünen metin bu; hedef pazar Türkiye olduğu sürece Türkçe ve
+// hero ile aynı vaadi söylemeli.
 export const metadata: Metadata = {
   title: {
-    default: 'LifeOS — Your Personal Life OS',
+    default: 'LifeOS — Gününü kuran yapay zekâ planlayıcı',
     template: '%s | LifeOS',
   },
-  description: 'AI-powered task management, time blocking, nutrition tracking, and workout coaching — all in one place.',
-  keywords: ['productivity', 'task management', 'WSJF', 'AI', 'nutrition', 'workout', 'time blocking'],
+  description: 'Yapılacaklar listen zaten var. LifeOS görevlerini WSJF ile sıralar, takvimine yerleştirir, gün içinde kayınca yeniden planlar. Öğün ve antrenman da aynı planın içinde.',
+  keywords: ['gün planlayıcı', 'zaman bloğu', 'görev takibi', 'görev yönetimi', 'yapay zeka koç', 'kişisel asistan', 'hedef takibi', 'öğün takibi'],
   metadataBase: new URL('https://lifeos.tr'),
   openGraph: {
-    title: 'LifeOS — Your Personal Life OS',
-    description: 'AI-powered productivity platform. Task management, time blocking, nutrition and workout tracking.',
+    title: 'LifeOS — Gününü kuran yapay zekâ planlayıcı',
+    description: 'Görevlerini WSJF ile sıralar, takvimine yerleştirir, gün içinde kayınca yeniden planlar.',
     type: 'website',
     url: 'https://lifeos.tr',
     siteName: 'LifeOS',
+    locale: 'tr_TR',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'LifeOS — Your Personal Life OS',
-    description: 'AI-powered productivity platform.',
+    title: 'LifeOS — Gününü kuran yapay zekâ planlayıcı',
+    description: 'Görevlerini WSJF ile sıralar, takvimine yerleştirir, gün içinde kayınca yeniden planlar.',
   },
   manifest: '/manifest.json',
   icons: {

@@ -102,6 +102,12 @@ serve(async (req: Request) => {
     if (!raw_input || !user_id) return json({ error: 'raw_input ve user_id gerekli' }, 400)
     if (user.id !== user_id) return json({ error: 'Yetkisiz erişim' }, 403)
 
+    // Ölçüm: öğün parse en çok kullanılan AI özelliği. authClient kullanıcının
+    // JWT'siyle çalışıyor, events tablosunun RLS insert politikasından geçiyor.
+    try {
+      await authClient.from('events').insert({ user_id, name: 'ai_used', props: { kind: 'parse_meal' } })
+    } catch { /* ölçüm asıl işi bozmaz */ }
+
     // Service role: RLS'i aşar, sorgular yine user_id ile daraltılır.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

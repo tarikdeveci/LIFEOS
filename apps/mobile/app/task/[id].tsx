@@ -6,6 +6,7 @@ import { useTaskStore } from '@lifeos/shared'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
+import { recordValueMoment } from '@/src/lib/review'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -66,6 +67,10 @@ export default function TaskDetailScreen() {
     try {
       await setStatus(supabase, task.id, status)
       setTask((p) => p ? { ...p, status } : null)
+      // Görev tamamlandı — planlama tarafındaki değer anı. Öğün kaydı zaten
+      // sayılıyordu ama yalnızca beslenme sekmesinde: görev/plan için gelen
+      // kullanıcıya hiç puan sorulmuyordu. Beklenmez, kaydı geciktirmemeli.
+      if (status === 'done') void recordValueMoment()
     } finally { setSaving(false) }
   }
 
