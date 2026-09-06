@@ -293,10 +293,16 @@ export default function LandingPage() {
       <section className="border-y border-white/5 bg-white/[0.02] py-12">
         <div className="mx-auto max-w-4xl px-6">
           <div className="grid grid-cols-3 gap-8 text-center">
+            {/* Bu serit once '10K+ Yonetilen Gorev' diyordu. Veritabaninda toplam
+                136 gorev var — dogrulanamayan sayisal iddia hem mevzuata aykiri
+                (Ticari Reklam Yonetmeligi) hem de ters etki yapiyor: App Store'da
+                6 oy goren ziyaretci icin sayfanin tamamini supheli hale getiriyor.
+                Odunc alinmis olcek yerine itiraz karsilayan uc dogru bilgi:
+                para istemiyoruz, Turkce calisiyor, iki cihazda ayni plan. */}
             {[
-              { value: '10K+', label: t.stat_tasks },
-              { value: '7', label: t.stat_ai },
-              { value: '2', label: t.stat_platforms },
+              { value: '₺0', label: t.stat_tasks },
+              { value: 'Türkçe', label: t.stat_ai },
+              { value: 'iOS + Web', label: t.stat_platforms },
             ].map(({ value, label }) => (
               <div key={label}>
                 <p className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-4xl font-black text-transparent">

@@ -21,9 +21,9 @@ const translations = {
     hero_note: 'No credit card required · Free plan forever',
 
     // Stats
-    stat_tasks: 'Tasks Managed',
-    stat_ai: 'AI-Powered Features',
-    stat_platforms: 'Platforms',
+    stat_tasks: 'Start without a card',
+    stat_ai: 'Write your meal in plain Turkish — the AI does the rest',
+    stat_platforms: 'The same plan on iPhone and web',
 
     // Features
     features_title: 'How the day gets built',
@@ -497,9 +497,9 @@ const translations = {
     hero_cta_secondary: 'Özellikleri Gör',
     hero_note: 'Kredi kartı gerekmez · Ücretsiz plan sonsuzdur',
 
-    stat_tasks: 'Yönetilen Görev',
-    stat_ai: 'AI Özelliği',
-    stat_platforms: 'Platform',
+    stat_tasks: 'Kart istemeden başla',
+    stat_ai: 'Öğününü Türkçe yaz, gerisini AI çözsün',
+    stat_platforms: 'iPhone ve web — aynı plan',
 
     features_title: 'Gün nasıl kuruluyor',
     features_subtitle: 'Üç adım. Uygulamanın geri kalanı bunların üstüne oturuyor.',
