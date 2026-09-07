@@ -1,6 +1,5 @@
 import { View, type ViewStyle, type StyleProp } from 'react-native'
 import { BlurView } from 'expo-blur'
-import { LinearGradient } from 'expo-linear-gradient'
 import { useTheme } from '../../contexts/ThemeContext'
 import { radius } from '../../theme/tokens'
 
@@ -40,16 +39,11 @@ export function GlassCard({
       ]}
     >
       <BlurView intensity={blurIntensity} tint={isDark ? 'dark' : 'light'} style={{ flex: 1 }}>
-        <LinearGradient
-          colors={
-            isDark
-              ? ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.02)']
-              : ['rgba(255,255,255,0.80)', 'rgba(255,255,255,0.45)']
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ padding }}
-        >
+        {/* Dolgu duz renk ve kenar cizgisiyle AYNI sabit (colors.glassFill ===
+            colors.glassBorder). Onceden capraz bir degradeydi; yuzey sag alta
+            dogru soluklasirken kenar sabit kaldigi icin kartin cevresinde
+            cerceve gibi bir kontur olusuyordu. */}
+        <View style={{ backgroundColor: colors.glassFill, padding }}>
           {/* Top shimmer line */}
           <View
             style={{
@@ -62,7 +56,7 @@ export function GlassCard({
             }}
           />
           {children}
-        </LinearGradient>
+        </View>
       </BlurView>
     </View>
   )

@@ -67,6 +67,13 @@ export const palette = {
   deferred:   '#8B5CF6',
 }
 
+// Cam yuzeyin rengi TEK yerde tanimli. Kenar cizgisi ile dolgu ayri ayri
+// yazildiginda degerler birbirinden uzaklasip kartin cevresinde cerceve gibi
+// bir kontur olusuyordu (olculen fark sag kenarda 14 birimdi). Ayni sabiti
+// paylasarak bu bir daha mumkun olmuyor.
+const GLASS_LIGHT = 'rgba(255,255,255,0.80)'
+const GLASS_DARK  = 'rgba(255,255,255,0.07)'
+
 export const light = {
   // Backgrounds
   bg:         '#F1F3F9',
@@ -75,7 +82,8 @@ export const light = {
 
   // Glass surfaces
   glass:        'rgba(255,255,255,0.65)',
-  glassBorder:  'rgba(255,255,255,0.90)',
+  glassFill:    GLASS_LIGHT,
+  glassBorder:  GLASS_LIGHT,
   glassInner:   'rgba(255,255,255,0.30)',
   glassShimmer: 'rgba(255,255,255,0.50)',
 
@@ -119,7 +127,8 @@ export const dark = {
 
   // Glass surfaces
   glass:        'rgba(30,35,54,0.70)',
-  glassBorder:  'rgba(255,255,255,0.10)',
+  glassFill:    GLASS_DARK,
+  glassBorder:  GLASS_DARK,
   glassInner:   'rgba(255,255,255,0.05)',
   glassShimmer: 'rgba(255,255,255,0.08)',
 
