@@ -18,6 +18,35 @@ export interface AnthropicMessage {
   content: string
 }
 
+/** Anthropic `system` alani: metin bloklari dizisi. */
+export interface SystemBlock {
+  type: 'text'
+  text: string
+  cache_control?: { type: 'ephemeral' }
+}
+
+/**
+ * Sistem promptunu iki bloga ayirir: kullanicidan bagimsiz SABIT kisim ve her
+ * istekte degisen kullanici verisi.
+ *
+ * Neden bu ayrim: prompt onbellegi ONEK eslesmesidir. Onekte tek bir bayt
+ * degisirse ondan SONRAKI her sey yeniden faturalanir. Uc prompt da eskiden
+ * kullanici verisini basa, sabit kurallari sona koyuyordu; olculen sonuc, iki
+ * farkli kullanicinin promptu arasindaki ortak onegin yalnizca ~130 token
+ * olmasiydi (beslenme 967 tokenin 137'si, antrenman 3771 tokenin 120'si).
+ * Yani sabit metnin tamami her turda yeniden odeniyordu.
+ *
+ * Sirayi ters cevirmek metnin ICERIGINI degistirmiyor, yalnizca modelin
+ * gordugu duzeni degistiriyor; buna karsilik sabit kisim onbellege giriyor ve
+ * tekrar okundugunda normal girdi fiyatinin ~%10'una dusuyor.
+ */
+function systemBlocks(stable: string, volatile: string): SystemBlock[] {
+  return [
+    { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: volatile },
+  ]
+}
+
 /**
  * Model bazen JSON'u kod bloğuna sarar ya da önüne bir cümle koyar.
  * Dıştaki ilk dengeli süslü parantez bloğunu çıkarır; bulamazsa null döner.
@@ -151,7 +180,7 @@ function remaining(target: Macros, consumed: Macros): Macros {
 }
 
 export function buildNutritionCoachPrompt(input: NutritionCoachInput): {
-  system: string
+  system: SystemBlock[]
   messages: AnthropicMessage[]
 } {
   const rem = remaining(input.target, input.consumed)
@@ -176,23 +205,13 @@ export function buildNutritionCoachPrompt(input: NutritionCoachInput): {
     ? `DİKKAT: Kalori hedefi ${Math.abs(Math.round(rem.calories))} kcal aşılmış.`
     : ''
 
-  const system = `Sen LifeOS'un beslenme koçusun. ${langLine(input.lang)}
+  // ── SABİT: her kullanıcı ve her tur için aynı ──
+  const stable = `Sen LifeOS'un beslenme koçusun. ${langLine(input.lang)}
 
 KİMLİĞİN
 Gerçek bir koç gibi konuş: net, pratik, yargılamayan. Genel geçer öğüt verme
 ("dengeli beslen", "bol su iç" gibi cümleler yasak) — kullanıcının BUGÜNKÜ
 sayılarına bakarak somut bir sonraki adım söyle.
-
-BUGÜNÜN VERİSİ (saat ${input.localTime})
-Hedef:     ${macroLine(input.target)}
-Tüketilen: ${macroLine(input.consumed)}
-Kalan:     ${macroLine(rem)}
-${overshoot}
-
-Bugünkü öğünler:
-${mealsSummary}
-
-${trend}
 
 KURALLAR
 1. Yiyecek önerirken Türk mutfağından ve markette bulunabilen şeylerden seç.
@@ -221,12 +240,24 @@ gidecek serbest metindir: sadece yiyecek ve miktar yaz, açıklama ekleme.
 Kullanıcı bir şey yediğini söylediğinde veya senin önerini kabul ettiğinde
 log_meal ekle; sadece soru soruyorsa ekleme.`
 
+  // ── DEĞİŞKEN: her istekte yeniden yazılır ──
+  const volatile = `BUGÜNÜN VERİSİ (saat ${input.localTime})
+Hedef:     ${macroLine(input.target)}
+Tüketilen: ${macroLine(input.consumed)}
+Kalan:     ${macroLine(rem)}
+${overshoot}
+
+Bugünkü öğünler:
+${mealsSummary}
+
+${trend}`
+
   const messages = sanitizeMessages([
     ...historyToMessages(input.history),
     { role: 'user', content: input.userMessage },
   ])
 
-  return { system, messages }
+  return { system: systemBlocks(stable, volatile), messages }
 }
 
 export interface NutritionCoachAction {
@@ -290,11 +321,17 @@ export interface WorkoutCoachInput {
 }
 
 export function buildWorkoutCoachPrompt(input: WorkoutCoachInput): {
-  system: string
+  system: SystemBlock[]
   messages: AnthropicMessage[]
 } {
   // Katalog uzun; modele bölgeye göre gruplanmış veriyoruz ki gün kurgularken
   // "bu güne hangi hareketler uyar" sorusunu tarayarak değil bakarak çözsün.
+  //
+  // Katalog GLOBAL: exercises tablosundan `order('name')` ile okunuyor, yani
+  // her kullanıcı için aynı ve sıralaması deterministik. Prompt'un sabit
+  // yarısında durmasının sebebi bu — 239 satır, ölçülen ~3.6k token, ve bu
+  // veri iki tur arasında hiç değişmiyor. Eskiden kullanıcının antrenman
+  // geçmişinden SONRA geldiği için tamamı her turda yeniden faturalanıyordu.
   const byGroup = new Map<string, string[]>()
   for (const entry of input.catalog) {
     const key = entry.muscle_group ?? 'Diğer'
@@ -316,19 +353,13 @@ export function buildWorkoutCoachPrompt(input: WorkoutCoachInput): {
     ? input.existingProgramNames.map((n) => `- ${n}`).join('\n')
     : '- (Kayıtlı program yok)'
 
-  const system = `Sen LifeOS'un antrenman koçusun. ${langLine(input.lang)}
+  // ── SABİT: kimlik + kurallar + yanıt biçimi + global egzersiz kataloğu ──
+  const stable = `Sen LifeOS'un antrenman koçusun. ${langLine(input.lang)}
 
 KİMLİĞİN
 Salonda yanında duran bir antrenör gibi konuş. Kullanıcı soru soruyorsa cevap
 ver; program istiyorsa haftalık program yaz. Her seferinde program üretmek
 zorunda değilsin.
-
-KULLANICININ DURUMU
-Son antrenmanlar:
-${recentSummary}
-
-Kayıtlı programları:
-${programsSummary}
 
 KULLANILABİLİR EGZERSİZ KATALOĞU (kas grubuna göre)
 ${catalogSummary}
@@ -365,12 +396,20 @@ YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekle
 }
 Program üretmiyorsan "program": null ver. message alanı her durumda dolu olmalı.`
 
+  // ── DEĞİŞKEN: kullanıcının kendi durumu ──
+  const volatile = `KULLANICININ DURUMU
+Son antrenmanlar:
+${recentSummary}
+
+Kayıtlı programları:
+${programsSummary}`
+
   const messages = sanitizeMessages([
     ...historyToMessages(input.history),
     { role: 'user', content: input.userMessage },
   ])
 
-  return { system, messages }
+  return { system: systemBlocks(stable, volatile), messages }
 }
 
 export interface WorkoutProgramExercise {
@@ -511,7 +550,7 @@ function taskLine(task: PlannerTask): string {
 }
 
 export function buildPlannerPrompt(input: PlannerInput): {
-  system: string
+  system: SystemBlock[]
   messages: AnthropicMessage[]
 } {
   const pastSummary = input.pastBlocks.length > 0
@@ -532,7 +571,8 @@ export function buildPlannerPrompt(input: PlannerInput): {
     ? input.backlogTasks.map(taskLine).join('\n')
     : '(Bekleyen görev yok)'
 
-  const system = `Sen LifeOS'un planlama koçusun. ${langLine(input.lang)}
+  // ── SABİT: kimlik + kurallar + yanıt biçimi ──
+  const stable = `Sen LifeOS'un planlama koçusun. ${langLine(input.lang)}
 
 KİMLİĞİN
 Kullanıcının gününü onun adına düzenliyorsun. İki şey yapabilirsin: soruyu
@@ -540,9 +580,33 @@ cevaplamak, ve takvimde değişiklik yapmak. İkisini karıştırma — kullanı
 "bugün ne yapmalıyım" diye soruyorsa yalnızca cevap ver, takvimi kendiliğinden
 değiştirme.
 
-ZAMAN
+KURALLAR
+1. Blok id'si UYDURMA. Yalnızca aşağıdaki JSON'da geçen id'leri kullan.
+   Silinecek bir blok yoksa remove action'ı üretme.
+2. Yeni blok eklerken çakışan blok varsa önce onu remove et.
+3. Enerji düşükse (1-2) ağır odak bloklarını kısalt, mola sıklığını artır.
+   Enerji yüksekse (4-5) uzun odak bloğu koyabilirsin.
+4. Bir görevi bloğa dönüştürüyorsan label'a görev başlığını yaz.
+5. Öğle yemeği için gün içinde en az 30 dakika bırak.
+6. message alanında ne yaptığını tek paragrafta özetle; aksiyon listesini
+   madde madde tekrar etme, kullanıcı zaten ekranda görecek.
+7. Gün 22:00'de biter.
+
+YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekleme:
+{
+  "message": "kullanıcıya gösterilecek metin",
+  "actions": [
+    {"action":"add","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}},
+    {"action":"remove","block_id":"<aşağıdaki id'lerden biri>"},
+    {"action":"move","block_id":"<aşağıdaki id'lerden biri>","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}}
+  ]
+}
+Takvimi değiştirmen gerekmiyorsa "actions": [] ver.`
+
+  // ── DEĞİŞKEN: zaman, bloklar, görevler ──
+  const volatile = `ZAMAN
 Şu an: ${input.now} · Bugün: ${input.today} · Planlanan gün: ${input.targetDate}
-${input.planningCutoff} saatinden ÖNCESİNE hiçbir şey koyma. Gün 22:00'de biter.
+${input.planningCutoff} saatinden ÖNCESİNE hiçbir şey koyma.
 Bloklar arasında ${input.bufferMinutes} dakika boşluk bırak.
 Enerji seviyesi: ${input.energyLevel !== null ? `${input.energyLevel}/5` : 'belirtilmemiş'}
 
@@ -558,27 +622,6 @@ ${scheduledList}
 BEKLEYEN GÖREVLER (henüz güne atanmamış — boşluk varsa buradan çek)
 ${backlogList}
 
-KURALLAR
-1. Blok id'si UYDURMA. Yalnızca yukarıdaki JSON'da geçen id'leri kullan.
-   Silinecek bir blok yoksa remove action'ı üretme.
-2. Yeni blok eklerken çakışan blok varsa önce onu remove et.
-3. Enerji düşükse (1-2) ağır odak bloklarını kısalt, mola sıklığını artır.
-   Enerji yüksekse (4-5) uzun odak bloğu koyabilirsin.
-4. Bir görevi bloğa dönüştürüyorsan label'a görev başlığını yaz.
-5. Öğle yemeği için gün içinde en az 30 dakika bırak.
-6. message alanında ne yaptığını tek paragrafta özetle; aksiyon listesini
-   madde madde tekrar etme, kullanıcı zaten ekranda görecek.
-
-YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekleme:
-{
-  "message": "kullanıcıya gösterilecek metin",
-  "actions": [
-    {"action":"add","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}},
-    {"action":"remove","block_id":"<yukarıdaki id>"},
-    {"action":"move","block_id":"<yukarıdaki id>","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}}
-  ]
-}
-Takvimi değiştirmen gerekmiyorsa "actions": [] ver.
 Göreli tarih ("yarın") geçerse block.date alanına gerçek YYYY-MM-DD yaz;
 tarih belirtilmediyse ${input.targetDate} kullan.`
 
@@ -587,7 +630,7 @@ tarih belirtilmediyse ${input.targetDate} kullan.`
     { role: 'user', content: input.userMessage },
   ])
 
-  return { system, messages }
+  return { system: systemBlocks(stable, volatile), messages }
 }
 
 export interface PlannerResult {

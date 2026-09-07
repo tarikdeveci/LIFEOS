@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useLang } from '@/lib/contexts/LangContext'
 import type { TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput, Task, RecurrenceType } from '@lifeos/shared'
 import {
-  todayDate, relativeDateLabel, shiftIsoDate,
+  todayDate, relativeDateLabel, shiftIsoDate, nextSlotTime, addMinutesToClock,
+  fromDateString, toDateString,
   usePlanningStore,
   useTaskStore,
   BLOCK_TYPE_LABELS, BLOCK_TYPE_COLORS, APP_DEFAULTS,
@@ -31,7 +32,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const AI_BUFFER_MINUTES = 15
   const {
     date, timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading,
-    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setEnergyLevel,
+    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel,
   } = usePlanningStore()
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
@@ -70,8 +71,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [drawerOpen, setDrawerOpen]     = useState(false)
   const [showAddBlock, setShowAddBlock] = useState(false)
-  const [newBlockTime, setNewBlockTime] = useState('09:00')
-  const [newBlockEnd, setNewBlockEnd]   = useState('10:00')
+  // Sabit '09:00' değil: o anki yerel saatin bir sonraki yarım saati. Modal her
+  // açıldığında `openAddBlock` yeniden hesaplıyor — uygulama saatlerce açık kalabilir.
+  const [newBlockTime, setNewBlockTime] = useState(() => nextSlotTime())
+  const [newBlockEnd, setNewBlockEnd]   = useState(() => addMinutesToClock(nextSlotTime(), 60))
   const [newBlockLabel, setNewBlockLabel] = useState('')
   const [newBlockType, setNewBlockType] = useState<BlockType>('focus')
 
@@ -80,7 +83,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('weekly')
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([new Date().getDay()])
   const [recurrenceEnd, setRecurrenceEnd]   = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().split('T')[0]!
+    const d = new Date(); d.setMonth(d.getMonth() + 1); return toDateString(d)
   })
 
   // Selected block detail / edit
@@ -100,8 +103,6 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const [quickAddTask, setQuickAddTask]     = useState('')
   const [quickAddLoading, setQuickAddLoading] = useState(false)
 
-  // Blok tamamlama (task_id olmayan bloklar için local state)
-  const [completedBlockIds, setCompletedBlockIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { void fetchDayData(supabase, userId) }, [fetchDayData, userId])
 
@@ -114,21 +115,38 @@ export function PlanningView({ userId }: PlanningViewProps) {
     startDate: string, type: RecurrenceType, days: number[], endDate: string,
   ): string[] => {
     const dates: string[] = []
-    const cur = new Date(startDate)
-    const end = new Date(endDate)
+
+    // new Date('YYYY-MM-DD') tarihi UTC gece yarısı olarak ayrıştırır, ama
+    // getDay()/getDate() YEREL değeri okur. UTC+3'te ikisi aynı güne düştüğü
+    // için Türkiye'de çalışıyordu; negatif ofsetli saat dilimlerinde (Amerika)
+    // hafta günü bir gün kayıyor ve haftalık tekrar eden bloklar yanlış güne
+    // düşüyordu. fromDateString() yerel gece yarısı, toDateString() yerel gün.
+    const start = fromDateString(startDate)
+    const end = fromDateString(endDate)
+    const startDayOfMonth = start.getDate()
+
+    // Pazartesi'ye çapalı mutlak hafta numarası (2024-01-01 bir Pazartesi).
+    // Date.UTC takvim bileşenlerinden hesaplar: yerel ofset de yaz saati de
+    // sonucu etkilemez. Orijinal formülün aynısı, sadece kaymaya kapalı hâli.
+    const weekIndex = (dateStr: string): number => {
+      const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number]
+      return Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(2024, 0, 1)) / (7 * 86400000))
+    }
+    const startWeek = weekIndex(startDate)
+
+    const cur = new Date(start)
     cur.setDate(cur.getDate() + 1)
     while (cur <= end) {
       const dow = cur.getDay()
+      const curStr = toDateString(cur)
       if (type === 'daily') {
-        dates.push(cur.toISOString().split('T')[0]!)
+        dates.push(curStr)
       } else if (type === 'weekly' && days.includes(dow)) {
-        dates.push(cur.toISOString().split('T')[0]!)
+        dates.push(curStr)
       } else if (type === 'biweekly' && days.includes(dow)) {
-        const startWeek = Math.floor((new Date(startDate).getTime() - new Date('2024-01-01').getTime()) / (7 * 86400000))
-        const curWeek   = Math.floor((cur.getTime()               - new Date('2024-01-01').getTime()) / (7 * 86400000))
-        if ((curWeek - startWeek) % 2 === 0) dates.push(cur.toISOString().split('T')[0]!)
-      } else if (type === 'monthly' && cur.getDate() === new Date(startDate).getDate()) {
-        dates.push(cur.toISOString().split('T')[0]!)
+        if ((weekIndex(curStr) - startWeek) % 2 === 0) dates.push(curStr)
+      } else if (type === 'monthly' && cur.getDate() === startDayOfMonth) {
+        dates.push(curStr)
       }
       cur.setDate(cur.getDate() + 1)
     }
@@ -153,10 +171,37 @@ export function PlanningView({ userId }: PlanningViewProps) {
   }, [addTimeBlock, userId, date, newBlockTime, newBlockEnd, newBlockType, newBlockLabel,
       isRecurring, recurrenceType, recurrenceDays, recurrenceEnd, generateRecurringDates, showToast])
 
+  /**
+   * Blok tamamlama. Açık olan detay penceresindeki kopya da güncelleniyor:
+   * `selectedBlock` store'dan bağımsız bir state, aksi halde "geri al"
+   * düğmesine basıldığında pencere hâlâ tamamlanmış görünüyor.
+   */
+  const handleToggleBlockDone = useCallback(async (blockId: string, done: boolean) => {
+    try {
+      await setBlockDone(supabase, blockId, done)
+      setSelectedBlock((current) =>
+        current && current.id === blockId
+          ? { ...current, completed_at: done ? new Date().toISOString() : null }
+          : current,
+      )
+      showToast(done ? 'Tamamlandı ✓' : 'Geri alındı', 'success')
+    } catch {
+      showToast('Blok güncellenemedi', 'error')
+    }
+  }, [setBlockDone, showToast])
+
   const handleSlotClick = useCallback((time: string) => {
     setNewBlockTime(time)
-    const [h] = time.split(':').map(Number) as [number, number]
-    setNewBlockEnd(`${String(h + 1).padStart(2, '0')}:00`)
+    // Eskiden saat+1 elle kuruluyordu; 23:00 dilimine tıklayınca '24:00' üretiyordu.
+    setNewBlockEnd(addMinutesToClock(time, 60))
+    setShowAddBlock(true)
+  }, [])
+
+  /** Zaman çizelgesindeki bir dilime değil, düğmeye basılarak açılan hâli. */
+  const openAddBlock = useCallback(() => {
+    const start = nextSlotTime()
+    setNewBlockTime(start)
+    setNewBlockEnd(addMinutesToClock(start, 60))
     setShowAddBlock(true)
   }, [])
 
@@ -170,7 +215,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
     setEditRecurrenceType(block.recurrence_type ?? 'weekly')
     setEditRecurrenceDays(block.recurrence_days ?? [new Date().getDay()])
     setEditRecurrenceEnd(block.recurrence_end ?? (() => {
-      const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().split('T')[0]!
+      const d = new Date(); d.setMonth(d.getMonth() + 1); return toDateString(d)
     })())
   }, [])
 
@@ -385,7 +430,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
               ))}
             </div>
             {viewMode === 'day' && (
-              <Button size="sm" variant="outline" onClick={() => setShowAddBlock(true)}>{t.plan_add_block}</Button>
+              <Button size="sm" variant="outline" onClick={openAddBlock}>{t.plan_add_block}</Button>
             )}
           </div>
         </div>
@@ -421,7 +466,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
               </div>
             ) : (
               <div className="glass rounded-2xl p-4 pt-2">
-                <DayTimeline timeBlocks={timeBlocks.map((b) => completedBlockIds.has(b.id) ? { ...b, color: '#34A853' } : b)} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
+                <DayTimeline timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
                   onBlockDrop={(blockId, newStart, newEnd) => {
                     void updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd })
                     showToast('Blok taşındı', 'success')
@@ -840,24 +885,19 @@ export function PlanningView({ userId }: PlanningViewProps) {
                     <span>{t.plan_go_nutrition}</span>
                   </Link>
                 )}
-                {/* Tüm bloklar için tamamlama — task_id varsa görevi done yap, yoksa local işaretle */}
-                {completedBlockIds.has(selectedBlock.id) ? (
+                {/* Tamamlama sunucuya yazılıyor: bağlı görev varsa store onu da kapatır. */}
+                {selectedBlock.completed_at ? (
                   <div className="flex items-center justify-center gap-2 rounded-xl bg-success/10 py-2.5">
                     <span className="text-sm font-semibold text-success">{t.plan_done}</span>
                     <button
-                      onClick={() => setCompletedBlockIds((p) => { const n = new Set(p); n.delete(selectedBlock.id); return n })}
+                      onClick={() => void handleToggleBlockDone(selectedBlock.id, false)}
                       className="text-[10px] text-muted hover:text-primary"
                     >{t.plan_undo}</button>
                   </div>
                 ) : (
                   <button
-                    onClick={async () => {
-                      if (selectedBlock.task_id) {
-                        await setStatus(supabase, selectedBlock.task_id, 'done')
-                        void fetchDayData(supabase, userId, date)
-                      }
-                      setCompletedBlockIds((p) => new Set(p).add(selectedBlock.id))
-                      showToast('Tamamlandı ✓', 'success')
+                    onClick={() => {
+                      void handleToggleBlockDone(selectedBlock.id, true)
                       setSelectedBlock(null)
                     }}
                     className="w-full rounded-xl bg-success/10 py-2.5 text-sm font-medium text-success hover:bg-success/20"

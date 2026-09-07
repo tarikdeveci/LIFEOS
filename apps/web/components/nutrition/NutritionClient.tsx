@@ -8,6 +8,7 @@ import {
   useNutritionStore, useWorkoutStore,
   compareMacrosToTarget, APP_DEFAULTS,
   MEAL_TYPE_LABELS, MEAL_TYPE_ICONS, describeAiError } from '@lifeos/shared'
+import { searchCuratedFoods } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { MacroDashboard } from '@/components/nutrition/MacroProgress'
 import { MealCard } from '@/components/nutrition/MealCard'
@@ -16,7 +17,9 @@ import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Button } from '@/components/ui/Button'
 
-type FoodResult = { name: string; name_en?: string | null; calories: number; protein: number; carbs: number; fat: number; fiber: number; serving_size: number; serving_unit: string }
+import type { CuratedFoodMatch } from '@lifeos/shared/supabase'
+
+type FoodResult = CuratedFoodMatch
 
 interface NutritionClientProps { userId: string }
 
@@ -218,26 +221,7 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
   const handleFoodSearch = useCallback(async (query: string) => {
     setFoodSearch(query)
     if (!query.trim() || query.length < 2) { setFoodResults([]); return }
-    const q = query.toLowerCase().trim()
-    const userFilter = `user_id.is.null,user_id.eq.${userId}`
-    const cols = 'name, name_en, calories, protein, carbs, fat, fiber, serving_size, serving_unit'
-
-    const [{ data: byName }, { data: byAlias }, { data: byNameEn }] = await Promise.all([
-      supabase.from('food_items').select(cols).or(userFilter)
-        .ilike('name', `%${q}%`).order('is_verified', { ascending: false }).limit(12),
-      supabase.from('food_items').select(cols).or(userFilter)
-        .contains('aliases', [q]).order('is_verified', { ascending: false }).limit(8),
-      supabase.from('food_items').select(cols).or(userFilter)
-        .ilike('name_en', `%${q}%`).order('is_verified', { ascending: false }).limit(12),
-    ])
-
-    const seen = new Set<string>()
-    const merged: FoodResult[] = []
-    for (const item of [...(byName ?? []), ...(byAlias ?? []), ...(byNameEn ?? [])]) {
-      const key = (item as FoodResult).name.toLowerCase()
-      if (!seen.has(key)) { seen.add(key); merged.push(item as FoodResult) }
-    }
-    setFoodResults(merged.slice(0, 8))
+    setFoodResults(await searchCuratedFoods(supabase, query, userId, 8))
   }, [userId])
 
   const handleQuickAdd = useCallback(async () => {

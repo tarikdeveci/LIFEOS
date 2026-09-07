@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   useWorkoutStore,
-  todayDate, relativeDateLabel, shiftIsoDate,
+  todayDate, relativeDateLabel, shiftIsoDate, toDateString,
   WORKOUT_CATEGORY_LABELS, WORKOUT_CATEGORY_COLORS,
   WORKOUT_STATUS_LABELS, WORKOUT_STATUS_COLORS,
   BODY_REGION_LABELS,
@@ -1280,7 +1280,10 @@ function WeeklyStreak({ history }: { history: { date: string; status: string }[]
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() - (6 - i))
-    const dateStr = d.toISOString().split('T')[0]!
+    // toISOString() UTC verir: UTC+3'te gece 00:00–03:00 arasında bir gün geriye
+    // kayıyordu. Etiket (toLocaleDateString) yerel günü gösterdiği için şerit
+    // "Pzt" yazıp Pazar'ın antrenmanını arıyordu. toDateString() yerel gün.
+    const dateStr = toDateString(d)
     const w = history.find((h) => h.date === dateStr)
     return { dateStr, status: w?.status ?? null, label: d.toLocaleDateString('tr-TR', { weekday: 'short' }) }
   })

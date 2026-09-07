@@ -1,7 +1,7 @@
 'use client'
 
 import type { Task, TaskStatus } from '@lifeos/shared'
-import { TASK_STATUS_COLORS, TASK_STATUS_LABELS, wsjfToPriorityLabel } from '@lifeos/shared'
+import { TASK_STATUS_COLORS, TASK_STATUS_LABELS, todayDate, wsjfToPriorityLabel } from '@lifeos/shared'
 import { Badge } from '@/components/ui/Badge'
 
 interface TaskCardProps {
@@ -42,7 +42,10 @@ function EffortBar({ effort }: { effort: number }) {
 
 export function TaskCard({ task, onClick, onStatusChange, compact = false }: TaskCardProps) {
   const statusColors = TASK_STATUS_COLORS[task.status]
-  const isPastDue = task.due_date && task.due_date < new Date().toISOString().split('T')[0]!
+  // todayDate() yerel takvim günü. toISOString() UTC verdiği için UTC+3'te gece
+  // 00:00–03:00 arasında dünü döndürüyordu: dün vadesi dolan görev o saatlerde
+  // "gecikmiş" işaretlenmiyordu.
+  const isPastDue = task.due_date && task.due_date < todayDate()
   const isDone = task.status === 'done'
 
   function handleCheckbox(e: React.MouseEvent) {

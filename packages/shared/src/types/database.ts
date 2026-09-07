@@ -907,6 +907,7 @@ export type Database = {
         Row: {
           block_type: Database["public"]["Enums"]["block_type"] | null
           color: string | null
+          completed_at: string | null
           created_at: string | null
           date: string
           end_time: string
@@ -925,6 +926,7 @@ export type Database = {
         Insert: {
           block_type?: Database["public"]["Enums"]["block_type"] | null
           color?: string | null
+          completed_at?: string | null
           created_at?: string | null
           date: string
           end_time: string
@@ -943,6 +945,7 @@ export type Database = {
         Update: {
           block_type?: Database["public"]["Enums"]["block_type"] | null
           color?: string | null
+          completed_at?: string | null
           created_at?: string | null
           date?: string
           end_time?: string

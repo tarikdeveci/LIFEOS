@@ -32,7 +32,8 @@ import {
   createProgramExercise,
   deleteProgramExercise,
 } from '../supabase/workouts'
-import { todayDate } from '../utils/date'
+import { todayDate, shiftIsoDate } from '../utils/date'
+import { computeWorkoutStreak, type WorkoutStreak } from '../utils/streak'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -53,10 +54,14 @@ interface WorkoutState {
   // Programlar
   programs: WorkoutProgram[]
 
+  /** Haftalık antrenman serisi — `fetchStreak` doldurur. */
+  streak: WorkoutStreak
+
   // Actions
   fetchLibrary: (supabase: Supabase, options?: { force?: boolean }) => Promise<void>
   fetchTodayWorkout: (supabase: Supabase, userId: string, date?: string) => Promise<void>
   fetchHistory: (supabase: Supabase, userId: string) => Promise<void>
+  fetchStreak: (supabase: Supabase, userId: string) => Promise<void>
   startWorkout: (supabase: Supabase, userId: string, input: CreateWorkoutInput) => Promise<Workout>
   finishWorkout: (supabase: Supabase, workoutId: string, durationMinutes: number, caloriesBurned?: number) => Promise<void>
   skipWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
@@ -99,6 +104,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loading: false,
   error: null,
   programs: [],
+  streak: { weeks: 0, thisWeekCount: 0, bestWeeks: 0, lastWorkoutDate: null, atRisk: false },
 
   fetchLibrary: async (supabase, options) => {
     if (!options?.force && get().exercises.length > 0) return  // cache
@@ -122,6 +128,26 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
+  },
+
+  /**
+   * Seri için ayrı sorgu: `fetchHistory` son 14 kaydı çekiyor, bu haftalık
+   * seriyi hesaplamaya yetmez — haftada bir giden birinde 14 kayıt üç ayı
+   * ancak buluyor ve serinin başladığı yer görünmüyor. Burada yalnızca tarih
+   * sütunu okunuyor, bir yılın tamamı birkaç kilobayt.
+   */
+  fetchStreak: async (supabase, userId) => {
+    const today = todayDate()
+    const { data } = await supabase
+      .from('workouts')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .gte('date', shiftIsoDate(today, -365))
+      .order('date', { ascending: false })
+
+    const dates = ((data ?? []) as Array<{ date: string }>).map((row) => row.date)
+    set({ streak: computeWorkoutStreak(dates, today) })
   },
 
   fetchHistory: async (supabase, userId) => {

@@ -3,9 +3,14 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
-import { useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet, WorkoutProgram, AiProgramPlan } from '@lifeos/shared'
+import {
+  WEEKDAY_ORDER, WEEKDAY_SHORT, estimateWorkoutMinutes, localDateTime,
+  nextSlotTime, planProgram, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan } from '@lifeos/shared'
+import { createTimeBlocks } from '@lifeos/shared/supabase'
+import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { StreakCard } from '@/src/components/workout/StreakCard'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -19,6 +24,22 @@ import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
+
+/** Programın planlanabilir günleri — dinlenme günleri takvime yazılmaz. */
+function activeDays(program: WorkoutProgram | null): ProgramDay[] {
+  return [...(program?.days ?? [])]
+    .filter((d) => !d.is_rest)
+    .sort((a, b) => a.day_number - b.day_number)
+}
+
+/** Takvim etkinliğinin not alanı: o günün hareket listesi. */
+function describeDay(day: ProgramDay | undefined): string {
+  const exercises = [...(day?.exercises ?? [])].sort((a, b) => a.order_index - b.order_index)
+  if (exercises.length === 0) return ''
+  return exercises
+    .map((ex) => `• ${ex.exercise?.name ?? 'Egzersiz'} ${ex.sets}×${ex.reps ?? '—'}`)
+    .join('\n')
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   strength: 'Kuvvet', cardio: 'Kardiyo', flexibility: 'Esneklik', mobility: 'Hareketlilik',
@@ -62,7 +83,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -105,6 +126,16 @@ export default function WorkoutScreen() {
   const [pickerSets, setPickerSets] = useState('3')
   const [pickerReps, setPickerReps] = useState('10')
 
+  /** Programı haftalık plana ve/veya cihaz takvimine yerleştirme ekranı */
+  const [planningProgram, setPlanningProgram] = useState(false)
+  const [planStartDate, setPlanStartDate] = useState(todayDate)
+  const [planTime, setPlanTime] = useState(nextSlotTime)
+  const [planWeeks, setPlanWeeks] = useState('4')
+  const [planWeekdays, setPlanWeekdays] = useState<Record<string, number>>({})
+  const [planToBlocks, setPlanToBlocks] = useState(true)
+  const [planToCalendar, setPlanToCalendar] = useState(true)
+  const [scheduling, setScheduling] = useState(false)
+
   /**
    * selectedProgram bir anlık kopya; hareket eklendikten sonra store tazelenir
    * ama kopya bayat kalır. Detay sayfası her zaman listedeki güncel kaydı okur.
@@ -118,11 +149,13 @@ export default function WorkoutScreen() {
   const [search, setSearch] = useState('')
   const [filterGroupId, setFilterGroupId] = useState<number | null>(null)
 
-  const todayStr = new Date().toISOString().split('T')[0] ?? ''
+  // toISOString() UTC verir; UTC+3'te gece yarısı–03:00 arası bir önceki günü
+  // gösteriyordu. todayDate() yerel takvim günü.
+  const todayStr = todayDate()
 
   const load = useCallback(async (uid: string) => {
-    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchPrograms(supabase, uid)])
-  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchPrograms])
+    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchStreak(supabase, uid), fetchPrograms(supabase, uid)])
+  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -171,7 +204,9 @@ export default function WorkoutScreen() {
     try {
       await finishWorkout(supabase, todayWorkout.id, parseInt(duration) || 45)
       setShowFinish(false); setDuration('')
-      if (userId) await fetchHistory(supabase, userId)
+      // Seri de tazeleniyor: antrenmanı bitirip seriyi hâlâ eski hâliyle
+      // görmek, kartın anlamını yok ediyor.
+      if (userId) await Promise.all([fetchHistory(supabase, userId), fetchStreak(supabase, userId)])
     } catch { Alert.alert('Hata', 'Antrenman tamamlanamadı') }
     finally { setFinishing(false) }
   }
@@ -318,6 +353,122 @@ export default function WorkoutScreen() {
     }
   }
 
+  function openProgramPlanner() {
+    const days = activeDays(liveProgram)
+    const spread = spreadWeekdays(days.length)
+    const map: Record<string, number> = {}
+    days.forEach((day, i) => { map[day.id] = spread[i] ?? 1 })
+    setPlanWeekdays(map)
+    setPlanStartDate(todayDate())
+    setPlanTime(nextSlotTime())
+    setPlanningProgram(true)
+  }
+
+  /**
+   * Programı somut tarihlere yazar.
+   *
+   * İki hedef aynı `planProgram()` çıktısını kullanıyor, dolayısıyla haftalık
+   * plandaki blokla telefondaki etkinlik birbirinden kayamıyor.
+   *
+   * Takvim tarafı haftalık TEKRAR KURALI olan tek etkinlik yazıyor, hafta sayısı
+   * kadar ayrı etkinlik değil: kullanıcı vazgeçtiğinde takvimden tek dokunuşla
+   * silebilsin. Haftalık plan tarafında böyle bir imkân yok (bloklar tarih tarih
+   * okunuyor), orada satırlar tek tek oluşuyor ama `createTimeBlocks` zaten var
+   * olanı atlıyor — iki kez basmak kaydı ikiye katlamıyor.
+   */
+  async function handleScheduleProgram() {
+    if (!userId || !liveProgram || scheduling) return
+
+    if (!planToBlocks && !planToCalendar) {
+      Alert.alert('Hedef seç', 'Haftalık plan ya da telefon takvimi — en az birini seç.')
+      return
+    }
+    const days = activeDays(liveProgram)
+    if (days.length === 0) {
+      Alert.alert('Boş program', 'Bu programda planlanacak antrenman günü yok.')
+      return
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(planStartDate)) {
+      Alert.alert('Tarih hatalı', 'Başlangıç tarihini YYYY-AA-GG biçiminde yaz.')
+      return
+    }
+    if (!/^\d{1,2}:\d{2}$/.test(planTime)) {
+      Alert.alert('Saat hatalı', 'Saati SS:DD biçiminde yaz.')
+      return
+    }
+    const weeks = Math.min(12, Math.max(1, parseInt(planWeeks, 10) || 4))
+
+    const sessions = planProgram({
+      days: days.map((day) => ({
+        id: day.id,
+        day_name: day.day_name || `Gün ${day.day_number}`,
+        exercises: (day.exercises ?? []).map((ex) => ({ sets: ex.sets, rest_seconds: ex.rest_seconds })),
+      })),
+      weekdayByDay: planWeekdays,
+      startDate: planStartDate,
+      startTime: planTime,
+      weeks,
+    })
+
+    setScheduling(true)
+    try {
+      const summary: string[] = []
+
+      if (planToBlocks) {
+        const rows = sessions.flatMap((session) =>
+          session.dates.map((date) => ({
+            date,
+            start_time: session.startTime,
+            end_time: session.endTime,
+            block_type: 'workout' as const,
+            label: `${liveProgram.name} · ${session.dayName}`,
+            color: palette.workout,
+          })),
+        )
+        const { inserted, skipped } = await createTimeBlocks(supabase, userId, rows)
+        summary.push(
+          `Haftalık plan: ${inserted} blok` + (skipped > 0 ? ` (${skipped} zaten vardı)` : ''),
+        )
+      }
+
+      if (planToCalendar) {
+        const granted = await requestCalendarPermission()
+        const calendarId = granted ? await findWritableCalendarId() : null
+
+        if (!granted) {
+          summary.push('Telefon takvimi: izin verilmedi, yazılmadı.')
+        } else if (!calendarId) {
+          summary.push('Telefon takvimi: etkinlik eklenebilen takvim bulunamadı.')
+        } else {
+          let events = 0
+          for (const session of sessions) {
+            const first = session.dates[0]
+            if (!first) continue
+            await createRecurringEvent(calendarId, {
+              title: `${liveProgram.name} · ${session.dayName}`,
+              notes: describeDay(days.find((d) => d.id === session.dayId)),
+              startsAt: localDateTime(first, session.startTime),
+              durationMinutes: session.durationMinutes,
+              weeklyOccurrences: weeks,
+              reminderMinutesBefore: 30,
+            })
+            events += 1
+          }
+          summary.push(`Telefon takvimi: ${events} haftalık tekrar (${weeks} hafta)`)
+        }
+      }
+
+      setPlanningProgram(false)
+      setSelectedProgram(null)
+      Alert.alert('Program planlandı', summary.join('\n'))
+    } catch (error) {
+      console.warn('Program planlanamadı:', error)
+      Alert.alert('Hata', 'Program planlanamadı. Tarih ve saat biçimini kontrol et.')
+    } finally {
+      setScheduling(false)
+    }
+  }
+
   /**
    * Koçun yazdığı programı kaydedilebilir plana çevirir. Edge function egzersiz
    * adlarını kataloğa karşı doğruladığı için burada eşleşmeme beklenmiyor; yine de
@@ -451,6 +602,8 @@ export default function WorkoutScreen() {
         {/* ── TODAY ── */}
         {tab === 'today' && (
           <>
+            <StreakCard streak={streak} />
+
             <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
               <StatCard label={t.work_this_week} value={weekCount} color={palette.workout} />
               <StatCard label={t.work_today_sets} value={todayWorkout?.workout_sets?.length ?? 0} color={palette.accent} />
@@ -778,8 +931,8 @@ export default function WorkoutScreen() {
       */}
       <BottomSheet
         visible={!!selectedProgram}
-        onClose={() => { setSelectedProgram(null); setExpandedDay(null); setAddingToDay(null) }}
-        title={addingToDay ? 'Hareket Ekle' : (liveProgram ? liveProgram.name : 'Program')}
+        onClose={() => { setSelectedProgram(null); setExpandedDay(null); setAddingToDay(null); setPlanningProgram(false) }}
+        title={addingToDay ? 'Hareket Ekle' : planningProgram ? 'Programı Planla' : (liveProgram ? liveProgram.name : 'Program')}
         scrollable
       >
         {addingToDay ? (
@@ -813,8 +966,90 @@ export default function WorkoutScreen() {
                 </TouchableOpacity>
               ))}
           </View>
+        ) : planningProgram ? (
+          <View style={{ gap: spacing[3] }}>
+            <TouchableOpacity
+              onPress={() => setPlanningProgram(false)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[1] }}
+            >
+              <Ionicons name="chevron-back" size={16} color={palette.accent} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>Programa dön</Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <Input label="Başlangıç" value={planStartDate} onChangeText={setPlanStartDate} placeholder="2026-09-08" containerStyle={{ flex: 1.5 }} />
+              <Input label="Saat" value={planTime} onChangeText={setPlanTime} placeholder="18:00" containerStyle={{ flex: 1 }} />
+              <Input label="Hafta" value={planWeeks} onChangeText={setPlanWeeks} keyboardType="number-pad" containerStyle={{ flex: 0.8 }} />
+            </View>
+
+            {/* Her antrenman gününe bir hafta günü. Varsayılan dağılım
+                spreadWeekdays'ten geliyor (3 gün → Pzt/Çar/Cum). */}
+            {activeDays(liveProgram).map((day) => {
+              const minutes = estimateWorkoutMinutes(
+                (day.exercises ?? []).map((ex) => ({ sets: ex.sets, rest_seconds: ex.rest_seconds })),
+              )
+              return (
+                <View key={day.id} style={{ gap: spacing[2] }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                      {day.day_name || `Gün ${day.day_number}`}
+                    </Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>~{minutes} dk</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {WEEKDAY_ORDER.map((weekday) => {
+                      const active = planWeekdays[day.id] === weekday
+                      return (
+                        <TouchableOpacity
+                          key={weekday}
+                          onPress={() => setPlanWeekdays((map) => ({ ...map, [day.id]: weekday }))}
+                          style={{ flex: 1, paddingVertical: 7, borderRadius: radius.md, alignItems: 'center', backgroundColor: active ? palette.workout : colors.glassInner, borderWidth: 1, borderColor: active ? palette.workout : colors.border }}
+                        >
+                          <Text style={{ fontSize: fontSize.xs, fontWeight: active ? fontWeight.semibold : fontWeight.regular, color: active ? '#fff' : colors.textMuted }}>
+                            {WEEKDAY_SHORT[weekday]}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              )
+            })}
+
+            <TargetToggle
+              label="Haftalık plana ekle"
+              hint="Planlama ekranındaki zaman blokları"
+              value={planToBlocks}
+              onToggle={() => setPlanToBlocks((v) => !v)}
+            />
+            <TargetToggle
+              label="Telefon takvimine ekle"
+              hint="Haftalık tekrar eden etkinlik, 30 dk önce hatırlatır"
+              value={planToCalendar}
+              onToggle={() => setPlanToCalendar((v) => !v)}
+            />
+
+            <Button
+              label={scheduling ? 'Planlanıyor...' : 'Planla'}
+              onPress={() => void handleScheduleProgram()}
+              loading={scheduling}
+              fullWidth
+            />
+          </View>
         ) : (
         <View style={{ gap: spacing[2] }}>
+          {activeDays(liveProgram).length > 0 && (
+            <TouchableOpacity
+              onPress={openProgramPlanner}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}40`, marginBottom: spacing[1] }}
+            >
+              <Ionicons name="calendar-outline" size={16} color={palette.workout} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>
+                Takvime / haftalık plana ekle
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {todayWorkout && todayWorkout.status !== 'completed' && (
             <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing[1] }}>
               Bugün açık bir antrenman var — seçtiğin günün setleri onun üzerine eklenecek.
@@ -1056,5 +1291,26 @@ function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
         </TouchableOpacity>
       )}
     </View>
+  )
+}
+
+/** Program planlayıcıdaki "nereye yazılsın" seçeneği. */
+function TargetToggle({ label, hint, value, onToggle }: { label: string; hint: string; value: boolean; onToggle: () => void }) {
+  const { colors } = useTheme()
+  return (
+    <TouchableOpacity
+      onPress={onToggle}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: spacing[3], paddingHorizontal: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: value ? palette.workout : colors.border }}
+    >
+      <Ionicons
+        name={value ? 'checkbox' : 'square-outline'}
+        size={20}
+        color={value ? palette.workout : colors.textSubtle}
+      />
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{label}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 }}>{hint}</Text>
+      </View>
+    </TouchableOpacity>
   )
 }

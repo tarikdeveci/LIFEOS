@@ -17,6 +17,7 @@ import {
   MEAL_TYPE_ICONS,
   PORTION_RUNG_LABELS,
   RESOLVE_RUNG_LABELS,
+  rescaleItemToAmount,
 } from '@lifeos/shared'
 import {
   buildItemFromChoice,
@@ -29,54 +30,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
-
-interface MacroRate {
-  calories: number; protein: number; carbs: number; fat: number; fiber: number
-}
-
-function calcRate(item: MealItem): MacroRate {
-  const a = item.amount || 1
-  return { calories: item.calories / a, protein: item.protein / a, carbs: item.carbs / a, fat: item.fat / a, fiber: item.fiber / a }
-}
-
-function applyRate(rate: MacroRate, amount: number): Partial<MealItem> {
-  return {
-    amount,
-    calories: Math.round(rate.calories * amount),
-    protein:  Math.round(rate.protein  * amount * 10) / 10,
-    carbs:    Math.round(rate.carbs    * amount * 10) / 10,
-    fat:      Math.round(rate.fat      * amount * 10) / 10,
-    fiber:    Math.round(rate.fiber    * amount * 10) / 10,
-  }
-}
-
-/**
- * Gramaj elle değiştirildiğinde besin değeri yeniden ORANLANIR — yeni bir tahmin
- * üretilmez. Elle girilen miktar tartılmış değil beyan edilmiştir, o yüzden bant
- * ±%5'e daralır ve basamak "senin porsiyonun" olur.
- */
-const USER_SET_TOLERANCE = 0.05
-
-function rescaleToGrams(item: MealItem, grams: number): MealItem {
-  const current = item.grams && item.grams > 0 ? item.grams : item.amount || 1
-  const factor = grams / current
-  const calories = Math.round(item.calories * factor)
-  return {
-    ...item,
-    amount: Math.round(grams),
-    unit: item.unit === 'ml' ? 'ml' : 'g',
-    grams: Math.round(grams * 10) / 10,
-    calories,
-    protein: Math.round(item.protein * factor * 10) / 10,
-    carbs: Math.round(item.carbs * factor * 10) / 10,
-    fat: Math.round(item.fat * factor * 10) / 10,
-    fiber: Math.round(item.fiber * factor * 10) / 10,
-    calories_min: Math.round(calories * (1 - USER_SET_TOLERANCE)),
-    calories_max: Math.round(calories * (1 + USER_SET_TOLERANCE)),
-    portion_rung: 'user_memory',
-    portion_tolerance: USER_SET_TOLERANCE,
-  }
-}
 
 function totalRange(items: MealItem[]): { min: number; max: number; hasRange: boolean } {
   let min = 0
@@ -129,7 +82,15 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
   const [trace, setTrace]             = useState<ParseTraceEntry[] | null>(null)
   const [parseVersion, setParseVersion] = useState<string | null>(null)
   const [aiDegraded, setAiDegraded]   = useState(false)
-  const [rates, setRates]             = useState<MacroRate[]>([])
+  // Kalemlerin düzenlenmemiş hâli: oranlama HER ZAMAN buradan yapılır. Bir
+  // önceki düzenlemeden oranlamak, her tuş vuruşunda yuvarlama hatası biriktirir.
+  const [baseItems, setBaseItems]     = useState<MealItem[]>([])
+  // Miktar alanının metin taslağı. Sayıdan ayrı tutulmasının sebebi: kontrollü
+  // bir input'a doğrudan sayı bağlanırsa alan SİLİNEMEZ olur — "200"ü silmek
+  // için son karakter silindiğinde değer "" olur, geçersiz sayılır, state
+  // güncellenmez ve alan eski sayıya geri sıçrar. Taslak, boş ve yarım
+  // ondalık ("7.", "7,") ara durumlarının yaşamasına izin verir.
+  const [itemAmountDrafts, setItemAmountDrafts] = useState<Record<number, string>>({})
   const [parsing, setParsing]         = useState(false)
   const [saving, setSaving]           = useState(false)
   const [step, setStep]               = useState<'input' | 'review'>('input')
@@ -142,7 +103,10 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
   const [addingChoice, setAddingChoice]   = useState(false)
   const { showToast } = useToast()
 
-  const initRates = useCallback((items: MealItem[]) => setRates(items.map(calcRate)), [])
+  const initItems = useCallback((items: MealItem[]) => {
+    setBaseItems(items)
+    setItemAmountDrafts({})
+  }, [])
 
   useEffect(() => {
     if (editMeal) {
@@ -150,14 +114,14 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       setRawInput(editMeal.raw_input ?? '')
       setParsedItems(editMeal.items)
       setItemApprovals(editMeal.items.map((item) => item.disposition !== 'confirm'))
-      initRates(editMeal.items)
+      initItems(editMeal.items)
       setStep('review')
     } else {
-      setMealType('lunch'); setRawInput(''); setParsedItems([]); setItemApprovals([]); setRates([]); setStep('input')
+      setMealType('lunch'); setRawInput(''); setParsedItems([]); setItemApprovals([]); initItems([]); setStep('input')
     }
     setQuestions([]); setAmountDrafts({}); setTrace(null); setParseVersion(null); setAiDegraded(false)
     setAddMode('text'); setFoodQuery(''); setFoodResults([]); setPendingChoice(null); setPendingGrams('')
-  }, [editMeal, open, initRates])
+  }, [editMeal, open, initItems])
 
   const handleParse = useCallback(async () => {
     if (!rawInput.trim() || !onParseMeal) return
@@ -167,7 +131,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       const items = response.items ?? []
       setParsedItems(items)
       setItemApprovals(items.map((item) => item.disposition !== 'confirm'))
-      initRates(items)
+      initItems(items)
       setQuestions(response.questions ?? [])
       setTrace(response.trace ?? null)
       setParseVersion(response.version ?? null)
@@ -176,7 +140,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Öğün parse edilemedi.', 'error')
     } finally { setParsing(false) }
-  }, [rawInput, onParseMeal, showToast, initRates])
+  }, [rawInput, onParseMeal, showToast, initItems])
 
   const handleSave = useCallback(async () => {
     if (itemApprovals.some((approved) => !approved)) {
@@ -214,16 +178,17 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
     } finally { setSaving(false) }
   }, [isEdit, editMeal, mealType, rawInput, parsedItems, itemApprovals, trace, parseVersion, userId, onSubmit, onUpdate, onClose, showToast])
 
-  const handleAmountChange = useCallback((index: number, newAmount: number) => {
-    if (!newAmount) return
-    setParsedItems((items) => items.map((item, i) => {
-      if (i !== index) return item
-      // Hattan gelen kalemlerde miktar = gram; elle eklenen satırlarda eski oran mantığı
-      if (item.grams !== undefined) return rescaleToGrams(item, newAmount)
-      const rate = rates[index]
-      return rate ? { ...item, ...applyRate(rate, newAmount) } : item
-    }))
-  }, [rates])
+  const handleAmountInput = useCallback((index: number, text: string) => {
+    setItemAmountDrafts((drafts) => ({ ...drafts, [index]: text }))
+
+    const amount = parseFloat(text.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) return
+
+    const base = baseItems[index]
+    if (!base) return
+    setParsedItems((items) =>
+      items.map((item, i) => i === index ? rescaleItemToAmount(base, amount) : item))
+  }, [baseItems])
 
   const handleNameChange = useCallback((index: number, name: string) => {
     setParsedItems((items) => items.map((item, i) => i === index ? { ...item, name } : item))
@@ -232,7 +197,8 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
   const handleRemoveItem = useCallback((index: number) => {
     setParsedItems((items) => items.filter((_, i) => i !== index))
     setItemApprovals((approvals) => approvals.filter((_, i) => i !== index))
-    setRates((r) => r.filter((_, i) => i !== index))
+    setBaseItems((items) => items.filter((_, i) => i !== index))
+    setItemAmountDrafts({})
   }, [])
 
   // Arama kutusu: yazmayı bırakınca sorgular, model çağrısı yok.
@@ -260,7 +226,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       const item = await buildItemFromChoice(supabase, pendingChoice, grams)
       setParsedItems((items) => [...items, item])
       setItemApprovals((approvals) => [...approvals, true])
-      setRates((r) => [...r, calcRate(item)])
+      setBaseItems((items) => [...items, item])
       // Seçim ve gramaj hatırlanır; serbest metin hattı bir dahaki sefere bulur.
       await saveFoodAlias(supabase, userId, pendingChoice.label,
         pendingChoice.source === 'curated'
@@ -281,7 +247,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
     const blank: MealItem = { name: '', amount: 100, unit: 'g', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
     setParsedItems((items) => [...items, blank])
     setItemApprovals((approvals) => [...approvals, true])
-    setRates((r) => [...r, calcRate(blank)])
+    setBaseItems((items) => [...items, blank])
   }, [])
 
   const dismissQuestion = useCallback((index: number, key: string) => {
@@ -306,7 +272,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       )
       setParsedItems((items) => [...items, { ...item, phrase: question.phrase }])
       setItemApprovals((approvals) => [...approvals, true])
-      setRates((r) => [...r, calcRate(item)])
+      setBaseItems((items) => [...items, item])
       setTrace((entries) => resolveTraceQuestion(entries, question, item))
       dismissQuestion(index, questionKey)
     } catch {
@@ -343,7 +309,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       }
       setParsedItems((items) => [...items, resolvedItem])
       setItemApprovals((approvals) => [...approvals, resolvedItem.disposition !== 'confirm'])
-      setRates((r) => [...r, calcRate(resolvedItem)])
+      setBaseItems((items) => [...items, resolvedItem])
       setTrace((entries) => resolveTraceQuestion(entries, question, resolvedItem))
       dismissQuestion(index, questionKey)
     } catch {
@@ -504,11 +470,16 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
                       className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-primary outline-none hover:border-gray-200 focus:border-accent focus:bg-white"
                     />
                     <input
-                      type="number"
-                      value={item.amount}
-                      onChange={(e) => handleAmountChange(idx, parseFloat(e.target.value) || 0)}
+                      type="text"
+                      inputMode="decimal"
+                      value={itemAmountDrafts[idx] ?? String(item.amount)}
+                      onChange={(e) => handleAmountInput(idx, e.target.value)}
+                      onBlur={() => setItemAmountDrafts((drafts) => {
+                        const next = { ...drafts }
+                        delete next[idx]
+                        return next
+                      })}
                       className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-xs text-primary outline-none focus:border-accent"
-                      min={0}
                     />
                     <span className="shrink-0 text-[10px] text-muted">{item.unit}</span>
                     <span className="shrink-0 w-14 text-right text-xs font-semibold text-accent">{item.calories} kcal</span>

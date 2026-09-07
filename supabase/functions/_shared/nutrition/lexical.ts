@@ -36,6 +36,48 @@ export interface LexicalIndex {
   bySurface: Map<string, CuratedFood>
 }
 
+/**
+ * Yiyeceğin KİMLİĞİNİ değiştiren niteleyiciler.
+ *
+ * Ölçülen hata (nutrition_feedback, 6 Eylül): "kuru domates" 0.764 skorla
+ * "Domates" satırına oturdu ve kendinden emin kabul edildi — 258 kcal/100 g
+ * yerine 18. Skorlamanın kusuru şuydu: "domates" tokeni her iki tarafta da
+ * var, "kuru" ise yalnızca girdide; eksik token skoru yalnızca ORANSAL olarak
+ * düşürüyordu, oysa o kelime yiyeceği on dört kat değiştiriyor.
+ *
+ * Bu liste, ağırlığı orantısız olan kelimeleri işaretler. Girdide bulunup adayda
+ * bulunmayan her niteleyici skoru çarpan olarak düşürür; amaç adayı ELEMEK değil,
+ * kendiliğinden kabul eşiğinin altına indirip doğrulayıcıya ya da kullanıcıya
+ * göndermek.
+ */
+const QUALIFIERS = new Set<string>([
+  // su içeriği / yoğunluk
+  'kuru', 'kurutulmus', 'taze', 'cig',
+  // pişirme
+  'kizarmis', 'kizartilmis', 'kavrulmus', 'haslanmis', 'izgara', 'firinda',
+  'pismis', 'buharda', 'sahanda', 'tava', 'közlenmis', 'koz',
+  // yağ / şeker
+  'yagli', 'yagsiz', 'light', 'diyet', 'sekerli', 'sekersiz', 'tuzlu', 'tuzsuz',
+  'tam', 'yarim',
+  // işleme
+  'konserve', 'dondurulmus', 'salamura', 'tutsulenmis', 'kepekli', 'esmer',
+  // dolgu
+  'dolgulu', 'kremali', 'cikolatali', 'peynirli', 'kiymali',
+])
+
+/** Girdide olup adayda olmayan niteleyici sayısı. */
+function missingQualifiers(phraseTokens: string[], surfaceTokens: Set<string>): number {
+  let missing = 0
+  for (const token of phraseTokens) {
+    if (QUALIFIERS.has(token) && !surfaceTokens.has(token)) missing++
+  }
+  return missing
+}
+
+/** Niteleyici başına çarpan ve tabanı: aday elenmez, eşiğin altına iner. */
+const QUALIFIER_PENALTY = 0.7
+const QUALIFIER_PENALTY_FLOOR = 0.45
+
 function trigrams(text: string): Set<string> {
   const padded = `  ${text} `
   const out = new Set<string>()
@@ -149,7 +191,11 @@ function scoreSurface(
   // Tam eşleşme her zaman kazanmalı
   if (surface.text === phraseText) return surface.weight
 
-  return surface.weight * (0.65 * tokenScore + 0.35 * diceScore)
+  const base = surface.weight * (0.65 * tokenScore + 0.35 * diceScore)
+
+  const missing = missingQualifiers(phraseTokens, surfaceSet)
+  if (missing === 0) return base
+  return base * Math.max(QUALIFIER_PENALTY_FLOOR, QUALIFIER_PENALTY ** missing)
 }
 
 /** Küratörlü katmanda adayları skorlar. Sonuç azalan sırada. */

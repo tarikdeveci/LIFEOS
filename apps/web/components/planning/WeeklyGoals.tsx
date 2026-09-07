@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { todayDate, shiftIsoDate } from '@lifeos/shared'
+import { shiftIsoDate, toDateString, weekStart } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 
 interface WeeklyGoal {
@@ -42,13 +42,12 @@ export function WeeklyGoals({ userId }: WeeklyGoalsProps) {
   const [newTags, setNewTags] = useState('')
   const [newCountMode, setNewCountMode] = useState<'tasks' | 'hours'>('tasks')
 
-  const weekStart = (() => {
-    const d = new Date(todayDate())
-    const dow = d.getDay()
-    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
-    return d.toISOString().split('T')[0]!
-  })()
-  const weekEnd = shiftIsoDate(weekStart, 6)
+  // Paylaşılan weekStart() ile aynı kural (Pazartesi başlangıç), elle
+  // tekrarlanmış hâli değil. Eski kod new Date('YYYY-MM-DD') ile UTC gece
+  // yarısı üretip getDay() ile yerel hafta gününü okuyordu; negatif UTC ofsetli
+  // saat dilimlerinde hafta bir gün kayıyordu.
+  const weekStartDate = toDateString(weekStart(new Date()))
+  const weekEnd = shiftIsoDate(weekStartDate, 6)
 
   const fetchProgress = useCallback(async () => {
     setLoading(true)
@@ -56,7 +55,7 @@ export function WeeklyGoals({ userId }: WeeklyGoalsProps) {
       const { data } = await supabase
         .from('tasks').select('tags, status, estimated_minutes')
         .eq('user_id', userId).eq('status', 'done')
-        .gte('scheduled_date', weekStart).lte('scheduled_date', weekEnd)
+        .gte('scheduled_date', weekStartDate).lte('scheduled_date', weekEnd)
 
       const doneTasks = data ?? []
       setGoals(customGoals.map((goal) => {
@@ -69,7 +68,7 @@ export function WeeklyGoals({ userId }: WeeklyGoalsProps) {
         return { ...goal, current, pct: Math.min((current / goal.target) * 100, 100) }
       }))
     } finally { setLoading(false) }
-  }, [userId, weekStart, weekEnd, customGoals])
+  }, [userId, weekStartDate, weekEnd, customGoals])
 
   useEffect(() => { void fetchProgress() }, [fetchProgress])
 

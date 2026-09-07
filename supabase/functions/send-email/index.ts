@@ -274,14 +274,31 @@ interface Profile {
   preferences: Record<string, unknown>
 }
 
-function localHourNow(timezone: string): number {
+// Kullanıcının kendi saat diliminde şu anki saat VE tarih.
+//
+// Eskiden yalnızca saat hesaplanıyordu, gün ise `new Date().toISOString()` ile
+// UTC'den alınıyordu. UTC+3'te sabah 08:00 = 05:00 UTC olduğu için aynı güne
+// düşüyor ve hata görünmüyordu; UTC+13'te 08:00 yerel = önceki gün 19:00 UTC,
+// yani mail DÜNÜN görevlerini listeliyordu. daily-digest'teki localNow ile aynı
+// yaklaşım — hourCycle:'h23' gece yarısında '24' dönme sorununu da kapatıyor.
+function localNow(timezone: string): { hour: number; date: string } {
+  const now = new Date()
   try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone, hour: 'numeric', hour12: false,
-    }).formatToParts(new Date())
-    return parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0')
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', hourCycle: 'h23',
+      })
+        .formatToParts(now)
+        .map((p) => [p.type, p.value]),
+    )
+    return {
+      hour: parseInt(parts.hour as string, 10),
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+    }
   } catch {
-    return new Date().getUTCHours()
+    return { hour: now.getUTCHours(), date: now.toISOString().slice(0, 10) }
   }
 }
 
@@ -290,13 +307,56 @@ function timeToHour(time: string): number {
   return h ?? 8
 }
 
-async function sendEmail(to: string, subject: string, html: string, resendKey: string) {
+type Db = ReturnType<typeof createClient>
+
+/**
+ * Bu kullanıcı + tür + yerel gün için gönderim hakkını al.
+ *
+ * Cron saat başı çalışıp "yerel saat == tercih edilen saat mi" diye bakıyor ve
+ * gönderdiğini hiçbir yere yazmıyordu: aynı saat içinde ikinci bir tetikleme
+ * (yeniden deneme, elle test) doğrudan çift mail demekti. E-postada bu push'tan
+ * daha kötü — kutuda kalıcı iz bırakıyor. notification_log'un primary key'i
+ * (user_id, kind, local_date) olduğu için ikinci insert 23505'e çarpar.
+ *
+ * Gönderimden ÖNCE yazılıyor: yarış durumunda çift mail atmaktansa, çakışma
+ * anında hiç atmamak yeğdir.
+ */
+async function claimSend(supabase: Db, userId: string, kind: string, localDate: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('notification_log')
+    .insert({ user_id: userId, kind, local_date: localDate })
+
+  if (!error) return true
+  // 23505 = unique_violation → bugün zaten gönderilmiş, sessizce geç
+  if (error.code !== '23505') {
+    console.error(`notification_log insert failed (${userId}/${kind}):`, error.message)
+  }
+  return false
+}
+
+/** Gönderim başarısız olduysa kilidi bırak ki bir sonraki koşu tekrar denesin. */
+async function releaseSend(supabase: Db, userId: string, kind: string, localDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('notification_log')
+    .delete()
+    .eq('user_id', userId).eq('kind', kind).eq('local_date', localDate)
+  if (error) console.error(`Kilit geri alınamadı (${userId}/${kind}):`, error.message)
+}
+
+/** Gönderim başarılıysa true. Kilit geri alınabilsin diye sonucu DÖNDÜRÜR. */
+async function sendEmail(
+  to: string, subject: string, html: string, resendKey: string,
+): Promise<boolean> {
   const res = await fetch(RESEND_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: FROM, to, subject, html }),
   })
-  if (!res.ok) console.error(`Resend error for ${to}:`, await res.text())
+  if (!res.ok) {
+    console.error(`Resend error for ${to}:`, await res.text())
+    return false
+  }
+  return true
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -322,14 +382,28 @@ serve(async () => {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200 })
     }
 
-    const { data: authUsers } = await supabase.auth.admin.listUsers()
+    // listUsers() sayfa başına varsayılan 50 kayıt döndürür. Tek çağrıyla
+    // yetinen eski hâlde 50. kullanıcıdan sonrası emailMap'e hiç girmiyor,
+    // `if (!userEmail) continue` ile SESSİZCE atlanıyordu: bayrağını açmış bir
+    // kullanıcı hiçbir hata görünmeden mail alamazdı. Sayfalar bitene kadar oku.
     const emailMap: Record<string, string> = {}
-    for (const u of authUsers?.users ?? []) {
-      if (u.email) emailMap[u.id] = u.email
+    const PER_PAGE = 200
+    for (let page = 1; ; page++) {
+      const { data: authUsers, error } = await supabase.auth.admin.listUsers({ page, perPage: PER_PAGE })
+      if (error) {
+        console.error('listUsers başarısız:', error.message)
+        break
+      }
+      const batch = authUsers?.users ?? []
+      for (const u of batch) {
+        if (u.email) emailMap[u.id] = u.email
+      }
+      if (batch.length < PER_PAGE) break
     }
 
-    const today = new Date().toISOString().split('T')[0]!
     let sent = 0
+    let failed = 0
+    let skipped = 0
 
     for (const profile of profiles as Profile[]) {
       const prefs     = profile.preferences ?? {}
@@ -338,78 +412,109 @@ serve(async () => {
       const lang      = (prefs['language'] as string) ?? 'tr'
       if (!userEmail) continue
 
-      const localHour = localHourNow(tz)
+      // Kullanıcı başına koruma. Bu döngüde fırlayan TEK bir istisna (bozuk
+      // timezone, null start_time, ağ hatası) dıştaki catch'e kadar gidip o
+      // koşudaki geri kalan herkesin mailini iptal ediyordu — cron 500 görüp
+      // sessizce geçtiği için de aylarca fark edilmezdi. Biri patlarsa yalnızca
+      // o kullanıcı atlanır.
+      try {
+        const { hour: localHour, date: today } = localNow(tz)
 
-      // ── Sabah brief ──
-      if (prefs['email_morning_enabled']) {
-        const morningHour = timeToHour(prefs['morning_briefing_time'] as string ?? '08:00')
-        if (localHour === morningHour) {
-          const [taskRes, carryRes, blockRes] = await Promise.all([
-            supabase.from('tasks').select('*', { count: 'exact', head: true })
-              .eq('user_id', profile.id).eq('scheduled_date', today).not('status', 'in', '(done,deferred)'),
-            supabase.from('tasks').select('*', { count: 'exact', head: true })
-              .eq('user_id', profile.id).lt('scheduled_date', today).not('status', 'in', '(done,deferred)'),
-            supabase.from('time_blocks').select('start_time, end_time, label, block_type')
-              .eq('user_id', profile.id).eq('date', today).order('start_time'),
-          ])
+        // ── Sabah brief ──
+        if (prefs['email_morning_enabled']) {
+          const morningHour = timeToHour(prefs['morning_briefing_time'] as string ?? '08:00')
+          if (localHour === morningHour) {
+            const [taskRes, carryRes, blockRes] = await Promise.all([
+              supabase.from('tasks').select('*', { count: 'exact', head: true })
+                .eq('user_id', profile.id).eq('scheduled_date', today).not('status', 'in', '(done,deferred)'),
+              supabase.from('tasks').select('*', { count: 'exact', head: true })
+                .eq('user_id', profile.id).lt('scheduled_date', today).not('status', 'in', '(done,deferred)'),
+              supabase.from('time_blocks').select('start_time, end_time, label, block_type')
+                .eq('user_id', profile.id).eq('date', today).order('start_time'),
+            ])
 
-          const blocks = (blockRes.data ?? []).map((b) => ({
-            label: b.label ?? b.block_type,
-            start: b.start_time.slice(0, 5),
-            end: b.end_time.slice(0, 5),
-          }))
+            const blocks = (blockRes.data ?? []).map((b) => ({
+              label: b.label ?? b.block_type,
+              start: (b.start_time ?? '').slice(0, 5),
+              end: (b.end_time ?? '').slice(0, 5),
+            }))
 
-          const html = morningHtml(
-            profile.display_name ?? '',
-            taskRes.count ?? 0,
-            carryRes.count ?? 0,
-            blocks,
-            lang,
-          )
-          const subject = lang === 'en'
-            ? `☀️ Good morning — your plan for today`
-            : `☀️ Günaydın — bugünün planı hazır`
-          await sendEmail(userEmail, subject, html, resendKey)
-          sent++
+            const taskCount = taskRes.count ?? 0
+            const carryover = carryRes.count ?? 0
+
+            // Sistem gün planını KENDİ oluşturmuyor; bu mail yalnızca kullanıcının
+            // daha önce girdiğini okuyor. Planlamamış birine "Bugün 0 görevin var"
+            // yazan bir mail atmak bildirim değil gürültü — ilk işi spam
+            // klasörüne taşınmak olur. Söyleyecek bir şey yoksa gönderme.
+            if (taskCount === 0 && carryover === 0 && blocks.length === 0) {
+              skipped++
+            } else if (await claimSend(supabase, profile.id, 'email_morning', today)) {
+              const html = morningHtml(profile.display_name ?? '', taskCount, carryover, blocks, lang)
+              const subject = lang === 'en'
+                ? `☀️ Good morning — your plan for today`
+                : `☀️ Günaydın — bugünün planı hazır`
+              if (await sendEmail(userEmail, subject, html, resendKey)) {
+                sent++
+              } else {
+                failed++
+                await releaseSend(supabase, profile.id, 'email_morning', today)
+              }
+            }
+          }
         }
-      }
 
-      // ── Akşam özeti ──
-      if (prefs['email_evening_enabled']) {
-        const eveningHour = timeToHour(prefs['evening_summary_time'] as string ?? '21:00')
-        if (localHour === eveningHour) {
-          const [mealRes, targetRes, doneRes] = await Promise.all([
-            supabase.from('meals').select('total_calories, total_protein')
-              .eq('user_id', profile.id).eq('date', today),
-            supabase.from('nutrition_targets').select('calories, protein_g')
-              .eq('user_id', profile.id).eq('is_active', true).single(),
-            supabase.from('tasks').select('*', { count: 'exact', head: true })
-              .eq('user_id', profile.id).eq('scheduled_date', today).eq('status', 'done'),
-          ])
+        // ── Akşam özeti ──
+        if (prefs['email_evening_enabled']) {
+          const eveningHour = timeToHour(prefs['evening_summary_time'] as string ?? '21:00')
+          if (localHour === eveningHour) {
+            const [mealRes, targetRes, doneRes] = await Promise.all([
+              supabase.from('meals').select('total_calories, total_protein')
+                .eq('user_id', profile.id).eq('date', today),
+              supabase.from('nutrition_targets').select('calories, protein_g')
+                .eq('user_id', profile.id).eq('is_active', true).single(),
+              supabase.from('tasks').select('*', { count: 'exact', head: true })
+                .eq('user_id', profile.id).eq('scheduled_date', today).eq('status', 'done'),
+            ])
 
-          const totalCal = (mealRes.data ?? []).reduce((s, m) => s + (m.total_calories ?? 0), 0)
-          const totalPro = (mealRes.data ?? []).reduce((s, m) => s + (m.total_protein ?? 0), 0)
+            const totalCal = (mealRes.data ?? []).reduce((s, m) => s + (m.total_calories ?? 0), 0)
+            const totalPro = (mealRes.data ?? []).reduce((s, m) => s + (m.total_protein ?? 0), 0)
+            const tasksDone = doneRes.count ?? 0
 
-          const html = eveningHtml(
-            profile.display_name ?? '',
-            totalCal,
-            targetRes.data?.calories ?? 2000,
-            totalPro,
-            targetRes.data?.protein_g ?? 150,
-            doneRes.count ?? 0,
-            lang,
-          )
-          const subject = lang === 'en'
-            ? `🌙 Daily summary — great work today`
-            : `🌙 Günün özeti — harika bir gün geçirdin`
-          await sendEmail(userEmail, subject, html, resendKey)
-          sent++
+            // Sabahki kuralın akşam karşılığı: hiç öğün girilmemiş ve hiç görev
+            // kapatılmamışsa özetlenecek bir gün yok.
+            if (totalCal === 0 && tasksDone === 0) {
+              skipped++
+            } else if (await claimSend(supabase, profile.id, 'email_evening', today)) {
+              const html = eveningHtml(
+                profile.display_name ?? '',
+                totalCal,
+                targetRes.data?.calories ?? 2000,
+                totalPro,
+                targetRes.data?.protein_g ?? 150,
+                tasksDone,
+                lang,
+              )
+              const subject = lang === 'en'
+                ? `🌙 Daily summary — great work today`
+                : `🌙 Günün özeti — harika bir gün geçirdin`
+              if (await sendEmail(userEmail, subject, html, resendKey)) {
+                sent++
+              } else {
+                failed++
+                await releaseSend(supabase, profile.id, 'email_evening', today)
+              }
+            }
+          }
         }
+      } catch (err) {
+        // Yalnızca bu kullanıcı kaybedilir, koşu devam eder.
+        failed++
+        console.error(`send-email kullanıcı ${profile.id} atlandı:`, err)
       }
     }
 
-    console.log(`${sent} email gönderildi`)
-    return new Response(JSON.stringify({ sent }), {
+    console.log(`email: ${sent} gönderildi, ${skipped} atlandı (içerik yok), ${failed} başarısız`)
+    return new Response(JSON.stringify({ sent, skipped, failed }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {

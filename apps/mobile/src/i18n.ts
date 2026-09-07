@@ -28,6 +28,7 @@ const translations = {
     done: 'Done',
     all: 'All',
     today: 'Today',
+    week: 'Week',
 
     // Today
     today_greeting: 'Good morning',
@@ -69,6 +70,7 @@ const translations = {
     tasks_done_hidden: 'Completed hidden',
     tasks_done_visible: 'Completed visible',
     tasks_open: 'Open today',
+    tasks_week_empty: 'Nothing scheduled this week',
     tasks_completed: 'Completed',
     tasks_total: 'Total',
 
@@ -301,6 +303,7 @@ const translations = {
     done: 'Tamamlandı',
     all: 'Tümü',
     today: 'Bugün',
+    week: 'Hafta',
 
     today_greeting: 'Günaydın',
     today_plan: 'Günün Planı',
@@ -340,6 +343,7 @@ const translations = {
     tasks_done_hidden: 'Tamamlananlar gizli',
     tasks_done_visible: 'Tamamlananlar görünür',
     tasks_open: 'Bugün açık',
+    tasks_week_empty: 'Bu hafta planlı görev yok',
     tasks_completed: 'Tamamlandı',
     tasks_total: 'Toplam',
 

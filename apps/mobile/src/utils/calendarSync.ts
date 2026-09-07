@@ -119,6 +119,82 @@ export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
   }
 }
 
+// ============================
+// Takvime YAZMA
+// ============================
+// Bu dosyanın geri kalanı takvimi okuyor; aşağısı tersi yönde çalışıyor:
+// antrenman programını cihazın takvimine yazıyor.
+
+/**
+ * Yazılabilir bir takvim bulur.
+ *
+ * `getDefaultCalendarAsync()` tek başına yetmiyor: iOS'ta varsayılan takvim
+ * abonelik takvimi (tatiller, maç fikstürü) olabiliyor ve bunlara etkinlik
+ * yazılamıyor — `createEventAsync` orada sessizce değil, fırlatarak patlıyor.
+ * Bu yüzden önce `allowsModifications` süzgecinden geçiriyoruz.
+ */
+export async function findWritableCalendarId(): Promise<string | null> {
+  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT)
+  const writable = calendars.filter((c) => c.allowsModifications)
+  if (writable.length === 0) return null
+
+  if (Platform.OS === 'ios') {
+    try {
+      const fallback = await Calendar.getDefaultCalendarAsync()
+      if (fallback && writable.some((c) => c.id === fallback.id)) return fallback.id
+    } catch {
+      // Varsayılan alınamadı — aşağıdaki seçim yine de çalışır.
+    }
+  }
+
+  const primary = writable.find((c) => (c as { isPrimary?: boolean }).isPrimary)
+  return (primary ?? writable[0])?.id ?? null
+}
+
+export interface RecurringEventInput {
+  title: string
+  notes: string
+  startsAt: Date
+  durationMinutes: number
+  /** Kaç hafta tekrar edecek. 1 ise tekrar kuralı hiç yazılmaz. */
+  weeklyOccurrences: number
+  /** Etkinlikten kaç dakika önce hatırlatsın; null ise alarm kurulmaz. */
+  reminderMinutesBefore: number | null
+}
+
+/**
+ * Haftalık tekrar eden tek bir etkinlik yazar ve kimliğini döndürür.
+ *
+ * 8 hafta için 8 ayrı etkinlik değil, tekrar kuralı olan TEK etkinlik
+ * yazılıyor: kullanıcı programı bıraktığında takvimden tek dokunuşla
+ * silebilsin. Tek tek yazılsaydı sekiz kalıntı bırakırdık.
+ */
+export async function createRecurringEvent(
+  calendarId: string,
+  input: RecurringEventInput,
+): Promise<string> {
+  const endDate = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000)
+
+  return Calendar.createEventAsync(calendarId, {
+    title: input.title,
+    notes: input.notes,
+    startDate: input.startsAt,
+    endDate,
+    ...(input.reminderMinutesBefore !== null
+      ? { alarms: [{ relativeOffset: -input.reminderMinutesBefore }] }
+      : {}),
+    ...(input.weeklyOccurrences > 1
+      ? {
+          recurrenceRule: {
+            frequency: Calendar.Frequency.WEEKLY,
+            interval: 1,
+            occurrence: input.weeklyOccurrences,
+          },
+        }
+      : {}),
+  })
+}
+
 // Android'de Calendar API'si iOS'tan farklı davranır — bu helper fark'ı normalize eder
 export function isCalendarSupported(): boolean {
   return Platform.OS === 'ios' || Platform.OS === 'android'

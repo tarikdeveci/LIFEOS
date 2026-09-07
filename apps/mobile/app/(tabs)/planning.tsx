@@ -3,7 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
-import { usePlanningStore, getDayPosition } from '@lifeos/shared'
+import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
 import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -69,11 +69,23 @@ function inferRequestedDate(input: string, fallbackDate: string): string {
   return fallbackDate
 }
 
+/**
+ * Yeni blok taslağı — saat SABİT DEĞİL, o anki yerel saatten türetiliyor.
+ *
+ * Eski hâli '09:00'–'10:00' sabitiydi: sabah dokuz dışında bir şey planlayan
+ * herkes iki alanı da elle siliyordu. `nextSlotTime()` bir sonraki yarım saati
+ * verdiği için değer çoğu zaman doğrudan kaydedilebilir oluyor.
+ */
+function emptyBlockDraft() {
+  const start = nextSlotTime()
+  return { label: '', start_time: start, end_time: addMinutesToClock(start, 60), block_type: 'focus' as BlockType }
+}
+
 export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setEnergyLevel } = usePlanningStore()
+  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel } = usePlanningStore()
   const { localEvents, isSyncing, hasPermission, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
@@ -81,7 +93,7 @@ export default function PlanningScreen() {
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [draft, setDraft] = useState({ label: '', start_time: '09:00', end_time: '10:00', block_type: 'focus' as BlockType })
+  const [draft, setDraft] = useState(emptyBlockDraft)
   const [adding, setAdding] = useState(false)
   const [showAiChat, setShowAiChat] = useState(false)
   const [aiInput, setAiInput] = useState('')
@@ -156,10 +168,16 @@ export default function PlanningScreen() {
         end_time: draft.end_time + ':00',
         block_type: draft.block_type,
       })
-      setDraft({ label: '', start_time: '09:00', end_time: '10:00', block_type: 'focus' })
+      setDraft(emptyBlockDraft())
       setShowAdd(false)
     } catch { Alert.alert('Hata', 'Blok eklenemedi') }
     finally { setAdding(false) }
+  }
+
+  /** Sheet'i her açışta saati yeniden hesapla — uygulama saatlerce açık kalabilir. */
+  function openAddSheet() {
+    setDraft(emptyBlockDraft())
+    setShowAdd(true)
   }
 
   async function handleAiReplan(text?: string) {
@@ -230,6 +248,18 @@ export default function PlanningScreen() {
     finally { setAiLoading(false) }
   }
 
+  /**
+   * Blok kutucuğu. Hata durumunda store işareti geri sarıyor; kullanıcıya da
+   * söylüyoruz, yoksa dokunuş sessizce geri alınmış gibi görünüyor.
+   */
+  async function handleToggleBlockDone(blockId: string, done: boolean) {
+    try {
+      await setBlockDone(supabase, blockId, done)
+    } catch {
+      Alert.alert('Hata', 'Blok güncellenemedi')
+    }
+  }
+
   async function handleEnergyLevel(level: 1 | 2 | 3 | 4 | 5) {
     if (!userId) return
     try { await setEnergyLevel(supabase, level) }
@@ -275,7 +305,7 @@ export default function PlanningScreen() {
             <TouchableOpacity onPress={() => { if (requirePro()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
               <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity onPress={openAddSheet} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -351,7 +381,7 @@ export default function PlanningScreen() {
             <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
             <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-              <Button label={t.plan_add_block_btn} onPress={() => setShowAdd(true)} variant="secondary" />
+              <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
               <Button label={isPro ? t.plan_ai_plan : `Pro · ${t.plan_ai_plan}`} onPress={() => { if (requirePro()) setShowAiChat(true) }} variant="secondary" />
             </View>
           </View>
@@ -364,6 +394,7 @@ export default function PlanningScreen() {
             blockColors={BLOCK_COLORS}
             blockLabels={BLOCK_LABELS}
             onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
+            onToggleDone={handleToggleBlockDone}
             onNowAnchorLayout={(y) => {
               nowAnchorY.current = y
             }}

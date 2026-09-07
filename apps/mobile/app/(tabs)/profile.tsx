@@ -398,6 +398,29 @@ export default function ProfileScreen() {
           </GlassCard>
         </TouchableOpacity>
 
+        {/* Bildirimler */}
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <TouchableOpacity onPress={() => router.push('/(tabs)/settings/notifications' as any)} activeOpacity={0.7}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
+                <Ionicons name="notifications-outline" size={18} color={palette.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                    {lang === 'tr' ? 'Bildirimler' : 'Notifications'}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    {lang === 'tr'
+                      ? 'Sabah, öğlen ve akşam özetleri, blok hatırlatmaları, e-posta'
+                      : 'Morning, midday and evening digests, block reminders, email'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         {/* API ve Otomasyon — web panelinde yönetilir */}
         <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/settings')} activeOpacity={0.7}>
           <GlassCard style={{ marginBottom: spacing[4] }}>

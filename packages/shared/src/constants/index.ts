@@ -146,6 +146,11 @@ export const RESOLVE_RUNG_LABELS: Record<ResolveRung, string> = {
   lexical: 'sözlük eşleşmesi',
   lexical_verified: 'AI doğruladı',
   corpus_verified: 'USDA kaydı (AI doğruladı)',
+  semantic_verified: 'anlamsal eşleşme (AI doğruladı)',
+  // Etiket açıkça "tahmin" demek zorunda: bu satırı hiçbir insan okumadı ve
+  // kullanıcı onaylayana kadar geçici. Diğer basamaklarla aynı dille yazmak,
+  // aradaki güven farkını görünmez kılardı.
+  ai_estimate: 'AI tahmini — onayını bekliyor',
   choices: 'seçim bekliyor',
   unresolved: 'tanınmadı',
 }

@@ -63,6 +63,75 @@ export async function createTimeBlock(
   return data as unknown as TimeBlock
 }
 
+/**
+ * Çok sayıda bloğu tek seferde yazar ve zaten var olanları atlar.
+ *
+ * Antrenman programı planlarken 4 gün × 4 hafta = 16 satır oluşuyor; tek tek
+ * insert etmek hem yavaş hem de yarıda kesilirse programı yarım bırakıyor.
+ *
+ * Yinelenme koruması gerçek bir ihtiyaç: kullanıcı "Planla"ya iki kez basarsa
+ * ya da programı yeniden planlarsa takvimi çift kayıtla doldurmamalı.
+ * (tarih + başlangıç saati + etiket) üçlüsü aynıysa satır atlanıyor. Silme
+ * yapılmıyor — kullanıcının elle eklediği bir bloğu sessizce yok etmek,
+ * yinelenmiş bir bloktan çok daha kötü.
+ */
+export async function createTimeBlocks(
+  supabase: Supabase,
+  userId: string,
+  inputs: CreateTimeBlockInput[],
+): Promise<{ inserted: number; skipped: number }> {
+  if (inputs.length === 0) return { inserted: 0, skipped: 0 }
+
+  const dates = inputs.map((i) => i.date).sort()
+  const { data: existing, error: readError } = await supabase
+    .from('time_blocks')
+    .select('date, start_time, label')
+    .eq('user_id', userId)
+    .gte('date', dates[0] as string)
+    .lte('date', dates[dates.length - 1] as string)
+
+  if (readError) throw readError
+
+  // Postgres TIME kolonu 'HH:MM:SS' döndürür, girdi 'HH:MM' — ilk 5 karaktere
+  // indirgemeden karşılaştırma hiçbir zaman tutmaz ve koruma hiç çalışmaz.
+  const key = (date: string, time: string, label: string | null | undefined) =>
+    `${date}|${time.slice(0, 5)}|${label ?? ''}`
+
+  const seen = new Set(
+    ((existing ?? []) as Array<{ date: string; start_time: string; label: string | null }>).map(
+      (row) => key(row.date, row.start_time, row.label),
+    ),
+  )
+
+  const fresh: TimeBlockInsert[] = []
+  for (const input of inputs) {
+    const k = key(input.date, input.start_time, input.label)
+    if (seen.has(k)) continue
+    seen.add(k)
+    fresh.push({
+      user_id: userId,
+      task_id: input.task_id ?? null,
+      date: input.date,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      block_type: input.block_type ?? 'task',
+      label: input.label ?? null,
+      color: input.color ?? null,
+      is_recurring: false,
+      recurrence_type: null,
+      recurrence_days: null,
+      recurrence_end: null,
+    } as TimeBlockInsert)
+  }
+
+  if (fresh.length > 0) {
+    const { error } = await supabase.from('time_blocks').insert(fresh)
+    if (error) throw error
+  }
+
+  return { inserted: fresh.length, skipped: inputs.length - fresh.length }
+}
+
 export async function updateTimeBlock(
   supabase: Supabase,
   blockId: string,

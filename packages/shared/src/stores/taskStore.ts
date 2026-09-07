@@ -102,7 +102,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   setStatus: async (supabase, taskId, status) => {
-    // Optimistic update
+    // Yazma başarısız olursa geri alabilmek için önceki hâli sakla. Tek dokunuşluk
+    // kutucuk eklendikten sonra bu şart oldu: kullanıcı kartta işareti görüyor,
+    // ekranı kapatıp açtığında görev yeniden "yapılacak" olarak dönüyordu ve
+    // arada hiçbir hata gösterilmiyordu.
+    const previous = get().tasks.find((t) => t.id === taskId)
+
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === taskId
@@ -110,7 +115,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           : t,
       ),
     }))
-    await updateTaskStatus(supabase, taskId, status)
+
+    try {
+      await updateTaskStatus(supabase, taskId, status)
+    } catch (err) {
+      if (previous) {
+        set((state) => ({
+          tasks: state.tasks.map((t) => (t.id === taskId ? previous : t)),
+        }))
+      }
+      throw err
+    }
   },
 
   reorderTasks: async (supabase, taskIds) => {

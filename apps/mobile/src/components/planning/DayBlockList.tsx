@@ -10,6 +10,7 @@ import {
   type BlockTiming,
 } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
+import { TaskCheckbox } from '../ui/TaskCheckbox'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
@@ -24,6 +25,8 @@ interface Props {
   blockColors: Record<string, string>
   blockLabels: Record<string, string>
   onDelete: (blockId: string) => void
+  /** Bloğu tek dokunuşla tamamlandı/geri al. */
+  onToggleDone: (blockId: string, done: boolean) => void
   /**
    * Şu ana denk gelen satırın kaydırma içeriğindeki y konumu.
    * Konteynerin kendi y'si eklenmiş halde raporlanır.
@@ -43,6 +46,7 @@ export function DayBlockList({
   blockColors,
   blockLabels,
   onDelete,
+  onToggleDone,
   onNowAnchorLayout,
 }: Props) {
   const nowMinute = minutesOfDay(now)
@@ -107,6 +111,7 @@ export function DayBlockList({
         color={blockColors[block.block_type] ?? palette.accent}
         typeLabel={blockLabels[block.block_type] ?? block.block_type}
         onDelete={() => onDelete(block.id)}
+        onToggleDone={() => onToggleDone(block.id, !block.completed_at)}
         onLayoutY={index === activeIndex && onNowAnchorLayout ? reportAnchor : undefined}
       />,
     )
@@ -165,15 +170,19 @@ interface BlockRowProps {
   color: string
   typeLabel: string
   onDelete: () => void
+  onToggleDone: () => void
   onLayoutY?: (y: number) => void
 }
 
-function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onLayoutY }: BlockRowProps) {
+function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onToggleDone, onLayoutY }: BlockRowProps) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
 
-  const isActive = isToday && timing.phase === 'active'
-  const isPast = isToday && timing.phase === 'past'
+  const isDone = block.completed_at != null
+  // Tamamlanmış blok artık "şu an" ya da "sırada" değil: bitirdiği bir işin
+  // ilerleme çubuğunu izlemek kullanıcıya bir şey söylemiyor.
+  const isActive = !isDone && isToday && timing.phase === 'active'
+  const isPast = !isDone && isToday && timing.phase === 'past'
 
   return (
     <View onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}>
@@ -183,17 +192,24 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
         style={
           isActive
             ? { borderColor: color, borderWidth: 2 }
-            : isPast
+            : isPast || isDone
               ? { opacity: 0.55 }
               : undefined
         }
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
-          <View style={{ width: isActive ? 4 : 3, height: 44, borderRadius: 2, backgroundColor: isPast ? colors.textSubtle : color }} />
+          <TaskCheckbox done={isDone} onToggle={onToggleDone} />
+          <View style={{ width: isActive ? 4 : 3, height: 44, borderRadius: 2, backgroundColor: isPast || isDone ? colors.textSubtle : color }} />
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
               <Text
-                style={{ flex: 1, fontSize: fontSize.base, fontWeight: isActive ? fontWeight.bold : fontWeight.medium, color: isPast ? colors.textMuted : colors.textPrimary }}
+                style={{
+                  flex: 1,
+                  fontSize: fontSize.base,
+                  fontWeight: isActive ? fontWeight.bold : fontWeight.medium,
+                  color: isPast || isDone ? colors.textMuted : colors.textPrimary,
+                  textDecorationLine: isDone ? 'line-through' : 'none',
+                }}
                 numberOfLines={1}
               >
                 {block.label ?? typeLabel}
@@ -205,7 +221,7 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
                   </Text>
                 </View>
               )}
-              {isPast && <Ionicons name="checkmark-circle-outline" size={14} color={colors.textSubtle} />}
+
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginTop: 2 }}>

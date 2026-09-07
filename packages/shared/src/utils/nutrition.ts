@@ -1,4 +1,4 @@
-import type { Macros, MacroProgress, NutritionTarget } from '../types/nutrition'
+import type { Macros, MacroProgress, MealItem, NutritionTarget } from '../types/nutrition'
 
 // ============================
 // TDEE / BMR hesaplama
@@ -140,6 +140,68 @@ export const KCAL_PER_G = {
   fat: 9,
   fiber: 2,
 } as const
+
+// ============================
+// Kalem miktarını elle değiştirme
+// ============================
+
+/**
+ * Elle girilen gramaj: tartılmadı ama BEYAN EDİLDİ. Hattın kendi tahmininden
+ * (±%25–40) çok daha dar, tartımdan (±%2) biraz geniş.
+ */
+export const USER_SET_TOLERANCE = 0.05
+
+/**
+ * Kalemin gramajı elle değiştirildiğinde besin değerini yeniden ORANLAR.
+ *
+ * İki kural bu fonksiyonun tamamını açıklar:
+ *
+ * 1. Yeni bir tahmin ÜRETİLMEZ. Kullanıcı 200 g'ı 750 g'a çektiğinde soru
+ *    "750 g levrek kaç kalori" değil, "aynı satırın 3.75 katı ne eder"dir.
+ *    Referans satır değişmediği için oranlamak yeterli ve doğrudur.
+ *
+ * 2. Ölçekleme her zaman ORİJİNAL kalemden yapılır, bir önceki düzenlemeden
+ *    değil. Zincirleme oranlama her adımda yuvarlama hatasını taşır: "2" → "20"
+ *    → "200" yazan biri üç kez yuvarlanmış bir sayı elde eder. Çağıran taraf bu
+ *    yüzden düzenlenmemiş kalemi saklamalı ve her tuşta onu geçmelidir.
+ *
+ * Bant ±%5'e daralır ve basamak `user_memory` olur: bu artık sistemin tahmini
+ * değil, kullanıcının beyanıdır.
+ */
+export function rescaleItemToAmount(base: MealItem, nextAmount: number): MealItem {
+  if (!Number.isFinite(nextAmount) || nextAmount <= 0) return base
+
+  // Hattan gelen kalemlerde miktar gramdır (grams alanı dolu). Elle eklenen
+  // satırlarda birim 'adet'/'dilim' olabilir; orada oran amount üstünden kurulur.
+  const current = base.grams && base.grams > 0 ? base.grams : base.amount || 1
+  const factor = nextAmount / current
+
+  const calories = Math.round(base.calories * factor)
+  const round1 = (value: number) => Math.round(value * factor * 10) / 10
+
+  const scaled: MealItem = {
+    ...base,
+    amount: Math.round(nextAmount * 10) / 10,
+    calories,
+    protein: round1(base.protein),
+    carbs: round1(base.carbs),
+    fat: round1(base.fat),
+    fiber: round1(base.fiber),
+  }
+
+  // Hattan gelmeyen kalemde grams/bant alanları yok; uydurmuyoruz.
+  if (base.grams === undefined) return scaled
+
+  return {
+    ...scaled,
+    unit: base.unit === 'ml' ? 'ml' : 'g',
+    grams: Math.round(nextAmount * 10) / 10,
+    calories_min: Math.round(calories * (1 - USER_SET_TOLERANCE)),
+    calories_max: Math.round(calories * (1 + USER_SET_TOLERANCE)),
+    portion_rung: 'user_memory',
+    portion_tolerance: USER_SET_TOLERANCE,
+  }
+}
 
 /**
  * Yiyecek ifadesini alias/porsiyon hafızası anahtarına çevirir.

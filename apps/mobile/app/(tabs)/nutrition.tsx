@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
 import { recordValueMoment } from '@/src/lib/review'
-import { todayDate, useNutritionStore } from '@lifeos/shared'
+import { rescaleItemToAmount, todayDate, useNutritionStore } from '@lifeos/shared'
 import type {
   MealType,
   Meal,
@@ -17,6 +17,7 @@ import type {
 } from '@lifeos/shared'
 import {
   buildItemFromChoice,
+  createFoodItem,
   saveFoodAlias,
   savePortionMemory,
   searchFoodChoices,
@@ -106,6 +107,10 @@ export default function NutritionScreen() {
   const [mealType, setMealType] = useState<MealType>('lunch')
   const [parsing, setParsing] = useState(false)
   const [parsedItems, setParsedItems] = useState<MealItem[] | null>(null)
+  // Kalemlerin DÜZENLENMEMİŞ hâli. Gramaj her değiştiğinde oranlama buradan
+  // yapılır, bir önceki düzenlemeden değil: "2" → "20" → "200" yazan biri
+  // zincirleme oranlamada üç kez yuvarlanmış bir kalori görür.
+  const [parsedBase, setParsedBase] = useState<MealItem[]>([])
   const [parsedQuestions, setParsedQuestions] = useState<MealQuestion[]>([])
   const [itemApprovals, setItemApprovals] = useState<boolean[]>([])
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
@@ -131,10 +136,25 @@ export default function NutritionScreen() {
   const [pendingGrams, setPendingGrams] = useState('')
   const [addingChoice, setAddingChoice] = useState(false)
 
+  /**
+   * Kendi yaptığın yemeği kişisel veritabanına kaydetme.
+   *
+   * "Kafama göre bir şey pişirdim" durumunun cevabı: içine ne girdiğini zaten
+   * biliyorsun. Kalemleri normal akışla (metin ya da arama) topluyoruz, sonra
+   * ada ve porsiyon sayısına bağlayıp tek satıra dönüştürüyoruz. Böylece besin
+   * değeri yine gerçek veritabanı satırlarının TOPLAMI oluyor — model tahmini
+   * değil. Bir dahaki sefere yemeğin adını yazman yetiyor.
+   */
+  const [showSaveRecipe, setShowSaveRecipe] = useState(false)
+  const [recipeName, setRecipeName] = useState('')
+  const [recipePortions, setRecipePortions] = useState('1')
+  const [savingRecipe, setSavingRecipe] = useState(false)
+
   // Edit modal
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null)
   const [editRawInput, setEditRawInput] = useState('')
   const [editItems, setEditItems] = useState<MealItem[]>([])
+  const [editBase, setEditBase] = useState<MealItem[]>([])
   const [editApprovals, setEditApprovals] = useState<boolean[]>([])
   const [editTrace, setEditTrace] = useState<ParseTraceEntry[] | null>(null)
   const [editVersion, setEditVersion] = useState<string | null>(null)
@@ -191,7 +211,7 @@ export default function NutritionScreen() {
     setAddingChoice(true)
     try {
       const item = await buildItemFromChoice(supabase, pendingChoice, grams)
-      setParsedItems((items) => [...(items ?? []), item])
+      appendParsedItem(item)
       setItemApprovals((approvals) => [...approvals, true])
       // Seçim + gramaj kullanıcının alışkanlığı olarak hatırlanır; bir dahaki
       // sefere serbest metin hattı da aynı satırı bulur.
@@ -219,32 +239,35 @@ export default function NutritionScreen() {
   }
 
   function openEditMeal(meal: Meal) {
+    const items = meal.items ?? []
     setEditingMeal(meal)
     setEditRawInput(meal.raw_input ?? '')
-    setEditItems(meal.items ?? [])
-    setEditApprovals((meal.items ?? []).map((item) => item.disposition !== 'confirm'))
+    setEditItems(items)
+    setEditBase(items)
+    setEditApprovals(items.map((item) => item.disposition !== 'confirm'))
     setEditTrace(meal.parse_trace ?? null)
     setEditVersion(meal.parse_version ?? null)
   }
 
-  function updateEditItemAmount(index: number, amountRaw: string) {
-    const nextAmount = Number(amountRaw)
-    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return
+  /** Kaydedilmiş öğündeki bir kalemin gramajı. */
+  function updateEditItemAmount(index: number, nextAmount: number) {
+    const base = editBase[index]
+    if (!base) return
+    setEditItems((items) => items.map((item, i) => i === index ? rescaleItemToAmount(base, nextAmount) : item))
+  }
 
-    setEditItems((current) => current.map((item, itemIndex) => {
-      if (itemIndex !== index) return item
-      const baseAmount = item.amount > 0 ? item.amount : 1
-      const ratio = nextAmount / baseAmount
-      return {
-        ...item,
-        amount: nextAmount,
-        calories: Math.round(item.calories * ratio),
-        protein: Math.round(item.protein * ratio * 10) / 10,
-        carbs: Math.round(item.carbs * ratio * 10) / 10,
-        fat: Math.round(item.fat * ratio * 10) / 10,
-        fiber: Math.round(item.fiber * ratio * 10) / 10,
-      }
-    }))
+  /** Henüz kaydedilmemiş (önizlemedeki) kalemin gramajı. */
+  function updateParsedItemAmount(index: number, nextAmount: number) {
+    const base = parsedBase[index]
+    if (!base) return
+    setParsedItems((items) =>
+      (items ?? []).map((item, i) => i === index ? rescaleItemToAmount(base, nextAmount) : item))
+  }
+
+  /** Kalem listesine ekleme: taban kopya da birlikte büyür, indeksler kaymaz. */
+  function appendParsedItem(item: MealItem) {
+    setParsedItems((items) => [...(items ?? []), item])
+    setParsedBase((base) => [...base, item])
   }
 
   async function handleSaveMealEdit() {
@@ -263,6 +286,7 @@ export default function NutritionScreen() {
       })
       setEditingMeal(null)
       setEditItems([])
+      setEditBase([])
       setEditApprovals([])
       setEditTrace(null)
       setEditVersion(null)
@@ -282,6 +306,7 @@ export default function NutritionScreen() {
     try {
       const result = await callParseMeal({ raw_input: editRawInput.trim(), user_id: userId })
       setEditItems(result.items)
+      setEditBase(result.items)
       setEditApprovals(result.items.map((item) => item.disposition !== 'confirm'))
       setEditTrace(result.trace)
       setEditVersion(result.version)
@@ -299,6 +324,7 @@ export default function NutritionScreen() {
     if (!rawInput.trim() || !userId) return
     setParsing(true)
     setParsedItems(null)
+    setParsedBase([])
     setParsedQuestions([])
     setItemApprovals([])
     setFeedbackFor(null)
@@ -313,6 +339,7 @@ export default function NutritionScreen() {
     try {
       const result = await callParseMeal({ raw_input: rawInput, user_id: userId })
       setParsedItems(result.items)
+      setParsedBase(result.items)
       setParsedQuestions(result.questions)
       setItemApprovals(result.items.map((item) => item.disposition !== 'confirm'))
       setParseTrace(result.trace)
@@ -322,6 +349,77 @@ export default function NutritionScreen() {
       Alert.alert('Hata', 'Öğün analiz edilemedi')
     } finally {
       setParsing(false)
+    }
+  }
+
+  /**
+   * Şu anki kalem listesini kişisel bir yiyecek satırına dönüştürür.
+   *
+   * Gramaj şartı bilerek katı: bir kalemin ağırlığı bilinmiyorsa porsiyon
+   * ağırlığı da bilinmiyor demektir, o satırdan sonra yapılacak her ölçekleme
+   * (100 g'a çevirme, gramaj değiştirme) sessizce yanlış sonuç verir. Uydurmak
+   * yerine kullanıcıya söylüyoruz.
+   */
+  async function handleSaveRecipe() {
+    const items = parsedItems ?? []
+    if (!userId || savingRecipe || items.length === 0) return
+
+    const name = recipeName.trim()
+    if (name.length < 2) {
+      Alert.alert('İsim gerekli', 'Yemeğe bir isim ver — bir dahaki sefere bu isimle bulacaksın.')
+      return
+    }
+
+    const missingGrams = items.filter((item) => !item.grams || item.grams <= 0)
+    if (missingGrams.length > 0) {
+      Alert.alert(
+        'Gramaj eksik',
+        `Şu kalemlerin gramajı belli değil: ${missingGrams.map((i) => i.name).join(', ')}.\n\nPorsiyon ağırlığı hesaplanamadığı için tarif kaydedilemiyor. Gramajlarını yaz ve tekrar dene.`,
+      )
+      return
+    }
+
+    const portions = Math.max(0.5, parseFloat(recipePortions.replace(',', '.')) || 1)
+    const totalGrams = items.reduce((sum, item) => sum + (item.grams ?? 0), 0)
+    const servingSize = Math.round(totalGrams / portions)
+    if (servingSize <= 0) {
+      Alert.alert('Hesaplanamadı', 'Toplam ağırlık sıfır çıktı.')
+      return
+    }
+
+    const per = (pick: (item: MealItem) => number, decimals: number) => {
+      const total = items.reduce((sum, item) => sum + pick(item), 0) / portions
+      const factor = 10 ** decimals
+      return Math.round(total * factor) / factor
+    }
+
+    setSavingRecipe(true)
+    try {
+      await createFoodItem(supabase, userId, {
+        name,
+        aliases: [name.toLocaleLowerCase('tr')],
+        serving_size: servingSize,
+        serving_unit: 'g',
+        calories: Math.round(per((i) => i.calories, 0)),
+        protein: per((i) => i.protein, 1),
+        carbs: per((i) => i.carbs, 1),
+        fat: per((i) => i.fat, 1),
+        fiber: per((i) => i.fiber, 1),
+        category: null,
+      })
+
+      setShowSaveRecipe(false)
+      setRecipeName('')
+      setRecipePortions('1')
+      Alert.alert(
+        'Yemeğin kaydedildi',
+        `"${name}" · 1 porsiyon ≈ ${servingSize} g, ${Math.round(per((i) => i.calories, 0))} kcal.\n\nBundan sonra adını yazman ya da aramada bulman yeterli.`,
+      )
+    } catch (error) {
+      console.warn('Tarif kaydedilemedi:', error)
+      Alert.alert('Hata', 'Yemek kaydedilemedi. Aynı isimde bir kaydın olabilir.')
+    } finally {
+      setSavingRecipe(false)
     }
   }
 
@@ -344,6 +442,7 @@ export default function NutritionScreen() {
       })
       setRawInput('')
       setParsedItems(null)
+      setParsedBase([])
       setParsedQuestions([])
       setItemApprovals([])
       setFeedbackFor(null)
@@ -409,7 +508,7 @@ export default function NutritionScreen() {
         question.phrase,
         choice.source === 'curated' ? { food_item_id: choice.id } : { corpus_fdc_id: choice.id },
       )
-      setParsedItems((items) => [...(items ?? []), { ...item, phrase: question.phrase }])
+      appendParsedItem({ ...item, phrase: question.phrase })
       setItemApprovals((approvals) => [...approvals, true])
       setParseTrace((entries) => resolveTraceQuestion(entries, question, item))
       dismissQuestion(index, questionKey(question))
@@ -444,7 +543,7 @@ export default function NutritionScreen() {
         disposition: question.resolve_rung === 'corpus_verified' ? 'confirm' : 'auto',
         confidence: question.resolve_rung === 'corpus_verified' ? 0.6 : item.confidence,
       }
-      setParsedItems((items) => [...(items ?? []), resolvedItem])
+      appendParsedItem(resolvedItem)
       setItemApprovals((approvals) => [...approvals, resolvedItem.disposition !== 'confirm'])
       setParseTrace((entries) => resolveTraceQuestion(entries, question, resolvedItem))
       dismissQuestion(index, key)
@@ -536,6 +635,18 @@ export default function NutritionScreen() {
   const totalCarbs = dailySummary?.carbs    ?? todayMeals.reduce((s, m) => s + (m.total_carbs ?? 0), 0)
   const totalFat   = dailySummary?.fat      ?? todayMeals.reduce((s, m) => s + (m.total_fat ?? 0), 0)
   const totalFiber = dailySummary?.fiber    ?? todayMeals.reduce((s, m) => s + (m.total_fiber ?? 0), 0)
+
+  /** Tarif kaydetme kutusundaki canlı porsiyon önizlemesi. */
+  const recipePreview = (() => {
+    const items = parsedItems ?? []
+    const grams = items.reduce((sum, item) => sum + (item.grams ?? 0), 0)
+    const kcal = items.reduce((sum, item) => sum + item.calories, 0)
+    if (items.some((item) => !item.grams || item.grams <= 0)) {
+      return 'Bazı kalemlerin gramajı belli değil — porsiyon ağırlığı hesaplanamıyor.'
+    }
+    const portions = Math.max(0.5, parseFloat(recipePortions.replace(',', '.')) || 1)
+    return `1 porsiyon ≈ ${Math.round(grams / portions)} g · ${Math.round(kcal / portions)} kcal`
+  })()
 
   return (
     <ScreenBackground>
@@ -655,6 +766,7 @@ export default function NutritionScreen() {
         onClose={() => {
           setShowAdd(false)
           setParsedItems(null)
+          setParsedBase([])
           setParsedQuestions([])
           setItemApprovals([])
           setFeedbackFor(null)
@@ -791,8 +903,16 @@ export default function NutritionScreen() {
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{parsedItems.length} {t.nutr_nutrients_found}</Text>
               {parsedItems.map((item, i) => (
                 <View key={`${item.name}-${i}`} style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, flex: 1 }}>{item.name} ({item.amount}{item.unit})</Text>
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{item.name}</Text>
+                  {/* Gramaj kaydetmeden önce düzeltilebilmeli: hattın 200 g
+                      dediği levreği kaydedip sonra düzenlemeye girmek, yanlış
+                      sayıyı önce onaylatıp sonra geri almak demek. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <AmountField
+                      value={item.amount}
+                      unit={item.unit}
+                      onCommit={(amount) => updateParsedItemAmount(i, amount)}
+                    />
                     <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.calories} kcal</Text>
                   </View>
                   {item.calories_min !== undefined && item.calories_max !== undefined && (
@@ -903,6 +1023,60 @@ export default function NutritionScreen() {
                   {parsedItems.reduce((s, i) => s + i.calories, 0)} kcal
                 </Text>
               </View>
+
+              {/* Kendi yaptığın yemeği kişisel veritabanına yaz. Kalemler zaten
+                  ekranda; eksik olan tek şey ada ve porsiyona bağlamak. */}
+              {showSaveRecipe ? (
+                <View style={{ gap: spacing[3], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                      Kendi yemeğin olarak kaydet
+                    </Text>
+                    <TouchableOpacity onPress={() => setShowSaveRecipe(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Ionicons name="close" size={16} color={colors.textSubtle} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, lineHeight: 17 }}>
+                    Yukarıdaki kalemler tek bir yiyecek satırına dönüşür. Besin değeri bu
+                    kalemlerin toplamıdır, tahmin değil.
+                  </Text>
+
+                  <Input
+                    label="Yemeğin adı"
+                    value={recipeName}
+                    onChangeText={setRecipeName}
+                    placeholder="Annemin mercimekli köftesi"
+                  />
+                  <Input
+                    label="Kaç porsiyon çıktı?"
+                    value={recipePortions}
+                    onChangeText={setRecipePortions}
+                    keyboardType="decimal-pad"
+                    placeholder="1"
+                  />
+
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{recipePreview}</Text>
+
+                  <Button
+                    label={savingRecipe ? 'Kaydediliyor...' : 'Yemeği kaydet'}
+                    onPress={() => void handleSaveRecipe()}
+                    loading={savingRecipe}
+                    variant="secondary"
+                    fullWidth
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setShowSaveRecipe(true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing[2] }}
+                >
+                  <Ionicons name="bookmark-outline" size={14} color={palette.accent} />
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
+                    Bunu kendi yemeğim olarak kaydet
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -939,6 +1113,7 @@ export default function NutritionScreen() {
         onClose={() => {
           setEditingMeal(null)
           setEditItems([])
+          setEditBase([])
           setEditApprovals([])
           setEditTrace(null)
           setEditVersion(null)
@@ -971,13 +1146,11 @@ export default function NutritionScreen() {
               <View key={`${item.name}-${index}`} style={{ paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: 6 }}>{item.name}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}>
-                  <Input
-                    value={String(item.amount)}
-                    onChangeText={(val) => updateEditItemAmount(index, val)}
-                    keyboardType="decimal-pad"
-                    containerStyle={{ flex: 1 }}
+                  <AmountField
+                    value={item.amount}
+                    unit={item.unit}
+                    onCommit={(amount) => updateEditItemAmount(index, amount)}
                   />
-                  <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{item.unit}</Text>
                   <Text style={{ fontSize: fontSize.sm, color: palette.warning }}>{Math.round(item.calories)} kcal</Text>
                 </View>
                 {item.calories_min !== undefined && item.calories_max !== undefined && (
@@ -1007,6 +1180,63 @@ export default function NutritionScreen() {
         </View>
       </BottomSheet>
     </ScreenBackground>
+  )
+}
+
+/**
+ * Gramaj alanı.
+ *
+ * Kontrollü bir TextInput'a doğrudan sayı bağlamak, alanı SİLİNEMEZ yapar:
+ * kullanıcı "200"ü silmek için son karakteri sildiğinde metin "" olur,
+ * Number("") = 0 geçersiz sayılır, state güncellenmez ve alan eski değere
+ * geri sıçrar. Sonuç, ölçülen şikâyetin ta kendisi: "gramajı girip
+ * değiştiremiyorum" — mevcut sayının başına ya da sonuna rakam eklemekten
+ * başka bir şey yapılamıyordu.
+ *
+ * Çözüm, metin taslağını sayıdan AYIRMAK. Alan her tuşta yazılanı olduğu gibi
+ * tutar; yalnızca geçerli bir sayı çıktığında dışarı haber verilir. Boş alan,
+ * yarım ondalık ("7.") ve virgüllü giriş ("7,5") artık ara durum olarak
+ * yaşayabiliyor.
+ */
+function AmountField({
+  value,
+  unit,
+  onCommit,
+  disabled,
+}: {
+  value: number
+  unit: string
+  onCommit: (amount: number) => void
+  disabled?: boolean
+}) {
+  const { colors } = useTheme()
+  const [draft, setDraft] = useState(String(value))
+
+  // Dışarıdan gelen değişiklik (yeniden hesapla, öğün değişti) taslağı tazeler.
+  // Kullanıcının kendi yazdığı değer commit sonrası aynı sayıya döndüğü için
+  // bu efekt onun yazdığını ezmiyor.
+  useEffect(() => { setDraft(String(value)) }, [value])
+
+  function handleChange(text: string) {
+    setDraft(text)
+    const parsed = parseFloat(text.replace(',', '.'))
+    if (Number.isFinite(parsed) && parsed > 0) onCommit(parsed)
+  }
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <Input
+        value={draft}
+        onChangeText={handleChange}
+        onBlur={() => { if (!draft.trim()) setDraft(String(value)) }}
+        keyboardType="decimal-pad"
+        selectTextOnFocus
+        editable={disabled !== true}
+        containerStyle={{ width: 84 }}
+        style={{ textAlign: 'right', paddingVertical: 6 }}
+      />
+      <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{unit}</Text>
+    </View>
   )
 }
 

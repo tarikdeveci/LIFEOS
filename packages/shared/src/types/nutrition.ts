@@ -30,6 +30,8 @@ export type ResolveRung =
   | 'lexical'
   | 'lexical_verified'
   | 'corpus_verified'
+  | 'semantic_verified'
+  | 'ai_estimate'
   | 'choices'
   | 'unresolved'
 

@@ -22,7 +22,26 @@ import {
   type WorkoutCatalogEntry,
 } from '../_shared/ai/coach.ts'
 
-const CHAT_MODEL = 'claude-opus-4-6'
+// Sohbet modeli. parse-meal'deki NUTRITION_MODEL ile ayni desen: koda dokunmadan
+// `supabase secrets set CHAT_MODEL=...` ile degistirilebilir.
+//
+// Neden opus-4-6 degil: prompt onbellegi ONEK eslesmesidir ve onbellege girmek
+// icin onegin model bazli bir asgari uzunlugu asmasi gerekir. Opus 4.6'da bu
+// esik 4096 token; uc promptumuzun sabit onegi de (762 / 3712 / 657 token) bu
+// esigin ALTINDA kaliyor, yani o modelde cache_control eklemek sessizce hicbir
+// sey yapmaz. Opus 5'te esik 512 token ve girdi/cikti fiyati ayni ($5/$25):
+// ayni para, daha yeni model, uc rotada da calisan onbellek.
+//
+// effort 'low': bu rotalar 3-5 cumlelik JSON uretiyor. Opus 5'te dusunme
+// varsayilan olarak ACIK ve dusunme token'lari CIKTI olarak faturalaniyor;
+// sohbet rotalarinda derin dusunme ne kaliteyi olcülebilir sekilde artiriyor
+// ne de max_tokens butcesini paylasmasi guvenli.
+const CHAT_MODEL = Deno.env.get('CHAT_MODEL') ?? 'claude-opus-5'
+const CHAT_EFFORT = { effort: 'low' } as const
+
+// daily_plan ve task_priority rotalari. Sonnet 4 ($3/$15) yerine Sonnet 5
+// ($2/$10): ayni is, daha ucuz ve daha yeni model.
+const LEGACY_MODEL = Deno.env.get('LEGACY_SUGGEST_MODEL') ?? 'claude-sonnet-5'
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -291,7 +310,11 @@ serve(async (req: Request) => {
       const bufferNote = buffer_minutes && buffer_minutes > 0 ? `Görevler arasına ${buffer_minutes} dakika buffer ekle.` : ''
 
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: LEGACY_MODEL,
+        // Sonnet 5'te dusunme varsayilan olarak acik ve ayni max_tokens
+        // butcesini paylasiyor. Bu rota JSON dondurmek zorunda; butce
+        // dusunmeye giderse cikti yarim kalir ve ayrıştırma patlar.
+        thinking: { type: 'disabled' as const },
         max_tokens: 1500,
         system: `Sen LifeOS kişisel yaşam asistanısın. Kullanıcının günlük planlamasına yardımcı oluyorsun.
 ${langInstr} Kısa ve net öneriler sun. Emoji kullan.
@@ -349,7 +372,11 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
       if (!task) return json({ error: 'Görev bulunamadı' }, 404)
 
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: LEGACY_MODEL,
+        // Sonnet 5'te dusunme varsayilan olarak acik ve ayni max_tokens
+        // butcesini paylasiyor. Bu rota JSON dondurmek zorunda; butce
+        // dusunmeye giderse cikti yarim kalir ve ayrıştırma patlar.
+        thinking: { type: 'disabled' as const },
         max_tokens: 512,
         system: `Sen bir görev önceliklendirme asistanısın. WSJF (Weighted Shortest Job First) metodunu kullanıyorsun.
 Parametreler (1-5 arası):
@@ -408,7 +435,10 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
 
       const response = await client.messages.create({
         model: CHAT_MODEL,
-        max_tokens: 1500,
+        output_config: CHAT_EFFORT,
+        // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+        // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+        max_tokens: 4500,
         system: `Sen LifeOS'un kişisel fitness koçusun. ${langInstr}
 Kullanıcının antrenman geçmişine göre bugün ne yapması gerektiğini öneri olarak sun.
 Yanıtını şu JSON dizisi formatında ver — her öneri bir nesne:
@@ -521,7 +551,10 @@ Lütfen:
 
       const response = await client.messages.create({
         model: CHAT_MODEL,
-        max_tokens: 3000,
+        output_config: CHAT_EFFORT,
+        // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+        // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+        max_tokens: 9000,
         system,
         messages,
       })
@@ -593,7 +626,10 @@ Lütfen:
 
       const response = await client.messages.create({
         model: CHAT_MODEL,
-        max_tokens: 2500,
+        output_config: CHAT_EFFORT,
+        // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+        // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+        max_tokens: 7500,
         system,
         messages,
       })
@@ -679,7 +715,10 @@ Lütfen:
 
       const response = await client.messages.create({
         model: CHAT_MODEL,
-        max_tokens: 1500,
+        output_config: CHAT_EFFORT,
+        // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+        // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+        max_tokens: 4500,
         system,
         messages,
       })

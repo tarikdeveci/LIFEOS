@@ -7,6 +7,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { type PushMessage, type PushSupabase, sendExpoPush } from '../_shared/push.ts'
+import { computeStreak, streakLine } from '../_shared/streak.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -49,6 +50,36 @@ function localNow(timezone: string): { hour: number; date: string; time: string 
   }
 }
 
+/**
+ * Antrenman serisi cümlesi — sabah özetine eklenir.
+ *
+ * Sabah seçildi: "serini bozma" ancak gün önündeyken harekete geçirebilir,
+ * akşam söylendiğinde yapılacak bir şey kalmıyor. Sorgu yalnızca tarih
+ * sütununu okuyor ve bir yılla sınırlı.
+ */
+async function buildStreakSuffix(uid: string, date: string): Promise<string | null> {
+  // ASLA fırlatmaz. Seri cümlesi süs; sabah özetinin kendisi değil. Buradan
+  // çıkan bir istisna Deno.serve handler'ına kadar gider ve o koşudaki TÜM
+  // kullanıcılar bildirimsiz kalır — süs uğruna alınacak risk değil.
+  try {
+    const yearAgo = new Date(`${date}T00:00:00Z`)
+    yearAgo.setUTCFullYear(yearAgo.getUTCFullYear() - 1)
+
+    const { data, error } = await supabase
+      .from('workouts')
+      .select('date')
+      .eq('user_id', uid)
+      .eq('status', 'completed')
+      .gte('date', yearAgo.toISOString().slice(0, 10))
+
+    if (error || !data || data.length === 0) return null
+    return streakLine(computeStreak((data as Array<{ date: string }>).map((r) => r.date), date))
+  } catch (err) {
+    console.error(`streak hesaplanamadi (${uid}):`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function buildMorning(uid: string, date: string, time: string) {
   const { count } = await supabase
     .from('time_blocks')
@@ -66,11 +97,19 @@ async function buildMorning(uid: string, date: string, time: string) {
     .limit(1)
 
   const first = next?.[0]
+  const base = first
+    ? `İlk blok: ${(first.start_time as string).slice(0, 5)} — ${first.label as string}`
+    : 'Boş bir gün. Planlayıcıya göz at!'
+
+  // Seri cümlesi gövdenin sonuna ekleniyor, ayrı bir bildirim olarak değil:
+  // sabah üst üste iki push atmak bildirimlerin tamamının kapatılmasına yol
+  // açıyor. Söylenecek bir şey yoksa gövde eskisi gibi kalıyor.
+  const suffix = await buildStreakSuffix(uid, date)
+
   return {
     title: `Günaydın! Bugün ${count ?? 0} blok var`,
-    body: first
-      ? `İlk blok: ${(first.start_time as string).slice(0, 5)} — ${first.label as string}`
-      : 'Boş bir gün. Planlayıcıya göz at!',
+    body: suffix ? `${base}
+${suffix}` : base,
   }
 }
 
@@ -193,11 +232,20 @@ Deno.serve(async () => {
     // Aynı token birden fazla satırda duruyorsa aynı bildirim iki kez gitmesin
     const uniqueTokens = [...new Set(tokens.map((t) => t.token as string))]
 
-    const content = slot === 'morning'
-      ? await buildMorning(uid, date, time)
-      : slot === 'midday'
-      ? await buildMidday(uid, date, time)
-      : await buildEvening(uid, date)
+    // Tek kullanıcının içeriği hazırlanamazsa yalnızca o kullanıcı atlanır.
+    // Korumasız hâlde bir kişide çıkan istisna döngüyü kırıyor ve o saatte
+    // kimse bildirim alamıyordu; üstelik cron 500 görüp sessizce geçiyordu.
+    let content: { title: string; body: string } | null = null
+    try {
+      content = slot === 'morning'
+        ? await buildMorning(uid, date, time)
+        : slot === 'midday'
+        ? await buildMidday(uid, date, time)
+        : await buildEvening(uid, date)
+    } catch (err) {
+      console.error(`digest icerigi hazirlanamadi (${uid}/${slot}):`, err instanceof Error ? err.message : err)
+      continue
+    }
 
     // Gönderilecek bir şey yoksa kilidi de yazma — akşam özeti öğün girilmemişse
     // null döner, o slot bugün hâlâ gönderilebilir sayılmalı.

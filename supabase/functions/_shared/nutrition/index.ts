@@ -42,11 +42,22 @@ function gapReason(item: {
   portionUnknown: boolean
 }): string | null {
   if (item.portionUnknown) return 'portion_unknown'
-  if (item.rung === 'corpus_verified') return 'uncurated_food'
+  // Tahmin edilen yiyecek kuyruğun EN ÖNÜNDE olmalı: kullanıcı bir sayı gördü
+  // ve o sayıyı hiçbir insan onaylamadı. Küratörlük sırası buna göre dizilir.
+  if (item.rung === 'ai_estimate') return 'ai_estimated'
+  if (item.rung === 'corpus_verified' || item.rung === 'semantic_verified') return 'uncurated_food'
   if (item.rung === 'choices') return item.hasCorpusCandidate ? 'uncurated_food' : 'unresolved'
   if (item.rung === 'unresolved') return 'unresolved'
   return null
 }
+
+/** Bu basamaklarda model devreye girdi — "kaç kalem DB'den geldi" sayacı için. */
+const MODEL_TOUCHED_RUNGS = new Set([
+  'lexical_verified',
+  'corpus_verified',
+  'semantic_verified',
+  'ai_estimate',
+])
 
 export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMealResult> {
   const version = `${PIPELINE_VERSION}/${deps.extractor.name}`
@@ -75,6 +86,7 @@ export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMe
     aliases,
     repo: deps.repo,
     verifier: deps.verifier,
+    estimator: deps.foodEstimator ?? null,
   }
 
   // Ayırıcısı ve miktarı olmayan girdi ("yumurta beyaz peynir") çıkarıcıda tek
@@ -163,7 +175,7 @@ export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMe
     items.push(computed)
     trace[trace.length - 1]!.confidence = computed.confidence
 
-    if (resolution.rung === 'lexical_verified' || resolution.rung === 'corpus_verified') touchedModel++
+    if (MODEL_TOUCHED_RUNGS.has(resolution.rung)) touchedModel++
     else if (portion.rung === 'model_estimate') touchedModel++
     else matchedFromDb++
   }
@@ -190,7 +202,7 @@ export async function parseMeal(input: string, deps: ParseDeps): Promise<ParseMe
 
 export * from './types.ts'
 export { AUTO_THRESHOLD } from './confidence.ts'
-export { CORPUS_CONFIDENCE_CAP } from './resolve.ts'
+export { CORPUS_CONFIDENCE_CAP, ESTIMATE_CONFIDENCE_CAP, isPlausibleEstimate } from './resolve.ts'
 export { PORTION_TOLERANCE, USER_SET_TOLERANCE } from './portion.ts'
 export { createRulesExtractor, extractWithRules } from './rules.ts'
 export { normalizePhrase, parseQuantity, splitInput } from './normalize.ts'

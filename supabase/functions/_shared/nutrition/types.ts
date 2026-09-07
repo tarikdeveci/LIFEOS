@@ -95,13 +95,15 @@ export interface ExtractedItem {
 // ============================
 
 export type ResolveRung =
-  | 'user_alias'       // bu kullanıcı bu ifadeyi daha önce düzeltti
-  | 'global_alias'     // küratörlü satırın kendi alias'ı, tam eşleşme
-  | 'lexical'          // sözlüksel skor hem yüksek hem açık ara
-  | 'lexical_verified' // makul ama bariz değil → model doğruladı
-  | 'corpus_verified'  // küratörsüz korpus + model doğrulaması (tavan 0.6)
-  | 'choices'          // kabul edilecek kadar emin değil → kapalı kısa liste, kabul yok
-  | 'unresolved'       // kullanıcıya tek hedefli soru
+  | 'user_alias'        // bu kullanıcı bu ifadeyi daha önce düzeltti
+  | 'global_alias'      // küratörlü satırın kendi alias'ı, tam eşleşme
+  | 'lexical'           // sözlüksel skor hem yüksek hem açık ara
+  | 'lexical_verified'  // makul ama bariz değil → model doğruladı
+  | 'corpus_verified'   // küratörsüz korpus + model doğrulaması (tavan 0.6)
+  | 'semantic_verified' // yalnızca vektör araması buldu + model doğruladı
+  | 'ai_estimate'       // hiçbir katman tanımadı → model referans değer üretti
+  | 'choices'           // kabul edilecek kadar emin değil → kapalı kısa liste, kabul yok
+  | 'unresolved'        // kullanıcıya tek hedefli soru
 
 export interface Candidate {
   ref: FoodRef
@@ -235,13 +237,48 @@ export interface AliasTarget {
   corpus_fdc_id?: string
 }
 
+/**
+ * Vektör aramasının döndürdüğü aday. Hangi katmandan geldiği kaybolmuyor:
+ * küratörlü satır ile korpus satırının güven tavanları farklı.
+ */
+export type SemanticMatch =
+  | { kind: 'curated'; food: CuratedFood; similarity: number }
+  | { kind: 'corpus'; food: CorpusFood; similarity: number }
+
+/**
+ * Modelin bir YİYECEK için ürettiği referans değer — bir öğün kalemi değil.
+ * Aradaki fark bu sistemin can damarı: bu yapı 100 gramın besin değerini
+ * taşır, kullanıcının kaç gram yediğini DEĞİL. Gramaj yine porsiyon
+ * merdiveninden gelir, kalori yine compute.ts'te per100g × gram / 100 ile
+ * hesaplanır. Yani model bir satır önerir, öğünü yazmaz.
+ */
+export interface EstimatedFood {
+  name: string
+  name_en: string
+  per100g: Per100g
+  /** tipik tek porsiyonun gramajı; 0 → bilinmiyor, 100 g varsayılır */
+  servingGrams: number
+  /** porsiyon tek bir parçayı temsil ediyor mu (1 adet pişi) */
+  isCountable: boolean
+  category: string
+  /** tahminin neye dayandığı — "bu sayı nereden geldi" sorusunun cevabı */
+  note: string
+  confidence: number
+  /** tahmini üreten model; satırla birlikte saklanır (provenans) */
+  model: string
+}
+
 export interface FoodRepo {
   curated(): Promise<CuratedFood[]>
   searchCorpus(query: string, limit: number): Promise<CorpusFood[]>
+  /** Anlamsal aday üretimi. Gömme katmanı kapalıysa boş dizi — hata değil. */
+  searchSemantic(query: string, limit: number): Promise<SemanticMatch[]>
   corpusByIds(ids: string[]): Promise<CorpusFood[]>
   userAliases(): Promise<Map<string, AliasTarget>>
   portionMemory(): Promise<Map<string, number>>
   recordGaps(gaps: { phrase: string; reason: string }[]): Promise<void>
+  /** Tahmini yiyeceği kişisel sözlüğe yazar; yazamazsa null (hat bozulmaz). */
+  saveEstimatedFood(estimate: EstimatedFood): Promise<CuratedFood | null>
 }
 
 export interface Extractor {
@@ -266,9 +303,26 @@ export interface PortionEstimator {
   ): Promise<Interval | null>
 }
 
+export interface Embedder {
+  name: string
+  /** Sorgu metnini vektöre çevirir. Sağlayıcı erişilemezse null — hata değil. */
+  embed(text: string): Promise<number[] | null>
+}
+
+export interface FoodEstimator {
+  name: string
+  /**
+   * Hiçbir katmanın tanımadığı bir yiyecek için 100 g referans değeri üretir.
+   * Emin değilse null döndürmesi beklenir — uydurmak, sormaktan pahalıdır.
+   */
+  estimate(phrase: string, preparation: string | null): Promise<EstimatedFood | null>
+}
+
 export interface ParseDeps {
   repo: FoodRepo
   extractor: Extractor
   verifier: Verifier | null
   portionEstimator: PortionEstimator | null
+  /** null → tahmin basamağı kapalı; çözülemeyen kalem soru olarak kalır */
+  foodEstimator?: FoodEstimator | null
 }

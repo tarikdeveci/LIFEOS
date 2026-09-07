@@ -119,6 +119,38 @@ export function minutesBetween(startTime: string, endTime: string): number {
 }
 
 /**
+ * 'HH:MM' + dakika → 'HH:MM'. Gün taşarsa 23:59'da durur.
+ */
+export function addMinutesToClock(time: string, minutes: number): string {
+  const { h, m } = parseClockParts(time)
+  const total = Math.min(23 * 60 + 59, h * 60 + m + Math.max(0, minutes))
+  const hh = String(Math.floor(total / 60)).padStart(2, '0')
+  const mm = String(total % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+/**
+ * Şu anki yerel saatin YUKARI yuvarlanmış hâli ('HH:MM').
+ *
+ * Yeni blok/görev formları sabit '09:00' ile açılıyordu. Öğleden sonra bir şey
+ * planlayan herkes o alanı elle siliyordu; sabit değer neredeyse hiçbir zaman
+ * doğru cevap değil. Şimdiki saatin bir sonraki tam yarım saatine yuvarlamak
+ * vakaların çoğunda doğrudan kaydedilebilir bir değer veriyor.
+ *
+ * Tam bir dilimin üstündeysek (14:00) olduğu gibi kalır; 14:03 → 14:30.
+ * Gece geç saatte taşma olmasın diye üst sınır 23:30.
+ */
+export function nextSlotTime(now: Date = new Date(), stepMinutes = 30): string {
+  const step = Math.min(60, Math.max(5, stepMinutes))
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  const ceiled = Math.ceil(minutes / step) * step
+  const capped = Math.min(23 * 60 + 30, ceiled)
+  const hh = String(Math.floor(capped / 60)).padStart(2, '0')
+  const mm = String(capped % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+/**
  * Haftanın başlangıç tarihini döndürür (Pazartesi)
  */
 export function weekStart(date: Date = new Date()): Date {

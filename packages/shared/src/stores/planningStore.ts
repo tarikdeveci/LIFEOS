@@ -14,6 +14,7 @@ import {
   getCarryoverTasks,
 } from '../supabase/planning'
 import { todayDate } from '../utils/date'
+import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -32,6 +33,7 @@ interface PlanningState {
   addTimeBlock: (supabase: Supabase, userId: string, input: CreateTimeBlockInput) => Promise<void>
   updateTimeBlock: (supabase: Supabase, blockId: string, updates: UpdateTimeBlockInput) => Promise<void>
   removeTimeBlock: (supabase: Supabase, blockId: string) => Promise<void>
+  setBlockDone: (supabase: Supabase, blockId: string, done: boolean) => Promise<void>
   setEnergyLevel: (supabase: Supabase, level: 1 | 2 | 3 | 4 | 5) => Promise<void>
 
   // Realtime handler
@@ -85,6 +87,41 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
       timeBlocks: state.timeBlocks.filter((b) => b.id !== blockId),
     }))
     await deleteTimeBlock(supabase, blockId)
+  },
+
+  /**
+   * Bloğu tek dokunuşla tamamlandı/geri al.
+   *
+   * Bloğa bağlı bir görev varsa o da aynı anda kapanıyor: kullanıcı için bunlar
+   * tek bir iş, iki ayrı yerde işaretlemek zorunda kalmamalı. Geri alırken görev
+   * 'planned'a döner — takvimde yeri olan bir iş 'backlog'a düşerse plandan
+   * kaybolur.
+   *
+   * Yazma başarısız olursa hem blok hem görev eski hâline geri sarılır; aksi
+   * halde ekranda tamamlanmış görünen ama sunucuda duran bir blok kalıyor.
+   */
+  setBlockDone: async (supabase, blockId, done) => {
+    const previous = get().timeBlocks.find((b) => b.id === blockId)
+    if (!previous) return
+
+    const completedAt = done ? new Date().toISOString() : null
+    set((state) => ({
+      timeBlocks: state.timeBlocks.map((b) =>
+        b.id === blockId ? { ...b, completed_at: completedAt } : b,
+      ),
+    }))
+
+    try {
+      await updateTimeBlock(supabase, blockId, { completed_at: completedAt })
+      if (previous.task_id) {
+        await useTaskStore.getState().setStatus(supabase, previous.task_id, done ? 'done' : 'planned')
+      }
+    } catch (err) {
+      set((state) => ({
+        timeBlocks: state.timeBlocks.map((b) => (b.id === blockId ? previous : b)),
+      }))
+      throw err
+    }
   },
 
   setEnergyLevel: async (supabase, level) => {

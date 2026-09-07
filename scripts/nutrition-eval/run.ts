@@ -140,6 +140,11 @@ function emptyRepoParts() {
     userAliases: () => Promise.resolve(new Map()),
     portionMemory: () => Promise.resolve(new Map()),
     recordGaps: () => Promise.resolve(),
+    // Ölçülen hat DETERMİNİSTİK hat: ne semantik arama (gömme sağlayıcısına
+    // ağ çağrısı) ne de tahmin basamağı (model) devreye girer. İkisi de kapalı
+    // olduğu için bir regresyonun kuraldan mı modelden mi geldiği ayrılabilir.
+    searchSemantic: () => Promise.resolve([]),
+    saveEstimatedFood: () => Promise.resolve(null),
   }
 }
 

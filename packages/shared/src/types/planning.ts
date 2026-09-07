@@ -22,6 +22,9 @@ export interface TimeBlock {
   recurrence_days: number[] | null  // 0=Pzr..6=Cmt
   recurrence_end: string | null     // 'YYYY-MM-DD'
 
+  /** Kullanıcı bloğu bitirdiğini işaretlediği an; NULL = tamamlanmadı. */
+  completed_at: string | null
+
   created_at: string
   updated_at: string
 }
@@ -60,7 +63,13 @@ export interface CreateTimeBlockInput {
   recurrence_end?: string
 }
 
-export type UpdateTimeBlockInput = Partial<CreateTimeBlockInput>
+/**
+ * `completed_at` ayrıca yazılıyor: oluşturma girdisinde yeri yok (yeni blok
+ * hiçbir zaman tamamlanmış doğmaz) ama güncellemede tek başına gönderiliyor.
+ */
+export type UpdateTimeBlockInput = Partial<CreateTimeBlockInput> & {
+  completed_at?: string | null
+}
 
 export interface DayStats {
   total_tasks: number

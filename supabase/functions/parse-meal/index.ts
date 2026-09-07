@@ -20,9 +20,11 @@ import { createRulesExtractor, parseMeal } from '../_shared/nutrition/index.ts'
 import { createSupabaseFoodRepo, type SupabaseLike } from '../_shared/nutrition/repo.ts'
 import {
   createAnthropicExtractor,
+  createAnthropicFoodEstimator,
   createAnthropicPortionEstimator,
   createAnthropicVerifier,
 } from '../_shared/nutrition/adapters/anthropic.ts'
+import { createOpenAIEmbedder } from '../_shared/nutrition/adapters/openai.ts'
 import type { ParseMealResult } from '../_shared/nutrition/types.ts'
 
 const ALLOWED_ORIGINS = [
@@ -32,7 +34,27 @@ const ALLOWED_ORIGINS = [
   'https://www.lifeos.tr',
 ]
 
+// Ogun basina model cagrisi sayisi KALEM SAYISIYLA carpiliyor: 1 cikarici +
+// kalem basina 2'ye kadar dogrulayici + 1 gram tahmini. Dort kalemlik bir ogun
+// 10+ cagri demek. Bu yuzden model secimi rol bazli: hepsini ayni (en pahali)
+// modelde tutmak, dar kapsamli bir siniflandirma icin uretim maliyetini
+// gereksiz yere kat kat artiriyor.
+//
+// Roller ve neden bu ayrim:
+//   cikarici  — serbest Turkce metni kalemlere ayirir. Hatasi tum ogune yayilir,
+//               guclu model.
+//   dogrulayici — KAPALI listeden secim yapar; sema (enum + strict) liste disi
+//               cevabi imkansiz kilar ve yanlis satir yine guven tavanina ve
+//               kullanici onayina takilir. Riski yapisal olarak sinirli, hacmi
+//               en yuksek rol: burasi tasarrufun asil yeri.
+//   gram tahmini — "1 porsiyon" kac gram. Dar, sinirli risk.
+//   yiyecek tahmini — sozlukte HIC olmayan yiyecek icin referans satir uretir.
+//               En yuksek bahis, guclu model.
+//
+// Hepsi tek tek ortam degiskeniyle ezilebilir; NUTRITION_MODEL hepsini birden
+// ezer (eski davranisa donmek icin tek dugme).
 const DEFAULT_MODEL = 'claude-opus-4-6'
+const DEFAULT_CHEAP_MODEL = 'claude-sonnet-5'
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') ?? ''
@@ -113,10 +135,25 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
-    const repo = createSupabaseFoodRepo(supabase as unknown as SupabaseLike, user_id)
+    // Semantik arama isteğe bağlı bir katman: OPENAI_API_KEY tanımlı değilse
+    // embedder hiç kurulmaz, repo.searchSemantic boş döner ve merdiven bir aday
+    // kaynağı eksik olarak çalışır. Kurulum eksikliği çözümlemeyi düşürmemeli.
+    const embeddingKey = Deno.env.get('OPENAI_API_KEY') ?? ''
+    const embedder = embeddingKey.length > 0
+      ? createOpenAIEmbedder({ apiKey: embeddingKey })
+      : null
+
+    const repo = createSupabaseFoodRepo(
+      supabase as unknown as SupabaseLike,
+      user_id,
+      { embedder },
+    )
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
     const model = Deno.env.get('NUTRITION_MODEL') ?? DEFAULT_MODEL
+    const cheapModel = Deno.env.get('NUTRITION_MODEL')
+      ?? Deno.env.get('NUTRITION_VERIFY_MODEL')
+      ?? DEFAULT_CHEAP_MODEL
     const pro = await isProUser(authClient, user.id)
     const modelTierAvailable = pro && apiKey.length > 0
 
@@ -128,8 +165,12 @@ serve(async (req: Request) => {
         result = await parseMeal(raw_input, {
           repo,
           extractor: createAnthropicExtractor({ apiKey, model }),
-          verifier: createAnthropicVerifier({ apiKey, model }),
-          portionEstimator: createAnthropicPortionEstimator({ apiKey, model }),
+          verifier: createAnthropicVerifier({ apiKey, model: cheapModel }),
+          portionEstimator: createAnthropicPortionEstimator({ apiKey, model: cheapModel }),
+          // Son basamak: hiçbir katmanın tanımadığı yiyecek için referans
+          // değer üretir ve kişisel sözlüğe yazar. Kullanıcı onaylamadan
+          // öğüne yazılmaz (ESTIMATE_CONFIDENCE_CAP < AUTO_THRESHOLD).
+          foodEstimator: createAnthropicFoodEstimator({ apiKey, model }),
         })
       } catch (error) {
         // 23 Ağustos dersi: kredi bittiğinde beslenme tamamen ölmemeli.
@@ -144,6 +185,10 @@ serve(async (req: Request) => {
         extractor: createRulesExtractor(),
         verifier: null,
         portionEstimator: null,
+        // Tahmin basamağı doğrulayıcıyla birlikte gelir: doğrulayıcının
+        // olmadığı yerde "sözlükte gerçekten yok mu" sorusu cevaplanamaz,
+        // o yüzden tahmin de üretilmez.
+        foodEstimator: null,
       })
     }
 
@@ -155,6 +200,9 @@ serve(async (req: Request) => {
         pro,
         error: aiError,
         model: modelTierAvailable && aiError === null ? model : null,
+        // Semantik arama ayrı bir sağlayıcıya bağlı; kapalıysa kullanıcıya
+        // gösterilen soru sayısı artar ve sebebini bilmek gerekir.
+        semantic: embedder !== null,
       },
     })
   } catch (error) {

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
 import { todayDate, toDateString } from '../utils/date'
 import { normalizeFoodPhrase } from '../utils/nutrition'
+import { rankFoodMatches, scoreCorpusFood, scoreCuratedFood } from '../utils/foodSearch'
 import type {
   Meal,
   MealItem,
@@ -195,51 +196,80 @@ export async function getDailySummary(
   }
 }
 
-export async function searchFoodItems(
+/**
+ * Küratörlü satırların istemci tarafı önbelleği.
+ *
+ * Neden hepsini çekiyoruz: tablo 255 satır (kullanıcının kendi kayıtlarıyla
+ * birlikte birkaç yüz). Sunucuda `ilike` ile aday süzmek hem Türkçe katlamayı
+ * (çiğ↔cig) hem alias öneklerini kaçırıyordu, hem de sıralama yapamıyordu.
+ * Tamamını bir kez çekip yerelde skorlamak her iki sorunu da çözüyor ve her
+ * tuş vuruşundaki ağ turunu ortadan kaldırıyor.
+ */
+export interface CuratedFoodMatch {
+  id: string
+  name: string
+  name_en: string | null
+  aliases: string[] | null
+  serving_size: number
+  serving_unit: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+  is_verified: boolean
+}
+
+const CURATED_CACHE_TTL_MS = 5 * 60 * 1000
+const CURATED_COLUMNS =
+  'id, name, name_en, aliases, serving_size, serving_unit, calories, protein, carbs, fat, fiber, is_verified'
+
+let curatedCache: { userId: string; at: number; rows: CuratedFoodMatch[] } | null = null
+
+/** Kullanıcı yeni yiyecek kaydettiğinde önbellek bayatlar. */
+export function invalidateFoodCache(): void {
+  curatedCache = null
+}
+
+async function loadCuratedFoods(supabase: Supabase, userId: string): Promise<CuratedFoodMatch[]> {
+  const now = Date.now()
+  if (curatedCache && curatedCache.userId === userId && now - curatedCache.at < CURATED_CACHE_TTL_MS) {
+    return curatedCache.rows
+  }
+
+  const { data, error } = await supabase
+    .from('food_items')
+    .select(CURATED_COLUMNS)
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .limit(2000)
+
+  if (error) throw error
+  const rows = (data ?? []) as unknown as CuratedFoodMatch[]
+  curatedCache = { userId, at: now, rows }
+  return rows
+}
+
+/**
+ * Yalnızca küratörlü satırlarda sıralı arama — hızlı ekleme kutusunun kullandığı yol.
+ *
+ * `searchFoodChoices`'tan farkı korpusu hiç sormaması ve satırın tam makrolarını
+ * döndürmesi: hızlı ekleme kutusu porsiyon başına P/K/Y gösteriyor.
+ */
+export async function searchCuratedFoods(
   supabase: Supabase,
   query: string,
   userId: string,
-): Promise<FoodItem[]> {
-  const q = query.toLowerCase().trim()
-  const userFilter = `user_id.is.null,user_id.eq.${userId}`
+  limit = 8,
+): Promise<CuratedFoodMatch[]> {
+  const raw = query.trim()
+  if (raw.length < 2) return []
 
-  // Name ile arama (ilike)
-  const { data: byName } = await supabase
-    .from('food_items')
-    .select('*')
-    .or(userFilter)
-    .ilike('name', `%${q}%`)
-    .order('is_verified', { ascending: false })
-    .limit(15)
+  const rows = await loadCuratedFoods(supabase, userId)
+  const scored = rows
+    .map((food) => ({ item: food, score: scoreCuratedFood(raw, food, food.is_verified), label: food.name }))
+    .filter((entry) => entry.score > 0)
 
-  // Aliases ile arama (exact element match)
-  const { data: byAlias } = await supabase
-    .from('food_items')
-    .select('*')
-    .or(userFilter)
-    .contains('aliases', [q])
-    .order('is_verified', { ascending: false })
-    .limit(10)
-
-  // English name ile arama (ilike)
-  const { data: byNameEn } = await supabase
-    .from('food_items')
-    .select('*')
-    .or(userFilter)
-    .ilike('name_en', `%${q}%`)
-    .order('is_verified', { ascending: false })
-    .limit(10)
-
-  // Birleştir, tekrarları çıkar
-  const seen = new Set<string>()
-  const results: FoodItem[] = []
-  for (const item of [...(byName ?? []), ...(byAlias ?? []), ...(byNameEn ?? [])]) {
-    if (!seen.has(item.id)) {
-      seen.add(item.id)
-      results.push(item as unknown as FoodItem)
-    }
-  }
-  return results.slice(0, 20)
+  return rankFoodMatches(scored, limit)
 }
 
 /**
@@ -249,6 +279,9 @@ export async function searchFoodItems(
  * Model çağrısı yok — ücretsiz kullanıcı da bu yolla öğün ekleyebilir. Besin
  * değeri yine seçilen satırdan hesaplanır (`buildItemFromChoice`); bu fonksiyon
  * sadece hangi satırların seçilebilir olduğunu döndürür.
+ *
+ * Sıralama `utils/foodSearch.ts` içinde; oradaki başlık yorumunda "bal" arayınca
+ * çiğköftenin nasıl çıktığı ve neden çıkmaması gerektiği anlatılıyor.
  */
 export async function searchFoodChoices(
   supabase: Supabase,
@@ -258,44 +291,58 @@ export async function searchFoodChoices(
 ): Promise<FoodSearchResult[]> {
   const raw = query.trim()
   if (raw.length < 2) return []
+  const normalized = normalizeFoodPhrase(raw)
+  if (normalized.length < 2) return []
 
-  const curated = await searchFoodItems(supabase, raw, userId)
-  const results: FoodSearchResult[] = curated.map((food) => ({
-    id: food.id,
-    source: 'curated',
-    label: food.name,
-    // food_items değerleri porsiyon başına tutulur; 100 g'a normalize ediyoruz.
-    kcal_per_100g:
-      food.serving_size > 0 ? Math.round((food.calories / food.serving_size) * 100) : food.calories,
-    default_grams: food.serving_size > 0 ? food.serving_size : 100,
-    verified: food.is_verified,
-  }))
+  const scored: Array<{ item: FoodSearchResult; score: number; label: string }> = []
 
-  // Korpus araması `search_text` üstünden: küçük harfli, noktalamasız.
-  const corpusQuery = normalizeFoodPhrase(raw)
-  if (corpusQuery.length >= 2 && results.length < limit) {
-    const { data } = await supabase
-      .from('food_corpus')
-      .select('fdc_id, description, kcal, dataset, measure_grams')
-      .ilike('search_text', `%${corpusQuery}%`)
-      // survey (FNDDS) satırları insanların gerçekten yediği yemekler; önce onlar.
-      .order('dataset', { ascending: true })
-      .limit(limit - results.length)
+  const [curated, corpus] = await Promise.all([
+    loadCuratedFoods(supabase, userId),
+    // Korpus 14.5k satır; burada aday üretimi sunucuda kalmalı. RPC trigram
+    // kullanıyor, dolayısıyla yazım hatasını da tolere ediyor.
+    supabase.rpc('search_food_corpus', { q: normalized, lim: 30 }),
+  ])
 
-    for (const row of (data ?? []) as unknown as CorpusSearchRow[]) {
-      const measure = row.measure_grams?.find((g) => g > 0)
-      results.push({
+  for (const food of curated) {
+    const score = scoreCuratedFood(raw, food, food.is_verified)
+    if (score <= 0) continue
+    scored.push({
+      score,
+      label: food.name,
+      item: {
+        id: food.id,
+        source: 'curated',
+        label: food.name,
+        // food_items değerleri porsiyon başına tutulur; 100 g'a normalize ediyoruz.
+        kcal_per_100g:
+          food.serving_size > 0
+            ? Math.round((food.calories / food.serving_size) * 100)
+            : Math.round(food.calories),
+        default_grams: food.serving_size > 0 ? food.serving_size : 100,
+        verified: food.is_verified,
+      },
+    })
+  }
+
+  for (const row of (corpus.data ?? []) as unknown as CorpusSearchRow[]) {
+    const score = scoreCorpusFood(raw, row.description, row.dataset)
+    if (score <= 0) continue
+    const measure = row.measure_grams?.find((g) => g > 0)
+    scored.push({
+      score,
+      label: row.description,
+      item: {
         id: row.fdc_id,
         source: 'corpus',
         label: row.description,
         kcal_per_100g: Math.round(row.kcal),
         default_grams: measure && measure > 0 ? measure : 100,
         dataset: row.dataset,
-      })
-    }
+      },
+    })
   }
 
-  return results.slice(0, limit)
+  return rankFoodMatches(scored, limit)
 }
 
 export async function createFoodItem(
@@ -311,6 +358,7 @@ export async function createFoodItem(
     .single()
 
   if (error) throw error
+  invalidateFoodCache()
   return data as unknown as FoodItem
 }
 
