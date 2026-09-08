@@ -74,6 +74,27 @@ export const palette = {
 const GLASS_LIGHT = 'rgba(255,255,255,0.80)'
 const GLASS_DARK  = 'rgba(255,255,255,0.07)'
 
+// Android kart yuzeyi OPAK. Iki ayri sebep var:
+//
+// 1. expo-blur Android'de gercek bulanik uretmiyor. experimentalBlurMethod
+//    varsayilani 'none' (expo-blur/BlurView.js) ve o modda ExpoBlurView
+//    yalnizca duz yari saydam bir renk boyuyor (ExpoBlurView.kt satir 36 ->
+//    TintStyle.toBlurEffect). Yani "cam" etkisi zaten yoktu, sadece kart
+//    basina bir native view ve bir compositing katmani maliyeti vardi.
+//
+// 2. Yari saydam yuzey, ALTINDAKI her seyi iceri sizdiriyor. Olculen sonuc:
+//    kartin icinde, kenardan sabit ~31dp iceride biten ve 255 uzerinden 5
+//    birim koyu duran bir bant olusuyordu. Bant kartin boyutundan ve
+//    ekrandaki yerinden bagimsiz cikti (975x1076 ve 975x1202 kartlarda
+//    paylar birebir ayni: 90/73/81/82 piksel), yani bir padding kutusu ya da
+//    view siniri degil. Yuzey opak olunca alttan sizma yapisal olarak
+//    imkansiz hale geliyor.
+//
+// Degerler goz karari degil: bugun ekranda olculen dogru bolgenin (kart
+// ortasinin) tam rengi. Acik temada (253,254,254), koyuda (33,36,46).
+const GLASS_SOLID_LIGHT = '#FDFEFE'
+const GLASS_SOLID_DARK  = '#21242E'
+
 export const light = {
   // Backgrounds
   bg:         '#F1F3F9',
@@ -84,6 +105,7 @@ export const light = {
   glass:        'rgba(255,255,255,0.65)',
   glassFill:    GLASS_LIGHT,
   glassBorder:  GLASS_LIGHT,
+  glassSolid:   GLASS_SOLID_LIGHT,
   glassInner:   'rgba(255,255,255,0.30)',
   glassShimmer: 'rgba(255,255,255,0.50)',
 
@@ -129,6 +151,7 @@ export const dark = {
   glass:        'rgba(30,35,54,0.70)',
   glassFill:    GLASS_DARK,
   glassBorder:  GLASS_DARK,
+  glassSolid:   GLASS_SOLID_DARK,
   glassInner:   'rgba(255,255,255,0.05)',
   glassShimmer: 'rgba(255,255,255,0.08)',
 
