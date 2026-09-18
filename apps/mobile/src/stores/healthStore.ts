@@ -13,12 +13,14 @@ import {
   getHealthSettings,
   updateHealthSettings,
   upsertHealthDaily,
+  upsertWeightLog,
 } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import {
   isHealthAvailable,
   requestHealthPermissions,
   readHealthDay,
+  readHealthWeight,
 } from '@/src/utils/health'
 
 interface HealthStore {
@@ -112,6 +114,15 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
         const result = await readHealthDay(date)
         if (result.ok) {
           await upsertHealthDaily(supabase, userId, result.metrics)
+
+          const weight = await readHealthWeight(date)
+          if (weight) {
+            await upsertWeightLog(supabase, userId, {
+              date,
+              weight_kg: weight.weightKg,
+              source: result.metrics.source,
+            })
+          }
         }
       }
 

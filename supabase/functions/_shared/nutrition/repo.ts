@@ -64,6 +64,7 @@ function toCurated(row: Row): CuratedFood {
     fiber: num(row['fiber']),
     category: typeof row['category'] === 'string' ? row['category'] : null,
     is_countable: row['is_countable'] === true,
+    portion_count: typeof row['portion_count'] === 'number' ? row['portion_count'] : null,
   }
 }
 
@@ -87,7 +88,7 @@ function toCorpus(row: Row): CorpusFood {
 }
 
 const CURATED_COLUMNS =
-  'id, name, name_en, aliases, serving_size, serving_unit, calories, protein, carbs, fat, fiber, category, is_countable'
+  'id, name, name_en, aliases, serving_size, serving_unit, calories, protein, carbs, fat, fiber, category, is_countable, portion_count'
 
 const CORPUS_COLUMNS =
   'fdc_id, description, search_text, dataset, kcal, protein, carbs, fat, fiber, measure_grams'

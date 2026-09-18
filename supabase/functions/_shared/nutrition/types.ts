@@ -38,6 +38,8 @@ export interface CuratedFood {
   fiber: number
   category: string | null
   is_countable: boolean
+  /** sayılabilir satırda bir porsiyonun kaç parça olduğu; null = 1 */
+  portion_count?: number | null
 }
 
 /** food_corpus satırı — küratörsüz USDA katmanı. Makrolar 100 g başınadır. */
@@ -67,6 +69,8 @@ export interface FoodRef {
   servingUnit: string
   /** serving_size tek bir parçayı temsil ediyor mu (1 yumurta, 1 dilim ekmek) */
   isCountable: boolean
+  /** miktarsız ya da "porsiyon" ile yazılan kalemde varsayılan parça sayısı */
+  portionCount: number
   /** korpus satırının bildirdiği ev ölçüsü gramajları */
   measureGrams: number[]
 }

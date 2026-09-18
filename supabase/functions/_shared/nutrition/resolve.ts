@@ -27,6 +27,7 @@ import type {
   EstimatedFood,
   ExtractedItem,
   FoodEstimator,
+  FoodRef,
   FoodRepo,
   Resolution,
   Verifier,
@@ -80,6 +81,32 @@ async function fromAlias(target: AliasTarget, ctx: ResolveContext): Promise<Reso
     }
   }
   return null
+}
+
+/**
+ * Kullanıcı alias'ı yalnızca iki yoldan doğar: listeden bir satır seçmek (ifade
+ * o satırın KENDİ adıdır) ya da belirsiz kalem sorusunda aday seçmek. Soru ancak
+ * birebir küratörlü eşleşme yokken sorulur. Hedef satır ifadeyi kendi adı olarak
+ * taşımıyorsa ve ifade artık başka bir satırla birebir eşleşiyorsa, alias katalog
+ * o yemeği tanımadan önce eldeki en yakın satırdan seçilmiş demektir.
+ *
+ * Ölçülen hata (14 Eylül): "etli yeşil fasulye" kuru fasulye değerine
+ * ezberlenmişti; katalog büyüse de ifade her seferinde oraya gidiyordu.
+ *
+ * Hedefin kendi adı ifadeyle aynıysa alias bilinçli bir seçimdir ve korunur:
+ * kullanıcının "Menemen" adlı kişisel tarifi, global "Menemen" satırına ezilmez.
+ */
+function isStaleAlias(
+  target: AliasTarget,
+  exact: FoodRef | null,
+  phrase: string,
+  ctx: ResolveContext,
+): boolean {
+  if (!exact || !target.food_item_id || target.food_item_id === exact.id) return false
+  const food = ctx.curatedById.get(target.food_item_id)
+  if (!food) return false
+  const ownSurfaces = [food.name, food.name_en, ...(food.aliases ?? [])]
+  return !ownSurfaces.some((surface) => surface && normalizePhrase(surface) === phrase)
 }
 
 async function searchCorpusCandidates(phrase: string, repo: FoodRepo): Promise<Candidate[]> {
@@ -169,15 +196,16 @@ export async function resolveItem(
   const phrase = normalizePhrase(item.phrase)
   if (!phrase) return unresolved()
 
+  const exact = exactAliasMatch(ctx.index, phrase)
+
   // 1 — kullanıcının kendi düzeltmesi
   const aliasTarget = ctx.aliases.get(phrase)
-  if (aliasTarget) {
+  if (aliasTarget && !isStaleAlias(aliasTarget, exact, phrase, ctx)) {
     const resolved = await fromAlias(aliasTarget, ctx)
     if (resolved) return resolved
   }
 
   // 2 — küratörlü satırın kendi adı/alias'ıyla birebir eşleşme
-  const exact = exactAliasMatch(ctx.index, phrase)
   if (exact) {
     return { rung: 'global_alias', ref: exact, confidence: 0.9, margin: 1, candidates: [] }
   }

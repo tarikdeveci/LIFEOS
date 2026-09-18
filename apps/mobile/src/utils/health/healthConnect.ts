@@ -23,6 +23,7 @@ const READ_PERMISSIONS: Permission[] = [
   { accessType: 'read', recordType: 'SleepSession' },
   { accessType: 'read', recordType: 'RestingHeartRate' },
   { accessType: 'read', recordType: 'HeartRate' },
+  { accessType: 'read', recordType: 'Weight' },
 ]
 
 const SDK_AVAILABLE = 3
@@ -182,6 +183,31 @@ async function countExercise(hc: HealthConnectModule, timeRangeFilter: TimeRange
   try {
     const { records } = await hc.readRecords('ExerciseSession', { timeRangeFilter })
     return records?.length ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Gün içindeki en güncel tartı kaydı — bkz. healthkit.ts'teki aynı isimli fonksiyonun gerekçesi. */
+export async function readWeight(range: DayRange): Promise<{ weightKg: number } | null> {
+  const hc = await loadHealthConnect()
+  if (!hc) return null
+  if (!(await ensureInitialized(hc))) return null
+
+  try {
+    const { records } = await hc.readRecords('Weight', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: range.start.toISOString(),
+        endTime: range.end.toISOString(),
+      },
+      ascendingOrder: false,
+      pageSize: 1,
+    })
+    const latest = records[0] as { weight?: { inKilograms?: number } } | undefined
+    const kg = latest?.weight?.inKilograms
+    if (kg == null || !Number.isFinite(kg)) return null
+    return { weightKg: Math.round(kg * 100) / 100 }
   } catch {
     return null
   }

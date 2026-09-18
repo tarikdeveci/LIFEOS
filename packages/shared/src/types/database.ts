@@ -39,6 +39,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          created_at: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_plans: {
         Row: {
           ai_suggestions: Json | null
@@ -72,10 +105,38 @@ export type Database = {
         }
         Relationships: []
       }
+      events: {
+        Row: {
+          created_at: string
+          id: number
+          name: string
+          platform: string | null
+          props: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          name: string
+          platform?: string | null
+          props?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          name?: string
+          platform?: string | null
+          props?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       exercises: {
         Row: {
           category: string
           created_at: string | null
+          equipment: string[] | null
           id: string
           instructions: string | null
           is_bodyweight: boolean | null
@@ -89,6 +150,7 @@ export type Database = {
         Insert: {
           category?: string
           created_at?: string | null
+          equipment?: string[] | null
           id?: string
           instructions?: string | null
           is_bodyweight?: boolean | null
@@ -102,6 +164,7 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string | null
+          equipment?: string[] | null
           id?: string
           instructions?: string | null
           is_bodyweight?: boolean | null
@@ -121,63 +184,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      food_items: {
-        Row: {
-          aliases: string[] | null
-          calories: number
-          carbs: number
-          category: string | null
-          created_at: string | null
-          fat: number
-          fiber: number
-          id: string
-          is_countable: boolean
-          is_verified: boolean | null
-          name: string
-          name_en: string | null
-          protein: number
-          serving_size: number
-          serving_unit: string
-          user_id: string | null
-        }
-        Insert: {
-          aliases?: string[] | null
-          calories: number
-          carbs?: number
-          category?: string | null
-          created_at?: string | null
-          fat?: number
-          fiber?: number
-          id?: string
-          is_countable?: boolean
-          is_verified?: boolean | null
-          name: string
-          name_en?: string | null
-          protein?: number
-          serving_size?: number
-          serving_unit?: string
-          user_id?: string | null
-        }
-        Update: {
-          aliases?: string[] | null
-          calories?: number
-          carbs?: number
-          category?: string | null
-          created_at?: string | null
-          fat?: number
-          fiber?: number
-          id?: string
-          is_countable?: boolean
-          is_verified?: boolean | null
-          name?: string
-          name_en?: string | null
-          protein?: number
-          serving_size?: number
-          serving_unit?: string
-          user_id?: string | null
-        }
-        Relationships: []
       }
       food_aliases: {
         Row: {
@@ -226,10 +232,13 @@ export type Database = {
       }
       food_corpus: {
         Row: {
+          barcode: string | null
           carbs: number
           created_at: string | null
           dataset: string
           description: string
+          embedding: string | null
+          embedding_text: string | null
           fat: number
           fdc_id: string
           fiber: number
@@ -239,10 +248,13 @@ export type Database = {
           search_text: string
         }
         Insert: {
+          barcode?: string | null
           carbs?: number
           created_at?: string | null
           dataset: string
           description: string
+          embedding?: string | null
+          embedding_text?: string | null
           fat?: number
           fdc_id: string
           fiber?: number
@@ -252,10 +264,13 @@ export type Database = {
           search_text: string
         }
         Update: {
+          barcode?: string | null
           carbs?: number
           created_at?: string | null
           dataset?: string
           description?: string
+          embedding?: string | null
+          embedding_text?: string | null
           fat?: number
           fdc_id?: string
           fiber?: number
@@ -290,6 +305,180 @@ export type Database = {
           phrase?: string
           reason?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      food_items: {
+        Row: {
+          aliases: string[] | null
+          calories: number
+          carbs: number
+          category: string | null
+          confirmed_at: string | null
+          created_at: string | null
+          embedding: string | null
+          embedding_text: string | null
+          estimate_confidence: number | null
+          estimate_model: string | null
+          estimate_note: string | null
+          estimated_at: string | null
+          fat: number
+          fiber: number
+          id: string
+          is_countable: boolean
+          is_verified: boolean | null
+          name: string
+          name_en: string | null
+          portion_count: number | null
+          protein: number
+          serving_size: number
+          serving_unit: string
+          source: string
+          user_id: string | null
+        }
+        Insert: {
+          aliases?: string[] | null
+          calories: number
+          carbs?: number
+          category?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          embedding?: string | null
+          embedding_text?: string | null
+          estimate_confidence?: number | null
+          estimate_model?: string | null
+          estimate_note?: string | null
+          estimated_at?: string | null
+          fat?: number
+          fiber?: number
+          id?: string
+          is_countable?: boolean
+          is_verified?: boolean | null
+          name: string
+          name_en?: string | null
+          portion_count?: number | null
+          protein?: number
+          serving_size?: number
+          serving_unit?: string
+          source?: string
+          user_id?: string | null
+        }
+        Update: {
+          aliases?: string[] | null
+          calories?: number
+          carbs?: number
+          category?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          embedding?: string | null
+          embedding_text?: string | null
+          estimate_confidence?: number | null
+          estimate_model?: string | null
+          estimate_note?: string | null
+          estimated_at?: string | null
+          fat?: number
+          fiber?: number
+          id?: string
+          is_countable?: boolean
+          is_verified?: boolean | null
+          name?: string
+          name_en?: string | null
+          portion_count?: number | null
+          protein?: number
+          serving_size?: number
+          serving_unit?: string
+          source?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      health_daily: {
+        Row: {
+          active_energy_kcal: number | null
+          avg_heart_rate: number | null
+          created_at: string
+          date: string
+          distance_m: number | null
+          exercise_minutes: number | null
+          resting_heart_rate: number | null
+          sleep_end: string | null
+          sleep_minutes: number | null
+          sleep_start: string | null
+          source: string
+          steps: number | null
+          synced_at: string
+          updated_at: string
+          user_id: string
+          workout_count: number | null
+        }
+        Insert: {
+          active_energy_kcal?: number | null
+          avg_heart_rate?: number | null
+          created_at?: string
+          date: string
+          distance_m?: number | null
+          exercise_minutes?: number | null
+          resting_heart_rate?: number | null
+          sleep_end?: string | null
+          sleep_minutes?: number | null
+          sleep_start?: string | null
+          source: string
+          steps?: number | null
+          synced_at?: string
+          updated_at?: string
+          user_id: string
+          workout_count?: number | null
+        }
+        Update: {
+          active_energy_kcal?: number | null
+          avg_heart_rate?: number | null
+          created_at?: string
+          date?: string
+          distance_m?: number | null
+          exercise_minutes?: number | null
+          resting_heart_rate?: number | null
+          sleep_end?: string | null
+          sleep_minutes?: number | null
+          sleep_start?: string | null
+          source?: string
+          steps?: number | null
+          synced_at?: string
+          updated_at?: string
+          user_id?: string
+          workout_count?: number | null
+        }
+        Relationships: []
+      }
+      health_settings: {
+        Row: {
+          add_active_energy_to_budget: boolean
+          created_at: string
+          enabled: boolean
+          last_synced_at: string | null
+          sleep_goal_minutes: number
+          step_goal: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          add_active_energy_to_budget?: boolean
+          created_at?: string
+          enabled?: boolean
+          last_synced_at?: string | null
+          sleep_goal_minutes?: number
+          step_goal?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          add_active_energy_to_budget?: boolean
+          created_at?: string
+          enabled?: boolean
+          last_synced_at?: string | null
+          sleep_goal_minutes?: number
+          step_goal?: number
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -345,6 +534,93 @@ export type Database = {
           total_fat?: number | null
           total_fiber?: number | null
           total_protein?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      muscle_groups: {
+        Row: {
+          body_region: string
+          id: number
+          name: string
+          name_en: string
+        }
+        Insert: {
+          body_region: string
+          id?: number
+          name: string
+          name_en: string
+        }
+        Update: {
+          body_region?: string
+          id?: number
+          name?: string
+          name_en?: string
+        }
+        Relationships: []
+      }
+      notification_log: {
+        Row: {
+          kind: string
+          local_date: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          kind: string
+          local_date: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          kind?: string
+          local_date?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          block_reminder_enabled: boolean | null
+          block_reminder_minutes: number | null
+          created_at: string | null
+          digest_enabled: boolean | null
+          digest_hour: number | null
+          evening_enabled: boolean | null
+          evening_hour: number | null
+          midday_enabled: boolean | null
+          midday_hour: number | null
+          timezone: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          block_reminder_enabled?: boolean | null
+          block_reminder_minutes?: number | null
+          created_at?: string | null
+          digest_enabled?: boolean | null
+          digest_hour?: number | null
+          evening_enabled?: boolean | null
+          evening_hour?: number | null
+          midday_enabled?: boolean | null
+          midday_hour?: number | null
+          timezone?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          block_reminder_enabled?: boolean | null
+          block_reminder_minutes?: number | null
+          created_at?: string | null
+          digest_enabled?: boolean | null
+          digest_hour?: number | null
+          evening_enabled?: boolean | null
+          evening_hour?: number | null
+          midday_enabled?: boolean | null
+          midday_hour?: number | null
+          timezone?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -420,93 +696,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      portion_memory: {
-        Row: {
-          grams: number
-          phrase: string
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          grams: number
-          phrase: string
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          grams?: number
-          phrase?: string
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      muscle_groups: {
-        Row: {
-          body_region: string
-          id: number
-          name: string
-          name_en: string
-        }
-        Insert: {
-          body_region: string
-          id?: number
-          name: string
-          name_en: string
-        }
-        Update: {
-          body_region?: string
-          id?: number
-          name?: string
-          name_en?: string
-        }
-        Relationships: []
-      }
-      notification_preferences: {
-        Row: {
-          block_reminder_enabled: boolean | null
-          block_reminder_minutes: number | null
-          created_at: string | null
-          digest_enabled: boolean | null
-          digest_hour: number | null
-          evening_enabled: boolean | null
-          evening_hour: number | null
-          midday_enabled: boolean | null
-          midday_hour: number | null
-          timezone: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          block_reminder_enabled?: boolean | null
-          block_reminder_minutes?: number | null
-          created_at?: string | null
-          digest_enabled?: boolean | null
-          digest_hour?: number | null
-          evening_enabled?: boolean | null
-          evening_hour?: number | null
-          midday_enabled?: boolean | null
-          midday_hour?: number | null
-          timezone?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          block_reminder_enabled?: boolean | null
-          block_reminder_minutes?: number | null
-          created_at?: string | null
-          digest_enabled?: boolean | null
-          digest_hour?: number | null
-          evening_enabled?: boolean | null
-          evening_hour?: number | null
-          midday_enabled?: boolean | null
-          midday_hour?: number | null
-          timezone?: string | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
       }
       nutrition_targets: {
         Row: {
@@ -611,6 +800,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      portion_memory: {
+        Row: {
+          grams: number
+          phrase: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          grams: number
+          phrase: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          grams?: number
+          phrase?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       program_days: {
         Row: {
@@ -998,6 +1208,36 @@ export type Database = {
         }
         Relationships: []
       }
+      weight_logs: {
+        Row: {
+          created_at: string
+          date: string
+          source: string
+          synced_at: string
+          updated_at: string
+          user_id: string
+          weight_kg: number
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          source: string
+          synced_at?: string
+          updated_at?: string
+          user_id: string
+          weight_kg: number
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          source?: string
+          synced_at?: string
+          updated_at?: string
+          user_id?: string
+          weight_kg?: number
+        }
+        Relationships: []
+      }
       workout_programs: {
         Row: {
           created_at: string | null
@@ -1135,10 +1375,36 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_estimated_food: {
+        Args: { p_food_id: string }
+        Returns: undefined
+      }
       is_pro_user: { Args: { check_user_id: string }; Returns: boolean }
+      is_valid_timezone: { Args: { tz: string }; Returns: boolean }
       record_food_gap: {
         Args: { p_phrase: string; p_reason: string; p_user: string }
         Returns: undefined
+      }
+      save_estimated_food: {
+        Args: {
+          p_aliases: string[]
+          p_calories: number
+          p_carbs: number
+          p_category: string
+          p_confidence: number
+          p_fat: number
+          p_fiber: number
+          p_is_countable: boolean
+          p_model: string
+          p_name: string
+          p_name_en: string
+          p_note: string
+          p_protein: number
+          p_serving_size: number
+          p_serving_unit: string
+          p_user: string
+        }
+        Returns: string
       }
       search_food_corpus: {
         Args: { lim?: number; q: string }
@@ -1156,6 +1422,35 @@ export type Database = {
           search_text: string
         }[]
       }
+      search_food_semantic: {
+        Args: {
+          lim?: number
+          min_similarity?: number
+          p_user?: string
+          query_embedding: string
+        }
+        Returns: {
+          aliases: string[]
+          calories: number
+          carbs: number
+          category: string
+          dataset: string
+          fat: number
+          fiber: number
+          id: string
+          is_countable: boolean
+          measure_grams: number[]
+          name: string
+          name_en: string
+          protein: number
+          serving_size: number
+          serving_unit: string
+          similarity: number
+          source: string
+        }[]
+      }
+      set_food_corpus_embeddings: { Args: { p_rows: Json }; Returns: number }
+      set_food_item_embeddings: { Args: { p_rows: Json }; Returns: number }
     }
     Enums: {
       block_type: "task" | "routine" | "break" | "focus" | "meal" | "workout"
@@ -1188,12 +1483,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1217,11 +1512,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1242,11 +1537,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1267,11 +1562,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1284,11 +1579,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

@@ -1,7 +1,9 @@
 // Supabase workout query fonksiyonları
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { toDateString } from '../utils/date'
+import { EQUIPMENT } from '../constants/equipment'
 import type {
+  EquipmentKey,
   Exercise,
   MuscleGroup,
   Workout,
@@ -15,6 +17,13 @@ import type {
   ProgramDay,
   ProgramExercise,
 } from '../types/workout'
+// Kas dengesi/toparlanma/güç hesaplarının girdi tipleri — "antrenman-analiz"
+// tarafından packages/shared/src/utils/{muscles,progression}.ts içinde
+// tanımlanıyor. Bu dosyalar henüz yoksa aşağıdaki iki fonksiyon type-check'te
+// hata verir; veri katmanı sözleşmeye göre önceden yazılmıştır.
+import type { LoggedSet, MuscleExercise } from '../utils/muscles'
+import type { ExerciseSession } from '../utils/progression'
+import { matchExerciseName, type ParsedImportWorkout } from '../utils/csvImport'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -350,4 +359,280 @@ export async function createProgramExercise(
 export async function deleteProgramExercise(supabase: Supabase, exerciseRowId: string): Promise<void> {
   const { error } = await supabase.from('program_exercises').delete().eq('id', exerciseRowId)
   if (error) throw error
+}
+
+/**
+ * Programdaki bir hareketi başka bir hareketle değiştirir (ekipmana uyarlama).
+ * Set, tekrar ve dinlenme satırda kalır.
+ */
+export async function updateProgramExercise(
+  supabase: Supabase,
+  exerciseRowId: string,
+  updates: { exercise_id?: string; notes?: string | null },
+): Promise<void> {
+  const { error } = await supabase.from('program_exercises').update(updates).eq('id', exerciseRowId)
+  if (error) throw error
+}
+
+// -------------------------------------------------------
+// Ekipman tercihi
+// -------------------------------------------------------
+
+const EQUIPMENT_PREFERENCE_KEY = 'workout_equipment'
+
+/**
+ * Tercih değerini doğrular. Dizi değilse null (seçim yapılmamış); bilinmeyen
+ * anahtarlar atılır, sözlükten çıkarılmış bir alet eski kayıtta kalmış olabilir.
+ */
+export function parseEquipmentPreference(value: unknown): EquipmentKey[] | null {
+  if (!Array.isArray(value)) return null
+  return value.filter((key): key is EquipmentKey => typeof key === 'string' && key in EQUIPMENT)
+}
+
+/**
+ * Kullanıcının erişebildiği aletler. null = hiç seçim yapmamış (uygulama tam
+ * salon varsayar), [] = yalnızca vücut ağırlığı.
+ */
+export async function getWorkoutEquipment(supabase: Supabase, userId: string): Promise<EquipmentKey[] | null> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('preferences')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  const prefs = (data?.preferences ?? {}) as Record<string, unknown>
+  return parseEquipmentPreference(prefs[EQUIPMENT_PREFERENCE_KEY])
+}
+
+/**
+ * Ekipman seçimini yazar. preferences JSONB'sinde tema, hedef, e-posta
+ * saatleri gibi ilgisiz alanlar da var: okuma-birleştirme-yazma şart, düz
+ * update onları siler (bkz. updateEmailPreferences).
+ */
+export async function saveWorkoutEquipment(
+  supabase: Supabase,
+  userId: string,
+  equipment: readonly EquipmentKey[],
+): Promise<EquipmentKey[]> {
+  const { data, error: readError } = await supabase
+    .from('user_profiles')
+    .select('preferences')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (readError) throw readError
+
+  const current = (data?.preferences ?? {}) as Record<string, unknown>
+  const next = parseEquipmentPreference([...new Set(equipment)]) ?? []
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({ preferences: { ...current, [EQUIPMENT_PREFERENCE_KEY]: next } })
+    .eq('id', userId)
+
+  if (error) throw error
+  return next
+}
+
+// -------------------------------------------------------
+// Kas analitiği (denge / toparlanma / güç)
+// -------------------------------------------------------
+
+/**
+ * Kullanıcının belirtilen tarihten itibaren loglanmış tüm setleri, kas
+ * grubu bilgisiyle birlikte. Kas dengesi/toparlanma/güç hesapları için tek
+ * girdi kaynağı bu — hangi setin hangi kasa ait olduğunu bilmek için
+ * exercise + muscle_group join'i gerekiyor.
+ *
+ * Bir set, egzersizi silinmiş bir harekete aitse (join null dönerse)
+ * atlanır: kas grubu bilinmeyen bir seti dengeye katmak yanlış sonuç verir.
+ */
+export async function getRecentLoggedSets(
+  supabase: Supabase,
+  userId: string,
+  sinceDate: string,
+): Promise<LoggedSet[]> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select(`
+      date,
+      workout_sets(
+        reps, weight_kg, duration_seconds, completed,
+        exercise:exercises(id, muscle_group_id, secondary_muscle_group_ids, is_bodyweight, category, muscle_group:muscle_groups(*))
+      )
+    `)
+    .eq('user_id', userId)
+    .gte('date', sinceDate)
+
+  if (error) throw error
+
+  interface SetRow {
+    reps: number | null
+    weight_kg: number | null
+    duration_seconds: number | null
+    completed: boolean
+    exercise: MuscleExercise | null
+  }
+  interface Row {
+    date: string
+    workout_sets: SetRow[] | null
+  }
+
+  return (data as unknown as Row[]).flatMap((workout) =>
+    (workout.workout_sets ?? [])
+      .filter((s): s is SetRow & { exercise: MuscleExercise } => s.exercise !== null)
+      .map((s) => ({
+        exercise: s.exercise,
+        performedAt: workout.date,
+        reps: s.reps,
+        weight_kg: s.weight_kg,
+        duration_seconds: s.duration_seconds,
+        completed: s.completed,
+      })),
+  )
+}
+
+/**
+ * Bir hareketin geçmiş seansları, antrenman bazında gruplanmış ve en yeni
+ * başta. `nextTarget` bir önceki SEANSA bakar, tek bir sete değil.
+ *
+ * Nested filtreleme (workout_sets.exercise_id üzerinden PostgREST embed
+ * filtresi) kırılgan olduğu için en son antrenmanlar çekilip hareketin
+ * geçtiği seanslar burada süzülüyor — aynı desen getWorkoutByDate'te de var.
+ * excludeWorkoutId, bugün devam eden antrenmanı hariç tutar: o an aynı
+ * harekete set eklerken öneri kendi kendine kıyaslamasın.
+ */
+export async function getExerciseSessions(
+  supabase: Supabase,
+  userId: string,
+  exerciseId: string,
+  limit = 8,
+  excludeWorkoutId?: string,
+): Promise<ExerciseSession[]> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('id, date, workout_sets(reps, weight_kg, completed, exercise_id, set_number)')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .order('set_number', { referencedTable: 'workout_sets', ascending: true })
+    .limit(120)
+
+  if (error) throw error
+
+  interface Row {
+    id: string
+    date: string
+    workout_sets: Array<{
+      reps: number | null
+      weight_kg: number | null
+      completed: boolean
+      exercise_id: string
+      set_number: number
+    }> | null
+  }
+
+  const sessions: ExerciseSession[] = []
+  for (const row of data as Row[]) {
+    if (excludeWorkoutId && row.id === excludeWorkoutId) continue
+    const sets = (row.workout_sets ?? []).filter((s) => s.exercise_id === exerciseId)
+    if (sets.length === 0) continue
+    sessions.push({
+      performedAt: row.date,
+      sets: sets.map((s) => ({ reps: s.reps, weight_kg: s.weight_kg, completed: s.completed })),
+    })
+    if (sessions.length >= limit) break
+  }
+  return sessions
+}
+
+// -------------------------------------------------------
+// CSV içe aktarma (Strong / Hevy / FitNotes) — bkz. utils/csvImport.ts
+// -------------------------------------------------------
+
+/** Ayrıştırılmış antrenmanlardaki egzersiz adlarını kullanıcının kendi kaydı olarak oluşturur, isim → id döner. */
+async function createMissingExercises(
+  supabase: Supabase,
+  userId: string,
+  names: readonly string[],
+): Promise<Map<string, string>> {
+  if (names.length === 0) return new Map()
+  const { data, error } = await supabase
+    .from('exercises')
+    .insert(names.map((name) => ({ user_id: userId, name, category: 'strength' as const })))
+    .select('id, name')
+  if (error) throw error
+
+  const map = new Map<string, string>()
+  for (const row of data as Array<{ id: string; name: string }>) map.set(row.name, row.id)
+  return map
+}
+
+export interface CsvImportOutcome {
+  workoutsImported: number
+  setsImported: number
+  exercisesCreated: number
+}
+
+/**
+ * Ayrıştırılmış CSV antrenmanlarını yazar: her antrenman için `workouts` satırı
+ * ve setleri, eşleşmeyen egzersizler kullanıcının kendi kaydı olarak oluşturulup
+ * (bkz. migration 048'in "user_id NOT NULL dokunulmaz" kuralı — bu satırlar zaten
+ * o kullanıcıya ait, kataloğu etkilemez). Yazılanlar `status: 'completed'` ile
+ * geçmiş kayıt sayılır; kullanıcı bunları canlı bir seans gibi düzenleyebilir.
+ */
+export async function importCsvWorkouts(
+  supabase: Supabase,
+  userId: string,
+  workouts: readonly ParsedImportWorkout[],
+  catalogExercises: readonly Exercise[],
+): Promise<CsvImportOutcome> {
+  const allNames = new Set<string>()
+  for (const w of workouts) for (const s of w.sets) allNames.add(s.exerciseName)
+
+  const resolved = new Map<string, string>() // exerciseName -> exercise_id
+  const missing: string[] = []
+  for (const name of allNames) {
+    const match = matchExerciseName(name, catalogExercises)
+    if (match) resolved.set(name, match.id)
+    else missing.push(name)
+  }
+
+  const created = await createMissingExercises(supabase, userId, missing)
+  for (const [name, id] of created) resolved.set(name, id)
+
+  let setsImported = 0
+  for (const w of workouts) {
+    const workout = await createWorkout(supabase, userId, {
+      date: w.date,
+      name: w.name,
+      status: 'completed' as WorkoutStatus,
+    })
+    if (w.durationMinutes !== null) {
+      await updateWorkout(supabase, workout.id, { duration_minutes: w.durationMinutes })
+    }
+
+    const inputs: CreateWorkoutSetInput[] = []
+    for (const s of w.sets) {
+      const exerciseId = resolved.get(s.exerciseName)
+      if (!exerciseId) continue
+      const input: CreateWorkoutSetInput = {
+        workout_id: workout.id,
+        exercise_id: exerciseId,
+        set_number: s.setNumber,
+        ...(s.reps !== null ? { reps: s.reps } : {}),
+        ...(s.weightKg !== null ? { weight_kg: s.weightKg } : {}),
+        ...(s.durationSeconds !== null ? { duration_seconds: s.durationSeconds } : {}),
+        ...(s.distanceM !== null ? { distance_m: s.distanceM } : {}),
+      }
+      inputs.push(input)
+    }
+
+    if (inputs.length > 0) {
+      await addWorkoutSets(supabase, inputs)
+      await supabase.from('workout_sets').update({ completed: true }).eq('workout_id', workout.id)
+      setsImported += inputs.length
+    }
+  }
+
+  return { workoutsImported: workouts.length, setsImported, exercisesCreated: created.size }
 }

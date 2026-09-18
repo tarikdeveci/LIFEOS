@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/src/lib/supabase'
 import { isPro as storeEntitlementActive } from '@/src/utils/purchases'
@@ -92,16 +92,26 @@ export function SubscriptionProvider({ children }: Props) {
     setState(stateFromRow(data as Record<string, unknown> | null))
   }, [userId, refreshStore])
 
+  // Son bilinen kullanici. Ayni kullanici icin gelen TOKEN_REFRESHED / SIGNED_IN
+  // olaylari userId'yi degistirmez, dolayisiyla `refresh` yeniden kosmaz. Eskiden
+  // bu olaylarda isLoading true'ya cekiliyor ve bir daha false olmuyordu: token
+  // yenilenince (yaklasik saatte bir) Pro kapili dugmeler sessizce kilitleniyordu
+  // (koc dugmesi "Sohbet" gorunup basilmiyordu).
+  const knownUserId = useRef<string | null | undefined>(undefined)
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null)
-      if (!data.user) setState({ ...FREE_STATE, isLoading: false })
-    })
+    const applyUser = (nextId: string | null) => {
+      if (nextId === knownUserId.current) return
+      knownUserId.current = nextId
+      setUserId(nextId)
+      if (!nextId) setState({ ...FREE_STATE, isLoading: false })
+      else setState((current) => ({ ...current, isLoading: true }))
+    }
+
+    supabase.auth.getUser().then(({ data }) => applyUser(data.user?.id ?? null))
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user.id ?? null)
-      if (!session?.user) setState({ ...FREE_STATE, isLoading: false })
-      else setState((current) => ({ ...current, isLoading: true }))
+      applyUser(session?.user.id ?? null)
     })
 
     return () => subscription.unsubscribe()

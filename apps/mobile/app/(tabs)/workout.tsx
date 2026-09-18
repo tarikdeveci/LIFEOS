@@ -4,13 +4,17 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import {
-  WEEKDAY_ORDER, WEEKDAY_SHORT, estimateWorkoutMinutes, localDateTime,
-  nextSlotTime, planProgram, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan } from '@lifeos/shared'
+  EQUIPMENT, WEEKDAY_ORDER, WEEKDAY_SHORT, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
+  missingEquipment, nextSlotTime, planProgram, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, EquipmentKey, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { StreakCard } from '@/src/components/workout/StreakCard'
+import { EquipmentCard, ProgramFitBadge } from '@/src/components/workout/EquipmentCard'
+import { EquipmentSheet } from '@/src/components/workout/EquipmentSheet'
+import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
+import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -69,6 +73,16 @@ const COACH_SUGGESTIONS = [
   'Kalça ve bacak odaklı program',
 ]
 
+/** Ekipman seçilmişse koç bunu zaten sunucu tarafında zorluyor; öneri yalnızca kullanıcıya bunu hatırlatır. */
+const COACH_EQUIPMENT_SUGGESTION = 'Ekipmanıma göre program yaz'
+
+/** Kütüphane satırındaki eksik alet notu: "Alet yok: Kablo istasyonu". */
+function missingLabel(exercise: Exercise, owned: EquipmentKey[] | null): string | null {
+  const missing = missingEquipment(exercise, owned)
+  if (missing.length === 0) return null
+  return `Alet yok: ${missing.map((key) => EQUIPMENT[key].label).join(', ')}`
+}
+
 /** Türkçe aksan ve noktalama farklarını eleyerek egzersiz adı eşler. */
 function foldName(value: string): string {
   return value
@@ -83,7 +97,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -148,14 +162,21 @@ export default function WorkoutScreen() {
   // Library search + filter
   const [search, setSearch] = useState('')
   const [filterGroupId, setFilterGroupId] = useState<number | null>(null)
+  /** Kütüphane ve hareket seçicide yalnızca eldeki aletlerle yapılabilenler. */
+  const [onlyAvailable, setOnlyAvailable] = useState(false)
+
+  // Ekipman seçimi ve programı ekipmana uyarlama
+  const [showEquipment, setShowEquipment] = useState(false)
+  const [adaptingProgram, setAdaptingProgram] = useState(false)
+  const [applyingAdaptation, setApplyingAdaptation] = useState(false)
 
   // toISOString() UTC verir; UTC+3'te gece yarısı–03:00 arası bir önceki günü
   // gösteriyordu. todayDate() yerel takvim günü.
   const todayStr = todayDate()
 
   const load = useCallback(async (uid: string) => {
-    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchStreak(supabase, uid), fetchPrograms(supabase, uid)])
-  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms])
+    await Promise.all([fetchLibrary(supabase), fetchTodayWorkout(supabase, uid, todayStr), fetchHistory(supabase, uid), fetchStreak(supabase, uid), fetchPrograms(supabase, uid), fetchEquipment(supabase, uid), fetchAnalytics(supabase, uid)])
+  }, [todayStr, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -282,6 +303,29 @@ export default function WorkoutScreen() {
       await removeExerciseFromDay(supabase, userId, rowId)
     } catch {
       Alert.alert('Hata', 'Hareket silinemedi')
+    }
+  }
+
+  /**
+   * Uyarlama planını yazar. Şablonda kopya açılır ve detay sayfası kopyaya
+   * geçer; kendi programında satırlar yerinde değişir ve sayfa aynı kalır.
+   */
+  async function handleApplyAdaptation(adaptation: ProgramAdaptation) {
+    if (!userId || !liveProgram || applyingAdaptation) return
+    setApplyingAdaptation(true)
+    try {
+      const result = await applyProgramAdaptation(supabase, userId, liveProgram, adaptation)
+      setAdaptingProgram(false)
+      setExpandedDay(null)
+      setSelectedProgram(result)
+      Alert.alert(
+        liveProgram.user_id === null ? 'Kopya oluşturuldu' : 'Program güncellendi',
+        `${adaptation.replaced} hareket değişti, ${adaptation.dropped} hareket çıkarıldı.`,
+      )
+    } catch (err) {
+      Alert.alert('Hata', err instanceof Error ? err.message : 'Program uyarlanamadı')
+    } finally {
+      setApplyingAdaptation(false)
     }
   }
 
@@ -549,11 +593,37 @@ export default function WorkoutScreen() {
     }
   }
 
+  // Süzgeç yalnızca seçim varken anlamlı; seçim yokken hiçbir şey elenmez.
+  const equipmentFilterActive = equipment !== null && onlyAvailable
+
   const filteredExercises = exercises.filter((e) => {
     const matchSearch = !search || e.name.toLowerCase().includes(search.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(search.toLowerCase())
     const matchGroup = !filterGroupId || e.muscle_group_id === filterGroupId
-    return matchSearch && matchGroup
+    const matchEquipment = !equipmentFilterActive || isExerciseAvailable(e, equipment)
+    return matchSearch && matchGroup && matchEquipment
   })
+
+  const pickerExercises = exercises
+    .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
+    .filter((e) => !equipmentFilterActive || isExerciseAvailable(e, equipment))
+    .slice(0, 25)
+
+  // Seçim varken uygun programlar üste: kullanıcı önce yapabileceğini görsün.
+  const fitByProgram = new Map<string, ProgramEquipmentFit | null>(
+    programs.map((p) => [p.id, equipment === null ? null : programEquipmentFit(p, equipment)]),
+  )
+  const sortedPrograms = equipment === null
+    ? programs
+    : [...programs].sort((a, b) => {
+        const fa = fitByProgram.get(a.id); const fb = fitByProgram.get(b.id)
+        const ua = fa ? fa.total - fa.available : 0
+        const ub = fb ? fb.total - fb.available : 0
+        return ua - ub
+      })
+  const liveFit = liveProgram && equipment !== null ? programEquipmentFit(liveProgram, equipment) : null
+  const canAdapt = liveFit !== null && liveFit.available < liveFit.total
+
+  const coachSuggestions = equipment === null ? COACH_SUGGESTIONS : [COACH_EQUIPMENT_SUGGESTION, ...COACH_SUGGESTIONS]
 
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - new Date(w.date).getTime()) / 86400000
@@ -603,6 +673,13 @@ export default function WorkoutScreen() {
         {tab === 'today' && (
           <>
             <StreakCard streak={streak} />
+
+            <MuscleInsightsCard
+              sets={analyticsSets}
+              muscleGroups={muscleGroups}
+              loading={!analyticsLoaded}
+              error={analyticsError}
+            />
 
             <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
               <StatCard label={t.work_this_week} value={weekCount} color={palette.workout} />
@@ -779,6 +856,12 @@ export default function WorkoutScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing[4] }}>
               <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+                {equipment !== null && (
+                  <TouchableOpacity onPress={() => setOnlyAvailable((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: onlyAvailable ? palette.success : colors.glassInner, borderWidth: 1, borderColor: onlyAvailable ? palette.success : colors.border }}>
+                    <Ionicons name="construct-outline" size={12} color={onlyAvailable ? '#fff' : colors.textMuted} />
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: onlyAvailable ? '#fff' : colors.textMuted }}>Ekipmanıma uygun</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={() => setFilterGroupId(null)} style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: !filterGroupId ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: !filterGroupId ? palette.accent : colors.border }}>
                   <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: !filterGroupId ? '#fff' : colors.textMuted }}>Tümü ({exercises.length})</Text>
                 </TouchableOpacity>
@@ -804,6 +887,9 @@ export default function WorkoutScreen() {
                         {ex.muscle_group?.name ?? '—'} · {CATEGORY_LABELS[ex.category] ?? ex.category}
                         {ex.is_bodyweight ? ' · Vücut ağırlığı' : ''}
                       </Text>
+                      {missingLabel(ex, equipment) && (
+                        <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: 2 }}>{missingLabel(ex, equipment)}</Text>
+                      )}
                     </View>
                     {todayWorkout && todayWorkout.status !== 'completed' && (
                       <TouchableOpacity
@@ -828,6 +914,7 @@ export default function WorkoutScreen() {
         {/* ── PROGRAMS ── */}
         {tab === 'programs' && (
           <View style={{ gap: spacing[3] }}>
+            <EquipmentCard equipment={equipment} loaded={equipmentLoaded} onEdit={() => setShowEquipment(true)} />
             <TouchableOpacity
               onPress={() => { setNewProgramName(''); setNewDayNames(['Gün 1', 'Gün 2', 'Gün 3']); setShowCreateProgram(true) }}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.accent }}
@@ -842,11 +929,12 @@ export default function WorkoutScreen() {
                 <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>Migration'ları çalıştırdıktan sonra programlar görünecek</Text>
               </View>
             ) : (
-              programs.map((prog) => (
+              sortedPrograms.map((prog) => (
                 <ProgramCard
                   key={prog.id}
                   program={prog}
                   splitLabel={SPLIT_LABELS[prog.split_type] ?? prog.split_type}
+                  fit={fitByProgram.get(prog.id) ?? null}
                   onStart={() => { setSelectedProgram(prog); setExpandedDay(null) }}
                 />
               ))
@@ -931,11 +1019,20 @@ export default function WorkoutScreen() {
       */}
       <BottomSheet
         visible={!!selectedProgram}
-        onClose={() => { setSelectedProgram(null); setExpandedDay(null); setAddingToDay(null); setPlanningProgram(false) }}
-        title={addingToDay ? 'Hareket Ekle' : planningProgram ? 'Programı Planla' : (liveProgram ? liveProgram.name : 'Program')}
+        onClose={() => { setSelectedProgram(null); setExpandedDay(null); setAddingToDay(null); setPlanningProgram(false); setAdaptingProgram(false) }}
+        title={addingToDay ? 'Hareket Ekle' : planningProgram ? 'Programı Planla' : adaptingProgram ? 'Ekipmanıma Uyarla' : (liveProgram ? liveProgram.name : 'Program')}
         scrollable
       >
-        {addingToDay ? (
+        {adaptingProgram && liveProgram && equipment !== null ? (
+          <AdaptProgramView
+            program={liveProgram}
+            catalog={exercises}
+            owned={equipment}
+            applying={applyingAdaptation}
+            onBack={() => setAdaptingProgram(false)}
+            onApply={(adaptation) => void handleApplyAdaptation(adaptation)}
+          />
+        ) : addingToDay ? (
           <View style={{ gap: spacing[3] }}>
             <TouchableOpacity
               onPress={() => { setAddingToDay(null); setPickerSearch('') }}
@@ -950,10 +1047,15 @@ export default function WorkoutScreen() {
               <Input label="Tekrar" value={pickerReps} onChangeText={setPickerReps} keyboardType="number-pad" containerStyle={{ flex: 1 }} />
             </View>
             <Input label="Egzersiz ara" value={pickerSearch} onChangeText={setPickerSearch} placeholder="hip thrust, squat..." />
-            {exercises
-              .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
-              .slice(0, 25)
-              .map((e) => (
+            {equipment !== null && (
+              <TouchableOpacity onPress={() => setOnlyAvailable((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+                <Ionicons name={onlyAvailable ? 'checkbox' : 'square-outline'} size={18} color={onlyAvailable ? palette.workout : colors.textSubtle} />
+                <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>Sadece ekipmanıma uygun hareketler</Text>
+              </TouchableOpacity>
+            )}
+            {pickerExercises.map((e) => {
+              const missing = missingLabel(e, equipment)
+              return (
                 <TouchableOpacity
                   key={e.id}
                   onPress={() => void handleAddExerciseToDay(e.id)}
@@ -963,8 +1065,15 @@ export default function WorkoutScreen() {
                   {e.muscle_group?.name && (
                     <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{e.muscle_group.name}</Text>
                   )}
+                  {missing && (
+                    <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: 2 }}>{missing}</Text>
+                  )}
                 </TouchableOpacity>
-              ))}
+              )
+            })}
+            {pickerExercises.length === 0 && (
+              <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>Sonuç yok</Text>
+            )}
           </View>
         ) : planningProgram ? (
           <View style={{ gap: spacing[3] }}>
@@ -1038,6 +1147,20 @@ export default function WorkoutScreen() {
           </View>
         ) : (
         <View style={{ gap: spacing[2] }}>
+          {/* Yalnızca gerçekten uyarlanacak bir şey varken: tamamı uygun
+              programda düğme göstermek "bir şey eksik mi" diye düşündürür. */}
+          {canAdapt && liveFit && (
+            <TouchableOpacity
+              onPress={() => setAdaptingProgram(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.warning}15`, borderWidth: 1, borderColor: `${palette.warning}40` }}
+            >
+              <Ionicons name="construct-outline" size={16} color={palette.warning} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.warning }}>
+                Ekipmanıma uyarla ({liveFit.total - liveFit.available} hareket için alet yok)
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {activeDays(liveProgram).length > 0 && (
             <TouchableOpacity
               onPress={openProgramPlanner}
@@ -1090,6 +1213,9 @@ export default function WorkoutScreen() {
                         <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary }} numberOfLines={1}>
                           {ex.exercise?.name ?? 'Egzersiz'}
                         </Text>
+                        {ex.exercise && !isExerciseAvailable(ex.exercise, equipment) && (
+                          <Ionicons name="alert-circle-outline" size={14} color={palette.warning} />
+                        )}
                         <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
                           {ex.sets}×{ex.reps ?? '—'} · {ex.rest_seconds}sn
                         </Text>
@@ -1209,14 +1335,21 @@ export default function WorkoutScreen() {
         onSend={() => { void sendCoach(coachInput) }}
         placeholder="Program iste veya soru sor..."
         emptyHint="Geçmiş antrenmanlarına ve egzersiz kütüphanene bakarak konuşuyorum. İstersen haftalık program yazıp tek dokunuşla kaydedebilirim."
-        suggestions={COACH_SUGGESTIONS}
+        suggestions={coachSuggestions}
         onSuggestionPress={(text) => { void sendCoach(text) }}
+      />
+
+      <EquipmentSheet
+        visible={showEquipment}
+        onClose={() => setShowEquipment(false)}
+        initial={equipment}
+        onSave={async (keys) => { if (userId) await saveEquipment(supabase, userId, keys) }}
       />
     </ScreenBackground>
   )
 }
 
-function ProgramCard({ program, splitLabel, onStart }: { program: WorkoutProgram; splitLabel: string; onStart: () => void }) {
+function ProgramCard({ program, splitLabel, fit, onStart }: { program: WorkoutProgram; splitLabel: string; fit: ProgramEquipmentFit | null; onStart: () => void }) {
   const { colors } = useTheme()
   const isGlobal = program.user_id === null
   const dayCount = program.days?.filter((d) => !d.is_rest).length ?? program.frequency_per_week
@@ -1237,13 +1370,14 @@ function ProgramCard({ program, splitLabel, onStart }: { program: WorkoutProgram
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[3] }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[3] }}>
         <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${palette.workout}12`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
           <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.medium }}>{splitLabel}</Text>
         </View>
         <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{dayCount} gün/hafta</Text>
         </View>
+        <ProgramFitBadge fit={fit} />
       </View>
 
       {/* Day names */}

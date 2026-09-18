@@ -51,12 +51,25 @@ export async function getMealsByDate(
   return data as unknown as Meal[]
 }
 
+/**
+ * Kalemsiz öğün 0 kcal olarak kaydedilir ve kullanıcı öğünü girdiğini sanır.
+ * Eski mobil sürüm bu yoldan 12 boş öğün yazdı; DB'de de meals_items_not_empty
+ * kısıtı var, bu kontrol aynı hatayı ağa gitmeden ve okunur bir mesajla yakalar.
+ */
+export class EmptyMealError extends Error {
+  constructor() {
+    super('Öğünde kaydedilecek yiyecek yok.')
+    this.name = 'EmptyMealError'
+  }
+}
+
 export async function createMeal(
   supabase: Supabase,
   userId: string,
   input: CreateMealInput,
 ): Promise<Meal> {
   const items = input.items ?? []
+  if (items.length === 0) throw new EmptyMealError()
   const totals = calculateTotals(items)
   const serializedItems = items.map((item) => ({ ...item })) as unknown as import('../types/database').Json
   const resolvedDate = input.date ?? todayDate()
@@ -106,6 +119,7 @@ export async function updateMeal(
   }
 
   if (updates.items) {
+    if (updates.items.length === 0) throw new EmptyMealError()
     const totals = calculateTotals(updates.items)
     payload.items = updates.items.map((item) => ({ ...item })) as unknown as import('../types/database').Json
     payload.total_calories = totals.total_calories

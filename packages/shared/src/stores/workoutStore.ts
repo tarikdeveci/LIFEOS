@@ -11,6 +11,7 @@ import type {
   WorkoutProgram,
   CreateProgramInput,
   AiProgramPlan,
+  EquipmentKey,
 } from '../types/workout'
 import {
   getMuscleGroups,
@@ -31,9 +32,24 @@ import {
   createProgramDay,
   createProgramExercise,
   deleteProgramExercise,
+  updateProgramExercise,
+  getWorkoutEquipment,
+  saveWorkoutEquipment,
+  getRecentLoggedSets,
 } from '../supabase/workouts'
 import { todayDate, shiftIsoDate } from '../utils/date'
+import { adaptationToPlan, replacementNote, type ProgramAdaptation } from '../utils/equipment'
 import { computeWorkoutStreak, type WorkoutStreak } from '../utils/streak'
+// Kas dengesi/toparlanma/güç hesaplarının ham girdi tipi — "antrenman-analiz"
+// tarafından packages/shared/src/utils/muscles.ts içinde tanımlanıyor.
+import type { LoggedSet } from '../utils/muscles'
+
+/**
+ * Kas analitiği penceresi: son 30 gün. Denge (haftalık), toparlanma ve güç
+ * hesaplarının üçü de aynı ham veri setini paylaşıyor; pencere farkı çağıran
+ * tarafta (`setsInWindow`) uygulanıyor.
+ */
+const ANALYTICS_WINDOW_DAYS = 30
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -57,11 +73,30 @@ interface WorkoutState {
   /** Haftalık antrenman serisi — `fetchStreak` doldurur. */
   streak: WorkoutStreak
 
+  /**
+   * Son 30 günün loglanmış setleri — kas dengesi/toparlanma/güç kartının
+   * girdisi. `analyticsLoaded` ilk okuma bitene kadar false: boş dizi ile
+   * henüz okunmadı arasındaki farkı arayüz bilmeli (bkz. `equipmentLoaded`).
+   */
+  analyticsSets: LoggedSet[]
+  analyticsLoaded: boolean
+  analyticsError: string | null
+
+  /**
+   * Erişilebilen aletler. null = seçim yapılmamış (tam salon varsayılır),
+   * [] = yalnızca vücut ağırlığı. `equipmentLoaded` ilk okuma bitene kadar
+   * false: seçim yok ile henüz okunmadı arasındaki farkı arayüz bilmeli.
+   */
+  equipment: EquipmentKey[] | null
+  equipmentLoaded: boolean
+
   // Actions
   fetchLibrary: (supabase: Supabase, options?: { force?: boolean }) => Promise<void>
   fetchTodayWorkout: (supabase: Supabase, userId: string, date?: string) => Promise<void>
   fetchHistory: (supabase: Supabase, userId: string) => Promise<void>
   fetchStreak: (supabase: Supabase, userId: string) => Promise<void>
+  /** Son 30 günün loglanmış setlerini tazeler. Kendi hatasını yutar, `analyticsError`'a yazar. */
+  fetchAnalytics: (supabase: Supabase, userId: string) => Promise<void>
   startWorkout: (supabase: Supabase, userId: string, input: CreateWorkoutInput) => Promise<Workout>
   finishWorkout: (supabase: Supabase, workoutId: string, durationMinutes: number, caloriesBurned?: number) => Promise<void>
   skipWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
@@ -89,6 +124,19 @@ interface WorkoutState {
    * 5 gün x 6 hareket = 30 gereksiz sorgu. Burada tek tazeleme yeterli.
    */
   createProgramFromPlan: (supabase: Supabase, userId: string, plan: AiProgramPlan) => Promise<WorkoutProgram>
+  fetchEquipment: (supabase: Supabase, userId: string) => Promise<void>
+  saveEquipment: (supabase: Supabase, userId: string, equipment: EquipmentKey[]) => Promise<void>
+  /**
+   * `planProgramAdaptation` çıktısını yazar. Hazır şablon herkesin ortak
+   * satırı olduğu için kopyası açılır; kullanıcının kendi programı yerinde
+   * değişir. Dönen program, uyarlanmış hali (kopya ya da aynısı).
+   */
+  applyProgramAdaptation: (
+    supabase: Supabase,
+    userId: string,
+    program: WorkoutProgram,
+    adaptation: ProgramAdaptation,
+  ) => Promise<WorkoutProgram>
 
   // Realtime
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
@@ -105,6 +153,11 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   error: null,
   programs: [],
   streak: { weeks: 0, thisWeekCount: 0, bestWeeks: 0, lastWorkoutDate: null, atRisk: false },
+  analyticsSets: [],
+  analyticsLoaded: false,
+  analyticsError: null,
+  equipment: null,
+  equipmentLoaded: false,
 
   fetchLibrary: async (supabase, options) => {
     if (!options?.force && get().exercises.length > 0) return  // cache
@@ -150,6 +203,17 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ streak: computeWorkoutStreak(dates, today) })
   },
 
+  fetchAnalytics: async (supabase, userId) => {
+    set({ analyticsError: null })
+    try {
+      const since = shiftIsoDate(todayDate(), -(ANALYTICS_WINDOW_DAYS - 1))
+      const analyticsSets = await getRecentLoggedSets(supabase, userId, since)
+      set({ analyticsSets, analyticsLoaded: true })
+    } catch (err) {
+      set({ analyticsError: err instanceof Error ? err.message : 'Hata', analyticsLoaded: true })
+    }
+  },
+
   fetchHistory: async (supabase, userId) => {
     const { data } = await supabase
       .from('workouts')
@@ -171,6 +235,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set((state) => ({
       todayWorkout: state.todayWorkout?.id === workoutId ? updated : state.todayWorkout,
     }))
+    // Antrenman biterken kas analitiğini tazele: bitmiş seansın setleri
+    // denge/toparlanma/güç kartına hemen yansısın. fetchAnalytics kendi
+    // hatasını yutuyor, burada beklemeye değmez.
+    void get().fetchAnalytics(supabase, updated.user_id)
   },
 
   skipWorkout: async (supabase, workoutId) => {
@@ -317,6 +385,50 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     await get().fetchPrograms(supabase, userId)
     return program
+  },
+
+  fetchEquipment: async (supabase, userId) => {
+    try {
+      const equipment = await getWorkoutEquipment(supabase, userId)
+      set({ equipment, equipmentLoaded: true })
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Hata', equipmentLoaded: true })
+    }
+  },
+
+  saveEquipment: async (supabase, userId, equipment) => {
+    const previous = get().equipment
+    set({ equipment })
+    try {
+      const saved = await saveWorkoutEquipment(supabase, userId, equipment)
+      set({ equipment: saved })
+    } catch (err) {
+      set({ equipment: previous })
+      throw err
+    }
+  },
+
+  applyProgramAdaptation: async (supabase, userId, program, adaptation) => {
+    if (program.user_id === null) {
+      const plan = adaptationToPlan(program, adaptation)
+      if (plan.days.every((day) => day.exercises.length === 0)) throw new Error('Bu programın hiçbir hareketi eldeki aletlerle yapılamıyor.')
+      return get().createProgramFromPlan(supabase, userId, plan)
+    }
+
+    for (const { steps } of adaptation.days) {
+      for (const step of steps) {
+        if (step.kind === 'replace') {
+          await updateProgramExercise(supabase, step.row.id, {
+            exercise_id: step.substitute.id,
+            notes: replacementNote(step.row),
+          })
+        } else if (step.kind === 'drop') {
+          await deleteProgramExercise(supabase, step.row.id)
+        }
+      }
+    }
+    await get().fetchPrograms(supabase, userId)
+    return get().programs.find((p) => p.id === program.id) ?? program
   },
 
   handleRealtimeEvent: (event) => {

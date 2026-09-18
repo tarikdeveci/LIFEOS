@@ -6,6 +6,8 @@
 // sözleşmeyi paylaşır: model her zaman tek bir JSON nesnesi döndürür ve
 // `message` alanı kullanıcıya gösterilecek metindir.
 
+import { equipmentSummary, equipmentTag } from './equipment.ts'
+
 export type Lang = 'tr' | 'en'
 
 export interface ChatTurn {
@@ -308,11 +310,15 @@ export interface WorkoutCatalogEntry {
   category?: string
   muscle_group?: string
   is_bodyweight?: boolean
+  /** Gereken aletler. undefined = eski istemci listesi, null = bilinmiyor. */
+  equipment?: string[] | null
 }
 
 export interface WorkoutCoachInput {
   lang: Lang
   catalog: WorkoutCatalogEntry[]
+  /** Kullanıcının erişebildiği aletler; null = seçim yapmamış. */
+  equipment: string[] | null
   /** Son antrenmanlar — "dün bacak yaptım" bilgisini modele vermek için. */
   recentWorkouts: { date: string; name: string; muscle_groups: string[] }[]
   existingProgramNames: string[]
@@ -336,7 +342,11 @@ export function buildWorkoutCoachPrompt(input: WorkoutCoachInput): {
   for (const entry of input.catalog) {
     const key = entry.muscle_group ?? 'Diğer'
     const list = byGroup.get(key) ?? []
-    list.push(entry.is_bodyweight ? `${entry.name} (vücut ağırlığı)` : entry.name)
+    list.push(
+      entry.equipment !== undefined
+        ? `${entry.name}${equipmentTag(entry.equipment)}`
+        : entry.is_bodyweight ? `${entry.name} (vücut ağırlığı)` : entry.name,
+    )
     byGroup.set(key, list)
   }
   const catalogSummary = [...byGroup.entries()]
@@ -376,6 +386,16 @@ PROGRAM YAZMA KURALLARI
    message içinde varsayımını tek cümleyle belirt ve programı yine de ver.
 8. Sakatlık, ağrı veya tıbbi bir durumdan söz edilirse program yazmadan önce
    hekim/fizyoterapist önerisi olduğunu belirt.
+9. Katalogda köşeli parantez hareketin gerektirdiği aletlerin hepsidir
+   ([barbell+bench] ikisini birden ister, [alet yok] hiçbir şey istemez).
+   Kullanıcının aletleri aşağıda yazıyorsa YALNIZCA onlarla yapılabilen
+   hareketleri seç; etiketsiz hareketlerin aleti bilinmiyor, onlardan kaçın.
+   Eksik alet yüzünden bir kas grubu zayıf kalıyorsa message içinde tek
+   cümleyle söyle (örneğin barfiks barı olmadan sırt için seçenek az).
+   Kayıtlı aletler dışındaki hareketler programa kaydedilemez. Kullanıcı
+   mesajında farklı bir durum söylerse ("salona yazıldım") programı yine
+   kayıtlı aletlerle yaz ve message içinde ekipman seçimini Antrenman
+   ekranındaki Ekipmanım kartından güncelleyebileceğini söyle.
 
 YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekleme:
 {
@@ -398,6 +418,8 @@ Program üretmiyorsan "program": null ver. message alanı her durumda dolu olmal
 
   // ── DEĞİŞKEN: kullanıcının kendi durumu ──
   const volatile = `KULLANICININ DURUMU
+${equipmentSummary(input.equipment)}
+
 Son antrenmanlar:
 ${recentSummary}
 

@@ -455,6 +455,63 @@
       "probes": "Türkçe enjeksiyon işareti",
       "expect": [],
       "expect_questions": 0
+    },
+    {
+      "id": "R01",
+      "stratum": "adversarial",
+      "input": "26g protein tozu",
+      "probes": "prod 14 Eylül: 'protein tozu' alias'ı iki satırda vardı, eşitlikte 300 ml içecek satırı kazandı (26 g = 10 kcal)",
+      "expect": [{ "food": "Protein tozu (whey)", "grams": 26 }]
+    },
+    {
+      "id": "R02",
+      "stratum": "ambiguous",
+      "input": "etli yeşil fasülye",
+      "probes": "prod 14 Eylül: katalogda taze fasulye yoktu, kuru fasulye değerine gidiyordu",
+      "expect": [{ "food": "Etli taze fasulye", "servings": 1 }]
+    },
+    {
+      "id": "R03",
+      "stratum": "ambiguous",
+      "input": "etli yeşil fasulye",
+      "probes": "katalog büyümeden önce soruda seçilmiş eski kullanıcı alias'ı, artık birebir küratörlü eşleşmeyi ezmemeli",
+      "user_aliases": { "etli yesil fasulye": "Fasulye (haşlanmış)" },
+      "expect": [{ "food": "Etli taze fasulye", "servings": 1 }]
+    },
+    {
+      "id": "R04",
+      "stratum": "ambiguous",
+      "input": "pastırmalı tost",
+      "probes": "prod 14 Eylül: kaşarlı tosta gidiyordu, pastırma sayılmıyordu",
+      "expect": [{ "food": "Pastırmalı tost", "servings": 1 }]
+    },
+    {
+      "id": "R05",
+      "stratum": "ambiguous",
+      "input": "dolma ve yoğurt",
+      "probes": "prod 15 Eylül wrong_macros: miktarsız dolma tek biber (120 g) sayılıyordu; bir tabak birkaç adettir (portion_count)",
+      "expect": [{ "food": "Biber dolması (etli)", "grams": 360 }, { "food": "Yoğurt (tam yağlı)", "servings": 1 }]
+    },
+    {
+      "id": "R06",
+      "stratum": "ambiguous",
+      "input": "1 porsiyon yaprak sarma",
+      "probes": "porsiyon birimi, porsiyonu tek parça olan sayılabilir gıdada adet × portion_count olmalı",
+      "expect": [{ "food": "Yaprak sarma", "grams": 150 }]
+    },
+    {
+      "id": "R07",
+      "stratum": "easy",
+      "input": "5 sarma",
+      "probes": "portion_count adet çarpımını bozmamalı: 5 adet = 5 × parça",
+      "expect": [{ "food": "Yaprak sarma", "servings": 5 }]
+    },
+    {
+      "id": "R08",
+      "stratum": "easy",
+      "input": "zeytinyağlı taze fasulye",
+      "probes": "yeni küratörlü satır",
+      "expect": [{ "food": "Zeytinyağlı taze fasulye", "servings": 1 }]
     }
   ]
 }

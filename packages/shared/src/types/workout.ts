@@ -5,6 +5,19 @@ export type WorkoutCategory = 'strength' | 'cardio' | 'flexibility' | 'mobility'
 export type WorkoutStatus = 'planned' | 'in_progress' | 'completed' | 'skipped'
 export type BodyRegion = 'upper' | 'lower' | 'core' | 'full'
 
+/**
+ * Bir hareketin gerektirebileceği aletler. Etiketler, gruplar ve hazır
+ * kurulumlar constants/equipment.ts'de; veritabanındaki CHECK kısıtı
+ * 047_exercise_equipment.sql'de. Anahtar eklerken üçü birlikte değişmeli.
+ */
+export type EquipmentKey =
+  | 'dumbbell' | 'barbell' | 'trap_bar' | 'kettlebell'
+  | 'bench' | 'squat_rack' | 'pullup_bar' | 'dip_station' | 'hyperextension'
+  | 'cable' | 'smith_machine' | 'leg_press' | 'hack_squat' | 'leg_machines' | 'upper_machines'
+  | 'resistance_band' | 'ab_wheel' | 'jump_rope'
+  | 'treadmill' | 'exercise_bike' | 'elliptical' | 'rowing_machine'
+  | 'pool' | 'bicycle'
+
 export interface MuscleGroup {
   id: number
   name: string        // "Göğüs"
@@ -24,6 +37,11 @@ export interface Exercise {
   instructions: string | null
   met_value: number | null
   is_bodyweight: boolean
+  /**
+   * Gereken aletlerin HEPSİ. null = bilinmiyor (süzmede elenmez), [] = alet
+   * gerekmez. Opsiyonel: 047 uygulanmamış bir veritabanında alan hiç gelmez.
+   */
+  equipment?: EquipmentKey[] | null
   created_at: string
 }
 

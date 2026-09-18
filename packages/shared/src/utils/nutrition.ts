@@ -30,7 +30,12 @@ const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
 }
 
 /**
- * Harris-Benedict formülü ile BMR hesapla, aktivite çarpanı ile TDEE üret
+ * Mifflin-St Jeor formülü ile BMR hesapla, aktivite çarpanı ile TDEE üret.
+ *
+ * Harris-Benedict (1919) yerine Mifflin-St Jeor (1990): günümüz nüfusunda
+ * dinlenme harcamasını daha az sapmayla tahmin ettiği gösterilen denklem.
+ * Bu yine de yalnızca başlangıç tahmini; gerçek harcama kilo değişiminden
+ * öğrenilir (bkz. adaptiveTdee.ts).
  */
 export function calculateTDEE(params: {
   weight_kg: number
@@ -41,10 +46,8 @@ export function calculateTDEE(params: {
 }): number {
   const { weight_kg, height_cm, age, gender, activity_level } = params
 
-  const bmr =
-    gender === 'male'
-      ? 88.362 + 13.397 * weight_kg + 4.799 * height_cm - 5.677 * age
-      : 447.593 + 9.247 * weight_kg + 3.098 * height_cm - 4.33 * age
+  const base = 10 * weight_kg + 6.25 * height_cm - 5 * age
+  const bmr = gender === 'male' ? base + 5 : base - 161
 
   return Math.round(bmr * ACTIVITY_MULTIPLIERS[activity_level])
 }

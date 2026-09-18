@@ -22,6 +22,7 @@ const READ_IDENTIFIERS = [
   'HKQuantityTypeIdentifierHeartRate',
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKWorkoutTypeIdentifier',
+  'HKQuantityTypeIdentifierBodyMass',
 ] as const
 
 type HealthKitModule = typeof import('@kingstinct/react-native-healthkit')
@@ -197,6 +198,30 @@ async function countWorkouts(hk: HealthKitModule, range: DayRange): Promise<numb
       filter: { date: { startDate: range.start, endDate: range.end } },
     })
     return workouts.length
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Gün içindeki en güncel tartı örneği. Ortalama değil son ölçüm alınır —
+ * sabah/akşam tartıları ortalamak Kalman filtresine gürültülü bir sinyal verirdi,
+ * filtre zaten kendi trend hesabını yapıyor (bkz. utils/adaptiveTdee.ts).
+ */
+export async function readWeight(range: DayRange): Promise<{ weightKg: number } | null> {
+  const hk = await loadHealthKit()
+  if (!hk) return null
+
+  try {
+    const samples = await hk.queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', {
+      filter: { date: { startDate: range.start, endDate: range.end } },
+      limit: 1,
+      ascending: false,
+      unit: 'kg',
+    })
+    const latest = samples[0]
+    if (!latest || !Number.isFinite(latest.quantity)) return null
+    return { weightKg: Math.round(latest.quantity * 100) / 100 }
   } catch {
     return null
   }

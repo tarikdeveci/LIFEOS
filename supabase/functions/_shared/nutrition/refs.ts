@@ -28,6 +28,11 @@ export function curatedRef(food: CuratedFood): FoodRef {
     servingSize: food.serving_size > 0 ? food.serving_size : 100,
     servingUnit: food.serving_unit || 'g',
     isCountable: food.is_countable === true,
+    // Yalnızca sayılabilir satırda anlamlı: serving_size bir parçaysa porsiyon
+    // birkaç parçadır. Sayılamayan satırın porsiyonu zaten serving_size'ın kendisi.
+    portionCount: food.is_countable === true && (food.portion_count ?? 0) > 0
+      ? Number(food.portion_count)
+      : 1,
     measureGrams: [],
   }
 }
@@ -49,6 +54,7 @@ export function corpusRef(row: CorpusFood): FoodRef {
     servingSize: row.measure_grams.length > 0 ? Number(row.measure_grams[0]) : null,
     servingUnit: 'g',
     isCountable: false,
+    portionCount: 1,
     measureGrams: row.measure_grams.map(Number).filter((g) => Number.isFinite(g) && g > 0),
   }
 }

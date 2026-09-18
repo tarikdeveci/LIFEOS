@@ -22,6 +22,7 @@ import { createRulesExtractor, parseMeal } from '../../supabase/functions/_share
 import { normalizePhrase } from '../../supabase/functions/_shared/nutrition/normalize.ts'
 import { per100gFromCurated } from '../../supabase/functions/_shared/nutrition/refs.ts'
 import type {
+  AliasTarget,
   CorpusFood,
   CuratedFood,
   FoodRepo,
@@ -44,6 +45,8 @@ interface Case {
   probes: string
   expect: ExpectedFood[]
   expect_questions?: number
+  /** ifade → yiyecek adı. Kullanıcının daha önce kaydettiği alias'ları taklit eder. */
+  user_aliases?: Record<string, string>
 }
 
 interface Args {
@@ -172,7 +175,7 @@ function dbRepo(url: string, key: string): FoodRepo {
     curated: () => {
       if (!cache) {
         const columns =
-          'id,name,name_en,aliases,serving_size,serving_unit,calories,protein,carbs,fat,fiber,category,is_countable'
+          'id,name,name_en,aliases,serving_size,serving_unit,calories,protein,carbs,fat,fiber,category,is_countable,portion_count'
         cache = fetch(`${url}/rest/v1/food_items?select=${columns}&user_id=is.null`, { headers })
           .then((r) => r.json() as Promise<CuratedFood[]>)
       }
@@ -342,9 +345,18 @@ async function main() {
 
   const results: CaseResult[] = []
   for (const testCase of cases) {
+    const aliases = new Map<string, AliasTarget>()
+    for (const [phrase, foodName] of Object.entries(testCase.user_aliases ?? {})) {
+      const food = byName.get(foodName)
+      if (food) aliases.set(normalizePhrase(phrase), { food_item_id: food.id })
+    }
+    const caseRepo: FoodRepo = aliases.size > 0
+      ? { ...repo, userAliases: () => Promise.resolve(aliases) }
+      : repo
+
     const started = performance.now()
     const result = await parseMeal(testCase.input, {
-      repo,
+      repo: caseRepo,
       extractor,
       verifier: null,
       portionEstimator: null,

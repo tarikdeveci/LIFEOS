@@ -98,7 +98,10 @@ export async function resolvePortion(
         return portion('household_measure', grams, spread, quantity, unit)
       }
     } else if (HOUSEHOLD_UNITS.has(unit)) {
-      const grams = quantity * serving
+      // "1 porsiyon sarma" tek yaprak değil, bir tabaktır. Parça sayısı yalnızca
+      // porsiyon/tabak/kase için geçerli; bardak ya da kaşık bir ölçüdür, parça değil.
+      const pieces = unit === 'porsiyon' ? ref.portionCount : 1
+      const grams = quantity * serving * pieces
       return portion('household_measure', grams, spread, quantity, unit)
     }
   }
@@ -117,9 +120,11 @@ export async function resolvePortion(
     }
   }
 
-  // 6 — miktar hiç belirtilmemiş: bir porsiyon varsay, bandı geniş tut
+  // 6 — miktar hiç belirtilmemiş: bir porsiyon varsay, bandı geniş tut.
+  //     Sayılabilir satırda serving_size tek parçadır; "dolma ve yoğurt" bir
+  //     biber değil bir tabak dolmadır, parça sayısını satırın kendisi söyler.
   if (quantity === null && serving && serving > 0) {
-    return portion('serving_default', serving, PORTION_TOLERANCE.serving_default, 1, 'porsiyon')
+    return portion('serving_default', serving * ref.portionCount, PORTION_TOLERANCE.serving_default, 1, 'porsiyon')
   }
 
   // 7 — hiçbir kural cevaplayamadı → model YALNIZCA gram tahmin eder

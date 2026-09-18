@@ -21,6 +21,7 @@ import {
   type PlannerTask,
   type WorkoutCatalogEntry,
 } from '../_shared/ai/coach.ts'
+import { isDoableWith, parseEquipmentPreference } from '../_shared/ai/equipment.ts'
 
 // Sohbet modeli. parse-meal'deki NUTRITION_MODEL ile ayni desen: koda dokunmadan
 // `supabase secrets set CHAT_MODEL=...` ile degistirilebilir.
@@ -482,10 +483,16 @@ Lütfen:
     if (type === 'workout_program_chat') {
       // Katalog sunucudan okunur: istemciye güvenip 200 satır göndertmek hem
       // isteği şişiriyor hem de eski sürümlerde eksik alan bırakıyordu.
-      const { data: catalogRows } = await supabase
-        .from('exercises')
-        .select('name, category, is_bodyweight, muscle_group:muscle_groups(name)')
-        .order('name', { ascending: true })
+      const [{ data: catalogRows }, { data: profileRow }] = await Promise.all([
+        supabase
+          .from('exercises')
+          .select('name, category, is_bodyweight, equipment, muscle_group:muscle_groups(name)')
+          .order('name', { ascending: true }),
+        supabase.from('user_profiles').select('preferences').eq('id', user.id).maybeSingle(),
+      ])
+      const ownedEquipment = parseEquipmentPreference(
+        (profileRow?.preferences as Record<string, unknown> | null)?.['workout_equipment'],
+      )
 
       const catalog: WorkoutCatalogEntry[] = catalogRows?.length
         ? catalogRows.map((row) => ({
@@ -493,6 +500,7 @@ Lütfen:
             category: (row.category as string | null) ?? undefined,
             muscle_group: (row.muscle_group as { name: string } | null)?.name ?? undefined,
             is_bodyweight: (row.is_bodyweight as boolean | null) ?? false,
+            equipment: (row.equipment as string[] | null) ?? null,
           }))
         : (workout_context?.available_exercises ?? [])
 
@@ -503,7 +511,11 @@ Lütfen:
         })
       }
 
-      const catalogByNormalized = new Map(catalog.map((e) => [normalizeExerciseName(e.name), e.name]))
+      // Çözümleme yalnızca yapılabilir hareketlere: model kurala uymayıp barbell
+      // yazsa bile dambıllı kullanıcının programına barbell satırı girmez.
+      // Kısmi eşleşme de aynı kümede aranır.
+      const doable = catalog.filter((e) => isDoableWith(e.equipment, ownedEquipment))
+      const catalogByNormalized = new Map(doable.map((e) => [normalizeExerciseName(e.name), e.name]))
       const resolveName = (requested: string): string | null => {
         const key = normalizeExerciseName(requested)
         const exact = catalogByNormalized.get(key)
@@ -543,6 +555,7 @@ Lütfen:
       const { system, messages } = buildWorkoutCoachPrompt({
         lang,
         catalog,
+        equipment: ownedEquipment,
         recentWorkouts,
         existingProgramNames: (programRows ?? []).map((p) => p.name as string),
         history: normalizeHistory(workout_context?.history ?? body.history),

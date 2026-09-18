@@ -61,6 +61,27 @@ export type HealthSettingsUpdate = Partial<
   Pick<HealthSettings, 'enabled' | 'step_goal' | 'sleep_goal_minutes' | 'add_active_energy_to_budget' | 'last_synced_at'>
 >
 
+/**
+ * Bir günün kilo ölçümü. health_daily'den ayrı tutulur — bkz.
+ * supabase/migrations/049_weight_logs.sql başlığındaki gerekçe.
+ */
+export interface WeightLog {
+  user_id: string
+  date: string // 'YYYY-MM-DD'
+  weight_kg: number
+  source: HealthSource
+  synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+/** Cihazdan okunup ya da elle girilip DB'ye yazılacak ham kayıt */
+export interface WeightLogInput {
+  date: string
+  weight_kg: number
+  source: HealthSource
+}
+
 export const DEFAULT_HEALTH_SETTINGS = {
   enabled: false,
   step_goal: 8000,

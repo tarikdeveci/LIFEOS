@@ -11,6 +11,7 @@ import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
+import { CsvImportSheet } from '@/src/components/workout/CsvImportSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
@@ -88,6 +89,7 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
   const [showNutrition, setShowNutrition] = useState(false)
+  const [showCsvImport, setShowCsvImport] = useState(false)
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -421,6 +423,26 @@ export default function ProfileScreen() {
           </GlassCard>
         </TouchableOpacity>
 
+        {/* CSV içe aktarma — Strong/Hevy/FitNotes */}
+        <TouchableOpacity onPress={() => setShowCsvImport(true)} activeOpacity={0.7}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
+                <Ionicons name="cloud-upload-outline" size={18} color={palette.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                    {lang === 'tr' ? 'Antrenman Verisi İçe Aktar' : 'Import Workout Data'}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    {lang === 'tr' ? 'Strong, Hevy veya FitNotes CSV dosyası' : 'Strong, Hevy or FitNotes CSV file'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         {/* API ve Otomasyon — web panelinde yönetilir */}
         <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/settings')} activeOpacity={0.7}>
           <GlassCard style={{ marginBottom: spacing[4] }}>
@@ -640,6 +662,10 @@ export default function ProfileScreen() {
           <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={saveNutrition} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
         </View>
       </BottomSheet>
+
+      {userId && (
+        <CsvImportSheet visible={showCsvImport} onClose={() => setShowCsvImport(false)} userId={userId} />
+      )}
     </ScreenBackground>
   )
 }

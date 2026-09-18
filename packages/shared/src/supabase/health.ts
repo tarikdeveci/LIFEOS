@@ -6,6 +6,8 @@ import {
   type HealthDailyInput,
   type HealthSettings,
   type HealthSettingsUpdate,
+  type WeightLog,
+  type WeightLogInput,
 } from '../types/health'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -156,4 +158,65 @@ export async function updateHealthSettings(
 
   if (insertError) throw insertError
   return created as HealthSettings
+}
+
+// -------------------------------------------------------
+// Kilo geçmişi (adaptif kalori hedefi — bkz. utils/adaptiveTdee.ts)
+// -------------------------------------------------------
+
+/** Bir günün kilosunu yazar/düzeltir. Aynı gün tekrar yazılırsa üzerine yazılır. */
+export async function upsertWeightLog(
+  supabase: Supabase,
+  userId: string,
+  input: WeightLogInput,
+): Promise<void> {
+  const { error } = await supabase
+    .from('weight_logs')
+    .upsert(
+      {
+        user_id: userId,
+        date: input.date,
+        weight_kg: input.weight_kg,
+        source: input.source,
+        synced_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,date' },
+    )
+
+  if (error) throw error
+}
+
+/** Bir günün kilo kaydını siler (yanlış girilen manuel kayıt için). */
+export async function deleteWeightLog(supabase: Supabase, userId: string, date: string): Promise<void> {
+  const { error } = await supabase
+    .from('weight_logs')
+    .delete()
+    .eq('user_id', userId)
+    .eq('date', date)
+
+  if (error) throw error
+}
+
+/**
+ * Son `days` günün kilo geçmişi, tarihe göre artan sıralı — computeAdaptiveTdee'nin
+ * `weighIns` girdisiyle doğrudan uyumlu olsun diye `date`/`weightKg` alanlarıyla döner.
+ */
+export async function getWeightLogs(
+  supabase: Supabase,
+  userId: string,
+  days = 90,
+  endDate: string = todayDate(),
+): Promise<Array<{ date: string; weightKg: number }>> {
+  const startDate = shiftIsoDate(endDate, -(days - 1))
+
+  const { data, error } = await supabase
+    .from('weight_logs')
+    .select('date, weight_kg')
+    .eq('user_id', userId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date')
+
+  if (error) throw error
+  return ((data ?? []) as WeightLog[]).map((row) => ({ date: row.date, weightKg: row.weight_kg }))
 }
