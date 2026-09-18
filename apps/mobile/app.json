@@ -59,7 +59,8 @@
         "android.permission.health.READ_EXERCISE",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_HEART_RATE",
-        "android.permission.health.READ_RESTING_HEART_RATE"
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_WEIGHT"
       ],
       "versionCode": 23
     },
@@ -85,7 +86,7 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "LifeOS; günlük sağlık özeti, hedef ilerlemesi, aktiviteye göre kalori bütçesi, haftalık içgörüler ve toparlanma önerileri oluşturmak için Apple Health'teki adım, mesafe, aktif kalori, egzersiz, uyku ve nabız verilerini okur.",
+          "NSHealthShareUsageDescription": "LifeOS; günlük sağlık özeti, hedef ilerlemesi, aktiviteye göre kalori bütçesi, haftalık içgörüler, toparlanma önerileri ve kilo trendine göre kalori hedefi oluşturmak için Apple Health'teki adım, mesafe, aktif kalori, egzersiz, uyku, nabız ve kilo verilerini okur.",
           "NSHealthUpdateUsageDescription": "LifeOS sağlık verilerini yalnızca okur, hiçbir şey yazmaz.",
           "background": false
         }

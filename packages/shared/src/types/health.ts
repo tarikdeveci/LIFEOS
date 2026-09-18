@@ -62,8 +62,8 @@ export type HealthSettingsUpdate = Partial<
 >
 
 /**
- * Bir günün kilo ölçümü. health_daily'den ayrı tutulur — bkz.
- * supabase/migrations/049_weight_logs.sql başlığındaki gerekçe.
+ * Bir günün kilo ölçümü. health_daily'den ayrı tutulur; gerekçe
+ * supabase/migrations/049_weight_logs.sql başlığında.
  */
 export interface WeightLog {
   user_id: string

@@ -27,6 +27,12 @@ export const BODYWEIGHT_FALLBACK_KG = 75
 
 /** Yorgunluk hesabının geriye baktığı süre; 30 gün önceki seans zaten sönmüştür. */
 export const FATIGUE_WINDOW_DAYS = 30
+/**
+ * Güç hesabının istediği geçmiş. Eğri 42. günde tabana iner; 60 gün, tabana
+ * inmiş kasın son çalışıldığı günü de gösterir. muscleRetention'a en az bu
+ * kadar geçmiş verilmeli, yoksa 30 gün önce çalışılan kas hiç çalışılmamış görünür.
+ */
+export const RETENTION_WINDOW_DAYS = 60
 /** Kas başına başlangıç referans uyarısı (kg x tekrar); normalize bunun oranıdır. */
 export const FATIGUE_REFERENCE_LOAD = 2000
 /** Süreli (tekrarsız) setlerin dakika başına yükü. */
@@ -198,7 +204,7 @@ export function strengthRetentionOf(daysSince: number): number {
  * Kas başına güç koruma oranı. Kasın ağırlığı sıfırdan büyük son tamamlanmış
  * setin gününe bakar (yardımcı kas da çalışmış sayılır). Setlerde geçip hiç
  * tamamlanmamış kaslar UNTRAINED_RETENTION değeriyle gelir. Pencere yok:
- * uzun geçmişi çağıran verir.
+ * uzun geçmişi (en az RETENTION_WINDOW_DAYS) çağıran verir.
  */
 export function muscleRetention(sets: LoggedSet[], now: Date = new Date()): Record<number, MuscleRetention> {
   const today = toDateString(now)

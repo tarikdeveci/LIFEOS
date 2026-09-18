@@ -286,6 +286,23 @@ function doubleTarget(last: SessionSummary, planSets: number | null, lo: number,
   }
 
   const minReps = Math.min(...last.reps)
+
+  // Aralığın altında kalındıysa ağırlık fazla: hedefi aralığın altına çekmek
+  // yerine bir basamak hafifletip alt sınırdan başlat.
+  if (minReps < lo) {
+    const lighter = roundToIncrementKg(weight - incrementKg, incrementKg)
+    const next = lighter > 0 && lighter < weight ? lighter : weight
+    return {
+      sets,
+      reps: lo,
+      weightKg: next,
+      rule: 'double',
+      reason: next < weight
+        ? `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${lo}-${hi} aralığının altında. ${kg(next)} kg ile ${lo} tekrarı hedefle.`
+        : `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, bu sefer ${lo} tekrarı hedefle.`,
+    }
+  }
+
   const reps = Math.min(hi, minReps + 1)
   const reason = reps > minReps
     ? `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${reps} tekrarı hedefle.`

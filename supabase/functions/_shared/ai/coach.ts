@@ -321,6 +321,8 @@ export interface WorkoutCoachInput {
   equipment: string[] | null
   /** Son antrenmanlar — "dün bacak yaptım" bilgisini modele vermek için. */
   recentWorkouts: { date: string; name: string; muscle_groups: string[] }[]
+  /** Son 7 günün kas yükü satırı (muscleLoad.ts muscleLoadLine); eski çağıranlar vermeyebilir. */
+  muscleLoad?: string
   existingProgramNames: string[]
   history: ChatTurn[]
   userMessage: string
@@ -396,6 +398,9 @@ PROGRAM YAZMA KURALLARI
    mesajında farklı bir durum söylerse ("salona yazıldım") programı yine
    kayıtlı aletlerle yaz ve message içinde ekipman seçimini Antrenman
    ekranındaki Ekipmanım kartından güncelleyebileceğini söyle.
+10. Kas yükü satırı son 7 günün etkili set sayısını verir (ana kas 1, yardımcı
+   kas 0,4). İhmal edilen kaslara programda daha çok hacim ver; son 48 saatte
+   yoğun çalışılan kası programın ilk gününe koyma.
 
 YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekleme:
 {
@@ -422,7 +427,10 @@ ${equipmentSummary(input.equipment)}
 
 Son antrenmanlar:
 ${recentSummary}
-
+${input.muscleLoad ? `
+Kas yükü:
+${input.muscleLoad}
+` : ''}
 Kayıtlı programları:
 ${programsSummary}`
 

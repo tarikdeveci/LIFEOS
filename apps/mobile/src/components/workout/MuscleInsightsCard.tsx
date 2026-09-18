@@ -6,6 +6,7 @@ import {
   muscleRetention,
   setsInWindow,
   NON_ANATOMICAL_MUSCLE_GROUPS,
+  RETENTION_WINDOW_DAYS,
 } from '@lifeos/shared'
 import type {
   LoggedSet,
@@ -21,6 +22,8 @@ import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/toke
 interface Props {
   sets: LoggedSet[]
   muscleGroups: MuscleGroup[]
+  /** Vücut ağırlığı hareketlerinin yorgunluk yükü için; null ise 75 kg varsayılır. */
+  bodyWeightKg: number | null
   loading: boolean
   error: string | null
 }
@@ -52,7 +55,7 @@ const FATIGUE_COLOR: Record<FatigueState, string> = {
   fatigued: palette.danger,
 }
 
-/** "12 gün önce" / "Bugün" / "Dün" — relativeDateLabel'ın gün-sayısı sürümü. */
+/** "12 gün önce", "Bugün", "Dün": relativeDateLabel'ın gün sayısı alan sürümü. */
 function daysSinceLabel(days: number): string {
   if (days === 0) return 'Bugün'
   if (days === 1) return 'Dün'
@@ -62,13 +65,13 @@ function daysSinceLabel(days: number): string {
 /**
  * Kas dengesi, toparlanma ve güç (retansiyon) kartı.
  *
- * Üç segment de aynı 30 günlük `sets` girdisini paylaşır; pencere farkı
- * (denge haftalık, toparlanma/güç 30 gün) burada `setsInWindow` ile
- * uygulanır. Kas grupları veritabanından gelir (`muscleGroups`), sabit
- * kodlanmış bir liste yok — yeni kas grubu eklendiğinde kart otomatik
- * güncellenir.
+ * Üç segment de aynı 60 günlük `sets` girdisini paylaşır; pencere farkı
+ * (denge haftalık, toparlanma 30 gün, güç 60 gün) burada `setsInWindow` ya da
+ * fonksiyonun kendisi tarafından uygulanır. Kas grupları veritabanından gelir
+ * (`muscleGroups`), sabit kodlanmış bir liste yok: yeni kas grubu eklendiğinde
+ * kart kendiliğinden güncellenir.
  */
-export function MuscleInsightsCard({ sets, muscleGroups, loading, error }: Props) {
+export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, loading, error }: Props) {
   const { colors } = useTheme()
   const [segment, setSegment] = useState<Segment>('balance')
 
@@ -78,7 +81,7 @@ export function MuscleInsightsCard({ sets, muscleGroups, loading, error }: Props
   )
 
   const balance = useMemo(() => muscleBalance(setsInWindow(sets, 7), muscleGroups), [sets, muscleGroups])
-  const fatigue = useMemo(() => muscleFatigue(sets), [sets])
+  const fatigue = useMemo(() => muscleFatigue(sets, new Date(), { bodyWeightKg }), [sets, bodyWeightKg])
   const retention = useMemo(() => muscleRetention(sets), [sets])
 
   const hasData = sets.length > 0
@@ -205,7 +208,7 @@ export function MuscleInsightsCard({ sets, muscleGroups, loading, error }: Props
                           )}
                         </View>
                       ) : (
-                        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Henüz çalışılmadı</Text>
+                        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Son {RETENTION_WINDOW_DAYS} günde yok</Text>
                       )}
                     </View>
                   )

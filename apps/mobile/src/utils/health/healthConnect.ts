@@ -188,7 +188,7 @@ async function countExercise(hc: HealthConnectModule, timeRangeFilter: TimeRange
   }
 }
 
-/** Gün içindeki en güncel tartı kaydı — bkz. healthkit.ts'teki aynı isimli fonksiyonun gerekçesi. */
+/** Gün içindeki en güncel tartı kaydı. Gerekçe: healthkit.ts'teki aynı isimli fonksiyon. */
 export async function readWeight(range: DayRange): Promise<{ weightKg: number } | null> {
   const hc = await loadHealthConnect()
   if (!hc) return null

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { shiftIsoDate, todayDate } from '../utils/date'
+import { profileFromPreferences } from '../utils/adaptiveTdee'
 import {
   DEFAULT_HEALTH_SETTINGS,
   type HealthDaily,
@@ -161,15 +162,39 @@ export async function updateHealthSettings(
 }
 
 // -------------------------------------------------------
-// Kilo geçmişi (adaptif kalori hedefi — bkz. utils/adaptiveTdee.ts)
+// Kilo geçmişi: adaptif kalori hedefinin girdisi (bkz. utils/adaptiveTdee.ts)
 // -------------------------------------------------------
 
-/** Bir günün kilosunu yazar/düzeltir. Aynı gün tekrar yazılırsa üzerine yazılır. */
+/** weight_logs.weight_kg CHECK aralığı (049). */
+export const WEIGHT_LOG_MIN_KG = 20
+export const WEIGHT_LOG_MAX_KG = 400
+
+/**
+ * Bir günün kilosunu yazar/düzeltir. Aynı gün tekrar yazılırsa üzerine yazılır,
+ * tek istisna: cihaz senkronu o günün elle girilmiş kaydını ezmez. Kullanıcı
+ * tartıyı düzelttiyse bir sonraki Apple Health/Health Connect okuması onu geri
+ * almamalı.
+ */
 export async function upsertWeightLog(
   supabase: Supabase,
   userId: string,
   input: WeightLogInput,
 ): Promise<void> {
+  if (!Number.isFinite(input.weight_kg) || input.weight_kg < WEIGHT_LOG_MIN_KG || input.weight_kg > WEIGHT_LOG_MAX_KG) {
+    throw new RangeError(`Kilo ${WEIGHT_LOG_MIN_KG}-${WEIGHT_LOG_MAX_KG} kg aralığında olmalı`)
+  }
+
+  if (input.source !== 'manual') {
+    const { data: existing, error: readError } = await supabase
+      .from('weight_logs')
+      .select('source')
+      .eq('user_id', userId)
+      .eq('date', input.date)
+      .maybeSingle()
+    if (readError) throw readError
+    if ((existing as { source: string } | null)?.source === 'manual') return
+  }
+
   const { error } = await supabase
     .from('weight_logs')
     .upsert(
@@ -198,7 +223,7 @@ export async function deleteWeightLog(supabase: Supabase, userId: string, date: 
 }
 
 /**
- * Son `days` günün kilo geçmişi, tarihe göre artan sıralı — computeAdaptiveTdee'nin
+ * Son `days` günün kilo geçmişi, tarihe göre artan sıralı. computeAdaptiveTdee'nin
  * `weighIns` girdisiyle doğrudan uyumlu olsun diye `date`/`weightKg` alanlarıyla döner.
  */
 export async function getWeightLogs(
@@ -218,5 +243,29 @@ export async function getWeightLogs(
     .order('date')
 
   if (error) throw error
-  return ((data ?? []) as WeightLog[]).map((row) => ({ date: row.date, weightKg: row.weight_kg }))
+  return ((data ?? []) as WeightLog[]).map((row) => ({ date: row.date, weightKg: Number(row.weight_kg) }))
+}
+
+/**
+ * Güncel vücut ağırlığı: en yeni tartı, yoksa profildeki kilo, o da yoksa null.
+ * weight_logs okunamazsa (049 henüz uygulanmadıysa) profile düşer.
+ */
+export async function getLatestBodyWeightKg(supabase: Supabase, userId: string): Promise<number | null> {
+  const { data: latest, error: logError } = await supabase
+    .from('weight_logs')
+    .select('weight_kg')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const logged = logError ? null : Number((latest as { weight_kg: number } | null)?.weight_kg)
+  if (logged !== null && Number.isFinite(logged) && logged > 0) return logged
+
+  const { data: profile, error } = await supabase
+    .from('user_profiles')
+    .select('preferences')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return profileFromPreferences((profile as { preferences: unknown } | null)?.preferences).weight_kg
 }

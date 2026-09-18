@@ -204,7 +204,7 @@ async function countWorkouts(hk: HealthKitModule, range: DayRange): Promise<numb
 }
 
 /**
- * Gün içindeki en güncel tartı örneği. Ortalama değil son ölçüm alınır —
+ * Gün içindeki en güncel tartı örneği. Ortalama değil son ölçüm alınır:
  * sabah/akşam tartıları ortalamak Kalman filtresine gürültülü bir sinyal verirdi,
  * filtre zaten kendi trend hesabını yapıyor (bkz. utils/adaptiveTdee.ts).
  */

@@ -120,7 +120,7 @@ export async function resolvePortion(
     }
   }
 
-  // 6 — miktar hiç belirtilmemiş: bir porsiyon varsay, bandı geniş tut.
+  // 6) Miktar hiç belirtilmemiş: bir porsiyon varsay, bandı geniş tut.
   //     Sayılabilir satırda serving_size tek parçadır; "dolma ve yoğurt" bir
   //     biber değil bir tabak dolmadır, parça sayısını satırın kendisi söyler.
   if (quantity === null && serving && serving > 0) {

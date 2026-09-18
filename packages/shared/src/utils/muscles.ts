@@ -91,12 +91,22 @@ function isMuscleId(id: unknown): id is number {
 }
 
 /**
+ * Kas yükü yazmayan kategoriler. "Hamstring Germe"nin ana kası Arka Bacak;
+ * sayılsaydı her gün esneyen kullanıcının arka bacağı dengede ihmal edilmemiş,
+ * güçte hiç kayıpsız, toparlanmada yorgun görünürdü. Edge tarafındaki kopya:
+ * supabase/functions/_shared/ai/muscleLoad.ts (NON_TRAINING_CATEGORIES).
+ */
+export const NON_TRAINING_CATEGORIES: readonly Exercise['category'][] = ['flexibility', 'mobility']
+
+/**
  * Hareketin kaslara dağılımı: ana kas 1.0, yardımcılar 0.4. Aynı id hem ana
  * hem yardımcı listede geçerse büyük ağırlık kalır. Veritabanından null gelen
- * yardımcı listesi boş sayılır.
+ * yardımcı listesi boş sayılır. Esneme/mobilite hareketleri boş döner, böylece
+ * denge, yorgunluk ve güç hesaplarının hiçbirine girmez.
  */
 export function muscleWeightsOf(ex: MuscleExercise): Record<number, number> {
   const weights: Record<number, number> = {}
+  if (NON_TRAINING_CATEGORIES.includes(ex.category)) return weights
   const put = (id: unknown, weight: number) => {
     if (!isMuscleId(id)) return
     weights[id] = Math.max(weights[id] ?? 0, weight)

@@ -15,6 +15,7 @@ import { EquipmentCard, ProgramFitBadge } from '@/src/components/workout/Equipme
 import { EquipmentSheet } from '@/src/components/workout/EquipmentSheet'
 import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
+import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -97,7 +98,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -677,6 +678,7 @@ export default function WorkoutScreen() {
             <MuscleInsightsCard
               sets={analyticsSets}
               muscleGroups={muscleGroups}
+              bodyWeightKg={analyticsBodyWeightKg}
               loading={!analyticsLoaded}
               error={analyticsError}
             />
@@ -992,6 +994,17 @@ export default function WorkoutScreen() {
                 {selectedExercise.muscle_group?.name} · {CATEGORY_LABELS[selectedExercise.category]}
               </Text>
             </View>
+          )}
+          {selectedExercise && userId && (
+            <ProgressionHint
+              exercise={selectedExercise}
+              userId={userId}
+              excludeWorkoutId={todayWorkout?.id}
+              onApply={(reps, weightKg) => {
+                setSetReps(String(reps))
+                setSetWeight(weightKg !== null ? String(weightKg) : '')
+              }}
+            />
           )}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             <Input label="Tekrar" value={setReps} onChangeText={setSetReps} keyboardType="number-pad" placeholder="10" containerStyle={{ flex: 1 }} />

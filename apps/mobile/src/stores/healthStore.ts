@@ -6,6 +6,7 @@ import {
   type HealthDaily,
   type HealthSettings,
   type HealthSettingsUpdate,
+  type WeightLogInput,
 } from '@lifeos/shared'
 // supabase/* kök barrel'dan re-export edilmiyor (döngüsel bağımlılık) — doğrudan al
 import {
@@ -44,6 +45,20 @@ interface HealthStore {
 
 // Cihazdan çekilecek gün sayısı — dinlenme nabzı taban çizgisi ve haftalık trend
 const RANGE_DAYS = 7
+
+/**
+ * Günün tartısını yazar. En iyi çaba: weight_logs tablosu henüz yoksa ya da
+ * cihaz aralık dışı bir değer verdiyse adım/uyku senkronu yine tamamlanır.
+ */
+async function syncWeight(userId: string, date: string, source: WeightLogInput['source']): Promise<void> {
+  try {
+    const weight = await readHealthWeight(date)
+    if (!weight) return
+    await upsertWeightLog(supabase, userId, { date, weight_kg: weight.weightKg, source })
+  } catch (err) {
+    console.warn('[health] kilo senkronu atlandı:', err instanceof Error ? err.message : err)
+  }
+}
 
 export const useHealthStore = create<HealthStore>((set, get) => ({
   available: null,
@@ -114,15 +129,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
         const result = await readHealthDay(date)
         if (result.ok) {
           await upsertHealthDaily(supabase, userId, result.metrics)
-
-          const weight = await readHealthWeight(date)
-          if (weight) {
-            await upsertWeightLog(supabase, userId, {
-              date,
-              weight_kg: weight.weightKg,
-              source: result.metrics.source,
-            })
-          }
+          await syncWeight(userId, date, result.metrics.source)
         }
       }
 

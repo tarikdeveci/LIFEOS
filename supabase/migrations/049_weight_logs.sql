@@ -6,7 +6,7 @@
 -- gelir). Kilo farklı: kullanıcı manuel girebilir, gün içinde birden fazla kez
 -- düzeltebilir, senkron hiç çalışmamış bir günde bile girilebilir. PostgREST
 -- upsert'i "yalnızca INSERT'te source yaz, UPDATE'te dokunma" şeklinde ifade
--- edemiyor — aynı satıra yazılırsa manuel bir kilo girişi, o günün asıl
+-- edemiyor. Aynı satıra yazılsaydı manuel bir kilo girişi, o günün asıl
 -- kaynağı Apple Health olan adım/uyku verisinin source'unu "manual"a çevirirdi.
 -- Ayrı tablo bu çakışmayı baştan ortadan kaldırıyor.
 --

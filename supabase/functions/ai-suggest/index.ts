@@ -22,6 +22,12 @@ import {
   type WorkoutCatalogEntry,
 } from '../_shared/ai/coach.ts'
 import { isDoableWith, parseEquipmentPreference } from '../_shared/ai/equipment.ts'
+import {
+  flattenWorkoutRows,
+  muscleLoadLine,
+  summarizeMuscleLoad,
+  type MuscleGroupRef,
+} from '../_shared/ai/muscleLoad.ts'
 
 // Sohbet modeli. parse-meal'deki NUTRITION_MODEL ile ayni desen: koda dokunmadan
 // `supabase secrets set CHAT_MODEL=...` ile degistirilebilir.
@@ -546,17 +552,27 @@ Lütfen:
         )],
       }))
 
-      const { data: programRows } = await supabase
-        .from('workout_programs')
-        .select('name')
-        .eq('user_id', user.id)
-        .limit(10)
+      const [{ data: programRows }, { data: loadRows }, { data: groupRows }] = await Promise.all([
+        supabase.from('workout_programs').select('name').eq('user_id', user.id).limit(10),
+        // Kas yükü: bugün süren antrenman dahil son 7 gün, tamamlanan setler.
+        supabase
+          .from('workouts')
+          .select('date, workout_sets(completed, exercise:exercises(category, muscle_group_id, secondary_muscle_group_ids))')
+          .eq('user_id', user.id)
+          .gte('date', shiftDate(today, -6))
+          .lte('date', today),
+        supabase.from('muscle_groups').select('id, name, name_en'),
+      ])
+      const muscleLoad = muscleLoadLine(
+        summarizeMuscleLoad((groupRows ?? []) as MuscleGroupRef[], flattenWorkoutRows(loadRows), today),
+      )
 
       const { system, messages } = buildWorkoutCoachPrompt({
         lang,
         catalog,
         equipment: ownedEquipment,
         recentWorkouts,
+        muscleLoad,
         existingProgramNames: (programRows ?? []).map((p) => p.name as string),
         history: normalizeHistory(workout_context?.history ?? body.history),
         userMessage: user_message?.trim() || 'Bana haftalık bir antrenman programı yaz.',

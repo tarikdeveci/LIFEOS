@@ -35,21 +35,21 @@ import {
   updateProgramExercise,
   getWorkoutEquipment,
   saveWorkoutEquipment,
-  getRecentLoggedSets,
 } from '../supabase/workouts'
+import { getRecentLoggedSets } from '../supabase/workoutAnalytics'
+import { getLatestBodyWeightKg } from '../supabase/health'
 import { todayDate, shiftIsoDate } from '../utils/date'
 import { adaptationToPlan, replacementNote, type ProgramAdaptation } from '../utils/equipment'
 import { computeWorkoutStreak, type WorkoutStreak } from '../utils/streak'
-// Kas dengesi/toparlanma/güç hesaplarının ham girdi tipi — "antrenman-analiz"
-// tarafından packages/shared/src/utils/muscles.ts içinde tanımlanıyor.
 import type { LoggedSet } from '../utils/muscles'
+import { RETENTION_WINDOW_DAYS } from '../utils/recovery'
 
 /**
- * Kas analitiği penceresi: son 30 gün. Denge (haftalık), toparlanma ve güç
- * hesaplarının üçü de aynı ham veri setini paylaşıyor; pencere farkı çağıran
- * tarafta (`setsInWindow`) uygulanıyor.
+ * Kas analitiği penceresi: güç hesabının istediği 60 gün. Denge (haftalık) ve
+ * toparlanma (30 gün) aynı ham veri setini paylaşıyor; kendi pencerelerini
+ * çağıran taraf ya da fonksiyonun kendisi uyguluyor.
  */
-const ANALYTICS_WINDOW_DAYS = 30
+const ANALYTICS_WINDOW_DAYS = RETENTION_WINDOW_DAYS
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -74,13 +74,15 @@ interface WorkoutState {
   streak: WorkoutStreak
 
   /**
-   * Son 30 günün loglanmış setleri — kas dengesi/toparlanma/güç kartının
+   * Son 60 günün loglanmış setleri: kas dengesi/toparlanma/güç kartının
    * girdisi. `analyticsLoaded` ilk okuma bitene kadar false: boş dizi ile
    * henüz okunmadı arasındaki farkı arayüz bilmeli (bkz. `equipmentLoaded`).
    */
   analyticsSets: LoggedSet[]
   analyticsLoaded: boolean
   analyticsError: string | null
+  /** Vücut ağırlığı hareketlerinin yorgunluk yükü için; bilinmiyorsa null. */
+  analyticsBodyWeightKg: number | null
 
   /**
    * Erişilebilen aletler. null = seçim yapılmamış (tam salon varsayılır),
@@ -95,7 +97,7 @@ interface WorkoutState {
   fetchTodayWorkout: (supabase: Supabase, userId: string, date?: string) => Promise<void>
   fetchHistory: (supabase: Supabase, userId: string) => Promise<void>
   fetchStreak: (supabase: Supabase, userId: string) => Promise<void>
-  /** Son 30 günün loglanmış setlerini tazeler. Kendi hatasını yutar, `analyticsError`'a yazar. */
+  /** Son 60 günün loglanmış setlerini ve güncel kiloyu tazeler. Kendi hatasını yutar, `analyticsError`'a yazar. */
   fetchAnalytics: (supabase: Supabase, userId: string) => Promise<void>
   startWorkout: (supabase: Supabase, userId: string, input: CreateWorkoutInput) => Promise<Workout>
   finishWorkout: (supabase: Supabase, workoutId: string, durationMinutes: number, caloriesBurned?: number) => Promise<void>
@@ -156,6 +158,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   analyticsSets: [],
   analyticsLoaded: false,
   analyticsError: null,
+  analyticsBodyWeightKg: null,
   equipment: null,
   equipmentLoaded: false,
 
@@ -207,8 +210,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ analyticsError: null })
     try {
       const since = shiftIsoDate(todayDate(), -(ANALYTICS_WINDOW_DAYS - 1))
-      const analyticsSets = await getRecentLoggedSets(supabase, userId, since)
-      set({ analyticsSets, analyticsLoaded: true })
+      const [analyticsSets, analyticsBodyWeightKg] = await Promise.all([
+        getRecentLoggedSets(supabase, userId, since),
+        // Kilo yalnızca yorgunluk ince ayarı: okunamazsa kart yine açılsın.
+        getLatestBodyWeightKg(supabase, userId).catch(() => null),
+      ])
+      set({ analyticsSets, analyticsBodyWeightKg, analyticsLoaded: true })
     } catch (err) {
       set({ analyticsError: err instanceof Error ? err.message : 'Hata', analyticsLoaded: true })
     }

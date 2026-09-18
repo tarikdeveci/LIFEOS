@@ -423,7 +423,7 @@ export default function ProfileScreen() {
           </GlassCard>
         </TouchableOpacity>
 
-        {/* CSV içe aktarma — Strong/Hevy/FitNotes */}
+        {/* CSV içe aktarma: Strong/Hevy/FitNotes */}
         <TouchableOpacity onPress={() => setShowCsvImport(true)} activeOpacity={0.7}>
           <GlassCard style={{ marginBottom: spacing[4] }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

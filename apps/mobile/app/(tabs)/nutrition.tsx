@@ -25,6 +25,7 @@ import {
 } from '@lifeos/shared/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { AdaptiveTdeeCard } from '@/src/components/nutrition/AdaptiveTdeeCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
@@ -709,6 +710,10 @@ export default function NutritionScreen() {
             </Text>
           )}
         </GlassCard>
+
+        {userId && (
+          <AdaptiveTdeeCard userId={userId} onTargetChanged={() => void fetchDayNutrition(supabase, userId)} />
+        )}
 
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>

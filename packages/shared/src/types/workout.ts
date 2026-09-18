@@ -87,6 +87,8 @@ export interface CreateWorkoutInput {
   name?: string
   notes?: string
   status?: WorkoutStatus
+  /** Geçmiş kayıt (ör. CSV içe aktarma) açılırken süre baştan bilinir. */
+  duration_minutes?: number
 }
 
 export interface CreateWorkoutSetInput {
@@ -99,6 +101,8 @@ export interface CreateWorkoutSetInput {
   distance_m?: number
   rest_seconds?: number
   notes?: string
+  /** Varsayılan false; geçmiş kayıtlar tamamlanmış olarak yazılır. */
+  completed?: boolean
 }
 
 export interface UpdateWorkoutSetInput {

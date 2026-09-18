@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { View, Text, Alert } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import { File } from 'expo-file-system'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { parseImportCsv, matchExerciseName, useWorkoutStore } from '@lifeos/shared'
+import { parseImportCsv, findExerciseMatch, useWorkoutStore } from '@lifeos/shared'
 import type { CsvParseResult } from '@lifeos/shared'
 import { importCsvWorkouts, type CsvImportOutcome } from '@lifeos/shared/supabase'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -35,6 +35,7 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
   const exercises = useWorkoutStore((s) => s.exercises)
   const fetchLibrary = useWorkoutStore((s) => s.fetchLibrary)
   const fetchHistory = useWorkoutStore((s) => s.fetchHistory)
+  const fetchAnalytics = useWorkoutStore((s) => s.fetchAnalytics)
 
   const [picking, setPicking] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -84,7 +85,8 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
     try {
       const result = await importCsvWorkouts(supabase, userId, parsed.workouts, exercises)
       if (result.exercisesCreated > 0) await fetchLibrary(supabase, { force: true })
-      await fetchHistory(supabase, userId)
+      // Kas haritası da içe aktarılan geçmişi hemen göstersin.
+      await Promise.all([fetchHistory(supabase, userId), fetchAnalytics(supabase, userId)])
       setOutcome(result)
     } catch (err) {
       Alert.alert('Hata', err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
@@ -94,11 +96,18 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
   }
 
   const totalSets = parsed?.workouts.reduce((sum, w) => sum + w.sets.length, 0) ?? 0
-  const unmatchedNames = parsed
-    ? [...new Set(parsed.workouts.flatMap((w) => w.sets.map((s) => s.exerciseName)))].filter(
-        (name) => !matchExerciseName(name, exercises),
-      )
-    : []
+  // Eşleştirme her adı tüm katalogla kıyaslıyor; her render'da tekrar etmesin.
+  const { unmatchedNames, approximate } = useMemo(() => {
+    const names = parsed ? [...new Set(parsed.workouts.flatMap((w) => w.sets.map((s) => s.exerciseName)))] : []
+    const unmatched: string[] = []
+    const approx: string[] = []
+    for (const name of names) {
+      const match = findExerciseMatch(name, exercises)
+      if (!match) unmatched.push(name)
+      else if (match.approximate) approx.push(`${name} → ${match.exercise.name}`)
+    }
+    return { unmatchedNames: unmatched, approximate: approx }
+  }, [parsed, exercises])
 
   return (
     <BottomSheet visible={visible} onClose={handleClose} title="Antrenman Verisi İçe Aktar" scrollable>
@@ -121,8 +130,9 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
           <>
             <View style={{ gap: spacing[2], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
               <Row label="Kaynak" value={SOURCE_LABELS[parsed.source]} />
-              <Row label="Antrenman sayısı" value={String(parsed.workouts.length)} />
+              <Row label="Antrenman günü" value={String(parsed.workouts.length)} />
               <Row label="Set sayısı" value={String(totalSets)} />
+              {parsed.warmupSets > 0 && <Row label="Isınma seti (alınmayacak)" value={String(parsed.warmupSets)} />}
               {parsed.skippedRows > 0 && <Row label="Atlanan satır" value={String(parsed.skippedRows)} color={palette.warning} />}
               {unmatchedNames.length > 0 && (
                 <Row label="Yeni egzersiz" value={`${unmatchedNames.length} (otomatik oluşturulacak)`} color={palette.info} />
@@ -138,6 +148,20 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
                 </Text>
               </View>
             )}
+
+            {approximate.length > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[2] }}>
+                <Ionicons name="git-compare-outline" size={16} color={colors.textSubtle} style={{ marginTop: 1 }} />
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, flex: 1 }}>
+                  Yakın adla eşleşenler: {approximate.slice(0, 5).join(', ')}
+                  {approximate.length > 5 ? ` ve ${approximate.length - 5} tane daha` : ''}
+                </Text>
+              </View>
+            )}
+
+            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+              Zaten antrenman kaydın olan günler atlanır, üzerine yazılmaz.
+            </Text>
 
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
               <View style={{ flex: 1 }}>
@@ -164,6 +188,11 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
               </Text>
               {outcome.exercisesCreated > 0 && (
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{outcome.exercisesCreated} yeni egzersiz oluşturuldu</Text>
+              )}
+              {outcome.daysSkipped > 0 && (
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+                  {outcome.daysSkipped} gün zaten kayıtlı olduğu için atlandı
+                </Text>
               )}
             </View>
             <Button label="Kapat" onPress={handleClose} fullWidth />
