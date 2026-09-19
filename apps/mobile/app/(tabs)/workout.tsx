@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
-import { callAiSuggest } from '@/src/lib/ai'
+import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
   EQUIPMENT, WEEKDAY_ORDER, WEEKDAY_SHORT, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
   missingEquipment, nextSlotTime, planProgram, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
@@ -587,8 +587,8 @@ export default function WorkoutScreen() {
             }]
           : [],
       }])
-    } catch {
-      setCoachMsgs((m) => [...m, { role: 'assistant', content: 'Koça ulaşılamadı. Pro aboneliğini ve bağlantını kontrol et.' }])
+    } catch (error) {
+      setCoachMsgs((m) => [...m, { role: 'assistant', content: aiErrorMessage(error, 'Koça ulaşılamadı. Pro aboneliğini ve bağlantını kontrol et.') }])
     } finally {
       setCoachLoading(false)
     }

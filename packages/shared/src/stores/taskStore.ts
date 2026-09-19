@@ -6,6 +6,7 @@ import {
   getTasks,
   getTaskById,
   createTask,
+  createTasks,
   updateTask,
   deleteTask,
   updateTaskStatus,
@@ -28,6 +29,7 @@ interface TaskState {
   selectTask: (supabase: Supabase, taskId: string) => Promise<void>
   clearSelectedTask: () => void
   addTask: (supabase: Supabase, userId: string, input: CreateTaskInput) => Promise<Task>
+  addTasks: (supabase: Supabase, userId: string, inputs: CreateTaskInput[]) => Promise<Task[]>
   updateTask: (supabase: Supabase, taskId: string, updates: UpdateTaskInput) => Promise<void>
   deleteTask: (supabase: Supabase, taskId: string) => Promise<void>
   setStatus: (supabase: Supabase, taskId: string, status: TaskStatus) => Promise<void>
@@ -79,6 +81,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     // Optimistic: listeye ekle
     set((state) => ({ tasks: [task, ...state.tasks] }))
     return task
+  },
+
+  addTasks: async (supabase, userId, inputs) => {
+    const created = await createTasks(supabase, userId, inputs)
+    // Realtime INSERT olayı yazmadan önce gelmiş olabilir; aynı id iki kez eklenmesin
+    set((state) => {
+      const known = new Set(state.tasks.map((t) => t.id))
+      return { tasks: [...created.filter((t) => !known.has(t.id)), ...state.tasks] }
+    })
+    return created
   },
 
   updateTask: async (supabase, taskId, updates) => {

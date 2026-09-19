@@ -11,8 +11,11 @@ import {
   useTaskStore,
   BLOCK_TYPE_LABELS, BLOCK_TYPE_COLORS, APP_DEFAULTS,
   type BlockType, describeAiError } from '@lifeos/shared'
-import { updateTaskDetails, assignTaskToDate } from '@lifeos/shared/supabase'
+import { updateTaskDetails, assignTaskToDate, track } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
+import { useSubscription } from '@/lib/hooks/useSubscription'
+import { useFreeAiPlans } from '@/lib/hooks/useFreeAiPlans'
+import { useCommandParam } from '@/lib/hooks/useCommandParam'
 import { useToast } from '@/components/ui/Toast'
 import { DayTimeline } from '@/components/planning/DayTimeline'
 import { WeekView } from '@/components/planning/WeekView'
@@ -38,6 +41,16 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
   const { showToast } = useToast()
   const { t, lang } = useLang()
+  const { isPro, loading: subLoading } = useSubscription()
+  const { freePlansLeft, refreshFreePlans } = useFreeAiPlans(isPro, subLoading)
+  // Free kullanıcı 3 AI planlama hakkını bitirdiyse sohbet kutusu yerine Pro
+  // çağrısı çıkar. null (sayaç okunamadı) kilitlemez: kararı sunucu verir.
+  const freePlansUsedUp = !isPro && freePlansLeft === 0
+
+  // ProGate'teki gibi: kilit gerçekten gösterildiğinde paywall_view yazılır
+  useEffect(() => {
+    if (freePlansUsedUp) void track(supabase, userId, 'paywall_view', { source: 'free_limit' })
+  }, [freePlansUsedUp, userId])
 
   const ENERGY_LEVELS = [
     { value: 1, emoji: ENERGY_EMOJIS[0], label: t.dash_energy_low },
@@ -59,6 +72,15 @@ export function PlanningView({ userId }: PlanningViewProps) {
   interface ChatMessage { role: 'user' | 'assistant'; text: string; actions?: ReplanAction[] }
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput]       = useState('')
+  const chatInputRef = useRef<HTMLInputElement>(null)
+
+  // Komut paletinden "AI'a sor" (?ask=): sohbet gün görünümünde, kutu doldurulur
+  // ama gönderilmez; ücretsiz planlardan biri kullanıcı onaylamadan harcanmasın.
+  useCommandParam('ask', (text) => {
+    setViewMode('day')
+    setChatInput(text)
+    setTimeout(() => chatInputRef.current?.focus(), 0)
+  })
   const [chatLoading, setChatLoading]   = useState(false)
   const [pendingActions, setPendingActions] = useState<ReplanAction[] | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -274,7 +296,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
   // ── Agentic chat ────────────────────────────────────────────────────────────
   const handleSendChat = useCallback(async () => {
-    if (!chatInput.trim() || chatLoading) return
+    if (!chatInput.trim() || chatLoading || freePlansUsedUp) return
     const userMsg = chatInput.trim()
     // Sohbet gecmisi sunucuya gonderilir: aksi halde her mesaj sifirdan
     // basliyor ve "biraz daha gec yap" gibi bir duzeltme baglamsiz kaliyor.
@@ -293,6 +315,8 @@ export function PlanningView({ userId }: PlanningViewProps) {
         },
       })
       if (error) throw error
+      // Başarılı çağrı bir ücretsiz hak yedi; sayaç sunucuda, yeniden oku
+      if (!isPro) void refreshFreePlans()
       const result = data as { message: string; actions?: ReplanAction[] }
       const actions = result.actions?.filter((a) =>
         (a.action === 'add' && a.block?.start_time && a.block?.end_time) ||
@@ -305,8 +329,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
       const info = await describeAiError(err, lang)
       if (info.detail) console.error('ai-suggest replan:', info.status, info.detail)
       setChatMessages((p) => [...p, { role: 'assistant', text: info.message }])
+      // Hak başka bir cihazda bitmiş olabilir: sayacı yenile, Pro çağrısı çıksın
+      if (info.kind === 'subscription' && !isPro) void refreshFreePlans()
     } finally { setChatLoading(false) }
-  }, [chatInput, chatLoading, chatMessages, date, lang, timeBlocks])
+  }, [chatInput, chatLoading, chatMessages, date, lang, timeBlocks, freePlansUsedUp, isPro, refreshFreePlans])
 
   const handleApplyPendingActions = useCallback(async () => {
     if (!pendingActions) return
@@ -606,6 +632,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
                   <span className="text-[10px] text-white/80">{t.plan_ai_online}</span>
                 </div>
               </div>
+              {!isPro && freePlansLeft !== null && freePlansLeft > 0 && (
+                <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-semibold text-white">
+                  {t.plan_ai_free_left.replace('{n}', String(freePlansLeft))}
+                </span>
+              )}
             </div>
 
             {/* Mesaj alanı */}
@@ -619,7 +650,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
                   <div className="rounded-2xl rounded-bl-sm bg-white px-3.5 py-2.5 text-xs leading-relaxed text-gray-800 shadow-sm ring-1 ring-black/5">
                     {t.plan_ai_welcome}
                   </div>
-                  {chatMessages.length === 0 && (
+                  {chatMessages.length === 0 && !freePlansUsedUp && (
                     <div className="flex flex-wrap gap-1.5">
                       {[t.plan_ai_chip_replan, t.plan_ai_chip_focus, t.plan_ai_chip_break].map((q) => (
                         <button key={q}
@@ -715,10 +746,22 @@ export function PlanningView({ userId }: PlanningViewProps) {
               </div>
             )}
 
-            {/* Input */}
+            {/* Input: ücretsiz haklar bittiyse yerine Pro çağrısı */}
+            {freePlansUsedUp ? (
+              <div className="border-t border-gray-100 p-3">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-indigo-800">{t.plan_ai_free_used_title}</p>
+                  <p className="mt-0.5 text-[11px] text-indigo-600">{t.plan_ai_free_used_body}</p>
+                  <Link href="/billing?source=free_limit"
+                    className="mt-2 inline-block rounded-lg bg-indigo-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-600">
+                    {t.plan_ai_go_pro}
+                  </Link>
+                </div>
+              </div>
+            ) : (
             <div className="border-t border-gray-100 p-3">
               <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
-                <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                <input ref={chatInputRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat() } }}
                   placeholder={t.plan_replan_placeholder}
                   className="flex-1 bg-transparent text-xs text-gray-800 outline-none placeholder:text-gray-400"
@@ -733,6 +776,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
               </div>
               <p className="mt-1.5 text-[10px] text-gray-400">{t.plan_replan_hint}</p>
             </div>
+            )}
           </div>
         </div>
       )}

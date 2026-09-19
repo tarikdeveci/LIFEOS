@@ -15,6 +15,7 @@ import { supabase } from '@/src/lib/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { markOnboardingSeen } from '@/src/onboarding/storage'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
@@ -28,6 +29,7 @@ type SlideKey = 'priority' | 'day' | 'nutrition' | 'health'
 export default function OnboardingScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const subscription = useSubscriptionStatus()
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const scrollRef = useRef<ScrollView>(null)
@@ -46,6 +48,12 @@ export default function OnboardingScreen() {
     const { data } = await supabase.auth.getUser()
     if (data.user) await markOnboardingSeen(data.user.id)
     router.replace('/(tabs)/today')
+    // Turun sonunda (atlansa da) deneme teklifi bir kez, kapatılabilir
+    // biçimde gösterilir. Paywall'u yalnızca kilide dokunan görüyordu; onu
+    // hiç görmeyen kullanıcı denemeden de habersiz kalıyordu.
+    if (!subscription.isPro) {
+      router.push({ pathname: '/paywall', params: { source: 'onboarding' } })
+    }
   }
 
   function goNext() {

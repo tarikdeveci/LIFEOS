@@ -65,10 +65,21 @@ const PRODUCT_ID_VARIANTS = [
 
 export type ProPeriod = 'monthly' | 'annual'
 
+/**
+ * Mağazanın ücretsiz deneme teklifi (ASC'de introductory offer, Play'de free
+ * trial fazı). Hafta gün olarak tutulur: "1 hafta" yerine "7 gün" yazılıyor.
+ */
+export interface TrialOffer {
+  count: number
+  unit: 'day' | 'month' | 'year'
+}
+
 export interface ProPlan {
   period: ProPeriod
   productId: string
   priceString: string
+  /** Bu kullanıcının alabileceği ücretsiz deneme; yoksa ya da uygun değilse null */
+  trial: TrialOffer | null
   /** RevenueCat paketi — offering tanimliysa dolu, getProducts fallback'inde null */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pkg: any | null
@@ -102,7 +113,7 @@ export async function fetchProPlans(): Promise<ProPlan[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const pkg of (offerings?.current?.availablePackages ?? []) as any[]) {
       const period = periodOf(pkg.product.identifier)
-      if (period) plans.push({ period, productId: pkg.product.identifier, priceString: pkg.product.priceString, pkg, product: pkg.product })
+      if (period) plans.push({ period, productId: pkg.product.identifier, priceString: pkg.product.priceString, trial: null, pkg, product: pkg.product })
     }
   } catch {
     // offering okunamadi — asagidaki fallback devreye girer
@@ -114,15 +125,61 @@ export async function fetchProPlans(): Promise<ProPlan[]> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const product of (products ?? []) as any[]) {
         const period = periodOf(product.identifier)
-        if (period) plans.push({ period, productId: product.identifier, priceString: product.priceString, pkg: null, product })
+        if (period) plans.push({ period, productId: product.identifier, priceString: product.priceString, trial: null, pkg: null, product })
       }
     } catch {
       return []
     }
   }
 
+  const eligible = await trialEligibleIds(Purchases, plans.map((p) => p.productId))
+  for (const plan of plans) {
+    plan.trial = eligible.has(plan.productId) ? trialFromProduct(plan.product) : null
+  }
+
   // Aylik once, yillik sonra
   return plans.sort((a, b) => (a.period === 'monthly' ? -1 : 1) - (b.period === 'monthly' ? -1 : 1))
+}
+
+/** Yalnızca ÜCRETSİZ deneme; indirimli giriş fiyatı deneme sayılmaz. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function trialFromProduct(product: any): TrialOffer | null {
+  const intro = product?.introPrice
+  if (!intro || Number(intro.price) !== 0) return null
+  const units = Number(intro.periodNumberOfUnits) * Math.max(1, Number(intro.cycles) || 1)
+  if (!Number.isFinite(units) || units <= 0) return null
+  switch (String(intro.periodUnit).toUpperCase()) {
+    case 'DAY': return { count: units, unit: 'day' }
+    case 'WEEK': return { count: units * 7, unit: 'day' }
+    case 'MONTH': return { count: units, unit: 'month' }
+    case 'YEAR': return { count: units, unit: 'year' }
+    default: return null
+  }
+}
+
+/**
+ * Denemeyi alabilecek ürünler.
+ *
+ * iOS: aynı abonelik grubunda daha önce deneme kullanan kullanıcı tekrar
+ * alamaz; RevenueCat'e sorulur ve yalnızca ELIGIBLE kabul edilir. Emin
+ * olunamıyorsa deneme gösterilmez: "ücretsiz" yazıp ilk gün ücret almak
+ * yanıltıcı olur (RevenueCat'in önerisi de bu).
+ *
+ * Android: Play yalnızca kullanıcının hak kazandığı teklifleri döndürüyor ve
+ * RevenueCat'in uygunluk sorgusu orada hep UNKNOWN. Üründe deneme fazı
+ * görünüyorsa kullanıcı uygundur.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function trialEligibleIds(Purchases: any, productIds: string[]): Promise<Set<string>> {
+  if (Platform.OS !== 'ios') return new Set(productIds)
+  if (productIds.length === 0) return new Set()
+  try {
+    const eligibleStatus = Purchases.INTRO_ELIGIBILITY_STATUS?.INTRO_ELIGIBILITY_STATUS_ELIGIBLE ?? 2
+    const result = await Purchases.checkTrialOrIntroductoryPriceEligibility(productIds)
+    return new Set(productIds.filter((id) => result?.[id]?.status === eligibleStatus))
+  } catch {
+    return new Set()
+  }
 }
 
 export type PurchaseOutcome = 'purchased' | 'cancelled' | 'unavailable' | 'error'

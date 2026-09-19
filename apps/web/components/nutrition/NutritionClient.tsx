@@ -14,6 +14,7 @@ import { MacroDashboard } from '@/components/nutrition/MacroProgress'
 import { MealCard } from '@/components/nutrition/MealCard'
 import { MealAddModal } from '@/components/nutrition/MealAddModal'
 import { useSubscription } from '@/lib/hooks/useSubscription'
+import { useCommandParam } from '@/lib/hooks/useCommandParam'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Button } from '@/components/ui/Button'
 
@@ -84,7 +85,14 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
   const { t, lang } = useLang()
 
   const [showAddMeal, setShowAddMeal]   = useState(false)
+  // Komut paletinden gelen öğün metni (?meal=); modal bununla dolu açılır
+  const [mealPrefill, setMealPrefill]   = useState('')
   const [editingMeal, setEditingMeal]   = useState<Meal | null>(null)
+
+  useCommandParam('meal', (text) => {
+    setMealPrefill(text)
+    setShowAddMeal(true)
+  })
   const [foodSearch, setFoodSearch]     = useState('')
   const [foodResults, setFoodResults]   = useState<FoodResult[]>([])
   const [quickAdd, setQuickAdd]         = useState<{ food: FoodResult; qty: number; mealType: MealType } | null>(null)
@@ -400,10 +408,11 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
 
       <MealAddModal
         open={showAddMeal}
-        onClose={() => setShowAddMeal(false)}
+        onClose={() => { setShowAddMeal(false); setMealPrefill('') }}
         userId={userId}
         onSubmit={handleCreateMeal}
         onParseMeal={handleParseMeal}
+        initialText={mealPrefill}
       />
       <MealAddModal
         open={!!editingMeal}

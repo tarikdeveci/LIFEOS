@@ -69,9 +69,11 @@ interface MealAddModalProps {
   onParseMeal?: (rawInput: string) => Promise<ParseMealResponse>
   editMeal?: Meal | null
   onUpdate?: (mealId: string, updates: Partial<CreateMealInput>) => Promise<void>
+  /** Yeni öğünde metin kutusunun başlangıç değeri (komut paletinden gelir). */
+  initialText?: string
 }
 
-export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, editMeal, onUpdate }: MealAddModalProps) {
+export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, editMeal, onUpdate, initialText }: MealAddModalProps) {
   const isEdit = !!editMeal
   const [mealType, setMealType]       = useState<MealType>('lunch')
   const [rawInput, setRawInput]       = useState('')
@@ -81,7 +83,8 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
   const [trace, setTrace]             = useState<ParseTraceEntry[] | null>(null)
   const [parseVersion, setParseVersion] = useState<string | null>(null)
-  const [aiDegraded, setAiDegraded]   = useState(false)
+  // Model katmanı çalışmadıysa nedeni: 'budget' aylık AI sınırı doldu, 'down' sağlayıcı hatası
+  const [aiDegraded, setAiDegraded]   = useState<'budget' | 'down' | null>(null)
   // Kalemlerin düzenlenmemiş hâli: oranlama HER ZAMAN buradan yapılır. Bir
   // önceki düzenlemeden oranlamak, her tuş vuruşunda yuvarlama hatası biriktirir.
   const [baseItems, setBaseItems]     = useState<MealItem[]>([])
@@ -117,11 +120,11 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       initItems(editMeal.items)
       setStep('review')
     } else {
-      setMealType('lunch'); setRawInput(''); setParsedItems([]); setItemApprovals([]); initItems([]); setStep('input')
+      setMealType('lunch'); setRawInput(initialText ?? ''); setParsedItems([]); setItemApprovals([]); initItems([]); setStep('input')
     }
-    setQuestions([]); setAmountDrafts({}); setTrace(null); setParseVersion(null); setAiDegraded(false)
+    setQuestions([]); setAmountDrafts({}); setTrace(null); setParseVersion(null); setAiDegraded(null)
     setAddMode('text'); setFoodQuery(''); setFoodResults([]); setPendingChoice(null); setPendingGrams('')
-  }, [editMeal, open, initItems])
+  }, [editMeal, open, initItems, initialText])
 
   const handleParse = useCallback(async () => {
     if (!rawInput.trim() || !onParseMeal) return
@@ -135,7 +138,9 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
       setQuestions(response.questions ?? [])
       setTrace(response.trace ?? null)
       setParseVersion(response.version ?? null)
-      setAiDegraded(response.ai?.pro === true && response.ai.enabled === false)
+      setAiDegraded(response.ai?.pro === true && response.ai.enabled === false
+        ? (response.ai.error === 'budget' ? 'budget' : 'down')
+        : null)
       setStep('review')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Öğün parse edilemedi.', 'error')
@@ -454,8 +459,11 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
           <>
             {aiDegraded && (
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-                AI katmanı şu anda kullanılamıyor. Öğün, sözlük ve kural katmanıyla hesaplandı —
-                emin olunamayan kalemler aşağıda soru olarak duruyor.
+                {aiDegraded === 'budget'
+                  ? "Bu ayki AI öğün çözümleme sınırına ulaştın, ayın 1'inde yenilenir. "
+                  : 'AI katmanı şu anda kullanılamıyor. '}
+                Öğün, sözlük ve kural katmanıyla hesaplandı; emin olunamayan kalemler aşağıda
+                soru olarak duruyor.
               </p>
             )}
 

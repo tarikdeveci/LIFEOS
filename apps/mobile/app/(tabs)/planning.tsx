@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { callAiSuggest } from '@/src/lib/ai'
+import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
 import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -21,6 +22,7 @@ import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
 import { useProGate } from '@/src/hooks/useProGate'
+import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
@@ -83,12 +85,22 @@ function emptyBlockDraft() {
 
 export default function PlanningScreen() {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel } = usePlanningStore()
   const { localEvents, isSyncing, hasPermission, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
+  // Free kullanıcı ürünün vaadini (gününü AI kursun) görebilsin diye AI
+  // planlama ilk 3 kez ücretsiz; sayaç ve kapı sunucuda.
+  const { freePlansLeft, refreshFreePlans } = useFreeAiPlans(isPro, isCheckingPro)
+  const hasFreePlan = !isPro && (freePlansLeft ?? 0) > 0
+  const aiUnlocked = isPro || hasFreePlan
+  const freePlansLabel = hasFreePlan ? `${freePlansLeft} ${lang === 'tr' ? 'ücretsiz' : 'free'}` : null
+  function requirePlanAccess(): boolean {
+    if (hasFreePlan) return true
+    return requirePro(freePlansLeft === 0 ? 'free_limit' : undefined)
+  }
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
@@ -183,7 +195,7 @@ export default function PlanningScreen() {
   async function handleAiReplan(text?: string) {
     const userMessage = (text ?? aiInput).trim()
     if (!userId || !userMessage) return
-    if (!requirePro()) return
+    if (!requirePlanAccess()) return
     const requestedDate = inferRequestedDate(userMessage, selectedDate)
     // Sohbet geçmişi sunucuya gönderilir: eskiden her mesaj sıfırdan
     // başlıyordu ve "biraz daha geç yap" gibi bir düzeltme neyi
@@ -208,6 +220,8 @@ export default function PlanningScreen() {
         user_message: userMessage,
         history,
       })
+      // Sunucu hakkı bu çağrıda düştü; blokların uygulanması başarısız olsa da sayaç güncel kalsın.
+      if (!isPro) void refreshFreePlans()
       setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: data.message ?? 'Yanit alinamadi.' }])
       // Apply AI actions
       if (data.actions && userId) {
@@ -242,8 +256,16 @@ export default function PlanningScreen() {
         setSelectedDate(affectedDate)
         await load(userId, affectedDate)
       }
-    } catch {
-      setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: 'AI planlama basarisiz. Pro aboneligini ve baglantini kontrol et.' }])
+    } catch (error) {
+      if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
+        // Ücretsiz hak bitti (başka cihazda harcanmış da olabilir). iOS iç
+        // içe modal açmıyor: önce sheet kapanır, sonra paywall.
+        void refreshFreePlans()
+        setShowAiChat(false)
+        setTimeout(() => router.push({ pathname: '/paywall', params: { source: 'free_limit' } }), 400)
+      } else {
+        setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: aiErrorMessage(error, 'AI planlama basarisiz. Pro aboneligini ve baglantini kontrol et.') }])
+      }
     }
     finally { setAiLoading(false) }
   }
@@ -302,8 +324,13 @@ export default function PlanningScreen() {
             <TouchableOpacity onPress={() => void handleManualCalendarSync()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={isSyncing ? 'sync-outline' : 'calendar-outline'} size={18} color={palette.info} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { if (requirePro()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
-              <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
+            <TouchableOpacity onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked ? 1 : 0.55 }}>
+              <Ionicons name={aiUnlocked ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
+              {hasFreePlan && (
+                <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity onPress={openAddSheet} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
@@ -382,7 +409,11 @@ export default function PlanningScreen() {
             <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
               <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
-              <Button label={isPro ? t.plan_ai_plan : `Pro · ${t.plan_ai_plan}`} onPress={() => { if (requirePro()) setShowAiChat(true) }} variant="secondary" />
+              <Button
+                label={isPro ? t.plan_ai_plan : freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : `Pro · ${t.plan_ai_plan}`}
+                onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
+                variant="secondary"
+              />
             </View>
           </View>
         ) : (
@@ -428,7 +459,7 @@ export default function PlanningScreen() {
       <AiChatSheet
         visible={showAiChat}
         onClose={() => setShowAiChat(false)}
-        title={t.plan_ai_planning}
+        title={freePlansLabel ? `${t.plan_ai_planning} · ${freePlansLabel}` : t.plan_ai_planning}
         accent={palette.accent}
         messages={aiChatMsgs}
         loading={aiLoading}

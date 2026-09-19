@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import * as WebBrowser from 'expo-web-browser'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -11,7 +11,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { supabase } from '@/src/lib/supabase'
 import { track } from '@lifeos/shared/supabase'
-import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan } from '@/src/utils/purchases'
+import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 // Apple'in standart EULA'si — ASC'de ozel bir sozlesme tanimli degil.
@@ -27,23 +27,35 @@ const BENEFITS: Array<{ icon: keyof typeof Ionicons.glyphMap; tr: string; en: st
   { icon: 'barbell-outline', tr: 'Antrenman programı önerileri', en: 'Workout programme suggestions' },
 ]
 
+/** "7 gün" / "7 days": deneme süresi, düğmede ve açıklamada aynı ifade. */
+function trialDuration(trial: TrialOffer, tr: boolean): string {
+  const { count, unit } = trial
+  if (tr) return `${count} ${unit === 'day' ? 'gün' : unit === 'month' ? 'ay' : 'yıl'}`
+  const word = unit === 'day' ? 'day' : unit === 'month' ? 'month' : 'year'
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
+
 export default function PaywallScreen() {
   const { colors, isDark } = useTheme()
   const { lang } = useLang()
   const subscription = useSubscriptionStatus()
   const tr = lang === 'tr'
+  // Ekranı kim açtı: 'onboarding' (ilk açılış), 'free_limit' (ücretsiz AI
+  // planlama hakkı bitti) ya da yok (profil, Pro kilidi).
+  const { source } = useLocalSearchParams<{ source?: string }>()
+  const fromOnboarding = source === 'onboarding'
 
   const [plans, setPlans] = useState<ProPlan[] | null>(null)
   const [selected, setSelected] = useState<ProPeriod>('annual')
 
   // Paywall gerçekten gösterildi — dönüşüm oranının paydası bu. Ekran
   // açılışında bir kez; ödeme tarafını RevenueCat ölçtüğü için buraya
-  // yalnızca "gördü" bilgisi yazılıyor.
+  // yalnızca "gördü" bilgisi ve nereden açıldığı yazılıyor.
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) void track(supabase, data.user.id, 'paywall_view')
+      if (data.user) void track(supabase, data.user.id, 'paywall_view', { source: source ?? 'direct' })
     })
-  }, [])
+  }, [source])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -76,9 +88,14 @@ export default function PaywallScreen() {
       // yalnızca o satıra bakıyor, yoksa AI özellikleri 402 döner.
       // Yetişmese de satın alma geçerli — kullanıcıya başarı gösteririz.
       await subscription.waitForBackendSync()
+      const trial = plan.trial
       Alert.alert(
         tr ? 'Teşekkürler' : 'Thank you',
-        tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.',
+        trial
+          ? (tr
+              ? `Ücretsiz denemen başladı. ${trialDuration(trial, tr)} boyunca AI özellikleri açık.`
+              : `Your free trial has started. AI features are unlocked for ${trialDuration(trial, tr)}.`)
+          : (tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.'),
         [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
       )
     } else if (outcome === 'error') {
@@ -121,10 +138,28 @@ export default function PaywallScreen() {
     }
   }
 
+  const perLabel = (period: ProPeriod) =>
+    period === 'monthly' ? (tr ? '/ ay' : '/ month') : (tr ? '/ yıl' : '/ year')
+
+  const selectedPlan = plans?.find((p) => p.period === selected) ?? null
+  const trialText = selectedPlan?.trial ? trialDuration(selectedPlan.trial, tr) : null
+
+  // Apple 3.1.2: denemeli teklifte deneme sonrası tutar ve ne zaman
+  // ödeneceği satın alma düğmesinin hemen üstünde, açıkça yazmalı.
+  const trialNotice = selectedPlan && trialText
+    ? (tr
+        ? `${trialText} ücretsiz, sonra ${selectedPlan.priceString} ${perLabel(selectedPlan.period)}. Deneme bitmeden en az 24 saat önce iptal edersen ücret alınmaz.`
+        : `${trialText} free, then ${selectedPlan.priceString} ${perLabel(selectedPlan.period)}. Cancel at least 24 hours before the trial ends and you won't be charged.`)
+    : null
+
   const storeName = Platform.OS === 'ios' ? 'App Store' : 'Google Play'
-  const renewalNotice = tr
-    ? `Abonelik otomatik olarak yenilenir. Ödeme, satın alma onaylandığında ${storeName} hesabına yansıtılır. Mevcut dönem bitmeden en az 24 saat önce iptal edilmezse aynı tutarla yenilenir. Aboneliğini ${storeName} hesap ayarlarından yönetebilir veya iptal edebilirsin.`
-    : `Your subscription renews automatically. Payment is charged to your ${storeName} account when the purchase is confirmed. It renews at the same price unless cancelled at least 24 hours before the current period ends. You can manage or cancel it in your ${storeName} account settings.`
+  const renewalNotice = trialText
+    ? (tr
+        ? `Ücretsiz deneme bittiğinde abonelik otomatik başlar ve ücret ${storeName} hesabına yansıtılır. Deneme ya da dönem bitmeden en az 24 saat önce iptal edilmezse aynı tutarla yenilenir. Aboneliğini ${storeName} hesap ayarlarından yönetebilir veya iptal edebilirsin.`
+        : `When the free trial ends, the subscription starts automatically and is charged to your ${storeName} account. It renews at the same price unless cancelled at least 24 hours before the trial or current period ends. You can manage or cancel it in your ${storeName} account settings.`)
+    : (tr
+        ? `Abonelik otomatik olarak yenilenir. Ödeme, satın alma onaylandığında ${storeName} hesabına yansıtılır. Mevcut dönem bitmeden en az 24 saat önce iptal edilmezse aynı tutarla yenilenir. Aboneliğini ${storeName} hesap ayarlarından yönetebilir veya iptal edebilirsin.`
+        : `Your subscription renews automatically. Payment is charged to your ${storeName} account when the purchase is confirmed. It renews at the same price unless cancelled at least 24 hours before the current period ends. You can manage or cancel it in your ${storeName} account settings.`)
 
   return (
     <ScreenBackground>
@@ -145,6 +180,11 @@ export default function PaywallScreen() {
           <Text style={{ fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
             {tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature'}
           </Text>
+          {source === 'free_limit' && (
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
+              {tr ? '3 ücretsiz AI planlama hakkını kullandın.' : "You've used your 3 free AI planning requests."}
+            </Text>
+          )}
         </View>
 
         <GlassCard style={{ marginBottom: spacing[5] }}>
@@ -185,7 +225,8 @@ export default function PaywallScreen() {
             {plans.map((plan) => {
               const active = plan.period === selected
               const title = plan.period === 'monthly' ? (tr ? 'Aylık' : 'Monthly') : (tr ? 'Yıllık' : 'Annual')
-              const per = plan.period === 'monthly' ? (tr ? '/ ay' : '/ month') : (tr ? '/ yıl' : '/ year')
+              const per = perLabel(plan.period)
+              const planTrial = plan.trial ? trialDuration(plan.trial, tr) : null
 
               return (
                 <TouchableOpacity
@@ -221,8 +262,10 @@ export default function PaywallScreen() {
                         </View>
                       )}
                     </View>
-                    <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                      {tr ? 'Otomatik yenilenir, istediğin zaman iptal et' : 'Auto-renews, cancel anytime'}
+                    <Text style={{ fontSize: fontSize.sm, color: planTrial ? palette.success : colors.textMuted, marginTop: 2 }}>
+                      {planTrial
+                        ? (tr ? `${planTrial} ücretsiz, sonra otomatik yenilenir` : `${planTrial} free, then auto-renews`)
+                        : (tr ? 'Otomatik yenilenir, istediğin zaman iptal et' : 'Auto-renews, cancel anytime')}
                     </Text>
                   </View>
                   <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>
@@ -235,9 +278,17 @@ export default function PaywallScreen() {
           </View>
         )}
 
+        {!subscription.isPro && trialNotice && (
+          <Text style={{ fontSize: fontSize.sm, lineHeight: 20, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing[3] }}>
+            {trialNotice}
+          </Text>
+        )}
+
         {!subscription.isPro && (
           <Button
-            label={tr ? 'Pro üyeliği başlat' : 'Start Pro membership'}
+            label={trialText
+              ? (tr ? `${trialText} ücretsiz dene` : `Try ${trialText} free`)
+              : (tr ? 'Pro üyeliği başlat' : 'Start Pro membership')}
             onPress={() => void handlePurchase()}
             size="lg"
             fullWidth
@@ -245,6 +296,23 @@ export default function PaywallScreen() {
             disabled={busy || !plans || plans.length === 0}
             style={{ marginBottom: spacing[3] }}
           />
+        )}
+
+        {/* İlk açılışta gösterilen paywall kapatılabilir olmalı: uygulamanın
+            ücretsiz sürümü gerçek ve kullanıcı neyi kaçırdığını bilmeli. */}
+        {fromOnboarding && !subscription.isPro && (
+          <TouchableOpacity
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            style={{ alignItems: 'center', paddingVertical: spacing[2], marginBottom: spacing[3] }}
+          >
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textMuted }}>
+              {tr ? 'Şimdilik ücretsiz devam et' : 'Continue for free'}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: 4, textAlign: 'center' }}>
+              {tr ? 'Planlayıcı ücretsiz; 3 AI planlama hakkı da bizden.' : 'The planner is free, plus 3 AI planning requests on us.'}
+            </Text>
+          </TouchableOpacity>
         )}
 
         <Button

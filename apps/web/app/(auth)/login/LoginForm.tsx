@@ -4,18 +4,27 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
+import { ForgotPasswordForm } from './ForgotPasswordForm'
 
 type Tab = 'login' | 'register'
 
 const inputCls =
   'w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
 
+/** /auth/callback kodu oturuma çeviremezse buraya ?error= ile döner. */
+function callbackError(): string | null {
+  if (new URLSearchParams(window.location.search).get('error') !== 'auth_callback_failed') return null
+  return 'Bağlantı doğrulanamadı ya da süresi dolmuş. Şifre sıfırlama bağlantısını, isteği yaptığın tarayıcıda açman gerekiyor.'
+}
+
 export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab }) {
   const router = useRouter()
   const { t } = useLang()
   const [tab, setTab] = useState<Tab>(defaultTab)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Bu bileşen ssr:false ile yükleniyor, window burada her zaman var
+  const [error, setError] = useState<string | null>(callbackError)
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   // Login fields
   const [email, setEmail] = useState('')
@@ -161,6 +170,10 @@ export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab })
     )
   }
 
+  if (forgotOpen) {
+    return <ForgotPasswordForm initialEmail={email} onBack={() => setForgotOpen(false)} />
+  }
+
   return (
     <div>
       {/* Tab toggle */}
@@ -205,7 +218,13 @@ export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab })
               required className={inputCls} placeholder="ornek@email.com" />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-primary">Şifre</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label htmlFor="password" className="block text-sm font-medium text-primary">Şifre</label>
+              <button type="button" onClick={() => { setError(null); setForgotOpen(true) }}
+                className="text-xs font-medium text-accent hover:underline">
+                Şifremi unuttum
+              </button>
+            </div>
             <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               required className={inputCls} placeholder="••••••••" />
           </div>

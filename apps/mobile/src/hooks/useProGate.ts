@@ -7,7 +7,8 @@ export function useProGate(_userId?: string | null) {
   const { lang } = useLang()
   const subscription = useSubscriptionStatus()
 
-  function requirePro(): boolean {
+  /** @param source paywall'a hangi yoldan gelindiği (ölçüm ve paywall metni için) */
+  function requirePro(source?: string): boolean {
     if (subscription.isLoading) return false
     if (subscription.isPro) return true
 
@@ -18,7 +19,10 @@ export function useProGate(_userId?: string | null) {
         : 'AI features are only available with a Pro membership.',
       [
         { text: lang === 'tr' ? 'Vazgeç' : 'Not now', style: 'cancel' },
-        { text: lang === 'tr' ? "Pro'ya geç" : 'Go Pro', onPress: () => router.push('/paywall') },
+        {
+          text: lang === 'tr' ? "Pro'ya geç" : 'Go Pro',
+          onPress: () => router.push({ pathname: '/paywall', params: source ? { source } : {} }),
+        },
       ],
     )
     return false

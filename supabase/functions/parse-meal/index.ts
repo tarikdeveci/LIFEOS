@@ -26,6 +26,7 @@ import {
 } from '../_shared/nutrition/adapters/anthropic.ts'
 import { createOpenAIEmbedder } from '../_shared/nutrition/adapters/openai.ts'
 import type { ParseMealResult } from '../_shared/nutrition/types.ts'
+import { AiLedger, resolveAiAccess, type MeteredMessage } from '../_shared/ai/usage.ts'
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -71,23 +72,6 @@ interface ParseRequest {
   user_id: string
 }
 
-async function isProUser(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<boolean> {
-  const { data } = await supabase
-    .from('subscriptions')
-    .select('status, current_period_end')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
-  const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
-  const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
-
-  return active && notExpired
-}
-
 /** Model kesintisinin kullanıcıya gösterilecek sebebi — sessizce yutulmaz. */
 function classifyAiError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
@@ -124,12 +108,6 @@ serve(async (req: Request) => {
     if (!raw_input || !user_id) return json({ error: 'raw_input ve user_id gerekli' }, 400)
     if (user.id !== user_id) return json({ error: 'Yetkisiz erişim' }, 403)
 
-    // Ölçüm: öğün parse en çok kullanılan AI özelliği. authClient kullanıcının
-    // JWT'siyle çalışıyor, events tablosunun RLS insert politikasından geçiyor.
-    try {
-      await authClient.from('events').insert({ user_id, name: 'ai_used', props: { kind: 'parse_meal' } })
-    } catch { /* ölçüm asıl işi bozmaz */ }
-
     // Service role: RLS'i aşar, sorgular yine user_id ile daraltılır.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -154,8 +132,19 @@ serve(async (req: Request) => {
     const cheapModel = Deno.env.get('NUTRITION_MODEL')
       ?? Deno.env.get('NUTRITION_VERIFY_MODEL')
       ?? DEFAULT_CHEAP_MODEL
-    const pro = await isProUser(authClient, user.id)
-    const modelTierAvailable = pro && apiKey.length > 0
+    // Kapı ve bütçe kararı ai-suggest ile aynı yerden (_shared/ai/usage.ts).
+    // Aylık AI bütçesini aşan Pro ya da deneme kullanıcısı kural katmanına
+    // düşer: öğün kaydı hiçbir koşulda durmaz, yalnızca model katmanı kapanır.
+    const access = await resolveAiAccess(authClient, user.id, 'parse_meal')
+    const pro = access.tier !== 'free'
+    const budgetLimited = pro && (!access.allowed || access.overBudget)
+    const modelTierAvailable = pro && !budgetLimited && apiKey.length > 0
+
+    // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
+    // göre birkaç model çağrısı yapıyor; hepsi toplanıp tek `ai_used` satırı
+    // olarak yazılır. Model katmanı çalışmadıysa satır yazılmaz.
+    const ledger = new AiLedger(authClient, user.id, 'parse_meal', access.tier)
+    const onMessage = (message: MeteredMessage) => ledger.add(message)
 
     let result: ParseMealResult | null = null
     let aiError: string | null = null
@@ -164,19 +153,21 @@ serve(async (req: Request) => {
       try {
         result = await parseMeal(raw_input, {
           repo,
-          extractor: createAnthropicExtractor({ apiKey, model }),
-          verifier: createAnthropicVerifier({ apiKey, model: cheapModel }),
-          portionEstimator: createAnthropicPortionEstimator({ apiKey, model: cheapModel }),
+          extractor: createAnthropicExtractor({ apiKey, model, onMessage }),
+          verifier: createAnthropicVerifier({ apiKey, model: cheapModel, onMessage }),
+          portionEstimator: createAnthropicPortionEstimator({ apiKey, model: cheapModel, onMessage }),
           // Son basamak: hiçbir katmanın tanımadığı yiyecek için referans
           // değer üretir ve kişisel sözlüğe yazar. Kullanıcı onaylamadan
           // öğüne yazılmaz (ESTIMATE_CONFIDENCE_CAP < AUTO_THRESHOLD).
-          foodEstimator: createAnthropicFoodEstimator({ apiKey, model }),
+          foodEstimator: createAnthropicFoodEstimator({ apiKey, model, onMessage }),
         })
       } catch (error) {
         // 23 Ağustos dersi: kredi bittiğinde beslenme tamamen ölmemeli.
         aiError = classifyAiError(error)
         console.error('parse-meal model katmanı düştü:', aiError, error)
       }
+      // Katman yarıda düştüyse de o ana kadarki çağrılar faturalandı.
+      await ledger.flush()
     }
 
     if (!result) {
@@ -198,7 +189,8 @@ serve(async (req: Request) => {
         // Model katmanı gerçekten çalıştı mı — Pro olmak tek başına yetmiyor
         enabled: modelTierAvailable && aiError === null,
         pro,
-        error: aiError,
+        // 'budget': bu ayki AI bütçesi doldu, ay başında yenilenir.
+        error: aiError ?? (budgetLimited ? 'budget' : null),
         model: modelTierAvailable && aiError === null ? model : null,
         // Semantik arama ayrı bir sağlayıcıya bağlı; kapalıysa kullanıcıya
         // gösterilen soru sayısı artar ve sebebini bilmek gerekir.

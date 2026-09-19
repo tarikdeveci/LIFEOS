@@ -18,6 +18,9 @@ import { useTheme } from '@/lib/contexts/ThemeContext'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 import Link from 'next/link'
 import ApiKeysSection from './ApiKeysSection'
+import { CalendarFeedSection } from './CalendarFeedSection'
+import { DeleteAccountSection } from './DeleteAccountSection'
+import { NotificationSettings } from './NotificationSettings'
 
 interface UserProfile {
   display_name: string
@@ -417,7 +420,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
     { key: 'fitness' as const, label: t.settings_fitness_tab },
     { key: 'notifications' as const, label: t.settings_notifications_tab },
     { key: 'security' as const, label: t.settings_security },
-    { key: 'api' as const, label: 'API' },
+    { key: 'api' as const, label: t.settings_integrations_tab },
   ]
 
   return (
@@ -807,63 +810,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
       {activeSection === 'notifications' && (
         <div className="glass rounded-2xl p-6 space-y-5">
           <h2 className="text-lg font-semibold text-primary">{t.settings_notif_title}</h2>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t.settings_morning}
-              type="time"
-              value={profile.preferences.morning_briefing_time}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  preferences: { ...profile.preferences, morning_briefing_time: e.target.value },
-                })
-              }
-            />
-            <Input
-              label={t.settings_evening}
-              type="time"
-              value={profile.preferences.evening_summary_time}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  preferences: { ...profile.preferences, evening_summary_time: e.target.value },
-                })
-              }
-            />
-          </div>
-
-          <p className="text-xs text-muted">{t.settings_notif_note}</p>
-
-          {/* Email bildirimleri */}
-          <div className="rounded-xl border border-border/60 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-primary">{t.settings_notif_email_title}</h3>
-            <label className="flex items-center justify-between gap-3 cursor-pointer">
-              <span className="text-sm text-primary">{t.settings_notif_email_morning}</span>
-              <input
-                type="checkbox"
-                checked={(profile.preferences as unknown as Record<string, unknown>)['email_morning_enabled'] as boolean ?? false}
-                onChange={(e) => setProfile({ ...profile, preferences: { ...profile.preferences, email_morning_enabled: e.target.checked } as typeof profile.preferences })}
-                className="h-4 w-4 rounded accent-accent"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 cursor-pointer">
-              <span className="text-sm text-primary">{t.settings_notif_email_evening}</span>
-              <input
-                type="checkbox"
-                checked={(profile.preferences as unknown as Record<string, unknown>)['email_evening_enabled'] as boolean ?? false}
-                onChange={(e) => setProfile({ ...profile, preferences: { ...profile.preferences, email_evening_enabled: e.target.checked } as typeof profile.preferences })}
-                className="h-4 w-4 rounded accent-accent"
-              />
-            </label>
-            <p className="text-xs text-muted">{t.settings_notif_email_hint}</p>
-          </div>
-
-          <div className="flex justify-end">
-            <Button onClick={() => void handleSaveProfile()} loading={saving}>
-              {t.settings_save_notif}
-            </Button>
-          </div>
+          <NotificationSettings userId={userId} />
         </div>
       )}
 
@@ -1005,11 +952,18 @@ export default function SettingsClient({ userId }: { userId: string }) {
               </Button>
             )}
           </div>
+
+          <DeleteAccountSection />
         </div>
       )}
 
       {/* API anahtarları */}
-      {activeSection === 'api' && <ApiKeysSection />}
+      {activeSection === 'api' && (
+        <div className="space-y-4">
+          <CalendarFeedSection />
+          <ApiKeysSection />
+        </div>
+      )}
 
       {/* Abonelik */}
       <div className="glass rounded-2xl p-6 space-y-4">

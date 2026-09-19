@@ -19,6 +19,10 @@ interface RevenueCatEvent {
   store?: string
   product_id?: string
   period_type?: string
+  /** İşlemin USD fiyatı. Denemede 0, iadede negatif, bilinmiyorsa null. */
+  price?: number | null
+  /** RENEWAL: bu yenileme ücretsiz denemenin ücretliye dönüşü mü */
+  is_trial_conversion?: boolean
 }
 
 interface RevenueCatPayload {
@@ -43,6 +47,24 @@ function planFromProductId(productId: string | undefined): 'pro_monthly' | 'pro_
   if (id === 'pro_1') return 'pro_monthly'
   if (id === 'pro_2') return 'pro_annual'
   return null
+}
+
+const PERIOD_TYPES = new Set(['trial', 'intro', 'normal', 'promotional', 'prepaid'])
+
+/** RevenueCat dönem tipi ('TRIAL', 'NORMAL', ...) küçük harfle; bilinmeyen değer null. */
+function normalizePeriodType(value: string | undefined): string | null {
+  const lower = value?.toLowerCase() ?? ''
+  return PERIOD_TYPES.has(lower) ? lower : null
+}
+
+/**
+ * Yazım hatası RevenueCat'e 500 olarak döner: RevenueCat 200 dışındaki her
+ * yanıtı yeniden dener. Eskiden hata yok sayılıp 200 dönülüyordu; satır
+ * yazılamazsa satın alan kullanıcı sessizce free kalıyordu.
+ */
+function dbFailure(eventType: string, userId: string, message: string): Response {
+  console.error(`${eventType} yazılamadı (user ${userId}): ${message}`)
+  return new Response('Database write failed', { status: 500 })
 }
 
 Deno.serve(async (req) => {
@@ -76,6 +98,13 @@ Deno.serve(async (req) => {
   const userId = event.app_user_id // Supabase user ID ile eşleştirilmiş olmalı
   const source = mapStore(event.store)
 
+  // Purchases.logIn'den önce yapılan işlem '$RCAnonymousID:...' ile gelir.
+  // Yazılacak satır yok; 500 dönersek RevenueCat boşuna yeniden dener.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId ?? '')) {
+    console.warn(`Ignoring ${event.type}: app_user_id bir Supabase kullanıcısı değil (${userId})`)
+    return new Response('OK', { status: 200 })
+  }
+
   const now = new Date()
 
   switch (event.type) {
@@ -94,36 +123,74 @@ Deno.serve(async (req) => {
         break
       }
 
-      await supabase.from('subscriptions').upsert(
-        {
-          user_id: userId,
-          plan,
-          status: plan,
-          iyzico_subscription_reference_code: event.original_transaction_id ?? null,
-          current_period_start: event.purchased_at_ms
-            ? new Date(event.purchased_at_ms).toISOString()
-            : now.toISOString(),
-          current_period_end: new Date(event.expiration_at_ms).toISOString(),
-          updated_at: now.toISOString(),
-        },
-        { onConflict: 'user_id' },
-      )
+      const periodType = normalizePeriodType(event.period_type)
+      const periodStart = event.purchased_at_ms
+        ? new Date(event.purchased_at_ms).toISOString()
+        : now.toISOString()
+      const periodEnd = new Date(event.expiration_at_ms).toISOString()
+
+      const row: Record<string, unknown> = {
+        user_id: userId,
+        plan,
+        status: plan,
+        // Deneme de Pro'dur; AI bütçesi denemede ayrı (_shared/ai/usage.ts).
+        period_type: periodType,
+        iyzico_subscription_reference_code: event.original_transaction_id ?? null,
+        current_period_start: periodStart,
+        current_period_end: periodEnd,
+        updated_at: now.toISOString(),
+      }
+
+      // Yeni abonelik: önceki bir aboneliğin iptal işareti taşınmamalı.
+      // RENEWAL'da dokunulmuyor; gecikmiş bir yenileme olayı, sonradan gelen
+      // iptali silebilirdi.
+      if (event.type === 'INITIAL_PURCHASE') {
+        row['cancel_at_period_end'] = false
+        row['cancelled_at'] = null
+      }
+
+      // Deneme hunisi (analytics.trial_cohorts).
+      if (periodType === 'trial') {
+        row['trial_ends_at'] = periodEnd
+        if (event.type === 'INITIAL_PURCHASE') row['trial_started_at'] = periodStart
+      }
+      if (event.is_trial_conversion === true) row['trial_converted_at'] = now.toISOString()
+
+      // AI bütçesi ödenen fiyatla ölçekleniyor. Denemede fiyat 0 geliyor;
+      // 0 ile ezersek dönüşümden sonra bütçe tabana düşer.
+      if (typeof event.price === 'number' && event.price > 0) row['price_usd'] = event.price
+
+      const { error } = await supabase.from('subscriptions').upsert(row, { onConflict: 'user_id' })
+      if (error) return dbFailure(event.type, userId, error.message)
       break
     }
 
     case 'CANCELLATION': {
-      await supabase
+      const { error } = await supabase
         .from('subscriptions')
         .update({ cancel_at_period_end: true, cancelled_at: now.toISOString(), updated_at: now.toISOString() })
         .eq('user_id', userId)
+      if (error) return dbFailure(event.type, userId, error.message)
+      break
+    }
+
+    // İptal edip dönem bitmeden geri alan kullanıcı. Denemede sık: kullanıcı
+    // "unutmayayım" diye hemen iptal eder, sonra vazgeçer.
+    case 'UNCANCELLATION': {
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({ cancel_at_period_end: false, cancelled_at: null, updated_at: now.toISOString() })
+        .eq('user_id', userId)
+      if (error) return dbFailure(event.type, userId, error.message)
       break
     }
 
     case 'EXPIRATION': {
-      await supabase
+      const { error } = await supabase
         .from('subscriptions')
         .update({ plan: 'free', status: 'free', updated_at: now.toISOString() })
         .eq('user_id', userId)
+      if (error) return dbFailure(event.type, userId, error.message)
       break
     }
 

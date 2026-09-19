@@ -21,6 +21,16 @@ const PUBLIC_ROUTES = [
 const AUTH_ROUTES = ['/login', '/register']
 
 export async function middleware(request: NextRequest) {
+  // Supabase Auth yalnızca site_url (https://lifeos.tr) alan adındaki yollara
+  // geri döner; www.lifeos.tr/auth/callback reddedilir ve şifre sıfırlama ile
+  // Google girişi ana sayfaya düşer. Bu yüzden tek adres apex.
+  if (request.headers.get('host') === 'www.lifeos.tr') {
+    const url = request.nextUrl.clone()
+    url.host = 'lifeos.tr'
+    url.port = ''
+    return NextResponse.redirect(url, 308)
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(

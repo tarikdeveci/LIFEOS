@@ -16,6 +16,8 @@ export type AiErrorKind =
   | 'auth'
   /** Pro üyelik gerekiyor (402) */
   | 'subscription'
+  /** Kullanıcının aylık AI bütçesi doldu (429, ai_budget_exhausted) */
+  | 'budget'
   /** Servis geçici olarak çalışmıyor (kredi, kota, sağlayıcı arızası) */
   | 'unavailable'
   | 'unknown'
@@ -37,6 +39,10 @@ const MESSAGES: Record<AiErrorKind, { tr: string; en: string }> = {
   subscription: {
     tr: 'Bu özellik LifeOS Pro üyeliği gerektiriyor.',
     en: 'This feature requires a LifeOS Pro membership.',
+  },
+  budget: {
+    tr: "Bu ayki AI kullanım sınırına ulaştın. Ayın 1'inde yenilenir.",
+    en: "You've reached this month's AI limit. It resets on the 1st.",
   },
   unavailable: {
     tr: 'AI servisi şu anda kullanılamıyor. Kısa süre sonra tekrar dene.',
@@ -72,6 +78,9 @@ async function readBody(error: unknown): Promise<{ status: number | null; detail
 function classify(status: number | null, detail: string | null): AiErrorKind {
   if (status === 401 || status === 403) return 'auth'
   if (status === 402) return 'subscription'
+  // Edge function'lar 429'u yalnızca kullanıcı bütçesi için döndürür; sağlayıcının
+  // rate limit'i 5xx gövdesinde gelir ve aşağıda 'unavailable' olur.
+  if (status === 429) return 'budget'
 
   const lower = detail?.toLowerCase() ?? ''
   // Anthropic tarafı: kredi bitti / kota doldu / geçici arıza

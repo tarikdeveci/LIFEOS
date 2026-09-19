@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createPayTRPayment, PLANS, type PlanKey } from '@/lib/paytr'
 
 function getUserIp(req: Request): string {
@@ -53,13 +54,18 @@ export async function POST(req: Request) {
       notificationUrl: `${appUrl}/api/payment/notification`,
     })
 
-    // merchant_oid'i geçici olarak kaydet
-    await supabase
+    // merchant_oid'i geçici olarak kaydet. Service role ile: kullanıcı rolü
+    // subscriptions satırını yazamaz (migration 052). Eskiden yazabiliyordu;
+    // bu hem kendine Pro yazmaya hem de aylık ödeme başlatıp IPN gelmeden
+    // `plan`'ı yıllığa çevirerek aylık fiyata bir yıl almaya açıktı (IPN
+    // dönemi bu kolondan okur).
+    const { error: upsertError } = await createAdminClient()
       .from('subscriptions')
       .upsert(
         { user_id: user.id, paytr_merchant_oid: merchantOid, plan: planKey },
         { onConflict: 'user_id' },
       )
+    if (upsertError) throw upsertError
 
     return NextResponse.json({ paymentUrl })
   } catch (err) {

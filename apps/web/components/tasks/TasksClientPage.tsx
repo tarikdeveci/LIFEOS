@@ -1,15 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '@lifeos/shared'
+import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput, ImportedTask } from '@lifeos/shared'
 import { TASK_STATUS_COLORS } from '@lifeos/shared'
 import { useTaskStore } from '@lifeos/shared'
-import { updateTaskDetails } from '@lifeos/shared/supabase'
+import { getTaskById, updateTaskDetails } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
+import { useCommandParam } from '@/lib/hooks/useCommandParam'
 import { TaskCard } from '@/components/tasks/TaskCard'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { QuickTaskInput } from '@/components/tasks/QuickTaskInput'
+import { TaskImportModal } from '@/components/tasks/TaskImportModal'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { useLang } from '@/lib/contexts/LangContext'
 
 type ViewTab = 'kanban' | 'list' | 'backlog'
@@ -26,6 +29,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [hideRoutine, setHideRoutine]     = useState(true)
   const [hideDone, setHideDone]           = useState(true)
+  const [importOpen, setImportOpen]       = useState(false)
 
   const ROUTINE_TAGS = ['spor', 'yazılım', 'must-do', 'sağlık', 'kariyer']
 
@@ -39,7 +43,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
     deferred:    t.tasks_status_deferred,
   }
 
-  const { tasks, loading, fetchTasks, fetchBacklog, addTask, updateTask, deleteTask, setStatus } =
+  const { tasks, loading, fetchTasks, fetchBacklog, addTask, addTasks, updateTask, deleteTask, setStatus } =
     useTaskStore()
 
   // İlk yükleme
@@ -52,6 +56,15 @@ export default function TasksClientPage({ userId }: { userId: string }) {
       await addTask(supabase, userId, input)
     },
     [addTask, userId],
+  )
+
+  // Kaynakta tamamlanmış olsa da açık görev olarak girer: completed_at olmadan
+  // 'done' yazmak seri ve haftalık istatistikleri bozar.
+  const handleImportTasks = useCallback(
+    async (imported: ImportedTask[]) => {
+      await addTasks(supabase, userId, imported.map(({ title, description, due_date }) => ({ title, description, due_date })))
+    },
+    [addTasks, userId],
   )
 
   const handleUpdateTask = useCallback(
@@ -79,6 +92,17 @@ export default function TasksClientPage({ userId }: { userId: string }) {
     setSelectedTask(task)
     setDrawerOpen(true)
   }, [])
+
+  // Komut paletinden seçilen görev (?task=<id>); silinmişse sessizce geçer
+  useCommandParam('task', (taskId) => {
+    void (async () => {
+      try {
+        openTaskDetail(await getTaskById(supabase, taskId))
+      } catch {
+        // görev bulunamadı
+      }
+    })()
+  })
 
   const handleTabChange = useCallback(
     (tab: ViewTab) => {
@@ -128,8 +152,12 @@ export default function TasksClientPage({ userId }: { userId: string }) {
             {tasks.length}
           </span>
         </div>
-        <QuickTaskInput onCreateTask={handleCreateTask} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>{t.tasks_import}</Button>
+          <QuickTaskInput onCreateTask={handleCreateTask} />
+        </div>
       </div>
+      <TaskImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImportTasks} />
 
       {/* Tab bar */}
       <div className="flex gap-1 rounded-xl bg-border/40 p-1">

@@ -51,6 +51,69 @@ export async function getTasks(
   return data as unknown as Task[]
 }
 
+/**
+ * Başlıkta geçen açık görevler (komut paleti). Kullanıcının yazdığı % ve _
+ * joker karakter sayılmasın diye kaçışlanır.
+ */
+export async function searchTasks(
+  supabase: Supabase,
+  userId: string,
+  query: string,
+  limit = 6,
+): Promise<Task[]> {
+  const pattern = `%${query.trim().replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('user_id', userId)
+    .not('status', 'in', '(done,deferred)')
+    .ilike('title', pattern)
+    .order('priority_score', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data as unknown as Task[]
+}
+
+/** [fromIso, toIso) aralığında tamamlanan görevler, en yeni önce. */
+export async function getTasksCompletedBetween(
+  supabase: Supabase,
+  userId: string,
+  fromIso: string,
+  toIso: string,
+): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'done')
+    .gte('completed_at', fromIso)
+    .lt('completed_at', toIso)
+    .order('completed_at', { ascending: false })
+
+  if (error) throw error
+  return data as unknown as Task[]
+}
+
+/** scheduled_date'i [startDate, endDate] içinde olan görevler (durumdan bağımsız). */
+export async function getTasksScheduledBetween(
+  supabase: Supabase,
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('scheduled_date', startDate)
+    .lte('scheduled_date', endDate)
+    .order('scheduled_date')
+
+  if (error) throw error
+  return data as unknown as Task[]
+}
+
 export async function getTaskById(supabase: Supabase, taskId: string): Promise<Task> {
   const { data, error } = await supabase
     .from('tasks')
@@ -62,12 +125,8 @@ export async function getTaskById(supabase: Supabase, taskId: string): Promise<T
   return data as unknown as Task
 }
 
-export async function createTask(
-  supabase: Supabase,
-  userId: string,
-  input: CreateTaskInput,
-): Promise<Task> {
-  const payload: TaskInsert = {
+function toTaskInsert(userId: string, input: CreateTaskInput): TaskInsert {
+  return {
     user_id: userId,
     title: input.title,
     description: input.description ?? null,
@@ -83,10 +142,16 @@ export async function createTask(
     effort_score: input.effort_score ?? 3,
     friction_score: input.friction_score ?? 3,
   }
+}
 
+export async function createTask(
+  supabase: Supabase,
+  userId: string,
+  input: CreateTaskInput,
+): Promise<Task> {
   const { data: task, error: taskError } = await supabase
     .from('tasks')
-    .insert(payload)
+    .insert(toTaskInsert(userId, input))
     .select()
     .single()
 
@@ -99,6 +164,38 @@ export async function createTask(
   if (detailError) throw detailError
 
   return task as unknown as Task
+}
+
+/**
+ * Birden çok görevi tek istekte ekler (içe aktarma). task_details satırları
+ * yazılamazsa eklenen görevler geri silinir; yarım kalan içe aktarma, tekrar
+ * denendiğinde çift görev bırakmasın.
+ */
+export async function createTasks(
+  supabase: Supabase,
+  userId: string,
+  inputs: CreateTaskInput[],
+): Promise<Task[]> {
+  if (inputs.length === 0) return []
+
+  const { data, error: taskError } = await supabase
+    .from('tasks')
+    .insert(inputs.map((input) => toTaskInsert(userId, input)))
+    .select()
+
+  if (taskError) throw taskError
+  const tasks = data as unknown as Task[]
+  const ids = tasks.map((task) => task.id)
+
+  const detailPayload: TaskDetailsInsert[] = ids.map((id) => ({ task_id: id }))
+  const { error: detailError } = await supabase.from('task_details').insert(detailPayload)
+
+  if (detailError) {
+    await supabase.from('tasks').delete().in('id', ids)
+    throw detailError
+  }
+
+  return tasks
 }
 
 export async function updateTask(

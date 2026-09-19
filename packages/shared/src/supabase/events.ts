@@ -60,3 +60,26 @@ export async function track(
     // Sessiz. Ölçüm isteğinin başarısız olması, ölçtüğü işi başarısız edemez.
   }
 }
+
+export interface AiAllowance {
+  /** Free kullanıcının kalan ücretsiz AI planlama hakkı (ömür boyu 3) */
+  freePlansLeft: number
+  /** Bu takvim ayında (UTC) harcanan AI maliyeti, USD */
+  monthCostUsd: number
+}
+
+/**
+ * Kullanıcının AI hakkı, `ai_used` olaylarından sunucuda sayılır
+ * (`ai_allowance()`, migration 052). Kapı edge function'da uygulanıyor;
+ * bu yalnızca arayüzde kalan hakkı göstermek için.
+ */
+export async function getAiAllowance(supabase: Supabase): Promise<AiAllowance> {
+  const { data, error } = await supabase.rpc('ai_allowance')
+  if (error) throw error
+  const row: unknown = Array.isArray(data) ? data[0] : null
+  if (typeof row !== 'object' || row === null) throw new Error('ai_allowance boş döndü')
+  const { free_plans_left: freePlansLeft, month_cost_usd: monthCost } = row as Record<string, unknown>
+  if (typeof freePlansLeft !== 'number') throw new Error('ai_allowance beklenen biçimde değil')
+  // numeric kolonu PostgREST'ten string olarak da gelebilir
+  return { freePlansLeft, monthCostUsd: Number(monthCost) || 0 }
+}

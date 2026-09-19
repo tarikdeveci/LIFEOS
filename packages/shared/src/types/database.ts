@@ -1375,6 +1375,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ai_allowance: {
+        Args: never
+        Returns: {
+          free_plans_left: number
+          month_cost_usd: number
+        }[]
+      }
       confirm_estimated_food: {
         Args: { p_food_id: string }
         Returns: undefined

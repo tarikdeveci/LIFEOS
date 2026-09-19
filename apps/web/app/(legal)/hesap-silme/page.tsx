@@ -21,6 +21,13 @@ export default function HesapSilmePage() {
           <li><strong className="text-red-300">Hesabı kalıcı olarak sil</strong> seçeneğine dokunun ve iki aşamalı onayı tamamlayın.</li>
         </ol>
       </Section>
+      <Section title="Web panelinden silme">
+        <ol className="ml-5 list-decimal space-y-2">
+          <li>lifeos.tr adresinde hesabınıza giriş yapın.</li>
+          <li><strong className="text-white/80">Ayarlar</strong> sayfasında <strong className="text-white/80">Güvenlik</strong> sekmesini açın.</li>
+          <li><strong className="text-red-300">Hesabı kalıcı olarak sil</strong> bölümünde onay kelimesini yazıp silme düğmesine basın.</li>
+        </ol>
+      </Section>
       <Section title="Uygulamaya erişemiyorsanız">
         <p>Kayıtlı e-posta adresinizden <Field value={company.email} /> adresine “LifeOS hesap silme talebi” başlığıyla e-posta gönderin. Güvenliğiniz için hesap sahipliğini doğrulamamız gerekebilir.</p>
       </Section>

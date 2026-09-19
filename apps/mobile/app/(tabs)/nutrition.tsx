@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Keyboard } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
-import { callAiSuggest, callParseMeal } from '@/src/lib/ai'
+import { aiErrorMessage, callAiSuggest, callParseMeal } from '@/src/lib/ai'
 import { recordValueMoment } from '@/src/lib/review'
 import { rescaleItemToAmount, todayDate, useNutritionStore } from '@lifeos/shared'
 import type {
@@ -116,7 +116,8 @@ export default function NutritionScreen() {
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
   const [parseTrace, setParseTrace] = useState<ParseTraceEntry[] | null>(null)
   const [parseVersion, setParseVersion] = useState<string | null>(null)
-  const [aiDegraded, setAiDegraded] = useState(false)
+  // Model katmanı çalışmadıysa nedeni: 'budget' aylık AI sınırı doldu, 'down' sağlayıcı hatası
+  const [aiDegraded, setAiDegraded] = useState<'budget' | 'down' | null>(null)
   const [adding, setAdding] = useState(false)
 
   // "Bu yanlış" bildirimi. Hattın soru sorduğu kalemler zaten food_gaps'e
@@ -344,7 +345,7 @@ export default function NutritionScreen() {
       setItemApprovals(result.items.map((item) => item.disposition !== 'confirm'))
       setParseTrace(result.trace)
       setParseVersion(result.version)
-      setAiDegraded(result.ai.pro && !result.ai.enabled)
+      setAiDegraded(result.ai.pro && !result.ai.enabled ? (result.ai.error === 'budget' ? 'budget' : 'down') : null)
     } catch {
       Alert.alert('Hata', 'Öğün analiz edilemedi')
     } finally {
@@ -450,7 +451,7 @@ export default function NutritionScreen() {
       setAmountDrafts({})
       setParseTrace(null)
       setParseVersion(null)
-      setAiDegraded(false)
+      setAiDegraded(null)
       setShowAdd(false)
       // Öğün kaydedildi — kullanıcının uygulamadan değer gördüğü an. Beklenmez:
       // puanlama istemi kaydın tamamlanmasını geciktirmemeli.
@@ -622,8 +623,8 @@ export default function NutritionScreen() {
         }))
 
       setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? 'Yanıt alınamadı', actions }])
-    } catch {
-      setChatMsgs((m) => [...m, { role: 'assistant', content: 'Hata oluştu, tekrar dene.' }])
+    } catch (error) {
+      setChatMsgs((m) => [...m, { role: 'assistant', content: aiErrorMessage(error, 'Hata oluştu, tekrar dene.') }])
     } finally { setChatLoading(false) }
   }
 
@@ -774,7 +775,7 @@ export default function NutritionScreen() {
           setAmountDrafts({})
           setParseTrace(null)
           setParseVersion(null)
-          setAiDegraded(false)
+          setAiDegraded(null)
           setPendingChoice(null)
           setPendingGrams('')
           setFoodSearch('')
@@ -896,7 +897,9 @@ export default function NutritionScreen() {
               {aiDegraded && (
                 <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: 'rgba(245,158,11,0.12)' }}>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textSecondary, lineHeight: 18 }}>
-                    AI katmanı kullanılamıyor. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor.
+                    {aiDegraded === 'budget'
+                      ? "Bu ayki AI öğün çözümleme sınırına ulaştın, ayın 1'inde yenilenir. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor."
+                      : 'AI katmanı kullanılamıyor. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor.'}
                   </Text>
                 </View>
               )}

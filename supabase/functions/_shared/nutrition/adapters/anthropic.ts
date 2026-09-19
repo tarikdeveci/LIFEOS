@@ -27,6 +27,7 @@ import type {
   Verifier,
 } from '../types.ts'
 import { detectFlags, normalizePhrase, parseQuantity, splitInput, tokenize } from '../normalize.ts'
+import type { MeteredMessage } from '../../ai/usage.ts'
 
 export const EXTRACT_PROMPT_VERSION = 'extract-2026-08-26.a'
 
@@ -38,6 +39,8 @@ function supportsTemperature(model: string): boolean {
 interface AnthropicOptions {
   apiKey: string
   model: string
+  /** Her model yanıtında çağrılır; maliyet defteri (_shared/ai/usage.ts) buradan beslenir. */
+  onMessage?: (message: MeteredMessage) => void
 }
 
 function client(options: AnthropicOptions) {
@@ -233,6 +236,7 @@ export function createAnthropicExtractor(options: AnthropicOptions): Extractor {
         tool_choice: { type: 'tool', name: EXTRACT_TOOL.name },
         messages: [{ role: 'user', content: `Öğün metni:\n${input}` }],
       })
+      options.onMessage?.(message as MeteredMessage)
 
       const parsed = toolInput(message as { content: unknown[] }, EXTRACT_TOOL.name)
       if (!parsed) throw new Error('Çıkarıcı araç çağrısı döndürmedi')
@@ -328,6 +332,7 @@ export function createAnthropicVerifier(options: AnthropicOptions): Verifier {
             content: `İfade: "${phrase}"\n\nAdaylar:\n${listing}`,
           }],
         })
+        options.onMessage?.(message as MeteredMessage)
 
         const parsed = toolInput(message as { content: unknown[] }, tool.name)
         const chosen = str(parsed?.['chosen_id'])
@@ -396,6 +401,7 @@ export function createAnthropicPortionEstimator(options: AnthropicOptions): Port
             content: `Yiyecek: ${foodLabel}\nKullanıcının ifadesi: "${phrase}"\nYazılan miktar: ${stated}`,
           }],
         })
+        options.onMessage?.(message as MeteredMessage)
 
         const parsed = toolInput(message as { content: unknown[] }, tool.name)
         if (!parsed) return null
@@ -500,6 +506,7 @@ export function createAnthropicFoodEstimator(options: AnthropicOptions): FoodEst
           tool_choice: { type: 'tool', name: FOOD_ESTIMATE_TOOL.name },
           messages: [{ role: 'user', content: `Yiyecek: "${cleaned}"${context}` }],
         })
+        options.onMessage?.(message as MeteredMessage)
 
         const parsed = toolInput(message as { content: unknown[] }, FOOD_ESTIMATE_TOOL.name)
         if (!parsed || parsed['is_food'] !== true) return null

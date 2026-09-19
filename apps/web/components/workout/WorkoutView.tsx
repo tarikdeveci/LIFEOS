@@ -18,6 +18,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { ProGate } from '@/components/ui/ProGate'
 import { useLang } from '@/lib/contexts/LangContext'
+import { useLegacyProgramMigration } from '@/lib/hooks/useLegacyProgramMigration'
+import { manualProgramToPlan, targetWeightFromNotes, type ManualProgramExercise as ProgramExercise } from '@/lib/workoutPrograms'
 
 interface WorkoutViewProps { userId: string }
 
@@ -33,8 +35,6 @@ const PULLUP_BAR_PATTERN = /barfiks|pull.?up|chin.?up|muscle.?up|front lever|inv
 const MACHINE_PATTERN = /machine|makine|smith|pulldown|leg press|hack squat|pec deck|assisted|abduction|adduction|rotary torso|chest press|shoulder press|leg extension|leg curl|calf raise/i
 const BARBELL_EXACT_NAMES = new Set(['bench press', 'inkline bench press', 'deadlift', 'overhead press', 'squat', 'sumo deadlift', 'barbell row', 'barbell curl'])
 
-interface ProgramExercise { exercise_id: string; exercise_name: string; sets: number; reps: number; weight_kg: number }
-interface WorkoutProgram { id: string; name: string; description: string; exercises: ProgramExercise[]; created_at: string }
 interface WorkoutAssistantMessage { role: 'user' | 'assistant'; text: string }
 interface WorkoutAssistantExercise {
   exercise_name: string
@@ -85,43 +85,10 @@ function flattenProgramDayExercises(program: CloudWorkoutProgram, dayId: string)
       exercise_name: exercise.exercise?.name ?? 'Egzersiz',
       sets: exercise.sets,
       reps: exercise.reps ?? 10,
-      weight_kg: 0,
+      weight_kg: targetWeightFromNotes(exercise.notes) ?? 0,
     })
   }
   return items
-}
-
-function useWorkoutPrograms(userId: string) {
-  const key = `lifeos_programs_${userId}`
-  const [programs, setPrograms] = useState<WorkoutProgram[]>([])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      setPrograms(JSON.parse(window.localStorage.getItem(key) ?? '[]') as WorkoutProgram[])
-    } catch {
-      setPrograms([])
-    }
-  }, [key])
-
-  const persistPrograms = useCallback((updated: WorkoutProgram[]) => {
-    setPrograms(updated)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(key, JSON.stringify(updated))
-    }
-  }, [key])
-
-  const saveProgram = (prog: Omit<WorkoutProgram, 'id' | 'created_at'>) => {
-    const newProg: WorkoutProgram = { ...prog, id: crypto.randomUUID(), created_at: new Date().toISOString() }
-    const updated = [...programs, newProg]
-    persistPrograms(updated)
-    return newProg
-  }
-  const deleteProgram = (id: string) => {
-    const updated = programs.filter((p) => p.id !== id)
-    persistPrograms(updated)
-  }
-  return { programs, saveProgram, deleteProgram }
 }
 
 export function WorkoutView({ userId }: WorkoutViewProps) {
@@ -131,12 +98,20 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     fetchLibrary, fetchTodayWorkout, fetchHistory,
     startWorkout, finishWorkout, skipWorkout, removeWorkout,
     addSet, updateSet, removeSet, setWorkoutAiPlan,
-    programs: cloudPrograms, fetchPrograms, createProgramFromPlan,
+    programs: cloudPrograms, fetchPrograms, createProgramFromPlan, deleteProgram,
   } = useWorkoutStore()
 
   const { showToast } = useToast()
   const { t, lang } = useLang()
-  const { programs: localPrograms, saveProgram, deleteProgram } = useWorkoutPrograms(userId)
+  const manualDayName = lang === 'tr' ? 'Gün 1' : 'Day 1'
+  const saveProgramPlan = useCallback(
+    (plan: AiProgramPlan) => createProgramFromPlan(supabase, userId, plan),
+    [createProgramFromPlan, userId],
+  )
+  const handleLegacyMigrated = useCallback((count: number) => {
+    showToast(lang === 'tr' ? `Bu tarayıcıdaki ${count} program hesabına taşındı` : `${count} programs from this browser moved to your account`, 'success')
+  }, [lang, showToast])
+  useLegacyProgramMigration(userId, saveProgramPlan, manualDayName, handleLegacyMigrated)
 
   const FITNESS_GOALS = [
     { value: 'muscle_gain', label: t.work_goal_muscle },
@@ -473,17 +448,25 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
   }, [todayWorkout, startTime, finishWorkout, showToast])
 
   // ---------- Programdan başlat ----------
-  const handleStartFromProgram = useCallback(async (prog: WorkoutProgram) => {
-    const workout = await startWorkout(supabase, userId, { date: todayDate(), name: prog.name, status: 'in_progress' })
-    for (const pe of prog.exercises) {
-      for (let s = 1; s <= pe.sets; s++) {
-        await addSet(supabase, { workout_id: workout.id, exercise_id: pe.exercise_id, set_number: s, reps: pe.reps, weight_kg: pe.weight_kg > 0 ? pe.weight_kg : undefined })
-      }
+  const handleSaveManualProgram = useCallback(async () => {
+    const name = progName.trim()
+    try {
+      await createProgramFromPlan(supabase, userId, manualProgramToPlan({ name, description: progDesc, exercises: progExercises }, manualDayName))
+      setShowNewProgram(false)
+      showToast(`"${name}" programı kaydedildi`, 'success')
+    } catch {
+      showToast(lang === 'tr' ? 'Program kaydedilemedi, tekrar dene' : 'Could not save the program, try again', 'error')
     }
-    setStartTime(new Date())
-    setActiveTab('today')
-    showToast(`"${prog.name}" programindan antrenman basladi`, 'success')
-  }, [startWorkout, addSet, userId, showToast])
+  }, [createProgramFromPlan, userId, progName, progDesc, progExercises, manualDayName, lang, showToast])
+
+  const handleDeleteProgram = useCallback(async (prog: CloudWorkoutProgram) => {
+    if (!window.confirm(lang === 'tr' ? `"${prog.name}" programı silinsin mi?` : `Delete "${prog.name}"?`)) return
+    try {
+      await deleteProgram(supabase, prog.id)
+    } catch {
+      showToast(lang === 'tr' ? 'Program silinemedi' : 'Could not delete the program', 'error')
+    }
+  }, [deleteProgram, lang, showToast])
 
   const handleStartFromCloudProgramDay = useCallback(async (prog: CloudWorkoutProgram, dayId: string) => {
     const day = (prog.days ?? []).find((d) => d.id === dayId)
@@ -533,7 +516,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           <p className="text-sm text-muted">{todayLabel}</p>
         </div>
         <div className="flex gap-2">
-          {!hasActiveWorkout && (localPrograms.length > 0 || cloudPrograms.length > 0) && (
+          {!hasActiveWorkout && cloudPrograms.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setActiveTab('programs')}>{t.work_start_program}</Button>
           )}
           {!hasActiveWorkout && (
@@ -844,7 +827,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
             <p className="text-sm text-muted">{t.work_saved_programs}</p>
             <Button size="sm" onClick={() => { setProgName(''); setProgDesc(''); setProgExercises([]); setProgramChat([]); setProgTab('manual'); setShowNewProgram(true) }}>{t.work_new_program}</Button>
           </div>
-          {localPrograms.length === 0 && cloudPrograms.length === 0 ? (
+          {cloudPrograms.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border py-16 text-center">
               <p className="mt-3 font-medium text-primary">{t.work_no_programs}</p>
               <p className="mt-1 text-sm text-muted">{t.work_no_programs_hint}</p>
@@ -858,7 +841,9 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
                 <div key={prog.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start justify-between">
                     <div><h3 className="font-semibold text-primary">{prog.name}</h3>{prog.description && <p className="mt-0.5 text-xs text-muted">{prog.description}</p>}</div>
-                    {prog.user_id === null ? <span className="text-[10px] text-accent">Template</span> : null}
+                    {prog.user_id === null
+                      ? <span className="text-[10px] text-accent">Template</span>
+                      : <button onClick={() => void handleDeleteProgram(prog)} className="text-xs text-danger hover:underline">Sil</button>}
                   </div>
                   <div className="mt-3 space-y-1">
                     {activeDays.slice(0, 4).map((day) => (
@@ -881,25 +866,6 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
                 </div>
                 )
               })}
-              {localPrograms.map((prog) => (
-                <div key={prog.id} className="glass rounded-2xl p-4">
-                  <div className="flex items-start justify-between">
-                    <div><h3 className="font-semibold text-primary">{prog.name}</h3>{prog.description && <p className="mt-0.5 text-xs text-muted">{prog.description}</p>}</div>
-                    <button onClick={() => deleteProgram(prog.id)} className="text-xs text-danger hover:underline">Sil</button>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    {prog.exercises.map((pe, i) => (
-                      <div key={`${prog.id}-${i}`} className="flex items-center gap-2 text-xs text-muted">
-                        <span className="font-medium text-primary">{pe.exercise_name}</span>
-                        <span>{pe.sets}x{pe.reps}{pe.weight_kg > 0 ? ` · ${pe.weight_kg}kg` : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <Button size="sm" className="mt-4 w-full" onClick={() => void handleStartFromProgram(prog)} disabled={hasActiveWorkout}>
-                    {hasActiveWorkout ? 'Antrenman devam ediyor' : 'Bu Programla Baslat'}
-                  </Button>
-                </div>
-              ))}
             </div>
           )}
         </div>
@@ -1166,7 +1132,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowNewProgram(false)}>{t.work_cancel}</Button>
             <Button size="sm" disabled={!progName.trim() || progExercises.length === 0}
-              onClick={() => { saveProgram({ name: progName.trim(), description: progDesc, exercises: progExercises }); setShowNewProgram(false); showToast(`"${progName}" programi kaydedildi`, 'success') }}>
+              onClick={() => void handleSaveManualProgram()}>
               {t.work_save_program}
             </Button>
           </div>

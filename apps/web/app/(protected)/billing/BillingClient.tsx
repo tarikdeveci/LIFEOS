@@ -16,11 +16,12 @@ const PLANS = [
       'Günlük zaman planlama',
       'Beslenme takibi (manuel)',
       'Temel raporlar',
+      '3 ücretsiz AI günlük plan önerisi',
     ],
     unavailable: [
       'AI beslenme koçu',
       'AI görev önceliklendirme',
-      'AI günlük plan önerileri',
+      'Sınırsız AI günlük plan önerileri',
       'AI antrenman koçu',
     ],
     cta: 'Mevcut Plan',
@@ -137,6 +138,15 @@ export default function BillingClient() {
         <p className="mt-1 text-sm text-muted">AI özelliklerinin tamamına erişin</p>
       </div>
 
+      {!isPro && searchParams.get('source') === 'free_limit' && (
+        <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
+          <p className="text-sm font-semibold text-accent">3 ücretsiz AI planlama hakkını kullandın.</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Planlayıcı ücretsiz kalmaya devam ediyor. Sınırsız AI planlama ve diğer AI özellikleri Pro ile açılır.
+          </p>
+        </div>
+      )}
+
       {isPro && (
         <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
           <div className="flex items-center justify-between">
@@ -229,7 +239,7 @@ export default function BillingClient() {
         <h2 className="mb-4 text-base font-semibold text-primary">Sık Sorulan Sorular</h2>
         <div className="space-y-4">
           {[
-            { q: 'Ödeme güvenli mi?', a: 'Evet. Ödemeler İyzico altyapısı üzerinden işlenir. Kart bilgileriniz bizde saklanmaz.' },
+            { q: 'Ödeme güvenli mi?', a: 'Evet. Ödemeler PayTR altyapısı üzerinden işlenir. Kart bilgileriniz bizde saklanmaz.' },
             { q: 'İptal edebilir miyim?', a: 'Evet, istediğiniz zaman iptal edebilirsiniz. Mevcut dönem sonuna kadar Pro özelliklerine erişiminiz devam eder.' },
             { q: 'Yıllık plandan aylığa geçebilir miyim?', a: 'Evet, mevcut dönem bittikten sonra planınızı değiştirebilirsiniz.' },
             { q: 'AI özellikleri neler?', a: 'AI beslenme koçu, AI meal parsing, AI görev önceliklendirme (WSJF), AI günlük plan önerileri ve AI antrenman koçu.' },

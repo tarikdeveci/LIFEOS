@@ -22,6 +22,7 @@ import {
   type WorkoutCatalogEntry,
 } from '../_shared/ai/coach.ts'
 import { isDoableWith, parseEquipmentPreference } from '../_shared/ai/equipment.ts'
+import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import {
   flattenWorkoutRows,
   muscleLoadLine,
@@ -45,6 +46,11 @@ import {
 // ne de max_tokens butcesini paylasmasi guvenli.
 const CHAT_MODEL = Deno.env.get('CHAT_MODEL') ?? 'claude-opus-5'
 const CHAT_EFFORT = { effort: 'low' } as const
+
+// Aylik AI butcesini asan kullanicinin sohbetleri bu modelden devam eder
+// (_shared/ai/usage.ts). Sonnet 5 effort 'low' destekliyor, fiyati Opus 5'in
+// %40'i ($2/$10).
+const BUDGET_CHAT_MODEL = Deno.env.get('BUDGET_CHAT_MODEL') ?? 'claude-sonnet-5'
 
 // daily_plan ve task_priority rotalari. Sonnet 4 ($3/$15) yerine Sonnet 5
 // ($2/$10): ayni is, daha ucuz ve daha yeni model.
@@ -180,20 +186,6 @@ interface SuggestRequest {
   }
 }
 
-async function isProUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('subscriptions')
-    .select('status, current_period_end')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  const active = data?.status === 'pro_monthly' || data?.status === 'pro_annual'
-  const periodEnd = typeof data?.current_period_end === 'string' ? data.current_period_end : null
-  const notExpired = periodEnd !== null && new Date(periodEnd) > new Date()
-
-  return active && notExpired
-}
-
 function normalizeExerciseName(value: string): string {
   return value
     .toLocaleLowerCase('tr-TR')
@@ -252,18 +244,18 @@ serve(async (req: Request) => {
       nutrition_context, workout_context,
     } = body
 
-    const allowed = await isProUser(supabase, user.id)
-    if (!allowed) return json({ error: 'AI access requires Pro' }, 402)
+    // Pro, deneme ya da free kullanıcının ücretsiz gün planı hakkı; bütçe
+    // aşımı da burada karara bağlanıyor (_shared/ai/usage.ts).
+    const access = await resolveAiAccess(supabase, user.id, type)
+    if (!access.allowed) return json({ error: access.error, code: access.code }, access.status)
+    const chatModel = access.overBudget ? BUDGET_CHAT_MODEL : CHAT_MODEL
 
     // Ölçüm burada, istemcide değil: web'de AI çağrısı beş ayrı bileşene
-    // dağılmış durumda ve mobil ayrı bir yoldan geliyor. Tek yerden ölçmek
-    // hem eksiksiz hem de gerçekten çalışan çağrıyı sayıyor.
-    // `supabase` kullanıcının JWT'siyle çalışıyor, RLS insert politikasından
-    // geçiyor. Await ediliyor: yanıt dönünce bekleyen iş iptal edilebilir ve
-    // gecikmesi Anthropic çağrısının yanında ölçülemez.
-    try {
-      await supabase.from('events').insert({ user_id: user.id, name: 'ai_used', props: { kind: type } })
-    } catch { /* ölçüm asıl işi bozmaz */ }
+    // dağılmış durumda ve mobil ayrı bir yoldan geliyor. Her rota tek model
+    // çağrısı yapıyor; satır o çağrıdan hemen sonra token ve USD maliyetiyle
+    // yazılır. `supabase` kullanıcının JWT'siyle çalışıyor, RLS insert
+    // politikasından geçiyor.
+    const ledger = new AiLedger(supabase, user.id, type, access.tier)
 
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
     const lang: Lang = language === 'en' ? 'en' : 'tr'
@@ -355,6 +347,7 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
           },
         ],
       })
+      await ledger.record(response)
 
       const text = firstText(response)
       let suggestions: unknown[] = []
@@ -406,6 +399,7 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
           },
         ],
       })
+      await ledger.record(response)
 
       const text = firstText(response)
       let suggestion: unknown = {}
@@ -441,7 +435,7 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
         .join('\n') ?? 'Geçmiş antrenman yok'
 
       const response = await client.messages.create({
-        model: CHAT_MODEL,
+        model: chatModel,
         output_config: CHAT_EFFORT,
         // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
         // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
@@ -473,6 +467,7 @@ Lütfen:
 4. Gerekiyorsa dinlenme günü öner`,
         }],
       })
+      await ledger.record(response)
 
       const text = firstText(response)
       let suggestions: unknown[] = []
@@ -579,7 +574,7 @@ Lütfen:
       })
 
       const response = await client.messages.create({
-        model: CHAT_MODEL,
+        model: chatModel,
         output_config: CHAT_EFFORT,
         // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
         // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
@@ -587,6 +582,7 @@ Lütfen:
         system,
         messages,
       })
+      await ledger.record(response)
 
       const result = parseWorkoutCoachResult(firstText(response), resolveName)
       if (!result.message) {
@@ -654,7 +650,7 @@ Lütfen:
       })
 
       const response = await client.messages.create({
-        model: CHAT_MODEL,
+        model: chatModel,
         output_config: CHAT_EFFORT,
         // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
         // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
@@ -662,6 +658,7 @@ Lütfen:
         system,
         messages,
       })
+      await ledger.record(response)
 
       const knownIds = new Set(blocks.flatMap((b) => (b.id ? [b.id] : [])))
       return json(parsePlannerResult(firstText(response), knownIds))
@@ -743,7 +740,7 @@ Lütfen:
       })
 
       const response = await client.messages.create({
-        model: CHAT_MODEL,
+        model: chatModel,
         output_config: CHAT_EFFORT,
         // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
         // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
@@ -751,6 +748,7 @@ Lütfen:
         system,
         messages,
       })
+      await ledger.record(response)
 
       const result = parseNutritionCoachResult(firstText(response))
       if (!result.message) {

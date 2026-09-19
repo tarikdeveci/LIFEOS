@@ -16,6 +16,28 @@ async function getToken(): Promise<string> {
   return session.access_token
 }
 
+/**
+ * Sunucunun AI kapısı reddetti: Pro gerekli (402; free kullanıcının ücretsiz
+ * planlama hakkı bittiğinde de bu) ya da bu ayki AI sınırı doldu (429).
+ * Kapı kuralları: supabase/functions/_shared/ai/usage.ts
+ */
+export class AiAccessError extends Error {
+  readonly code: 'pro_required' | 'ai_budget_exhausted'
+
+  constructor(code: 'pro_required' | 'ai_budget_exhausted', message: string) {
+    super(message)
+    this.name = 'AiAccessError'
+    this.code = code
+  }
+}
+
+export const AI_BUDGET_MESSAGE = "Bu ayki AI kullanım sınırına ulaştın. Ayın 1'inde yenilenir."
+
+/** Sohbet ekranlarının hata balonu: sınır dolduysa bunu söyle, yoksa ekranın kendi metni. */
+export function aiErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof AiAccessError && error.code === 'ai_budget_exhausted' ? AI_BUDGET_MESSAGE : fallback
+}
+
 export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T> {
   const token = await getToken()
   const res = await fetch(`${BASE}/functions/v1/ai-suggest`, {
@@ -26,7 +48,13 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
     body: JSON.stringify({ today: todayDate(), ...body }),
   })
   if (!res.ok) {
-    if (res.status === 402 || res.status === 403) throw new Error('AI erisimi icin Pro abonelik gerekli')
+    if (res.status === 402 || res.status === 403) {
+      throw new AiAccessError('pro_required', 'AI erisimi icin Pro abonelik gerekli')
+    }
+    if (res.status === 429) {
+      const payload = (await res.json().catch(() => null)) as { code?: string } | null
+      if (payload?.code === 'ai_budget_exhausted') throw new AiAccessError('ai_budget_exhausted', AI_BUDGET_MESSAGE)
+    }
     throw new Error(`AI suggest hatası: ${res.status}`)
   }
   return res.json() as Promise<T>

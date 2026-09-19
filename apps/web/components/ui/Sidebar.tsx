@@ -10,10 +10,13 @@ import {
   Dumbbell,
   Settings,
   CreditCard,
+  ChartLine,
+  Search,
   type LucideIcon,
 } from 'lucide-react'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useLang } from '@/lib/contexts/LangContext'
+import { OPEN_COMMAND_PALETTE } from '@/components/command/CommandPalette'
 
 export default function Sidebar() {
   const pathname = usePathname()
@@ -24,6 +27,7 @@ export default function Sidebar() {
     { href: '/dashboard',  label: t.dash_today,     Icon: LayoutDashboard, dot: '#6366F1' },
     { href: '/tasks',      label: t.dash_tasks,     Icon: CheckSquare,     dot: '#3B82F6' },
     { href: '/planning',   label: t.dash_planning,  Icon: CalendarDays,    dot: '#8B5CF6' },
+    { href: '/review',     label: t.nav_review,     Icon: ChartLine,       dot: '#EC4899' },
     { href: '/nutrition',  label: t.dash_nutrition, Icon: Salad,           dot: '#059669' },
     { href: '/workout',    label: t.dash_workout,   Icon: Dumbbell,        dot: '#F59E0B' },
     { href: '/settings',   label: t.dash_settings,  Icon: Settings,        dot: '#64748B' },
@@ -41,6 +45,15 @@ export default function Sidebar() {
           </span>
         </div>
         <div className="mt-4 h-px bg-gradient-to-r from-accent/20 via-accent/10 to-transparent" />
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE))}
+          className="mt-4 flex w-full items-center gap-2 rounded-xl border border-border/60 px-3 py-2 text-[12px] text-muted transition-colors hover:border-accent/40 hover:text-primary"
+        >
+          <Search size={14} className="shrink-0" />
+          <span className="flex-1 text-left">{t.cmd_open}</span>
+          <kbd className="rounded border border-border/60 px-1 text-[10px]">Ctrl K</kbd>
+        </button>
       </div>
 
       {/* Nav */}
