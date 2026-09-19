@@ -8,7 +8,7 @@ import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
-import { HealthCard, HealthConnectPrompt } from '@/src/components/health/HealthCard'
+import { HealthConnectPrompt } from '@/src/components/health/HealthCard'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -135,17 +135,10 @@ export default function TodayScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Apple Health / Health Connect — bağlıysa özet, değilse tanıtım kartı.
-            Guideline 2.5.1: HealthKit kullanımı izin öncesinde de görünür olmalı. */}
-        {healthEnabled && health.settings ? (
-          <HealthCard
-            today={health.today}
-            range={health.range}
-            settings={health.settings}
-            isSyncing={health.isSyncing}
-            onSync={() => { if (userId) void health.sync(userId) }}
-          />
-        ) : (
+        {/* Sağlık bağlı değilken tek satırlık tanıtım kartı (Guideline 2.5.1: HealthKit
+            kullanımı izin öncesinde de ilk ekranda görünmeli). Bağlanınca veriler
+            Profil'deki Aktivite ve Uyku kartında; anasayfa yalnızca sekme özetlerinden oluşur. */}
+        {!(healthEnabled && health.settings) && (
           <HealthConnectPrompt onPress={() => router.push('/(tabs)/profile')} />
         )}
 

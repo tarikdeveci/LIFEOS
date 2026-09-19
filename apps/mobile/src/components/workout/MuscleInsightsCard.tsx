@@ -1,21 +1,19 @@
 import { useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import {
   muscleBalance,
   muscleFatigue,
   muscleRetention,
   setsInWindow,
+  FATIGUE_WINDOW_DAYS,
   NON_ANATOMICAL_MUSCLE_GROUPS,
   RETENTION_WINDOW_DAYS,
 } from '@lifeos/shared'
-import type {
-  LoggedSet,
-  MuscleGroup,
-  MuscleLevel,
-  FatigueState,
-} from '@lifeos/shared'
+import type { LoggedSet, MuscleGroup, MuscleLevel, FatigueState, MuscleRetention } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
 import { MuscleLevelBar } from './MuscleLevelBar'
+import { MuscleBodyMap, bodyBaseFill, type BodyMapLegendItem } from './MuscleBodyMap'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
@@ -24,6 +22,8 @@ interface Props {
   muscleGroups: MuscleGroup[]
   /** Vücut ağırlığı hareketlerinin yorgunluk yükü için; null ise 75 kg varsayılır. */
   bodyWeightKg: number | null
+  /** Figür için; null ise erkek figürü. */
+  gender: 'male' | 'female' | null
   loading: boolean
   error: string | null
 }
@@ -36,7 +36,15 @@ const SEGMENTS: { key: Segment; label: string }[] = [
   { key: 'strength', label: 'Güç' },
 ]
 
-/** Seviye 0-1 iken uyarı, 2 iken nötr, 3-4 iken olumlu renk. */
+/** Haftalık hacim ölçeği: seviye 1 (az) → 4 (en çok çalışılan kasa yakın). */
+const BALANCE_RAMP: Record<Exclude<MuscleLevel, 0>, string> = {
+  1: '#C7D2FE',
+  2: '#A5B4FC',
+  3: '#818CF8',
+  4: '#6366F1',
+}
+
+/** Seviye 0-1 iken uyarı, 2 iken nötr, 3-4 iken olumlu renk (liste çubukları). */
 function levelColor(level: MuscleLevel): string {
   if (level <= 1) return palette.warning
   if (level === 2) return palette.accent
@@ -55,6 +63,17 @@ const FATIGUE_COLOR: Record<FatigueState, string> = {
   fatigued: palette.danger,
 }
 
+/** retention.value 0.5..1 arası; düşüş riski yüzdesi. %5'in altı gürültü. */
+function riskPctOf(r: MuscleRetention): number {
+  return Math.round((1 - r.value) * 100)
+}
+
+function strengthColor(riskPct: number): string {
+  if (riskPct < 5) return palette.success
+  if (riskPct < 25) return palette.warning
+  return palette.danger
+}
+
 /** "12 gün önce", "Bugün", "Dün": relativeDateLabel'ın gün sayısı alan sürümü. */
 function daysSinceLabel(days: number): string {
   if (days === 0) return 'Bugün'
@@ -62,18 +81,24 @@ function daysSinceLabel(days: number): string {
   return `${days} gün önce`
 }
 
+function formatSets(value: number): string {
+  return value.toFixed(1).replace('.', ',')
+}
+
 /**
- * Kas dengesi, toparlanma ve güç (retansiyon) kartı.
+ * Kas dengesi, toparlanma ve güç (retansiyon) kartı: renkli anatomi figürü,
+ * dokunulan kasın ayrıntısı ve açılır tam liste.
  *
  * Üç segment de aynı 60 günlük `sets` girdisini paylaşır; pencere farkı
  * (denge haftalık, toparlanma 30 gün, güç 60 gün) burada `setsInWindow` ya da
  * fonksiyonun kendisi tarafından uygulanır. Kas grupları veritabanından gelir
- * (`muscleGroups`), sabit kodlanmış bir liste yok: yeni kas grubu eklendiğinde
- * kart kendiliğinden güncellenir.
+ * (`muscleGroups`), sabit kodlanmış bir liste yok.
  */
-export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, loading, error }: Props) {
-  const { colors } = useTheme()
+export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, loading, error }: Props) {
+  const { colors, isDark } = useTheme()
   const [segment, setSegment] = useState<Segment>('balance')
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [listOpen, setListOpen] = useState(false)
 
   const anatomicalGroups = useMemo(
     () => muscleGroups.filter((g) => !NON_ANATOMICAL_MUSCLE_GROUPS.includes(g.name_en)),
@@ -84,7 +109,76 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, loading, 
   const fatigue = useMemo(() => muscleFatigue(sets, new Date(), { bodyWeightKg }), [sets, bodyWeightKg])
   const retention = useMemo(() => muscleRetention(sets), [sets])
 
+  const baseFill = bodyBaseFill(isDark)
+
+  const { fills, legend } = useMemo((): { fills: Record<number, string>; legend: BodyMapLegendItem[] } => {
+    const out: Record<number, string> = {}
+    if (segment === 'balance') {
+      for (const entry of balance.entries) {
+        if (entry.level > 0) out[entry.muscleGroup.id] = BALANCE_RAMP[entry.level as Exclude<MuscleLevel, 0>]
+      }
+      return {
+        fills: out,
+        legend: [
+          { color: baseFill, label: 'Yok' },
+          { color: BALANCE_RAMP[1], label: 'Az' },
+          { color: BALANCE_RAMP[4], label: 'En çok' },
+        ],
+      }
+    }
+    if (segment === 'recovery') {
+      for (const [id, f] of Object.entries(fatigue)) out[Number(id)] = FATIGUE_COLOR[f.state]
+      return {
+        fills: out,
+        legend: [
+          { color: palette.success, label: FATIGUE_LABEL.ready },
+          { color: palette.warning, label: FATIGUE_LABEL.recovering },
+          { color: palette.danger, label: FATIGUE_LABEL.fatigued },
+          { color: baseFill, label: `${FATIGUE_WINDOW_DAYS} günde yok` },
+        ],
+      }
+    }
+    for (const [id, r] of Object.entries(retention)) {
+      if (r.lastTrainedAt != null) out[Number(id)] = strengthColor(riskPctOf(r))
+    }
+    return {
+      fills: out,
+      legend: [
+        { color: palette.success, label: 'Korunuyor' },
+        { color: palette.warning, label: 'Düşüş başladı' },
+        { color: palette.danger, label: 'Yüksek risk' },
+        { color: baseFill, label: `${RETENTION_WINDOW_DAYS} günde yok` },
+      ],
+    }
+  }, [segment, balance, fatigue, retention, baseFill])
+
+  const selectedGroup = selectedId !== null ? muscleGroups.find((g) => g.id === selectedId) ?? null : null
+
+  function detailOf(group: MuscleGroup): string {
+    if (segment === 'balance') {
+      const entry = balance.entries.find((e) => e.muscleGroup.id === group.id)
+      const value = entry?.effectiveSets ?? 0
+      if (value === 0) return 'Bu hafta çalışılmadı'
+      const neglected = balance.neglected.some((g) => g.id === group.id)
+      return `Bu hafta ${formatSets(value)} etkili set${neglected ? ', ihmal ediliyor' : ''}`
+    }
+    if (segment === 'recovery') {
+      const f = fatigue[group.id]
+      return f ? FATIGUE_LABEL[f.state] : `Son ${FATIGUE_WINDOW_DAYS} günde çalışılmadı`
+    }
+    const r = retention[group.id]
+    if (!r || r.lastTrainedAt == null || r.daysSince == null) return `Son ${RETENTION_WINDOW_DAYS} günde çalışılmadı`
+    const risk = riskPctOf(r)
+    return `${daysSinceLabel(r.daysSince)} çalışıldı${risk >= 5 ? `, %${risk} düşüş riski` : ''}`
+  }
+
   const hasData = sets.length > 0
+  const emptyNote =
+    segment === 'balance' && balance.totalSets === 0
+      ? 'Bu hafta çalışılmış kas yok.'
+      : segment === 'recovery' && Object.keys(fatigue).length === 0
+        ? `Son ${FATIGUE_WINDOW_DAYS} günde çalışılmış kas yok.`
+        : null
 
   return (
     <GlassCard style={{ marginBottom: spacing[4] }}>
@@ -132,59 +226,75 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, loading, 
             ))}
           </View>
 
-          {segment === 'balance' && (
-            <View>
-              {balance.neglected.length > 0 && (
-                <Text style={{ fontSize: fontSize.sm, color: palette.warning, fontWeight: fontWeight.medium, marginBottom: spacing[3] }}>
-                  Bu hafta ihmal edilen: {balance.neglected.map((g) => g.name).join(', ')}
-                </Text>
-              )}
-              {[...balance.entries]
-                .sort((a, b) => a.muscleGroup.name.localeCompare(b.muscleGroup.name, 'tr'))
-                .map((entry) => {
-                  const neglected = balance.neglected.some((g) => g.id === entry.muscleGroup.id)
+          <MuscleBodyMap
+            muscleGroups={anatomicalGroups}
+            fills={fills}
+            legend={legend}
+            gender={gender}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+
+          <View style={{ marginTop: spacing[3], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+            {selectedGroup ? (
+              <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>
+                <Text style={{ fontWeight: fontWeight.semibold }}>{selectedGroup.name}: </Text>
+                {detailOf(selectedGroup)}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>
+                {emptyNote ?? 'Ayrıntı için figürde bir kasa dokun.'}
+              </Text>
+            )}
+            {segment === 'balance' && balance.neglected.length > 0 && !selectedGroup && (
+              <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: spacing[1] }}>
+                Bu hafta ihmal edilen: {balance.neglected.map((g) => g.name).join(', ')}
+              </Text>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setListOpen((open) => !open)}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingTop: spacing[3] }}
+          >
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: palette.accent }}>
+              {listOpen ? 'Listeyi gizle' : 'Tüm kaslar'}
+            </Text>
+            <Ionicons name={listOpen ? 'chevron-up' : 'chevron-down'} size={16} color={palette.accent} />
+          </TouchableOpacity>
+
+          {listOpen && (
+            <View style={{ marginTop: spacing[3] }}>
+              {segment === 'balance' && [...balance.entries]
+                .sort((a, b) => b.effectiveSets - a.effectiveSets || a.muscleGroup.name.localeCompare(b.muscleGroup.name, 'tr'))
+                .map((entry) => (
+                  <View key={entry.muscleGroup.id} style={{ marginBottom: spacing[3] }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{entry.muscleGroup.name}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>
+                        {formatSets(entry.effectiveSets)} set
+                      </Text>
+                    </View>
+                    <MuscleLevelBar fraction={entry.level / 4} color={levelColor(entry.level)} trackColor={colors.glassInner} />
+                  </View>
+                ))}
+
+              {segment === 'recovery' && muscleGroups
+                .filter((group) => fatigue[group.id])
+                .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+                .map((group) => {
+                  const state = fatigue[group.id]!.state
                   return (
-                    <View key={entry.muscleGroup.id} style={{ marginBottom: spacing[3] }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: neglected ? palette.warning : colors.textPrimary }}>
-                          {entry.muscleGroup.name}
-                        </Text>
-                        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>
-                          {entry.effectiveSets.toFixed(1)} set
-                        </Text>
+                    <View key={group.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>{group.name}</Text>
+                      <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${FATIGUE_COLOR[state]}18` }}>
+                        <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: FATIGUE_COLOR[state] }}>{FATIGUE_LABEL[state]}</Text>
                       </View>
-                      <MuscleLevelBar fraction={entry.level / 4} color={levelColor(entry.level)} trackColor={colors.glassInner} />
                     </View>
                   )
                 })}
-            </View>
-          )}
 
-          {segment === 'recovery' && (
-            <View>
-              {Object.entries(fatigue)
-                .map(([id, f]) => ({ group: muscleGroups.find((g) => g.id === Number(id)) ?? null, fatigue: f }))
-                .filter((row): row is { group: MuscleGroup; fatigue: (typeof fatigue)[number] } => row.group !== null)
-                .sort((a, b) => a.group.name.localeCompare(b.group.name, 'tr'))
-                .map(({ group, fatigue: f }) => (
-                  <View key={group.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                    <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>{group.name}</Text>
-                    <View style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${FATIGUE_COLOR[f.state]}18` }}>
-                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: FATIGUE_COLOR[f.state] }}>
-                        {FATIGUE_LABEL[f.state]}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              {Object.keys(fatigue).length === 0 && (
-                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Son 30 günde çalışılmış kas yok.</Text>
-              )}
-            </View>
-          )}
-
-          {segment === 'strength' && (
-            <View>
-              {anatomicalGroups
+              {segment === 'strength' && anatomicalGroups
                 .map((group) => ({ group, r: retention[group.id] ?? null }))
                 .sort((a, b) => {
                   const aTrained = a.r?.lastTrainedAt != null
@@ -192,27 +302,14 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, loading, 
                   if (aTrained !== bTrained) return aTrained ? -1 : 1
                   return a.group.name.localeCompare(b.group.name, 'tr')
                 })
-                .map(({ group, r }) => {
-                  const trained = r?.lastTrainedAt != null && r.daysSince != null
-                  // retention.value 0.5..1 arası: 1 tam korunmuş, düşük değer
-                  // güç kaybı riskini temsil ediyor. %5'in altı gürültü.
-                  const riskPct = trained ? Math.round((1 - r!.value) * 100) : 0
-                  return (
-                    <View key={group.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                      <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>{group.name}</Text>
-                      {trained ? (
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{daysSinceLabel(r!.daysSince as number)}</Text>
-                          {riskPct >= 5 && (
-                            <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: 2 }}>%{riskPct} düşüş riski</Text>
-                          )}
-                        </View>
-                      ) : (
-                        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Son {RETENTION_WINDOW_DAYS} günde yok</Text>
-                      )}
-                    </View>
-                  )
-                })}
+                .map(({ group, r }) => (
+                  <View key={group.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                    <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>{group.name}</Text>
+                    <Text style={{ fontSize: fontSize.xs, color: r?.lastTrainedAt != null ? strengthColor(riskPctOf(r)) : colors.textSubtle }}>
+                      {detailOf(group)}
+                    </Text>
+                  </View>
+                ))}
             </View>
           )}
         </>

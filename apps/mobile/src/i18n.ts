@@ -230,6 +230,7 @@ const translations = {
 
     // Health (Apple Health / Health Connect)
     health_summary: 'Daily health summary',
+    health_card_title: 'Activity & Sleep',
     health_prompt_desc: 'Connect steps, sleep, active calories and heart rate from {provider}. Read only.',
     health_connect: 'Connect {provider}',
     health_connect_desc: 'LifeOS reads steps, walking and running distance, active calories, exercise, workouts, sleep and heart rate from {provider}.',
@@ -496,6 +497,7 @@ const translations = {
     profile_save_nutrition: 'Hedefleri Kaydet',
 
     health_summary: 'Günlük sağlık özeti',
+    health_card_title: 'Aktivite ve Uyku',
     health_prompt_desc: '{provider} üzerindeki adım, uyku, aktif kalori ve nabız verilerini bağla. Salt okunur.',
     health_connect: '{provider}’e Bağlan',
     health_connect_desc: 'LifeOS; {provider} üzerinden adım, yürüme ve koşu mesafesi, aktif kalori, egzersiz, antrenman, uyku ve nabız verilerini okur.',

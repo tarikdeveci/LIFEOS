@@ -37,7 +37,7 @@ import {
   saveWorkoutEquipment,
 } from '../supabase/workouts'
 import { getRecentLoggedSets } from '../supabase/workoutAnalytics'
-import { getLatestBodyWeightKg } from '../supabase/health'
+import { getBodyProfile } from '../supabase/health'
 import { todayDate, shiftIsoDate } from '../utils/date'
 import { adaptationToPlan, replacementNote, type ProgramAdaptation } from '../utils/equipment'
 import { computeWorkoutStreak, type WorkoutStreak } from '../utils/streak'
@@ -83,6 +83,8 @@ interface WorkoutState {
   analyticsError: string | null
   /** Vücut ağırlığı hareketlerinin yorgunluk yükü için; bilinmiyorsa null. */
   analyticsBodyWeightKg: number | null
+  /** Kas haritası figürü için; profilde yoksa null. */
+  analyticsGender: 'male' | 'female' | null
 
   /**
    * Erişilebilen aletler. null = seçim yapılmamış (tam salon varsayılır),
@@ -159,6 +161,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   analyticsLoaded: false,
   analyticsError: null,
   analyticsBodyWeightKg: null,
+  analyticsGender: null,
   equipment: null,
   equipmentLoaded: false,
 
@@ -210,12 +213,17 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ analyticsError: null })
     try {
       const since = shiftIsoDate(todayDate(), -(ANALYTICS_WINDOW_DAYS - 1))
-      const [analyticsSets, analyticsBodyWeightKg] = await Promise.all([
+      const [analyticsSets, body] = await Promise.all([
         getRecentLoggedSets(supabase, userId, since),
-        // Kilo yalnızca yorgunluk ince ayarı: okunamazsa kart yine açılsın.
-        getLatestBodyWeightKg(supabase, userId).catch(() => null),
+        // Kilo ve cinsiyet yalnızca ince ayar (yorgunluk yükü, figür): okunamazsa kart yine açılsın.
+        getBodyProfile(supabase, userId).catch(() => null),
       ])
-      set({ analyticsSets, analyticsBodyWeightKg, analyticsLoaded: true })
+      set({
+        analyticsSets,
+        analyticsBodyWeightKg: body?.weightKg ?? null,
+        analyticsGender: body?.gender ?? null,
+        analyticsLoaded: true,
+      })
     } catch (err) {
       set({ analyticsError: err instanceof Error ? err.message : 'Hata', analyticsLoaded: true })
     }

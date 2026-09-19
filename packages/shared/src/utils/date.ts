@@ -66,6 +66,16 @@ export function fromDateString(dateStr: string): Date {
   return new Date(year, month - 1, day)
 }
 
+/** İki 'YYYY-MM-DD' arasındaki gün farkı (b - a); yaz saati geçişinden etkilenmez. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((fromDateString(b).getTime() - fromDateString(a).getTime()) / 86_400_000)
+}
+
+/** '2026-09-12' → '12 Eyl' */
+export function shortDateLabel(dateStr: string): string {
+  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(fromDateString(dateStr))
+}
+
 /**
  * Tarihin bugün olup olmadığını kontrol eder
  */

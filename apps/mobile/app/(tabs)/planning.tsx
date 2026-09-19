@@ -311,17 +311,7 @@ export default function PlanningScreen() {
           </View>
         </View>
 
-        {/* Şu an neredeyiz — sadece bugün */}
-        {dayPosition && dayBlocks.length > 0 && (
-          <NowCard
-            position={dayPosition}
-            blockColors={BLOCK_COLORS}
-            blockLabels={BLOCK_LABELS}
-            onJumpToNow={handleJumpToNow}
-          />
-        )}
-
-        {/* Energy level */}
+        {/* Energy level: günün ilk girdisi, AI planı buna göre kurulur */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.plan_energy}</Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -340,6 +330,16 @@ export default function PlanningScreen() {
             })}
           </View>
         </GlassCard>
+
+        {/* Şu an neredeyiz — sadece bugün */}
+        {dayPosition && dayBlocks.length > 0 && (
+          <NowCard
+            position={dayPosition}
+            blockColors={BLOCK_COLORS}
+            blockLabels={BLOCK_LABELS}
+            onJumpToNow={handleJumpToNow}
+          />
+        )}
 
         {/* Week navigation */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>

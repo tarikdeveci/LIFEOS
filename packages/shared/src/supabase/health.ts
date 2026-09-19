@@ -7,6 +7,7 @@ import {
   type HealthDailyInput,
   type HealthSettings,
   type HealthSettingsUpdate,
+  type HealthSource,
   type WeightLog,
   type WeightLogInput,
 } from '../types/health'
@@ -222,50 +223,64 @@ export async function deleteWeightLog(supabase: Supabase, userId: string, date: 
   if (error) throw error
 }
 
-/**
- * Son `days` günün kilo geçmişi, tarihe göre artan sıralı. computeAdaptiveTdee'nin
- * `weighIns` girdisiyle doğrudan uyumlu olsun diye `date`/`weightKg` alanlarıyla döner.
- */
+/** Tek tartı: computeAdaptiveTdee'nin `weighIns` girdisiyle doğrudan uyumlu. */
+export interface WeightPoint {
+  date: string
+  weightKg: number
+  /** Geçmiş listesinde kaynağı göstermek ve yalnız elle girileni sildirmek için. */
+  source: HealthSource
+}
+
+/** Son `days` günün kilo geçmişi, tarihe göre artan sıralı. */
 export async function getWeightLogs(
   supabase: Supabase,
   userId: string,
   days = 90,
   endDate: string = todayDate(),
-): Promise<Array<{ date: string; weightKg: number }>> {
+): Promise<WeightPoint[]> {
   const startDate = shiftIsoDate(endDate, -(days - 1))
 
   const { data, error } = await supabase
     .from('weight_logs')
-    .select('date, weight_kg')
+    .select('date, weight_kg, source')
     .eq('user_id', userId)
     .gte('date', startDate)
     .lte('date', endDate)
     .order('date')
 
   if (error) throw error
-  return ((data ?? []) as WeightLog[]).map((row) => ({ date: row.date, weightKg: Number(row.weight_kg) }))
+  return ((data ?? []) as WeightLog[]).map((row) => ({ date: row.date, weightKg: Number(row.weight_kg), source: row.source }))
+}
+
+export interface BodyProfile {
+  /** En yeni tartı, yoksa profildeki kilo, o da yoksa null. */
+  weightKg: number | null
+  /** Anatomi figürü için; profilde yoksa null. */
+  gender: 'male' | 'female' | null
 }
 
 /**
- * Güncel vücut ağırlığı: en yeni tartı, yoksa profildeki kilo, o da yoksa null.
- * weight_logs okunamazsa (049 henüz uygulanmadıysa) profile düşer.
+ * Kas analizinin vücut bilgisi: güncel kilo (vücut ağırlığı hareketlerinin
+ * yükü) ve cinsiyet (kas haritası figürü). weight_logs okunamazsa profildeki
+ * kiloya düşer.
  */
-export async function getLatestBodyWeightKg(supabase: Supabase, userId: string): Promise<number | null> {
-  const { data: latest, error: logError } = await supabase
-    .from('weight_logs')
-    .select('weight_kg')
-    .eq('user_id', userId)
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const logged = logError ? null : Number((latest as { weight_kg: number } | null)?.weight_kg)
-  if (logged !== null && Number.isFinite(logged) && logged > 0) return logged
+export async function getBodyProfile(supabase: Supabase, userId: string): Promise<BodyProfile> {
+  const [latest, profile] = await Promise.all([
+    supabase
+      .from('weight_logs')
+      .select('weight_kg')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from('user_profiles').select('preferences').eq('id', userId).maybeSingle(),
+  ])
+  if (profile.error) throw profile.error
 
-  const { data: profile, error } = await supabase
-    .from('user_profiles')
-    .select('preferences')
-    .eq('id', userId)
-    .maybeSingle()
-  if (error) throw error
-  return profileFromPreferences((profile as { preferences: unknown } | null)?.preferences).weight_kg
+  const fromProfile = profileFromPreferences((profile.data as { preferences: unknown } | null)?.preferences)
+  const logged = latest.error ? Number.NaN : Number((latest.data as { weight_kg: number } | null)?.weight_kg)
+  return {
+    weightKg: Number.isFinite(logged) && logged > 0 ? logged : fromProfile.weight_kg,
+    gender: fromProfile.gender,
+  }
 }

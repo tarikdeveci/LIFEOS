@@ -9,7 +9,7 @@ import {
   type DailyIntake,
   type TdeeProposal,
 } from '../utils/adaptiveTdee'
-import { getWeightLogs } from './health'
+import { getWeightLogs, type WeightPoint } from './health'
 import { getNutritionTarget } from './nutrition'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,6 +42,14 @@ export async function getDailyIntake(
   return [...byDate.entries()].map(([date, kcal]) => ({ date, kcal }))
 }
 
+export interface AdaptiveTdeeData {
+  result: AdaptiveTdeeResult
+  /** Hesaba giren tartılar (tarihe göre artan); grafik ve geçmiş listesi aynı okumayı kullanır. */
+  weighIns: WeightPoint[]
+  /** Profildeki kilo: hiç tartı yokken giriş alanının başlangıç değeri. */
+  profileWeightKg: number | null
+}
+
 /**
  * Kilo geçmişi, alım geçmişi, mevcut hedef ve profilden adaptif harcama
  * tahmini. Başlangıç harcaması pencerenin ilk tartısıyla hesaplanır: filtre o
@@ -51,7 +59,7 @@ export async function loadAdaptiveTdee(
   supabase: Supabase,
   userId: string,
   endDate: string = todayDate(),
-): Promise<AdaptiveTdeeResult> {
+): Promise<AdaptiveTdeeData> {
   const [weighIns, intake, target, profileRow] = await Promise.all([
     getWeightLogs(supabase, userId, ADAPTIVE_TDEE_WINDOW_DAYS, endDate),
     getDailyIntake(supabase, userId, ADAPTIVE_TDEE_WINDOW_DAYS, endDate),
@@ -62,7 +70,7 @@ export async function loadAdaptiveTdee(
 
   const profile = profileFromPreferences((profileRow.data as { preferences: unknown } | null)?.preferences)
   const targetCalories = target?.calories ?? null
-  return computeAdaptiveTdee({
+  const result = computeAdaptiveTdee({
     weighIns,
     intake,
     endDate,
@@ -70,6 +78,7 @@ export async function loadAdaptiveTdee(
     targetCalories,
     goal: profile.goal,
   })
+  return { result, weighIns, profileWeightKg: profile.weight_kg }
 }
 
 /**

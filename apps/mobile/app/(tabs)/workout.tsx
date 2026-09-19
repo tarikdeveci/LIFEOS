@@ -98,7 +98,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -673,90 +673,30 @@ export default function WorkoutScreen() {
         {/* ── TODAY ── */}
         {tab === 'today' && (
           <>
-            <StreakCard streak={streak} />
-
-            <MuscleInsightsCard
-              sets={analyticsSets}
-              muscleGroups={muscleGroups}
-              bodyWeightKg={analyticsBodyWeightKg}
-              loading={!analyticsLoaded}
-              error={analyticsError}
-            />
-
-            <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
-              <StatCard label={t.work_this_week} value={weekCount} color={palette.workout} />
-              <StatCard label={t.work_today_sets} value={todayWorkout?.workout_sets?.length ?? 0} color={palette.accent} />
-              <StatCard label={t.work_total} value={workoutHistory.length} />
-            </View>
-
-            <GlassCard style={{ marginBottom: spacing[4] }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={18} color={palette.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Antrenman Koçu</Text>
-                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                    Soru sor veya haftalık program yazdır
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => { if (requirePro()) setShowCoach(true) }}
-                  disabled={isCheckingPro}
-                  style={{ paddingHorizontal: spacing[4], paddingVertical: spacing[2], borderRadius: radius.full, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}35`, opacity: isPro ? 1 : 0.6 }}
-                >
-                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
-                    {isPro ? 'Sohbet' : 'Pro'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </GlassCard>
-
+            {/* Ana eylem en üstte: antrenman yoksa başlat, varsa bugünkü antrenman */}
             {!todayWorkout && (
-              <View style={{ paddingVertical: spacing[6], gap: spacing[5] }}>
-                <View style={{ alignItems: 'center', gap: spacing[3] }}>
-                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="barbell-outline" size={36} color={palette.workout} />
+              <GlassCard style={{ marginBottom: spacing[4] }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[4] }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="barbell-outline" size={22} color={palette.workout} />
                   </View>
-                  <View style={{ alignItems: 'center', gap: spacing[2] }}>
-                    <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_no_workout}</Text>
-                    <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', maxWidth: 220 }}>
-                      {t.work_no_workout_hint}
-                    </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_no_workout}</Text>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{t.work_no_workout_hint}</Text>
                   </View>
                 </View>
-
                 <TouchableOpacity
                   onPress={() => setShowStart(true)}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.full, backgroundColor: palette.workout }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: radius.full, backgroundColor: palette.workout }}
                 >
                   <Ionicons name="play-circle-outline" size={20} color="#fff" />
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>{t.work_start}</Text>
                 </TouchableOpacity>
-
-                {exercises.length > 0 && (
-                  <View style={{ gap: spacing[2] }}>
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                      Popüler Egzersizler
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-                      {exercises.slice(0, 6).map((ex) => (
-                        <View
-                          key={ex.id}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
-                        >
-                          <Ionicons name="barbell-outline" size={12} color={palette.workout} />
-                          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSecondary }}>{ex.name}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
+              </GlassCard>
             )}
 
             {todayWorkout ? (
-              <GlassCard>
+              <GlassCard style={{ marginBottom: spacing[4] }}>
                 {/* Workout header */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], flex: 1 }}>
@@ -848,6 +788,46 @@ export default function WorkoutScreen() {
                 )}
               </GlassCard>
             ) : null}
+
+            <StreakCard streak={streak} />
+
+            <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
+              <StatCard label={t.work_this_week} value={weekCount} color={palette.workout} />
+              <StatCard label={t.work_today_sets} value={todayWorkout?.workout_sets?.length ?? 0} color={palette.accent} />
+              <StatCard label={t.work_total} value={workoutHistory.length} />
+            </View>
+
+            <GlassCard style={{ marginBottom: spacing[4] }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={18} color={palette.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Antrenman Koçu</Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    Soru sor veya haftalık program yazdır
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => { if (requirePro()) setShowCoach(true) }}
+                  disabled={isCheckingPro}
+                  style={{ paddingHorizontal: spacing[4], paddingVertical: spacing[2], borderRadius: radius.full, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}35`, opacity: isPro ? 1 : 0.6 }}
+                >
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
+                    {isPro ? 'Sohbet' : 'Pro'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
+
+            <MuscleInsightsCard
+              sets={analyticsSets}
+              muscleGroups={muscleGroups}
+              bodyWeightKg={analyticsBodyWeightKg}
+              gender={analyticsGender}
+              loading={!analyticsLoaded}
+              error={analyticsError}
+            />
           </>
         )}
 

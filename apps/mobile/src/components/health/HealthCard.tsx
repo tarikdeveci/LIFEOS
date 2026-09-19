@@ -32,8 +32,9 @@ interface Props {
 const COLLAPSE_KEY = 'lifeos_health_card_expanded'
 
 /**
- * Today ekranındaki sağlık özeti kartı.
- * Sadece sağlık senkronu açıkken (settings.enabled) gösterilmeli.
+ * Profil ekranındaki sağlık özeti kartı (adım, uyku, nabız).
+ * Sadece sağlık senkronu açıkken (settings.enabled) gösterilmeli. Başlık veri
+ * türünü söyler, kaynak (Apple Health / Health Connect) alt satırda durur.
  */
 export function HealthCard({ today, range, settings, isSyncing, onSync }: Props) {
   const { colors } = useTheme()
@@ -107,10 +108,10 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
           <Ionicons name="heart-outline" size={18} color={palette.danger} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{providerName}</Text>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.health_card_title}</Text>
             {/* Kapalıyken başlığın altı özetin kendisi olur; kart tek satıra iner. */}
             <Text style={{ marginTop: 1, fontSize: fontSize.xs, color: colors.textSubtle }} numberOfLines={1}>
-              {expanded || !hasAnyData ? t.health_summary : collapsedSummary}
+              {expanded || !hasAnyData ? providerName : collapsedSummary}
             </Text>
           </View>
         </View>

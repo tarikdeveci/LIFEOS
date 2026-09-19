@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
-import { calculateTDEE, suggestMacrosFromTDEE } from '@lifeos/shared'
+import { calculateTDEE, suggestMacrosFromTDEE, useNutritionStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { unregisterPushTokenAsync } from '@/src/notifications/setup'
 import { useCalendarStore } from '@/src/stores/calendarStore'
@@ -11,6 +11,9 @@ import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
+import { HealthCard } from '@/src/components/health/HealthCard'
+import { AdaptiveTdeeCard } from '@/src/components/nutrition/AdaptiveTdeeCard'
+import { useHealthStore } from '@/src/stores/healthStore'
 import { CsvImportSheet } from '@/src/components/workout/CsvImportSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -85,6 +88,8 @@ export default function ProfileScreen() {
   })
   const [userId, setUserId] = useState<string | null>(null)
   const subscription = useSubscriptionStatus()
+  const health = useHealthStore()
+  const fetchDayNutrition = useNutritionStore((state) => state.fetchDayNutrition)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
@@ -141,6 +146,12 @@ export default function ProfileScreen() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  /** Kilo kartından hedef güncellenince hem buradaki hedef kartı hem beslenme ekranı tazelenir. */
+  function handleTargetChanged() {
+    void load()
+    if (userId) void fetchDayNutrition(supabase, userId)
+  }
 
   async function savePhysical() {
     if (!userId) return
@@ -349,7 +360,20 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </GlassCard>
 
-        {/* Apple Health / Health Connect — izin öncesinde de görünür */}
+        {/* Vücut: günlük tartı ve sağlık verisi. Tartı hatırlatması bu ekrana açılır. */}
+        {userId && <AdaptiveTdeeCard userId={userId} onTargetChanged={handleTargetChanged} />}
+
+        {health.settings?.enabled && (
+          <HealthCard
+            today={health.today}
+            range={health.range}
+            settings={health.settings}
+            isSyncing={health.isSyncing}
+            onSync={() => { if (userId) void health.sync(userId) }}
+          />
+        )}
+
+        {/* Apple Health / Health Connect bağlantısı: izin öncesinde de görünür */}
         <HealthSettingsCard userId={userId} />
 
         {/* Physical info */}

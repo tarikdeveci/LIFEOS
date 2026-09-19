@@ -219,6 +219,11 @@ export function formatDistance(meters: number | null, lang: 'tr' | 'en' = 'tr'):
   return `${formatted} km`
 }
 
+/** 78.44 → '78,4': tek ondalık ve virgül, birim eklenmez. */
+export function formatWeightKg(kg: number): string {
+  return (Math.round(kg * 10) / 10).toFixed(1).replace('.', ',')
+}
+
 /** 452 → '7s 32d' (tr) / '7h 32m' (en) */
 export function formatSleepDuration(minutes: number | null, lang: 'tr' | 'en' = 'tr'): string {
   if (minutes === null || minutes <= 0) return '–'

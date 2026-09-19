@@ -26,6 +26,25 @@ const EQUIPMENT_TOKENS = new Set([
   'weighted', 'assisted', 'halter', 'dambil', 'kablo', 'makine', 'bant',
 ])
 
+/**
+ * exercises.equipment (047) anahtarlarının addaki alet kelimesi karşılığı.
+ * Katalog aleti çoğu zaman adında söylemez ("Bench Press" halterdir), Strong ve
+ * Hevy ise her harekete ekler ("Bench Press (Barbell)"); alet kontrolü sütunu da
+ * saymazsa katalogdaki neredeyse hiçbir hareket eşleşmez.
+ */
+const COLUMN_EQUIPMENT_TOKENS: Readonly<Record<string, readonly string[]>> = {
+  barbell: ['barbell'],
+  dumbbell: ['dumbbell'],
+  kettlebell: ['kettlebell'],
+  cable: ['cable'],
+  smith_machine: ['smith', 'machine'],
+  resistance_band: ['band'],
+  leg_press: ['machine'],
+  hack_squat: ['machine'],
+  leg_machines: ['machine'],
+  upper_machines: ['machine'],
+}
+
 /** Basit tekilleştirme: "Squats"/"Squat", "Biceps"/"Bicep" aynı kelime sayılsın. */
 function stem(token: string): string {
   return token.length > 3 && token.endsWith('s') && !token.endsWith('ss') ? token.slice(0, -1) : token
@@ -35,8 +54,13 @@ function tokensOf(value: string): Set<string> {
   return new Set(foldExerciseName(value).split(' ').filter(Boolean).map(stem))
 }
 
-function equipmentOf(tokens: ReadonlySet<string>): string {
-  return [...tokens].filter((t) => EQUIPMENT_TOKENS.has(t)).sort().join('|')
+/** Addaki alet kelimeleri, varsa katalogdaki equipment sütunuyla birlikte. */
+function equipmentOf(tokens: ReadonlySet<string>, column?: readonly string[] | null): string {
+  const found = new Set([...tokens].filter((t) => EQUIPMENT_TOKENS.has(t)))
+  for (const key of column ?? []) {
+    for (const token of COLUMN_EQUIPMENT_TOKENS[key] ?? []) found.add(token)
+  }
+  return [...found].sort().join('|')
 }
 
 function isSubset(small: ReadonlySet<string>, large: ReadonlySet<string>): boolean {
@@ -65,7 +89,13 @@ export interface ExerciseMatch<T> {
   approximate: boolean
 }
 
-export function findExerciseMatch<T extends { name: string; name_en: string | null }>(
+interface MatchCandidate {
+  name: string
+  name_en: string | null
+  equipment?: readonly string[] | null
+}
+
+export function findExerciseMatch<T extends MatchCandidate>(
   importedName: string,
   candidates: readonly T[],
 ): ExerciseMatch<T> | null {
@@ -88,8 +118,8 @@ export function findExerciseMatch<T extends { name: string; name_en: string | nu
       const tokens = tokensOf(label)
       if (tokens.size === 0) continue
       if (tokens.size === wanted.size && isSubset(tokens, wanted)) return { exercise: candidate, approximate: true }
-      // İçe aktarılan ad bir alet söylüyorsa aday da aynı aleti söylemeli.
-      if (wantedEquipment && equipmentOf(tokens) !== wantedEquipment) continue
+      // İçe aktarılan ad bir alet söylüyorsa aday da (adında ya da sütununda) aynı aleti söylemeli.
+      if (wantedEquipment && equipmentOf(tokens, candidate.equipment) !== wantedEquipment) continue
 
       const [small, large] = tokens.size <= wanted.size ? [tokens, wanted] : [wanted, tokens]
       if (!isSubset(small, large)) continue
@@ -110,7 +140,7 @@ export function findExerciseMatch<T extends { name: string; name_en: string | nu
 }
 
 /** findExerciseMatch'in yalnızca egzersizi döndüren kısa hali; eşleşme yoksa null. */
-export function matchExerciseName<T extends { name: string; name_en: string | null }>(
+export function matchExerciseName<T extends MatchCandidate>(
   importedName: string,
   candidates: readonly T[],
 ): T | null {
