@@ -27,7 +27,8 @@ type EventProps = Record<string, string | number | boolean | null>
  * çağrısı gerekmesin diye sezgiyle doldurulur; mobil açılışta
  * `configureEvents(Platform.OS)` ile 'ios'/'android' olarak ezer.
  */
-let platform: string | null = typeof document === 'undefined' ? null : 'web'
+// Paylaşılan paket 'dom' tiplerini içermiyor; globalThis üzerinden okunuyor.
+let platform: string | null = 'document' in globalThis ? 'web' : null
 
 /**
  * Mobil uygulama açılışında bir kez çağrılır: `configureEvents(Platform.OS)`.
