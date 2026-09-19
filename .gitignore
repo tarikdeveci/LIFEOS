@@ -66,3 +66,9 @@ scripts/seed-user-data.mjs
 
 # Build info
 *.tsbuildinfo
+
+# Claude Code worktree'leri (her biri deponun tam kopyasi, EAS arsivini sisiriyor)
+.claude/worktrees/
+
+# Ham reels videolari (GB boyutunda; EAS arsivine de giriyordu)
+marketing/reels/
