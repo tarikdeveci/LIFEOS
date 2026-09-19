@@ -173,7 +173,9 @@ Kullanıcı tercihleri `notification_preferences` tablosunda: her slot için
 
 İki cron, ikisi de key gömülü olarak kurulu (`current_setting` kullanma —
 `format()` ile schedule anında gömmek 401'e yol açıyor):
-- `daily-digest` (saat başı) → yerel saate göre sabah/öğlen/akşam slotu seçer
+- `daily-digest` (saat başı) → yerel saate göre sabah/öğlen/akşam slotu seçer; tartı
+  hatırlatması (`weight_*`, 051) aynı saate düşerse o bildirime satır olarak eklenir.
+  Metinler `daily-digest/copy.ts`: güne ve veriye göre dönen havuzlar, sayıdan sonra ek yok.
 - `block-notifications` (5dk) → `event-notifications`, yaklaşan blokları hatırlatır
 
 Saat hesabı her zaman kullanıcının `timezone`'una göre yapılmalı — sunucu UTC'de

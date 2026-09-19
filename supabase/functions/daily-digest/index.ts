@@ -4,10 +4,24 @@
 //   sabah  (digest_hour)  → günün planı
 //   öğlen  (midday_hour)  → kalan bloklar + kalori durumu
 //   akşam  (evening_hour) → günün beslenme özeti
+// Ayrıca tartı hatırlatması (weight_hour): o gün tartı yoksa gider. Başka bir
+// slotla aynı saate düşerse o bildirime tek satır olarak eklenir.
+// Metinler copy.ts'te: her gün değişir, veriye ve haftanın gününe göre seçilir.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { type PushMessage, type PushSupabase, sendExpoPush } from '../_shared/push.ts'
-import { computeStreak, streakLine } from '../_shared/streak.ts'
+import { computeStreak, type StreakSummary } from '../_shared/streak.ts'
+import {
+  type Copy,
+  type DayContext,
+  type WeightData,
+  dayContext,
+  eveningCopy,
+  middayCopy,
+  morningCopy,
+  weightCopy,
+  withWeightLine,
+} from './copy.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -15,6 +29,7 @@ const supabase = createClient(
 )
 
 type Slot = 'morning' | 'midday' | 'evening'
+type Kind = Slot | 'weight'
 
 // Kullanıcının kendi saat diliminde şu anki tarih/saat.
 // Sunucu UTC'de çalıştığı için new Date().getHours() ve toISOString() kullanılamaz:
@@ -50,37 +65,58 @@ function localNow(timezone: string): { hour: number; date: string; time: string 
   }
 }
 
+function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 /**
- * Antrenman serisi cümlesi — sabah özetine eklenir.
+ * Antrenman serisi: sabah özetine eklenir.
  *
  * Sabah seçildi: "serini bozma" ancak gün önündeyken harekete geçirebilir,
  * akşam söylendiğinde yapılacak bir şey kalmıyor. Sorgu yalnızca tarih
  * sütununu okuyor ve bir yılla sınırlı.
  */
-async function buildStreakSuffix(uid: string, date: string): Promise<string | null> {
+async function loadStreak(uid: string, date: string): Promise<StreakSummary | null> {
   // ASLA fırlatmaz. Seri cümlesi süs; sabah özetinin kendisi değil. Buradan
-  // çıkan bir istisna Deno.serve handler'ına kadar gider ve o koşudaki TÜM
-  // kullanıcılar bildirimsiz kalır — süs uğruna alınacak risk değil.
+  // çıkan bir istisna o kullanıcının sabah özetini düşürürdü.
   try {
-    const yearAgo = new Date(`${date}T00:00:00Z`)
-    yearAgo.setUTCFullYear(yearAgo.getUTCFullYear() - 1)
-
     const { data, error } = await supabase
       .from('workouts')
       .select('date')
       .eq('user_id', uid)
       .eq('status', 'completed')
-      .gte('date', yearAgo.toISOString().slice(0, 10))
+      .gte('date', shiftDate(date, -365))
 
     if (error || !data || data.length === 0) return null
-    return streakLine(computeStreak((data as Array<{ date: string }>).map((r) => r.date), date))
+    return computeStreak((data as Array<{ date: string }>).map((r) => r.date), date)
   } catch (err) {
     console.error(`streak hesaplanamadi (${uid}):`, err instanceof Error ? err.message : err)
     return null
   }
 }
 
-async function buildMorning(uid: string, date: string, time: string) {
+async function activeTarget(uid: string): Promise<{ calories: number | null; protein_g: number | null } | null> {
+  const { data } = await supabase
+    .from('nutrition_targets')
+    .select('calories, protein_g')
+    .eq('user_id', uid)
+    .eq('is_active', true)
+    .maybeSingle()
+  return data as { calories: number | null; protein_g: number | null } | null
+}
+
+async function dayMeals(uid: string, date: string): Promise<Array<{ total_calories: number | null; total_protein: number | null }>> {
+  const { data } = await supabase
+    .from('meals')
+    .select('total_calories, total_protein')
+    .eq('user_id', uid)
+    .eq('date', date)
+  return (data ?? []) as Array<{ total_calories: number | null; total_protein: number | null }>
+}
+
+async function buildMorning(uid: string, date: string, time: string, ctx: DayContext): Promise<Copy> {
   const { count } = await supabase
     .from('time_blocks')
     .select('*', { count: 'exact', head: true })
@@ -96,24 +132,37 @@ async function buildMorning(uid: string, date: string, time: string) {
     .order('start_time', { ascending: true })
     .limit(1)
 
+  const blockCount = count ?? 0
   const first = next?.[0]
-  const base = first
-    ? `İlk blok: ${(first.start_time as string).slice(0, 5)} — ${first.label as string}`
-    : 'Boş bir gün. Planlayıcıya göz at!'
 
-  // Seri cümlesi gövdenin sonuna ekleniyor, ayrı bir bildirim olarak değil:
-  // sabah üst üste iki push atmak bildirimlerin tamamının kapatılmasına yol
-  // açıyor. Söylenecek bir şey yoksa gövde eskisi gibi kalıyor.
-  const suffix = await buildStreakSuffix(uid, date)
-
-  return {
-    title: `Günaydın! Bugün ${count ?? 0} blok var`,
-    body: suffix ? `${base}
-${suffix}` : base,
+  // Takvim boşsa "planla" demek yerine listedeki en değerli işi hatırlat.
+  let topTask: string | null = null
+  if (blockCount === 0) {
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('title')
+      .eq('user_id', uid)
+      .not('status', 'in', '(done,deferred,blocked)')
+      .or(`scheduled_date.is.null,scheduled_date.lte.${date}`)
+      .order('priority_score', { ascending: false })
+      .limit(1)
+    topTask = (tasks?.[0]?.title as string | undefined) ?? null
   }
+
+  return morningCopy(
+    {
+      blockCount,
+      firstBlock: first ? { label: first.label as string, start: (first.start_time as string).slice(0, 5) } : null,
+      topTask,
+      // Seri cümlesi gövdenin sonuna ekleniyor, ayrı bir bildirim olarak değil:
+      // sabah üst üste iki push atmak bildirimlerin tamamının kapatılmasına yol açıyor.
+      streak: await loadStreak(uid, date),
+    },
+    ctx,
+  )
 }
 
-async function buildMidday(uid: string, date: string, time: string) {
+async function buildMidday(uid: string, date: string, time: string, ctx: DayContext): Promise<Copy> {
   const { count: remaining } = await supabase
     .from('time_blocks')
     .select('*', { count: 'exact', head: true })
@@ -121,75 +170,99 @@ async function buildMidday(uid: string, date: string, time: string) {
     .eq('date', date)
     .gte('start_time', time)
 
-  const { data: meals } = await supabase
-    .from('meals')
-    .select('total_calories')
-    .eq('user_id', uid)
-    .eq('date', date)
+  const meals = await dayMeals(uid, date)
+  const kcal = meals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
+  const target = meals.length > 0 ? await activeTarget(uid) : null
 
-  const kcal = (meals ?? []).reduce(
-    (s: number, m: { total_calories: number | null }) => s + (m.total_calories ?? 0),
-    0,
+  return middayCopy(
+    { remainingBlocks: remaining ?? 0, mealCount: meals.length, kcal, targetKcal: target?.calories ?? null },
+    ctx,
   )
-
-  const left = remaining ?? 0
-  const title = left > 0 ? `Öğlen kontrolü — ${left} blok kaldı` : 'Öğlen kontrolü'
-
-  let body: string
-  if (kcal > 0) {
-    const { data: target } = await supabase
-      .from('nutrition_targets')
-      .select('calories')
-      .eq('user_id', uid)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    body = `${kcal} kcal aldın`
-    if (target?.calories) body += ` — hedefin %${Math.round((kcal / target.calories) * 100)}'i`
-  } else {
-    body = left > 0 ? 'Henüz öğün girmedin. Günün yarısı önünde.' : 'Henüz öğün girmedin.'
-  }
-
-  return { title, body }
 }
 
-async function buildEvening(uid: string, date: string) {
-  const { data: meals } = await supabase
-    .from('meals')
-    .select('total_calories, total_protein')
-    .eq('user_id', uid)
-    .eq('date', date)
-
+async function buildEvening(uid: string, date: string, ctx: DayContext): Promise<Copy | null> {
+  const meals = await dayMeals(uid, date)
   // Hiç öğün yoksa akşam özeti göndermenin anlamı yok
-  if (!meals || meals.length === 0) return null
+  if (meals.length === 0) return null
 
-  const kcal = meals.reduce(
-    (s: number, m: { total_calories: number | null }) => s + (m.total_calories ?? 0),
-    0,
-  )
-  const protein = meals.reduce(
-    (s: number, m: { total_protein: number | null }) => s + (m.total_protein ?? 0),
-    0,
-  )
+  const [target, tomorrow] = await Promise.all([
+    activeTarget(uid),
+    supabase
+      .from('time_blocks')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', uid)
+      .eq('date', shiftDate(date, 1)),
+  ])
 
-  const { data: target } = await supabase
-    .from('nutrition_targets')
-    .select('calories')
+  return eveningCopy(
+    {
+      mealCount: meals.length,
+      kcal: meals.reduce((s, m) => s + (m.total_calories ?? 0), 0),
+      protein: meals.reduce((s, m) => s + (m.total_protein ?? 0), 0),
+      targetKcal: target?.calories ?? null,
+      targetProtein: target?.protein_g ?? null,
+      tomorrowBlocks: tomorrow.count ?? 0,
+    },
+    ctx,
+  )
+}
+
+/**
+ * Tartı hatırlatmasının verisi; bugün zaten tartı varsa null (gönderilmez).
+ * Health senkronundan gelen tartı da sayılır: kaynak fark etmez.
+ */
+async function loadWeight(uid: string, date: string): Promise<WeightData | null> {
+  const { data, error } = await supabase
+    .from('weight_logs')
+    .select('date, weight_kg')
     .eq('user_id', uid)
-    .eq('is_active', true)
-    .maybeSingle()
+    .lte('date', date)
+    .order('date', { ascending: false })
+    .limit(60)
 
-  let body = `${kcal} kcal, ${Math.round(protein)}g protein aldın.`
-  if (target?.calories) body += ` (Hedefe %${Math.round((kcal / target.calories) * 100)})`
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ date: string; weight_kg: number | string }>
+  if (rows[0]?.date === date) return null
 
-  return { title: 'Günlük beslenme özeti', body }
+  const last = rows[0]
+  let streakDays = 0
+  let expected = shiftDate(date, -1)
+  for (const row of rows) {
+    if (row.date !== expected) break
+    streakDays++
+    expected = shiftDate(expected, -1)
+  }
+
+  return {
+    lastKg: last ? Number(last.weight_kg) : null,
+    daysSinceLast: last
+      ? Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${last.date}T00:00:00Z`)) / 86_400_000)
+      : null,
+    streakDays,
+  }
+}
+
+/**
+ * Idempotans kilidi: aynı kullanıcı + tür + yerel gün için tek gönderim.
+ * Cron aynı saat içinde iki kez tetiklenirse (yeniden deneme, elle test,
+ * ikinci bir zamanlayıcı) insert primary key'e çarpar ve bildirim
+ * tekrarlanmaz. Push'tan hemen önce yazılır ki yarış durumunda da tutsun.
+ */
+async function acquireLock(uid: string, kind: Kind, date: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('notification_log')
+    .insert({ user_id: uid, kind: `daily_digest_${kind}`, local_date: date })
+  if (!error) return true
+  // 23505 = unique_violation → bu tür bugün zaten gönderilmiş
+  if (error.code !== '23505') console.error(`notification_log insert failed for ${uid}/${kind}:`, error.message)
+  return false
 }
 
 Deno.serve(async () => {
   const { data: prefs, error } = await supabase
     .from('notification_preferences')
     .select(
-      'user_id, timezone, digest_hour, digest_enabled, midday_hour, midday_enabled, evening_hour, evening_enabled',
+      'user_id, timezone, digest_hour, digest_enabled, midday_hour, midday_enabled, evening_hour, evening_enabled, weight_hour, weight_enabled',
     )
 
   if (error) {
@@ -197,11 +270,11 @@ Deno.serve(async () => {
   }
 
   const pushMessages: PushMessage[] = []
-  const bySlot: Record<Slot, number> = { morning: 0, midday: 0, evening: 0 }
+  const bySlot: Record<Kind, number> = { morning: 0, midday: 0, evening: 0, weight: 0 }
   // Kilit push'tan önce yazılıyor; gönderim tutmazsa geri alınabilmesi için
-  // kimin hangi slotu kilitlediği ve hangi token'lara yazıldığı saklanır.
-  // Bir kullanıcı koşu başına tek slot alır, uid anahtar olarak yeterli.
-  const locked = new Map<string, { slot: Slot; date: string; tokens: string[] }>()
+  // kimin hangi türleri kilitlediği ve hangi token'lara yazıldığı saklanır.
+  // Bir kullanıcı koşu başına tek bildirim alır, uid anahtar olarak yeterli.
+  const locked = new Map<string, { kinds: Kind[]; date: string; tokens: string[] }>()
 
   for (const pref of prefs ?? []) {
     const tz = (pref.timezone as string) ?? 'Europe/Istanbul'
@@ -212,7 +285,8 @@ Deno.serve(async () => {
     if (pref.digest_enabled && hour === pref.digest_hour) slot = 'morning'
     else if (pref.midday_enabled && hour === pref.midday_hour) slot = 'midday'
     else if (pref.evening_enabled && hour === pref.evening_hour) slot = 'evening'
-    if (!slot) continue
+    const weightDue = pref.weight_enabled === true && hour === pref.weight_hour
+    if (!slot && !weightDue) continue
 
     const uid = pref.user_id as string
 
@@ -231,53 +305,67 @@ Deno.serve(async () => {
 
     // Aynı token birden fazla satırda duruyorsa aynı bildirim iki kez gitmesin
     const uniqueTokens = [...new Set(tokens.map((t) => t.token as string))]
+    const ctx = dayContext(uid, date)
 
-    // Tek kullanıcının içeriği hazırlanamazsa yalnızca o kullanıcı atlanır.
+    // Tek kullanıcının içeriği hazırlanamazsa yalnızca o içerik atlanır.
     // Korumasız hâlde bir kişide çıkan istisna döngüyü kırıyor ve o saatte
     // kimse bildirim alamıyordu; üstelik cron 500 görüp sessizce geçiyordu.
-    let content: { title: string; body: string } | null = null
-    try {
-      content = slot === 'morning'
-        ? await buildMorning(uid, date, time)
-        : slot === 'midday'
-        ? await buildMidday(uid, date, time)
-        : await buildEvening(uid, date)
-    } catch (err) {
-      console.error(`digest icerigi hazirlanamadi (${uid}/${slot}):`, err instanceof Error ? err.message : err)
-      continue
+    let content: Copy | null = null
+    if (slot) {
+      try {
+        content = slot === 'morning'
+          ? await buildMorning(uid, date, time, ctx)
+          : slot === 'midday'
+          ? await buildMidday(uid, date, time, ctx)
+          : await buildEvening(uid, date, ctx)
+      } catch (err) {
+        console.error(`digest icerigi hazirlanamadi (${uid}/${slot}):`, err instanceof Error ? err.message : err)
+      }
     }
 
-    // Gönderilecek bir şey yoksa kilidi de yazma — akşam özeti öğün girilmemişse
-    // null döner, o slot bugün hâlâ gönderilebilir sayılmalı.
-    if (!content) continue
-
-    // Idempotans kilidi: aynı kullanıcı + slot + yerel gün için tek gönderim.
-    // Cron aynı saat içinde iki kez tetiklenirse (yeniden deneme, elle test,
-    // ikinci bir zamanlayıcı) insert primary key'e çarpar ve bildirim
-    // tekrarlanmaz. Push'tan hemen önce yazılır ki yarış durumunda da tutsun.
-    const { error: lockError } = await supabase
-      .from('notification_log')
-      .insert({ user_id: uid, kind: `daily_digest_${slot}`, local_date: date })
-
-    if (lockError) {
-      // 23505 = unique_violation → bu slot bugün zaten gönderilmiş
-      if (lockError.code !== '23505') {
-        console.error(`notification_log insert failed for ${uid}/${slot}:`, lockError.message)
+    let weight: WeightData | null = null
+    if (weightDue) {
+      try {
+        weight = await loadWeight(uid, date)
+      } catch (err) {
+        console.error(`tarti verisi okunamadi (${uid}):`, err instanceof Error ? err.message : err)
       }
+    }
+
+    // Gönderilecek bir şey yoksa kilidi de yazma: akşam özeti öğün girilmemişse
+    // null döner, tartı bugün girildiyse null döner; ikisi de bugün hâlâ
+    // gönderilebilir sayılmalı.
+    const mainLocked = slot !== null && content !== null && (await acquireLock(uid, slot, date))
+    const weightLocked = weight !== null && (await acquireLock(uid, 'weight', date))
+
+    let message: Copy
+    let type: string
+    if (mainLocked && slot && content) {
+      // Aynı saatte iki push yerine tek push: tartı satırı özetin sonuna eklenir.
+      message = weightLocked && weight ? withWeightLine(content, weight, ctx) : content
+      type = `daily_digest_${slot}`
+    } else if (weightLocked && weight) {
+      message = weightCopy(weight, ctx)
+      type = 'daily_digest_weight'
+    } else {
       continue
     }
 
     for (const token of uniqueTokens) {
       pushMessages.push({
         to: token,
-        title: content.title,
-        body: content.body,
-        data: { type: `daily_digest_${slot}` },
+        title: message.title,
+        body: message.body,
+        data: { type },
         sound: 'default',
       })
     }
-    locked.set(uid, { slot, date, tokens: uniqueTokens })
-    bySlot[slot]++
+
+    const kinds: Kind[] = []
+    if (mainLocked && slot) kinds.push(slot)
+    if (weightLocked) kinds.push('weight')
+    locked.set(uid, { kinds, date, tokens: uniqueTokens })
+    for (const kind of kinds) bySlot[kind]++
   }
 
   const { sent, dropped, failed } = await sendExpoPush(
@@ -285,29 +373,29 @@ Deno.serve(async () => {
     supabase as unknown as PushSupabase,
   )
 
-  // Teslim edilemeyen digest'in kilidi kalırsa o slot bugün bir daha denenmez ve
+  // Teslim edilemeyen digest'in kilidi kalırsa o tür bugün bir daha denenmez ve
   // bildirim büsbütün kaybolur. Bütün token'ları başarısız olan kullanıcının
-  // kilidi geri alınır; saat başı koşan cron aynı saat içinde tekrar dener.
-  // Silme kullanıcı bazında tek tek yapılır: `in()` listelerinin çarpımı başka
-  // kullanıcıların aynı gün/slot satırlarını da silerdi.
+  // kilitleri geri alınır; saat başı koşan cron aynı saat içinde tekrar dener.
+  // Silme kullanıcı bazında yapılır: `in()` yalnızca o kullanıcının türlerini
+  // kapsar, başka kullanıcıların aynı gün/tür satırlarına dokunmaz.
   const failedTokens = new Set(failed)
   for (const [uid, entry] of locked) {
     if (entry.tokens.length === 0) continue
     if (!entry.tokens.every((token) => failedTokens.has(token))) continue
 
-    bySlot[entry.slot]--
+    for (const kind of entry.kinds) bySlot[kind]--
     const { error: rollbackError } = await supabase
       .from('notification_log')
       .delete()
       .eq('user_id', uid)
-      .eq('kind', `daily_digest_${entry.slot}`)
+      .in('kind', entry.kinds.map((kind) => `daily_digest_${kind}`))
       .eq('local_date', entry.date)
     if (rollbackError) console.error(`Kilit geri alinamadi (${uid}):`, rollbackError.message)
   }
 
   // notification_log artık blok hatırlatmalarının da kilidi: günde kullanıcı
   // başına birkaç satır yazılıyor. Saat başı çalışan tek yer burası olduğu için
-  // budama da burada. Hata sonucu etkilemez — bildirim gitti bile.
+  // budama da burada. Hata sonucu etkilemez, bildirim gitti bile.
   const cutoff = new Date(Date.now() - 30 * 86400_000).toISOString()
   const { error: pruneError } = await supabase
     .from('notification_log')

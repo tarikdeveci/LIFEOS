@@ -376,6 +376,21 @@ export default function NotificationSettingsScreen() {
           />
         </GlassCard>
 
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <ToggleRow
+            icon="scale-outline"
+            title={tr ? 'Tartı hatırlatması' : 'Weigh-in reminder'}
+            subtitle={tr ? 'O gün tartı girildiyse gelmez' : 'Skipped once you have logged today'}
+            value={push?.weight_enabled ?? false}
+            onValueChange={(next) => void patchPush({ weight_enabled: next })}
+          />
+          <HourStepper
+            hour={push?.weight_hour ?? DEFAULT_PUSH_PREFERENCES.weight_hour}
+            disabled={!push?.weight_enabled}
+            onChange={(h) => void patchPush({ weight_hour: h })}
+          />
+        </GlassCard>
+
         <GlassCard style={{ marginBottom: spacing[5] }}>
           <ToggleRow
             icon="alarm-outline"

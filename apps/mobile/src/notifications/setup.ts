@@ -186,6 +186,13 @@ export function addNotificationResponseListener(
       navigate('/(tabs)/today')
     } else if (data['type'] === 'evening_nutrition') {
       navigate('/(tabs)/nutrition')
+    } else if (data['type'] === 'daily_digest_morning' || data['type'] === 'daily_digest_midday') {
+      navigate('/(tabs)/today')
+    } else if (data['type'] === 'daily_digest_evening') {
+      navigate('/(tabs)/nutrition')
+    } else if (data['type'] === 'daily_digest_weight') {
+      // Kilo Takibi kartı profil ekranında.
+      navigate('/(tabs)/profile')
     }
   })
 }

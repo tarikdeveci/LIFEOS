@@ -51,16 +51,3 @@ export function computeStreak(dates: string[], today: string): StreakSummary {
 
   return { weeks, thisWeekCount, atRisk: weeks > 0 && thisWeekCount === 0 }
 }
-
-/**
- * Bildirime eklenecek kısa cümle; söylenecek bir şey yoksa null.
- *
- * İki haftanın altındaki "seri" duyurulmuyor: her yeni kullanıcıya rozet
- * göstermek sayıyı değersizleştiriyor.
- */
-export function streakLine(streak: StreakSummary): string | null {
-  if (streak.weeks < 2) return null
-  return streak.atRisk
-    ? `${streak.weeks} haftalık serin tehlikede — bu hafta henüz antrenman yok.`
-    : `${streak.weeks} haftadır aralıksız spordasın, serini bozma. 🔥`
-}

@@ -1,5 +1,5 @@
 // Bildirim tercihleri domain types
-// Şema: supabase/migrations/019, 023 (öğlen/akşam slotları), 027 (timezone)
+// Şema: supabase/migrations/019, 023 (öğlen/akşam slotları), 027 (timezone), 051 (kilo)
 //
 // DİKKAT — tercihler İKİ ayrı yerde duruyor ve bu bilinçli değil, tarihsel:
 //
@@ -21,6 +21,9 @@ export interface PushPreferences {
   midday_hour: number
   evening_enabled: boolean
   evening_hour: number
+  /** Sabah tartı hatırlatması; o gün tartı varsa gönderilmez (051). */
+  weight_enabled: boolean
+  weight_hour: number
   /** Yaklaşan zaman bloğu hatırlatması. */
   block_reminder_enabled: boolean
   /** Şema CHECK'i yalnızca bu dört değeri kabul eder. */
@@ -48,6 +51,8 @@ export const DEFAULT_PUSH_PREFERENCES: Omit<PushPreferences, 'timezone'> = {
   midday_hour: 13,
   evening_enabled: true,
   evening_hour: 21,
+  weight_enabled: true,
+  weight_hour: 8,
   block_reminder_enabled: true,
   block_reminder_minutes: 15,
 }

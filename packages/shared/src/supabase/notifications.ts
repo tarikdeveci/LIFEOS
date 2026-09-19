@@ -28,6 +28,8 @@ const PUSH_COLUMNS = {
   midday_hour: 'midday_hour',
   evening_enabled: 'evening_enabled',
   evening_hour: 'evening_hour',
+  weight_enabled: 'weight_enabled',
+  weight_hour: 'weight_hour',
   block_reminder_enabled: 'block_reminder_enabled',
   block_reminder_minutes: 'block_reminder_minutes',
 } as const
@@ -65,7 +67,7 @@ export async function getPushPreferences(
   const { data, error } = await supabase
     .from('notification_preferences')
     .select(
-      'digest_enabled, digest_hour, midday_enabled, midday_hour, evening_enabled, evening_hour, block_reminder_enabled, block_reminder_minutes, timezone',
+      'digest_enabled, digest_hour, midday_enabled, midday_hour, evening_enabled, evening_hour, weight_enabled, weight_hour, block_reminder_enabled, block_reminder_minutes, timezone',
     )
     .eq('user_id', userId)
     .maybeSingle()
@@ -80,6 +82,8 @@ export async function getPushPreferences(
     midday_hour: asHour(row['midday_hour'], DEFAULT_PUSH_PREFERENCES.midday_hour),
     evening_enabled: asBool(row['evening_enabled'], DEFAULT_PUSH_PREFERENCES.evening_enabled),
     evening_hour: asHour(row['evening_hour'], DEFAULT_PUSH_PREFERENCES.evening_hour),
+    weight_enabled: asBool(row['weight_enabled'], DEFAULT_PUSH_PREFERENCES.weight_enabled),
+    weight_hour: asHour(row['weight_hour'], DEFAULT_PUSH_PREFERENCES.weight_hour),
     block_reminder_enabled: asBool(
       row['block_reminder_enabled'],
       DEFAULT_PUSH_PREFERENCES.block_reminder_enabled,
