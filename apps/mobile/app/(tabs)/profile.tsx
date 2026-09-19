@@ -310,12 +310,12 @@ export default function ProfileScreen() {
 
   const initials = profile.displayName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?'
   const hasNutrition = !!(nutrition.calories || nutrition.protein)
-  const membershipTitle = lang === 'tr' ? 'Uyelik Durumu' : 'Membership'
+  const membershipTitle = lang === 'tr' ? 'Üyelik Durumu' : 'Membership'
   const membershipSubtitle = subscription.isLoading
     ? (lang === 'tr' ? 'Kontrol ediliyor' : 'Checking status')
     : subscription.isPro
-      ? (lang === 'tr' ? 'Pro ozellikler aktif' : 'Pro features active')
-      : (lang === 'tr' ? 'Ucretsiz plan' : 'Free plan')
+      ? (lang === 'tr' ? 'Pro özellikler aktif' : 'Pro features active')
+      : (lang === 'tr' ? 'Ücretsiz plan' : 'Free plan')
 
   return (
     <ScreenBackground>

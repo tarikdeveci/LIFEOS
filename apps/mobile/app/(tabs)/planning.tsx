@@ -264,7 +264,7 @@ export default function PlanningScreen() {
         setShowAiChat(false)
         setTimeout(() => router.push({ pathname: '/paywall', params: { source: 'free_limit' } }), 400)
       } else {
-        setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: aiErrorMessage(error, 'AI planlama basarisiz. Pro aboneligini ve baglantini kontrol et.') }])
+        setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: aiErrorMessage(error, 'AI planlama başarısız. Pro aboneliğini ve bağlantını kontrol et.') }])
       }
     }
     finally { setAiLoading(false) }
