@@ -3,6 +3,10 @@ import { ResetPasswordForm } from './ResetPasswordForm'
 
 export const metadata: Metadata = { title: 'Yeni Şifre' }
 
+// Build sırasında statik üretilmez: form tarayıcı Supabase istemcisini modül
+// seviyesinde kuruyor ve env'i olmayan ortamda (Vercel preview) build düşüyor.
+export const dynamic = 'force-dynamic'
+
 // Oturum gerektirir: sıfırlama bağlantısı /auth/callback'te oturuma çevrilip
 // buraya yönlenir. Oturumsuz gelen middleware tarafından girişe atılır.
 export default function ResetPasswordPage() {
