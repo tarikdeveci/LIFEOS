@@ -94,12 +94,19 @@ export default function PlanningScreen() {
   // Free kullanıcı ürünün vaadini (gününü AI kursun) görebilsin diye AI
   // planlama ilk 3 kez ücretsiz; sayaç ve kapı sunucuda.
   const { freePlansLeft, refreshFreePlans } = useFreeAiPlans(isPro, isCheckingPro)
-  const hasFreePlan = !isPro && (freePlansLeft ?? 0) > 0
+  // freePlansLeft null = sayaç okunamadı (çevrimdışı, RPC hatası, abonelik
+  // durumu yükleniyor). Bu KİLİT DEĞİL: kararı sunucu verir, hak bittiyse 402
+  // döner ve aşağıdaki paywall yolu çalışır. "Bilinmiyor"u "hak yok" saymak,
+  // hakkı duran free kullanıcıya ürünün asıl vaadini kapatıyordu — web de
+  // (PlanningView) kilitlemiyor, iki platform aynı davranmalı.
+  const hasFreePlan = !isPro && freePlansLeft !== 0
   const aiUnlocked = isPro || hasFreePlan
-  const freePlansLabel = hasFreePlan ? `${freePlansLeft} ${lang === 'tr' ? 'ücretsiz' : 'free'}` : null
+  const freePlansLabel = hasFreePlan && freePlansLeft !== null
+    ? `${freePlansLeft} ${lang === 'tr' ? 'ücretsiz' : 'free'}`
+    : null
   function requirePlanAccess(): boolean {
     if (hasFreePlan) return true
-    return requirePro(freePlansLeft === 0 ? 'free_limit' : undefined)
+    return requirePro('free_limit')
   }
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
@@ -326,7 +333,7 @@ export default function PlanningScreen() {
             </TouchableOpacity>
             <TouchableOpacity onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked ? 1 : 0.55 }}>
               <Ionicons name={aiUnlocked ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
-              {hasFreePlan && (
+              {hasFreePlan && freePlansLeft !== null && (
                 <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
                 </View>
@@ -410,8 +417,14 @@ export default function PlanningScreen() {
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
               <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
               <Button
-                label={isPro ? t.plan_ai_plan : freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : `Pro · ${t.plan_ai_plan}`}
+                label={aiUnlocked
+                  ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
+                  : `Pro · ${t.plan_ai_plan}`}
                 onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
+                // Abonelik durumu okunurken kullanıcı da henüz yüklenmemiş
+                // olabilir; sohbet açılsa gönderim sessizce düşerdi. Başlıktaki
+                // AI düğmesi de aynı koşulda kapalı.
+                disabled={isCheckingPro}
                 variant="secondary"
               />
             </View>

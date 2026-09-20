@@ -704,7 +704,7 @@ export default function WorkoutScreen() {
                       <Ionicons name="barbell" size={20} color={palette.workout} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }} numberOfLines={1}>{todayWorkout.name}</Text>
+                      <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }} numberOfLines={1}>{todayWorkout.name?.trim() || 'Antrenman'}</Text>
                       <Text style={{ fontSize: fontSize.xs, color: todayWorkout.status === 'completed' ? palette.success : colors.textMuted }}>
                         {todayWorkout.status === 'completed'
                           ? `${t.work_completed} · ${todayWorkout.workout_sets?.length ?? 0} set`
@@ -937,7 +937,7 @@ export default function WorkoutScreen() {
                 <GlassCard key={w.id} padding={spacing[4]} noShadow>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{w.name}</Text>
+                      <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{w.name?.trim() || 'Antrenman'}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
                         {new Date(w.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
                         {w.duration_minutes ? ` · ${w.duration_minutes} dk` : ''}

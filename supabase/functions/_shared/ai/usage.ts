@@ -14,9 +14,33 @@
 // Maliyet her model yanıtının `usage` alanından hesaplanıp `events.ai_used`
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
 
-import type { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
+interface QueryError {
+  message: string
+  /** PostgREST'in verdiği kod (SQLSTATE ya da PGRSTxxx). Ağ hatasında boş. */
+  code?: string
+}
 
-type Supabase = ReturnType<typeof createClient>
+interface QueryResult {
+  data: unknown
+  error: QueryError | null
+  /** HTTP durumu; istek yanıtsız kaldıysa (ağ hatası) 0. */
+  status?: number
+}
+
+interface SupabaseLike {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: unknown): {
+        maybeSingle(): PromiseLike<QueryResult>
+      }
+    }
+    insert(values: Record<string, unknown>): PromiseLike<QueryResult>
+  }
+  rpc(name: string): PromiseLike<QueryResult>
+}
+
+/** ai_used satırı yazılamazsa kaç kez denensin (kota + maliyet kaydı buna bağlı). */
+const LEDGER_WRITE_ATTEMPTS = 3
 
 export type AiTier = 'free' | 'trial' | 'pro'
 
@@ -80,17 +104,21 @@ function readAllowance(data: unknown): Allowance {
  * Bu kullanıcı bu rotayı şimdi kullanabilir mi, hangi katmanda?
  *
  * `supabase` kullanıcının JWT'siyle çalışan istemci olmalı: ai_allowance()
- * auth.uid() üzerinden yalnızca çağıranın satırlarını sayar.
+ * auth.uid() üzerinden yalnızca çağıranın satırlarını sayar. Yanlışlıkla
+ * service role istemcisi geçilirse auth.uid() NULL olur ve fonksiyon 053'ten
+ * beri hata fırlatır; aşağıdaki hata yolu devreye girip free kullanıcıyı
+ * kapatır. Eskiden sayaç sessizce "3 hak" dönüyordu.
  *
- * Sayaç okunamazsa (052 henüz uygulanmamış, ağ hatası) free kullanıcı için
- * kapalı, Pro için açık davranır: bugünkü davranış korunur.
+ * Sayaç okunamazsa (052 henüz uygulanmamış, ağ hatası, kimliksiz istemci) free
+ * kullanıcı için kapalı, Pro için açık davranır: bugünkü davranış korunur.
  */
-export async function resolveAiAccess(supabase: Supabase, userId: string, kind: string): Promise<AiAccess> {
+export async function resolveAiAccess(supabase: SupabaseLike, userId: string, kind: string): Promise<AiAccess> {
+  const client = supabase
   const [subscription, allowanceResult] = await Promise.all([
     // '*': 052'nin kolonlarını adıyla istemek, migration'dan önce deploy
     // edilirse sorguyu düşürür ve her Pro kullanıcıyı 402'ye iterdi.
-    supabase.from('subscriptions').select('*').eq('user_id', userId).maybeSingle(),
-    supabase.rpc('ai_allowance'),
+    client.from('subscriptions').select('*').eq('user_id', userId).maybeSingle(),
+    client.rpc('ai_allowance'),
   ])
   if (allowanceResult.error) console.error('ai_allowance okunamadı:', allowanceResult.error.message)
 
@@ -171,7 +199,7 @@ export class AiLedger {
   private readonly models = new Set<string>()
 
   constructor(
-    private readonly supabase: Supabase,
+    private readonly supabase: SupabaseLike,
     private readonly userId: string,
     private readonly kind: string,
     private readonly tier: AiTier,
@@ -208,10 +236,51 @@ export class AiLedger {
     this.cacheWriteTokens = 0
     this.cost = 0
     this.models.clear()
-    try {
-      const { error } = await this.supabase.from('events').insert({ user_id: this.userId, name: 'ai_used', props })
-      if (error) console.error('ai_used yazılamadı:', error.message)
-    } catch { /* ölçüm asıl işi bozmaz */ }
+    if (await this.insertEvent(props)) return
+
+    // Buraya düşmek iki şey demek: bu çağrının maliyeti hiçbir yerde yok ve
+    // free kullanıcının hakkı düşmedi (kota `ai_used` satırlarından sayılıyor).
+    // Satırı logda tam hâliyle bırak: gerekirse elle geri yazılabilsin.
+    console.error(
+      `KRITIK: ai_used yazilamadi, kota ve maliyet kaydi kayip (user ${this.userId}):`,
+      JSON.stringify(props),
+    )
+  }
+
+  /**
+   * Ölçüm satırını yazar. Tek denemede bırakmak, sunucunun geçici olarak
+   * reddettiği (bağlantı havuzu dolu, serialization) durumlarda free kullanıcıya
+   * sessizce fazladan hak veriyordu; kota da maliyet de bu satıra bağlı.
+   *
+   * YALNIZCA sunucunun yanıtladığı hatalarda tekrar denenir. Yanıtsız kalan bir
+   * istek (ağ koptu, zaman aşımı) satırın yazılıp yazılmadığını bilmediğimiz tek
+   * durum: orada tekrar denemek AYNI satırı ikinci kez yazabilir. Events'te
+   * tekilleştirme anahtarı yok ve çift satır free kullanıcının hakkını
+   * sessizce yer. Bilinmezlikte eksik saymak, fazla saymaya yeğdir.
+   */
+  private async insertEvent(props: Record<string, unknown>): Promise<boolean> {
+    for (let attempt = 1; attempt <= LEDGER_WRITE_ATTEMPTS; attempt++) {
+      let retryable = false
+      try {
+        const { error, status } = await this.supabase
+          .from('events')
+          .insert({ user_id: this.userId, name: 'ai_used', props })
+        if (!error) return true
+        // Sunucu yanıt verdiyse (durum + kod var) işlem geri alınmıştır.
+        retryable = (status ?? 0) >= 400 && (error.code ?? '') !== ''
+        console.error(`ai_used yazilamadi (${attempt}/${LEDGER_WRITE_ATTEMPTS}):`, error.message)
+      } catch (err) {
+        console.error(
+          `ai_used yazilamadi (${attempt}/${LEDGER_WRITE_ATTEMPTS}):`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+      if (!retryable) return false
+      if (attempt < LEDGER_WRITE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt))
+      }
+    }
+    return false
   }
 
   /** Tek çağrılı rotalar için: ekle ve hemen yaz. */

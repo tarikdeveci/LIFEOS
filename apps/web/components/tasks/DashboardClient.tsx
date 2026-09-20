@@ -37,10 +37,15 @@ interface DashboardClientProps {
   displayName: string | null
 }
 
+const WEEKDAY_LABELS = {
+  tr: ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'],
+  en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+} as const
+
 export default function DashboardClient({ userId, displayName }: DashboardClientProps) {
   const { t, lang } = useLang()
   const ENERGY_LABELS = ['', t.dash_energy_low, t.dash_energy_tired, t.dash_energy_ok, t.dash_energy_good, t.dash_energy_great]
-  const days = lang === 'tr' ? ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const days = WEEKDAY_LABELS[lang]
 
   const today = todayDate()
   const todayLabel = relativeDateLabel(today)
@@ -91,7 +96,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
     } catch {
       // sessiz hata — haftalık chart eksik gösterilir
     }
-  }, [userId, weekStartDate, calorieTarget, lang])
+  }, [userId, weekStartDate, calorieTarget, days])
 
   useEffect(() => {
     void fetchTasks(supabase, userId, { scheduled_date: today })

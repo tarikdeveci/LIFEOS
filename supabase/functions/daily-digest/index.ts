@@ -259,11 +259,14 @@ async function acquireLock(uid: string, kind: Kind, date: string): Promise<boole
 }
 
 Deno.serve(async () => {
+  // '*': kolonları adıyla istemek, fonksiyon 051'den önce deploy edilirse (ya
+  // da 051 geri alınırsa) bu sorguyu düşürür ve o koşuda HİÇ KİMSE bildirim
+  // alamaz — yalnızca tartı satırı değil, sabah/öğlen/akşam da susar.
+  // Eksik kolon '*' ile undefined gelir; aşağıdaki weight_enabled === true
+  // kontrolü tartıyı kapalı sayar, diğer slotlar çalışmaya devam eder.
   const { data: prefs, error } = await supabase
     .from('notification_preferences')
-    .select(
-      'user_id, timezone, digest_hour, digest_enabled, midday_hour, midday_enabled, evening_hour, evening_enabled, weight_hour, weight_enabled',
-    )
+    .select('*')
 
   if (error) {
     return new Response(`DB error: ${error.message}`, { status: 500 })

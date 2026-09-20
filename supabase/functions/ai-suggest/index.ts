@@ -195,6 +195,27 @@ function normalizeExerciseName(value: string): string {
     .trim()
 }
 
+function relationRecord(value: unknown): Record<string, unknown> | null {
+  const candidate = Array.isArray(value) ? value[0] : value
+  return candidate !== null && typeof candidate === 'object'
+    ? candidate as Record<string, unknown>
+    : null
+}
+
+function relationRecords(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+}
+
+function muscleNamesFromSets(value: unknown): string[] {
+  return relationRecords(value).flatMap((set) => {
+    const exercise = relationRecord(set['exercise'])
+    const muscleGroup = relationRecord(exercise?.['muscle_group'])
+    const name = muscleGroup?.['name']
+    return typeof name === 'string' ? [name] : []
+  })
+}
+
 /** Modelden gelen ilk text bloğunun metni; yoksa boş string. */
 function firstText(response: { content: Array<{ type: string; text?: string }> }): string {
   const block = response.content.find((b) => b.type === 'text')
@@ -426,10 +447,7 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
       const recentSummary = recentWorkoutData
         ?.filter((w) => w.status === 'completed')
         .map((w) => {
-          const muscles = [...new Set(
-            (w.workout_sets as { exercise: { muscle_group: { name: string } | null } | null }[])
-              ?.flatMap((s) => s?.exercise?.muscle_group?.name ?? []) ?? []
-          )]
+          const muscles = [...new Set(muscleNamesFromSets(w.workout_sets))]
           return `${w.date}: ${w.name ?? 'Antrenman'} (${muscles.join(', ') || 'bilinmiyor'})`
         })
         .join('\n') ?? 'Geçmiş antrenman yok'
@@ -499,7 +517,10 @@ Lütfen:
         ? catalogRows.map((row) => ({
             name: row.name as string,
             category: (row.category as string | null) ?? undefined,
-            muscle_group: (row.muscle_group as { name: string } | null)?.name ?? undefined,
+            muscle_group: (() => {
+              const value = relationRecord(row.muscle_group)?.['name']
+              return typeof value === 'string' ? value : undefined
+            })(),
             is_bodyweight: (row.is_bodyweight as boolean | null) ?? false,
             equipment: (row.equipment as string[] | null) ?? null,
           }))
@@ -541,10 +562,7 @@ Lütfen:
       const recentWorkouts = (recentRows ?? []).map((w) => ({
         date: w.date as string,
         name: (w.name as string | null) ?? 'Antrenman',
-        muscle_groups: [...new Set(
-          (w.workout_sets as { exercise: { muscle_group: { name: string } | null } | null }[] | null)
-            ?.flatMap((s) => s?.exercise?.muscle_group?.name ?? []) ?? [],
-        )],
+        muscle_groups: [...new Set(muscleNamesFromSets(w.workout_sets))],
       }))
 
       const [{ data: programRows }, { data: loadRows }, { data: groupRows }] = await Promise.all([

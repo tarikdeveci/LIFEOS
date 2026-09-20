@@ -8,7 +8,9 @@ import { supabase } from '@/src/lib/supabase'
  * yalnızca göstermek ve kilidi doğru çizmek için.
  *
  * Pro kullanıcıda, abonelik durumu henüz yüklenmemişken ve sayaç okunamazsa
- * null döner. Çağıran taraf null'ı "hak yok" sayar: bugünkü davranış.
+ * null döner. null "bilinmiyor" demektir, "hak yok" değil: arayüz kilitlemez,
+ * kararı sunucu verir (hak bittiyse 402 döner ve paywall açılır). Webdeki
+ * karşılığı da aynı şekilde davranır.
  */
 export function useFreeAiPlans(isPro: boolean, isCheckingPro: boolean) {
   const [freePlansLeft, setFreePlansLeft] = useState<number | null>(null)
