@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import type { Integration, IntegrationProvider } from '@lifeos/shared'
 import { deleteIntegration, getIntegrations, importExternalTasks } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
@@ -73,13 +74,44 @@ export default function IntegrationsScreen() {
     finally { setBusy(null) }
   }
 
+  const authedFetch = async (path: string, body: unknown) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('no session')
+    return await fetch(`${WEB_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    })
+  }
+
+  const connectGoogle = async () => {
+    setBusy('google')
+    try {
+      const res = await authedFetch('/api/integrations/google/start', { platform: 'mobile' })
+      if (res.status === 503) { Alert.alert(t.integ_google_unavailable); return }
+      const { url } = (await res.json()) as { url?: string }
+      if (!res.ok || !url) throw new Error(String(res.status))
+      const result = await WebBrowser.openAuthSessionAsync(url, 'lifeos://integrations/google')
+      if (result.type === 'success') {
+        Alert.alert(result.url.includes('status=ok') ? t.integ_google_ok : t.integ_google_error)
+        await load()
+      }
+    } catch { Alert.alert(t.integ_google_error) }
+    finally { setBusy(null) }
+  }
+
   const disconnect = (item: Integration) => {
     Alert.alert(t.integ_disconnect_confirm, undefined, [
       { text: 'Vazgeç', style: 'cancel' },
       {
         text: t.integ_disconnect, style: 'destructive', onPress: async () => {
           try {
-            await deleteIntegration(supabase, item.id)
+            if (item.provider === 'google_calendar') {
+              const res = await authedFetch('/api/integrations/google/disconnect', {})
+              if (!res.ok) throw new Error(String(res.status))
+            } else {
+              await deleteIntegration(supabase, item.id)
+            }
             setItems((prev) => prev?.filter((i) => i.id !== item.id) ?? null)
           } catch { Alert.alert(t.integ_import_error) }
         },
@@ -122,6 +154,16 @@ export default function IntegrationsScreen() {
             </View>
           ))}
         </GlassCard>
+
+        {items !== null && !items.some((i) => i.provider === 'google_calendar') && (
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ gap: spacing[2] }}>
+              <Text style={label}>{t.integ_google}</Text>
+              <Text style={hint}>{t.integ_google_hint}</Text>
+              <Button label={t.integ_google_connect} onPress={() => void connectGoogle()} loading={busy === 'google'} />
+            </View>
+          </GlassCard>
+        )}
 
         <GlassCard>
           <Text style={[label, { marginBottom: spacing[4] }]}>{t.integ_import_title}</Text>

@@ -24,7 +24,7 @@ export function DayToolbar({ userId }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const { ritual } = useLocalSearchParams<{ ritual?: string }>()
-  const { dailyPlan, flexTasks, carryoverTasks, timeBlocks, completeRitual, applyShift } = usePlanningStore()
+  const { dailyPlan, flexTasks, carryoverTasks, timeBlocks, busy, completeRitual, applyShift } = usePlanningStore()
   const [ritualOpen, setRitualOpen] = useState(false)
   const [shiftOpen, setShiftOpen] = useState(false)
 
@@ -32,7 +32,7 @@ export function DayToolbar({ userId }: Props) {
   useEffect(() => { if (ritual === '1' && ritualPending) setRitualOpen(true) }, [ritual, ritualPending])
 
   const unblocked = [...flexTasks, ...carryoverTasks].filter((task) => !timeBlocks.some((b) => b.task_id === task.id))
-  const cap = dayCapacity(unblocked, timeBlocks, { from: minutesOfDay() })
+  const cap = dayCapacity(unblocked, timeBlocks, { from: minutesOfDay(), busy })
   const pct = Math.min(100, Math.round((Number.isFinite(cap.ratio) ? cap.ratio : 1) * 100))
 
   const shift = async (delay: number) => {

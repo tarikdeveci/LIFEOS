@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { todoistToExternal } from '@lifeos/shared/utils'
 import type { ExternalTaskInput } from '@lifeos/shared/types'
 import type { TodoistTask } from '@lifeos/shared/utils'
 import { importExternalTasks } from '@lifeos/shared/supabase'
-import { createServerClient } from '@/lib/supabase/server'
+import { authenticateRequest } from '@/lib/api/auth'
 
 export const runtime = 'nodejs'
 
@@ -15,22 +14,6 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status })
-}
-
-/**
- * Oturum: web çerezden, mobil "Authorization: Bearer <supabase erişim anahtarı>" ile.
- * Dönen istemci kullanıcı adına çalışır, RLS geçerli.
- */
-async function authenticate(req: Request) {
-  const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim()
-  const supabase = bearer
-    ? createClient(process.env['NEXT_PUBLIC_SUPABASE_URL']!, process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!, {
-        global: { headers: { Authorization: `Bearer ${bearer}` } },
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : await createServerClient()
-  const { data: { user } } = bearer ? await supabase.auth.getUser(bearer) : await supabase.auth.getUser()
-  return user ? { supabase, userId: user.id } : null
 }
 
 /** Todoist'teki açık görevleri sayfa sayfa okur. Token sadece bu istekte kullanılır. */
@@ -59,7 +42,7 @@ async function fetchTodoistTasks(token: string): Promise<TodoistTask[] | 'unauth
  * Body: { "token": "<todoist api token>" }
  */
 export async function POST(req: Request) {
-  const auth = await authenticate(req)
+  const auth = await authenticateRequest(req)
   if (!auth) return jsonError('Oturum gerekli', 401)
 
   let body: unknown

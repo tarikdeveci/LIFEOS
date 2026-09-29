@@ -303,3 +303,20 @@ export async function getCarryoverTasks(supabase: Supabase, userId: string): Pro
   if (error) throw error
   return data as unknown as Task[]
 }
+
+/** Google dolu/boş penceresinden o günle kesişen kayıtlar (057). Bağlantı yoksa boş. */
+export async function getCalendarBusy(
+  supabase: Supabase,
+  userId: string,
+  date: string,
+): Promise<{ starts_at: string; ends_at: string }[]> {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+  const { data, error } = await supabase
+    .from('calendar_busy')
+    .select('starts_at, ends_at')
+    .eq('user_id', userId)
+    .lt('starts_at', new Date(y, m - 1, d + 1).toISOString())
+    .gt('ends_at', new Date(y, m - 1, d).toISOString())
+  if (error) throw error
+  return data as unknown as { starts_at: string; ends_at: string }[]
+}

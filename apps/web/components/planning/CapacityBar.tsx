@@ -9,15 +9,17 @@ interface CapacityBarProps {
   tasks: Task[]
   timeBlocks: TimeBlock[]
   isToday: boolean
+  /** Google dolu aralıkları: kapasiteden düşülür. */
+  busy?: { start: number; end: number }[]
 }
 
 /**
  * Kapasite: bugünkü görevlerin süresi / çalışma saatlerinde kalan boşluk.
  * Bugün için geçmiş saatler sayılmaz. Aşımda kırmızı yerine nötr bir uyarı.
  */
-export function CapacityBar({ tasks, timeBlocks, isToday }: CapacityBarProps) {
+export function CapacityBar({ tasks, timeBlocks, isToday, busy = [] }: CapacityBarProps) {
   const { t, lang } = useLang()
-  const cap = dayCapacity(tasks, timeBlocks, isToday ? { from: minutesOfDay() } : {})
+  const cap = dayCapacity(tasks, timeBlocks, isToday ? { from: minutesOfDay(), busy } : { busy })
   const pct = Math.min(100, Math.round((Number.isFinite(cap.ratio) ? cap.ratio : 1) * 100))
   const summary = t.cap_summary
     .replace('{planned}', formatDuration(cap.plannedMinutes, lang))

@@ -50,7 +50,7 @@ function useRitualState(visible: boolean, userId: string) {
 export function RitualSheet({ userId, visible, onClose }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { flexTasks, carryoverTasks, timeBlocks, fetchDayData, placeTasks, completeRitual } = usePlanningStore()
+  const { flexTasks, carryoverTasks, timeBlocks, busy, fetchDayData, placeTasks, completeRitual } = usePlanningStore()
   const { updateTask } = useTaskStore()
   const s = useRitualState(visible, userId)
   const [handled, setHandled] = useState<Set<string>>(new Set())
@@ -87,7 +87,7 @@ export function RitualSheet({ userId, visible, onClose }: Props) {
   })
 
   const place = () => guard(async () => {
-    const { placements, unplaced } = autoPlace(unblocked, timeBlocks, { from: minutesOfDay(), gap: 10 })
+    const { placements, unplaced } = autoPlace(unblocked, timeBlocks, { from: minutesOfDay(), gap: 10, busy })
     const n = await placeTasks(supabase, userId, placements, Object.fromEntries(unblocked.map((task) => [task.id, task.title])))
     const msg = [t.ritual_placed.replace('{n}', String(n))]
     if (unplaced.length > 0) msg.push(t.ritual_unplaced.replace('{n}', String(unplaced.length)))

@@ -54,7 +54,7 @@ function useRitualState(open: boolean, userId: string) {
 export function MorningRitual({ userId, open, onClose, carried }: MorningRitualProps) {
   const { t } = useLang()
   const { showToast } = useToast()
-  const { flexTasks, timeBlocks, fetchDayData, placeTasks, completeRitual } = usePlanningStore()
+  const { flexTasks, timeBlocks, busy, fetchDayData, placeTasks, completeRitual } = usePlanningStore()
   const { updateTask } = useTaskStore()
   const s = useRitualState(open, userId)
   const [handled, setHandled] = useState<Set<string>>(new Set())
@@ -95,7 +95,7 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
   const handleAutoPlace = async () => {
     s.setBusy(true)
     try {
-      const { placements, unplaced } = autoPlace(unblocked, timeBlocks, { from: minutesOfDay(), gap: 10 })
+      const { placements, unplaced } = autoPlace(unblocked, timeBlocks, { from: minutesOfDay(), gap: 10, busy })
       const titles = Object.fromEntries(unblocked.map((task) => [task.id, task.title]))
       const n = await placeTasks(supabase, userId, placements, titles)
       const msg = [t.ritual_placed.replace('{n}', String(n))]
@@ -152,7 +152,7 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
 
         {s.step === 2 && (
           <div className="space-y-3">
-            <CapacityBar tasks={unblocked} timeBlocks={timeBlocks} isToday />
+            <CapacityBar tasks={unblocked} timeBlocks={timeBlocks} isToday busy={busy} />
             <p className="text-xs text-muted">{t.ritual_step3_hint}</p>
             <Button size="sm" variant="outline" onClick={() => void handleAutoPlace()} disabled={s.busy || unblocked.length === 0}>
               {t.ritual_auto_place} ({unblocked.length})

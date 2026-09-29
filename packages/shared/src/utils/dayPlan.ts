@@ -157,3 +157,20 @@ export function shiftRemaining(
   })
   return { updates, overflow, pastDayEnd }
 }
+
+/**
+ * Google dolu/boş aralıklarını (timestamptz) verilen yerel günün dakikalarına indirger.
+ * Güne taşan kısım kırpılır. Cihaz saat dilimi kullanıcınınkiyle aynı varsayılır.
+ */
+export function busyToIntervals(rows: readonly { starts_at: string; ends_at: string }[], date: string): Interval[] {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+  const dayStart = new Date(y, m - 1, d).getTime()
+  const dayEnd = new Date(y, m - 1, d + 1).getTime()
+  const out: Interval[] = []
+  for (const r of rows) {
+    const s = Math.max(new Date(r.starts_at).getTime(), dayStart)
+    const e = Math.min(new Date(r.ends_at).getTime(), dayEnd)
+    if (e > s) out.push({ start: Math.round((s - dayStart) / 60000), end: Math.round((e - dayStart) / 60000) })
+  }
+  return mergeIntervals(out)
+}

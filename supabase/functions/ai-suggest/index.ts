@@ -222,6 +222,41 @@ function firstText(response: { content: Array<{ type: string; text?: string }> }
   return block?.type === 'text' && typeof block.text === 'string' ? block.text : ''
 }
 
+/**
+ * Google takviminden gelen dolu aralıklar (057 calendar_busy), planlayıcı çakışma
+ * yapmasın diye mevcut blok gibi verilir. Başlık yok, sadece "Meşgul".
+ */
+// deno-lint-ignore no-explicit-any
+async function busyBlocks(supabase: any, userId: string, date: string): Promise<{ start: string; end: string; label: string }[]> {
+  try {
+    const { data: prefs } = await supabase.from('notification_preferences').select('timezone').eq('user_id', userId).maybeSingle()
+    const timeZone = (prefs as { timezone?: string } | null)?.timezone ?? 'Europe/Istanbul'
+    const dayStart = new Date(`${date}T00:00:00Z`).getTime() - 14 * 3600_000
+    const { data } = await supabase
+      .from('calendar_busy')
+      .select('starts_at, ends_at')
+      .eq('user_id', userId)
+      .lt('starts_at', new Date(dayStart + 52 * 3600_000).toISOString())
+      .gt('ends_at', new Date(dayStart).toISOString())
+    const fmtDate = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    const fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    return ((data ?? []) as { starts_at: string; ends_at: string }[]).flatMap((b) => {
+      const s = new Date(b.starts_at)
+      const e = new Date(b.ends_at)
+      const sDay = fmtDate.format(s)
+      const eDay = fmtDate.format(e)
+      if (sDay > date || eDay < date) return []
+      return [{
+        start: sDay < date ? '00:00' : fmtTime.format(s),
+        end: eDay > date ? '23:59' : fmtTime.format(e),
+        label: 'Meşgul (Google Takvim)',
+      }]
+    })
+  } catch {
+    return []
+  }
+}
+
 function shiftDate(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number)
   const dt = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1))
@@ -324,8 +359,9 @@ serve(async (req: Request) => {
           ? carryover.map((t) => `- ${t.title} (${t.scheduled_date}'den taşıyor)`).join('\n')
           : 'Taşan görev yok'
 
-      const existingBlocksSummary = existing_blocks?.length
-        ? existing_blocks.map((b) => `  ${b.start}–${b.end}: ${b.label}`).join('\n')
+      const withBusy = [...(existing_blocks ?? []), ...(await busyBlocks(supabase, user.id, targetDate))]
+      const existingBlocksSummary = withBusy.length
+        ? withBusy.map((b) => `  ${b.start}–${b.end}: ${b.label}`).join('\n')
         : '  (Blok yok)'
       const bufferNote = buffer_minutes && buffer_minutes > 0 ? `Görevler arasına ${buffer_minutes} dakika buffer ekle.` : ''
 
@@ -650,7 +686,7 @@ Lütfen:
         .eq('date', targetDate)
         .maybeSingle()
 
-      const blocks = existing_blocks ?? []
+      const blocks = [...(existing_blocks ?? []), ...(await busyBlocks(supabase, user.id, targetDate))]
       const { system, messages } = buildPlannerPrompt({
         lang,
         targetDate,

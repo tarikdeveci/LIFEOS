@@ -39,11 +39,42 @@ export function IntegrationsSection() {
 
   useEffect(() => { void load() }, [load])
 
+  // Google OAuth dönüşü: /settings?integration=google&status=ok|error|denied
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('integration') !== 'google') return
+    const status = params.get('status')
+    showToast(status === 'ok' ? t.integ_google_ok : t.integ_google_error, status === 'ok' ? 'success' : 'error')
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [showToast, t.integ_google_ok, t.integ_google_error])
+
+  const connectGoogle = async () => {
+    setBusy('google')
+    try {
+      const res = await fetch('/api/integrations/google/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: 'web' }),
+      })
+      if (res.status === 503) { showToast(t.integ_google_unavailable, 'error'); return }
+      const body = (await res.json()) as { url?: string }
+      if (!res.ok || !body.url) throw new Error(String(res.status))
+      window.location.href = body.url
+    } catch { showToast(t.integ_google_error, 'error') }
+    finally { setBusy(null) }
+  }
+
+  const hasGoogle = items?.some((i) => i.provider === 'google_calendar') ?? false
+
   const disconnect = async (item: Integration) => {
     if (!window.confirm(t.integ_disconnect_confirm)) return
     setBusy(item.id)
     try {
-      await deleteIntegration(supabase, item.id)
+      // Google token'ı sağlayıcıda da iptal edilsin diye sunucudan kesilir.
+      if (item.provider === 'google_calendar') {
+        const res = await fetch('/api/integrations/google/disconnect', { method: 'POST' })
+        if (!res.ok) throw new Error(String(res.status))
+      } else {
+        await deleteIntegration(supabase, item.id)
+      }
       setItems((prev) => prev?.filter((i) => i.id !== item.id))
       showToast(t.integ_disconnected, 'success')
     } catch { showToast(t.integ_import_error, 'error') }
@@ -104,6 +135,14 @@ export function IntegrationsSection() {
           ))
         )}
       </div>
+
+      {items !== undefined && !hasGoogle && (
+        <div className="space-y-2 rounded-xl bg-background/60 p-3">
+          <p className="text-xs font-semibold text-primary">{t.integ_google}</p>
+          <p className="text-xs text-muted">{t.integ_google_hint}</p>
+          <Button size="sm" onClick={() => void connectGoogle()} disabled={busy === 'google'}>{t.integ_google_connect}</Button>
+        </div>
+      )}
 
       <div className="space-y-3 border-t border-border/60 pt-4">
         <p className="text-sm font-medium text-primary">{t.integ_import_title}</p>

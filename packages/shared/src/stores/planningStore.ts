@@ -13,9 +13,11 @@ import {
   updateDailyPlan,
   getFlexTasks,
   getCarryoverTasks,
+  getCalendarBusy,
 } from '../supabase/planning'
 import { todayDate } from '../utils/date'
-import type { Placement, ShiftResult } from '../utils/dayPlan'
+import type { Interval, Placement, ShiftResult } from '../utils/dayPlan'
+import { busyToIntervals } from '../utils/dayPlan'
 import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,6 +29,8 @@ interface PlanningState {
   dailyPlan: DailyPlan | null
   flexTasks: Task[]
   carryoverTasks: Task[]
+  /** Google takvimindeki dolu aralıklar (gün içi dakika); bağlantı yoksa boş. */
+  busy: Interval[]
   loading: boolean
   error: string | null
 
@@ -53,6 +57,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   dailyPlan: null,
   flexTasks: [],
   carryoverTasks: [],
+  busy: [],
   loading: false,
   error: null,
 
@@ -66,6 +71,12 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
         getCarryoverTasks(supabase, userId),
       ])
       set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading: false })
+      // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
+      try {
+        set({ busy: busyToIntervals(await getCalendarBusy(supabase, userId, date), date) })
+      } catch {
+        set({ busy: [] })
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }

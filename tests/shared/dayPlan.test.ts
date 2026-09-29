@@ -80,3 +80,15 @@ test('kalanı kaydır: gece yarısını aşan blok taşınmaz, gün sonu aşım�
   assert.deepEqual(r.overflow, ['b'])
   assert.equal(r.pastDayEnd, true)
 })
+
+test('meşgul aralıklar yerel güne kırpılır ve birleşir', async () => {
+  const { busyToIntervals } = await import('../../packages/shared/src/utils/dayPlan.ts')
+  const iso = (d: number, h: number, min = 0) => new Date(2026, 9, d, h, min).toISOString()
+  const r = busyToIntervals([
+    { starts_at: iso(4, 22), ends_at: iso(5, 1) },
+    { starts_at: iso(5, 9), ends_at: iso(5, 10) },
+    { starts_at: iso(5, 9, 30), ends_at: iso(5, 11) },
+    { starts_at: iso(6, 9), ends_at: iso(6, 10) },
+  ], '2026-10-05')
+  assert.deepEqual(r, [{ start: 0, end: 60 }, { start: 540, end: 660 }])
+})

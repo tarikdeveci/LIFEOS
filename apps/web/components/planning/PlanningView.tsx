@@ -45,7 +45,7 @@ interface PlanningViewProps { userId: string }
 export function PlanningView({ userId }: PlanningViewProps) {
   const AI_BUFFER_MINUTES = 15
   const {
-    date, timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading,
+    date, timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy, loading,
     fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel, completeRitual,
   } = usePlanningStore()
 
@@ -507,7 +507,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
               </div>
             ) : (
               <div className="glass rounded-2xl p-4 pt-2">
-                <DayTimeline timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
+                <DayTimeline busy={busy} timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
                   onBlockDrop={(blockId, newStart, newEnd) => {
                     void updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd })
                     showToast('Blok taşındı', 'success')
@@ -540,7 +540,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
             </div>
           )}
 
-          <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} />
+          <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} busy={busy} />
 
           {/* Esnek Havuz + Quick add */}
           <div className="glass rounded-2xl p-4">

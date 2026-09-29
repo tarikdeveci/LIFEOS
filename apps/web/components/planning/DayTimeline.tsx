@@ -28,6 +28,8 @@ interface DayTimelineProps {
   onBlockClick?: (block: TimeBlock) => void
   onSlotClick?: (time: string) => void
   onBlockDrop?: (blockId: string, newStartTime: string, newEndTime: string) => void
+  /** Google takvimindeki dolu aralıklar (gün içi dakika); gri, tıklanamaz. */
+  busy?: { start: number; end: number }[]
 }
 
 /** Dakikayı "HH:MM" stringe çevirir (0-1439 arası) */
@@ -133,6 +135,7 @@ export function DayTimeline({
   onBlockClick,
   onSlotClick,
   onBlockDrop,
+  busy = [],
 }: DayTimelineProps) {
   const hours = useMemo(
     () => Array.from({ length: endHour - startHour }, (_, i) => startHour + i),
@@ -231,6 +234,19 @@ export function DayTimeline({
             <div className="h-[2px] flex-1 bg-danger" />
           </div>
         )}
+
+        {/* Google'dan dolu aralıklar: başlık yok, sadece "Meşgul" */}
+        {busy.map((b) => {
+          const top = ((b.start - startHour * 60) / 60) * hourHeight
+          const height = ((b.end - b.start) / 60) * hourHeight
+          if (top + height <= 0 || top >= (endHour - startHour) * hourHeight) return null
+          return (
+            <div key={`busy-${b.start}`} className="pointer-events-none absolute left-10 right-1 z-0 rounded-lg border border-dashed border-border bg-border/30 px-2 py-0.5 text-[10px] text-muted"
+              style={{ top: Math.max(0, top), height: Math.max(12, height) }}>
+              Meşgul
+            </div>
+          )
+        })}
 
         {/* Zaman blokları */}
         {timeBlocks.map((block) => {
