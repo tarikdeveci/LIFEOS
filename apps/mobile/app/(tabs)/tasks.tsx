@@ -7,6 +7,7 @@ import { fromDateString, shiftIsoDate, todayDate, toDateString, useTaskStore, we
 import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
 import { StatusBadge } from '@/src/components/ui/Badge'
@@ -198,6 +199,7 @@ export default function TasksScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
           showsVerticalScrollIndicator={false}
         >
+          {tab === 'today' && <CarryPrompt tasks={tasks} />}
           {displayed.length === 0 ? (
             <View style={{ paddingTop: spacing[10], alignItems: 'center', gap: spacing[3] }}>
               <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textSubtle} />

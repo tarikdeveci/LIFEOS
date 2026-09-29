@@ -1,5 +1,6 @@
 export * from './task'
 export * from './planning'
+export * from './routine'
 export * from './nutrition'
 export * from './user'
 export * from './workout'

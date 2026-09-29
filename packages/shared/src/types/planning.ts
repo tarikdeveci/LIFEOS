@@ -17,10 +17,17 @@ export interface TimeBlock {
   label: string | null
   color: string | null
 
+  /** Eskimiş (054 öncesi istemci tekrarı). Yeni seriler routines tablosunda. */
   is_recurring: boolean
   recurrence_type: RecurrenceType | null
   recurrence_days: number[] | null  // 0=Pzr..6=Cmt
   recurrence_end: string | null     // 'YYYY-MM-DD'
+
+  /** Rutin örneği ise şablonu; NULL = sıradan blok. */
+  routine_id: string | null
+  occurrence_date: string | null
+  /** "Sadece bu" ile elle düzenlendi; seri değişince korunur. */
+  routine_modified: boolean
 
   /** Kullanıcı bloğu bitirdiğini işaretlediği an; NULL = tamamlanmadı. */
   completed_at: string | null

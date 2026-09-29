@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useLang } from '@/lib/contexts/LangContext'
-import type { TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput, Task, RecurrenceType } from '@lifeos/shared'
+import type { TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput, Task } from '@lifeos/shared'
 import {
   todayDate, relativeDateLabel, shiftIsoDate, nextSlotTime, addMinutesToClock,
-  fromDateString, toDateString,
+  fromDateString,
   usePlanningStore,
   useTaskStore,
+  useRoutineStore,
   BLOCK_TYPE_LABELS, BLOCK_TYPE_COLORS, APP_DEFAULTS,
   type BlockType, describeAiError } from '@lifeos/shared'
 import { updateTaskDetails, assignTaskToDate, track } from '@lifeos/shared/supabase'
@@ -22,6 +23,13 @@ import { WeekView } from '@/components/planning/WeekView'
 import { MonthView } from '@/components/planning/MonthView'
 import { WeeklyGoals } from '@/components/planning/WeeklyGoals'
 import { FlexPool } from '@/components/planning/FlexPool'
+import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
+import { HabitsToday } from '@/components/planning/HabitsToday'
+import { CarryoverList } from '@/components/planning/CarryoverList'
+import {
+  RecurrencePicker, ScopeChoice, initialRecurrence, recurrenceToRoutineInput,
+  type RecurrenceValue, type EditScope,
+} from '@/components/planning/RecurrencePicker'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -39,6 +47,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
   } = usePlanningStore()
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
+  const { routines, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
+  // Rutin değişince hafta görünümü kendi verisini yeniden okusun diye anahtar.
+  const [routinesVersion, setRoutinesVersion] = useState(0)
   const { showToast } = useToast()
   const { t, lang } = useLang()
   const { isPro, loading: subLoading } = useSubscription()
@@ -100,13 +111,8 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const [newBlockLabel, setNewBlockLabel] = useState('')
   const [newBlockType, setNewBlockType] = useState<BlockType>('focus')
 
-  // Recurring (add modal)
-  const [isRecurring, setIsRecurring]     = useState(false)
-  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('weekly')
-  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([new Date().getDay()])
-  const [recurrenceEnd, setRecurrenceEnd]   = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() + 1); return toDateString(d)
-  })
+  // Tekrar (ekleme penceresi): sunucu tarafı rutin şablonu olarak kaydedilir.
+  const [recurrence, setRecurrence] = useState<RecurrenceValue>(() => initialRecurrence())
 
   // Selected block detail / edit
   const [selectedBlock, setSelectedBlock] = useState<TimeBlock | null>(null)
@@ -115,10 +121,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const [editBlockEnd, setEditBlockEnd]     = useState('')
   const [editBlockType, setEditBlockType]   = useState<BlockType>('focus')
   const [editBlockLabel, setEditBlockLabel] = useState('')
-  const [editIsRecurring, setEditIsRecurring]       = useState(false)
-  const [editRecurrenceType, setEditRecurrenceType] = useState<RecurrenceType>('weekly')
-  const [editRecurrenceDays, setEditRecurrenceDays] = useState<number[]>([1])
-  const [editRecurrenceEnd, setEditRecurrenceEnd]   = useState('')
+  const [editRecurrence, setEditRecurrence] = useState<RecurrenceValue>(() => initialRecurrence())
+  // Rutin örneğinde düzenleme/silme kapsamı.
+  const [editScope, setEditScope] = useState<EditScope>('this')
   const [savingBlock, setSavingBlock] = useState(false)
 
   // Quick-add task
@@ -127,71 +132,39 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
 
   useEffect(() => { void fetchDayData(supabase, userId) }, [fetchDayData, userId])
+  useEffect(() => { void fetchRoutines(supabase, userId) }, [fetchRoutines, userId])
+
+  /** Rutin serisi değişti: gün ve hafta görünümü sunucunun ürettiği örnekleri yeniden okur. */
+  const refreshAfterRoutineChange = useCallback(() => {
+    setRoutinesVersion((v) => v + 1)
+    void fetchDayData(supabase, userId, date)
+  }, [fetchDayData, userId, date])
 
   const handleDateChange = useCallback((offset: number) => {
     void fetchDayData(supabase, userId, shiftIsoDate(date, offset))
   }, [date, fetchDayData, userId])
 
-  // ── Recurring date generator ────────────────────────────────────────────────
-  const generateRecurringDates = useCallback((
-    startDate: string, type: RecurrenceType, days: number[], endDate: string,
-  ): string[] => {
-    const dates: string[] = []
-
-    // new Date('YYYY-MM-DD') tarihi UTC gece yarısı olarak ayrıştırır, ama
-    // getDay()/getDate() YEREL değeri okur. UTC+3'te ikisi aynı güne düştüğü
-    // için Türkiye'de çalışıyordu; negatif ofsetli saat dilimlerinde (Amerika)
-    // hafta günü bir gün kayıyor ve haftalık tekrar eden bloklar yanlış güne
-    // düşüyordu. fromDateString() yerel gece yarısı, toDateString() yerel gün.
-    const start = fromDateString(startDate)
-    const end = fromDateString(endDate)
-    const startDayOfMonth = start.getDate()
-
-    // Pazartesi'ye çapalı mutlak hafta numarası (2024-01-01 bir Pazartesi).
-    // Date.UTC takvim bileşenlerinden hesaplar: yerel ofset de yaz saati de
-    // sonucu etkilemez. Orijinal formülün aynısı, sadece kaymaya kapalı hâli.
-    const weekIndex = (dateStr: string): number => {
-      const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number]
-      return Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(2024, 0, 1)) / (7 * 86400000))
-    }
-    const startWeek = weekIndex(startDate)
-
-    const cur = new Date(start)
-    cur.setDate(cur.getDate() + 1)
-    while (cur <= end) {
-      const dow = cur.getDay()
-      const curStr = toDateString(cur)
-      if (type === 'daily') {
-        dates.push(curStr)
-      } else if (type === 'weekly' && days.includes(dow)) {
-        dates.push(curStr)
-      } else if (type === 'biweekly' && days.includes(dow)) {
-        if ((weekIndex(curStr) - startWeek) % 2 === 0) dates.push(curStr)
-      } else if (type === 'monthly' && cur.getDate() === startDayOfMonth) {
-        dates.push(curStr)
-      }
-      cur.setDate(cur.getDate() + 1)
-    }
-    return dates
-  }, [])
-
   // ── Add block ───────────────────────────────────────────────────────────────
   const handleAddBlock = useCallback(async () => {
-    const baseInput: CreateTimeBlockInput = {
-      date, start_time: newBlockTime, end_time: newBlockEnd, block_type: newBlockType,
-      ...(newBlockLabel && { label: newBlockLabel }),
-      is_recurring: isRecurring,
-      ...(isRecurring && { recurrence_type: recurrenceType, recurrence_days: recurrenceDays, recurrence_end: recurrenceEnd }),
-    }
-    await addTimeBlock(supabase, userId, baseInput)
-    if (isRecurring) {
-      const futureDates = generateRecurringDates(date, recurrenceType, recurrenceDays, recurrenceEnd)
-      for (const futureDate of futureDates) await addTimeBlock(supabase, userId, { ...baseInput, date: futureDate })
-      if (futureDates.length > 0) showToast(`${futureDates.length + 1} tekrarlayan blok oluşturuldu`, 'success')
-    }
-    setShowAddBlock(false); setNewBlockLabel(''); setIsRecurring(false)
-  }, [addTimeBlock, userId, date, newBlockTime, newBlockEnd, newBlockType, newBlockLabel,
-      isRecurring, recurrenceType, recurrenceDays, recurrenceEnd, generateRecurringDates, showToast])
+    try {
+      if (recurrence.enabled) {
+        if (recurrence.every !== 'daily' && recurrence.days.length === 0) { showToast('En az bir gün seç', 'error'); return }
+        await addRoutine(supabase, userId, recurrenceToRoutineInput(recurrence,
+          { label: newBlockLabel, block_type: newBlockType, start_time: newBlockTime, end_time: newBlockEnd, date },
+          BLOCK_TYPE_LABELS[newBlockType]))
+        refreshAfterRoutineChange()
+        showToast(t.plan_routine_added, 'success')
+      } else {
+        const input: CreateTimeBlockInput = {
+          date, start_time: newBlockTime, end_time: newBlockEnd, block_type: newBlockType,
+          ...(newBlockLabel && { label: newBlockLabel }),
+        }
+        await addTimeBlock(supabase, userId, input)
+      }
+      setShowAddBlock(false); setNewBlockLabel(''); setRecurrence(initialRecurrence(fromDateString(date)))
+    } catch { showToast(recurrence.enabled ? t.plan_routine_error : 'Blok eklenemedi', 'error') }
+  }, [addTimeBlock, addRoutine, userId, date, newBlockTime, newBlockEnd, newBlockType, newBlockLabel,
+      recurrence, refreshAfterRoutineChange, showToast, t])
 
   /**
    * Blok tamamlama. Açık olan detay penceresindeki kopya da güncelleniyor:
@@ -233,41 +206,77 @@ export function PlanningView({ userId }: PlanningViewProps) {
     setEditBlockEnd(block.end_time.slice(0, 5))
     setEditBlockType(block.block_type)
     setEditBlockLabel(block.label ?? '')
-    setEditIsRecurring(block.is_recurring ?? false)
-    setEditRecurrenceType(block.recurrence_type ?? 'weekly')
-    setEditRecurrenceDays(block.recurrence_days ?? [new Date().getDay()])
-    setEditRecurrenceEnd(block.recurrence_end ?? (() => {
-      const d = new Date(); d.setMonth(d.getMonth() + 1); return toDateString(d)
-    })())
+    setEditRecurrence(initialRecurrence(fromDateString(block.date)))
+    setEditScope('this')
   }, [])
 
   // ── Save block edit ─────────────────────────────────────────────────────────
+  // Rutin örneği: "sadece bu" sıradan güncelleme (tetikleyici routine_modified yapar),
+  // "bu ve sonrakiler" şablonu değiştirip bu örnekten itibaren yeniden üretir.
+  // Sıradan blok tekrara çevrilirse blok silinir, aynı günden başlayan rutin kurulur.
   const handleSaveBlockEdit = useCallback(async () => {
     if (!selectedBlock) return
     if (editBlockEnd <= editBlockStart) { showToast('Bitiş saati başlangıçtan sonra olmalı', 'error'); return }
     setSavingBlock(true)
     try {
+      if (selectedBlock.routine_id && editScope === 'following') {
+        await updateSeries(supabase, selectedBlock.routine_id, {
+          title: editBlockLabel.trim() || BLOCK_TYPE_LABELS[editBlockType],
+          block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd,
+        }, selectedBlock.occurrence_date ?? selectedBlock.date)
+        refreshAfterRoutineChange()
+        showToast(t.plan_routine_updated, 'success')
+        setSelectedBlock(null)
+        return
+      }
+      if (!selectedBlock.routine_id && !selectedBlock.task_id && editRecurrence.enabled) {
+        if (editRecurrence.every !== 'daily' && editRecurrence.days.length === 0) { showToast('En az bir gün seç', 'error'); return }
+        const block = { label: editBlockLabel, block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd, date: selectedBlock.date }
+        await removeTimeBlock(supabase, selectedBlock.id)
+        await addRoutine(supabase, userId, recurrenceToRoutineInput(editRecurrence, block, BLOCK_TYPE_LABELS[editBlockType]))
+        refreshAfterRoutineChange()
+        showToast(t.plan_routine_added, 'success')
+        setSelectedBlock(null)
+        return
+      }
       const updates: UpdateTimeBlockInput = {
         start_time: editBlockStart, end_time: editBlockEnd,
         block_type: editBlockType, label: editBlockLabel || undefined,
-        is_recurring: editIsRecurring,
-        ...(editIsRecurring && { recurrence_type: editRecurrenceType, recurrence_days: editRecurrenceDays, recurrence_end: editRecurrenceEnd }),
       }
       await updateTimeBlock(supabase, selectedBlock.id, updates)
-      if (editIsRecurring && !selectedBlock.is_recurring) {
-        const futureDates = generateRecurringDates(date, editRecurrenceType, editRecurrenceDays, editRecurrenceEnd)
-        for (const futureDate of futureDates) {
-          await addTimeBlock(supabase, userId, { date: futureDate, start_time: editBlockStart, end_time: editBlockEnd, block_type: editBlockType, label: editBlockLabel || undefined, is_recurring: true, recurrence_type: editRecurrenceType, recurrence_days: editRecurrenceDays, recurrence_end: editRecurrenceEnd })
-        }
-        if (futureDates.length > 0) showToast(`${futureDates.length + 1} tekrarlayan blok oluşturuldu`, 'success')
-      } else {
-        showToast('Blok güncellendi', 'success')
-      }
+      showToast('Blok güncellendi', 'success')
       setEditingBlock(false)
       setSelectedBlock((prev) => prev ? { ...prev, ...updates } : null)
     } catch { showToast('Blok güncellenemedi', 'error') }
     finally { setSavingBlock(false) }
-  }, [selectedBlock, editBlockStart, editBlockEnd, editBlockType, editBlockLabel, editIsRecurring, editRecurrenceType, editRecurrenceDays, editRecurrenceEnd, updateTimeBlock, addTimeBlock, userId, date, generateRecurringDates, showToast])
+  }, [selectedBlock, editBlockStart, editBlockEnd, editBlockType, editBlockLabel, editRecurrence, editScope,
+      updateTimeBlock, removeTimeBlock, updateSeries, addRoutine, userId, refreshAfterRoutineChange, showToast, t])
+
+  /**
+   * Blok silme. Rutin örneğinde "sadece bu" sıradan silmedir (sunucu o günü istisna
+   * yazar); "bu ve sonrakiler" seriyi bu örnekten önce bitirir, ilk örnekse siler.
+   */
+  const handleDeleteBlock = useCallback(async () => {
+    if (!selectedBlock) return
+    const block = selectedBlock
+    setSelectedBlock(null)
+    try {
+      if (block.routine_id && editScope === 'following') {
+        const occ = block.occurrence_date ?? block.date
+        const routine = routines.find((r) => r.id === block.routine_id)
+        const endsOn = shiftIsoDate(occ, -1)
+        if (occ <= todayDate() || !routine || endsOn < routine.starts_on) {
+          await removeRoutine(supabase, block.routine_id)
+        } else {
+          await updateSeries(supabase, block.routine_id, { ends_on: endsOn }, occ)
+        }
+        refreshAfterRoutineChange()
+        showToast(t.plan_routine_deleted, 'success')
+      } else {
+        await removeTimeBlock(supabase, block.id)
+      }
+    } catch { showToast('Blok silinemedi', 'error') }
+  }, [selectedBlock, editScope, routines, removeRoutine, updateSeries, removeTimeBlock, refreshAfterRoutineChange, showToast, t])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const hasOverlap = useCallback((start: string, end: string): boolean => {
@@ -408,6 +417,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const allDayTasks = [...flexTasks, ...carryoverTasks]
+  // Gece devrinin bugüne taşıdıkları esnek havuzda değil "Dünden kalanlar"da görünür.
+  const carriedToday = date === todayDate() ? flexTasks.filter((task) => task.carry_count > 0) : []
+  const freshFlexTasks = carriedToday.length > 0 ? flexTasks.filter((task) => !(task.carry_count > 0)) : flexTasks
 
   // Block hours: tüm zaman bloklarının süresi (rutin, mola, odak dahil)
   const blockHours = timeBlocks.reduce((s, b) => {
@@ -462,7 +474,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
         </div>
 
         {viewMode === 'week' && (
-          <WeekView userId={userId} initialDate={date} onDayClick={(d) => { setViewMode('day'); void fetchDayData(supabase, userId, d) }} />
+          <>
+            <WeekView key={routinesVersion} userId={userId} initialDate={date} onDayClick={(d) => { setViewMode('day'); void fetchDayData(supabase, userId, d) }} />
+            <WeeklyRoutines userId={userId} onChanged={refreshAfterRoutineChange} />
+          </>
         )}
 
         {viewMode === 'month' && (
@@ -556,64 +571,17 @@ export function PlanningView({ userId }: PlanningViewProps) {
                 {quickAddLoading ? '…' : '+'}
               </button>
             </div>
-            <FlexPool tasks={flexTasks} dailyEffortLimit={APP_DEFAULTS.DAILY_EFFORT_LIMIT}
+            <FlexPool tasks={freshFlexTasks} dailyEffortLimit={APP_DEFAULTS.DAILY_EFFORT_LIMIT}
               onTaskClick={(task) => { setSelectedTask(task); setDrawerOpen(true) }}
               onAssignToTimeline={(task) => void handleAssignToTimeline(task)}
               onMarkDone={(taskId) => { void setStatus(supabase, taskId, 'done').then(() => { void fetchDayData(supabase, userId, date); showToast('Görev tamamlandı ✓', 'success') }) }} />
           </div>
 
-          {carryoverTasks.length > 0 && (
-            <div className="rounded-2xl border border-warning/30 bg-warning/5 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-warning">{t.plan_carryover} ({carryoverTasks.length})</h3>
-              <div className="space-y-1.5">
-                {carryoverTasks.slice(0, 5).map((task) => (
-                  <div key={task.id} className="group flex items-center gap-2 rounded-xl border border-warning/20 bg-background/60 px-3 py-2 transition-all hover:border-warning/40 hover:bg-background/80">
-                    <button
-                      onClick={() => { setSelectedTask(task); setDrawerOpen(true) }}
-                      className="flex-1 truncate text-left text-xs font-medium text-primary"
-                    >
-                      {task.title}
-                    </button>
-                    {task.effort_score > 0 && (
-                      <span className="shrink-0 rounded-md bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                        {task.effort_score}h
-                      </span>
-                    )}
-                    {/* Tamamla */}
-                    <button
-                      onClick={() => {
-                        void setStatus(supabase, task.id, 'done').then(() => {
-                          void fetchDayData(supabase, userId, date)
-                          showToast('Görev tamamlandı ✓', 'success')
-                        })
-                      }}
-                      className="shrink-0 rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-success/10 hover:text-success group-hover:opacity-100"
-                      title="Tamamla"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    </button>
-                    {/* Pass geç (ertele) */}
-                    <button
-                      onClick={() => {
-                        void setStatus(supabase, task.id, 'deferred').then(() => {
-                          void fetchDayData(supabase, userId, date)
-                          showToast('Görev ertelendi', 'info')
-                        })
-                      }}
-                      className="shrink-0 rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-warning/10 hover:text-warning group-hover:opacity-100"
-                      title="Pass geç (ertele)"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {isToday && <HabitsToday userId={userId} />}
+
+          <CarryoverList tasks={[...carryoverTasks, ...carriedToday]}
+            onOpen={(task) => { setSelectedTask(task); setDrawerOpen(true) }}
+            onChanged={() => void fetchDayData(supabase, userId, date)} />
 
           {/* Haftalık Hedefler */}
           <WeeklyGoals userId={userId} />
@@ -801,36 +769,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
           </div>
           <Input label={t.plan_label} value={newBlockLabel} onChange={(e) => setNewBlockLabel(e.target.value)} placeholder={t.plan_label_placeholder} />
 
-          {/* Tekrarlama */}
-          <div className="rounded-xl border border-border/60 p-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-primary">
-              <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="rounded" />
-              {t.plan_recurring}
-            </label>
-            {isRecurring && (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap gap-1.5">
-                  {([['daily', t.plan_recur_daily],['weekly', t.plan_recur_weekly],['biweekly', t.plan_recur_biweekly],['monthly', t.plan_recur_monthly]] as [RecurrenceType,string][]).map(([val, lbl]) => (
-                    <button key={val} onClick={() => setRecurrenceType(val)}
-                      className={`rounded-lg px-3 py-1 text-xs font-medium ${recurrenceType === val ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>{lbl}</button>
-                  ))}
-                </div>
-                {(recurrenceType === 'weekly' || recurrenceType === 'biweekly') && (
-                  <div className="flex gap-1">
-                    {['Pzr','Pzt','Sal','Çar','Per','Cum','Cmt'].map((day, i) => (
-                      <button key={i} onClick={() => setRecurrenceDays((p) => p.includes(i) ? p.filter((d) => d !== i) : [...p, i])}
-                        className={`rounded-lg px-2 py-1 text-[10px] font-medium ${recurrenceDays.includes(i) ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>{day}</button>
-                    ))}
-                  </div>
-                )}
-                <Input label={t.plan_end_date} type="date" value={recurrenceEnd} onChange={(e) => setRecurrenceEnd(e.target.value)} />
-              </div>
-            )}
-          </div>
+          <RecurrencePicker value={recurrence} onChange={setRecurrence} />
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowAddBlock(false)}>{t.plan_cancel}</Button>
-            <Button size="sm" onClick={() => void handleAddBlock()}>{isRecurring ? t.plan_add_repeat : t.plan_add}</Button>
+            <Button size="sm" onClick={() => void handleAddBlock()}>{recurrence.enabled ? t.plan_add_repeat : t.plan_add}</Button>
           </div>
         </div>
       </Modal>
@@ -872,32 +815,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
                 </div>
                 <Input label={t.plan_label} value={editBlockLabel} onChange={(e) => setEditBlockLabel(e.target.value)} />
 
-                {/* Tekrarlama edit */}
-                <div className="rounded-xl border border-border/60 p-3">
-                  <label className="flex items-center gap-2 text-sm font-medium text-primary">
-                    <input type="checkbox" checked={editIsRecurring} onChange={(e) => setEditIsRecurring(e.target.checked)} className="rounded" />
-                    {t.plan_recurring}
-                  </label>
-                  {editIsRecurring && (
-                    <div className="mt-3 space-y-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        {([['daily', t.plan_recur_daily],['weekly', t.plan_recur_weekly],['biweekly', t.plan_recur_biweekly],['monthly', t.plan_recur_monthly]] as [RecurrenceType,string][]).map(([val, lbl]) => (
-                          <button key={val} onClick={() => setEditRecurrenceType(val)}
-                            className={`rounded-lg px-3 py-1 text-xs font-medium ${editRecurrenceType === val ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>{lbl}</button>
-                        ))}
-                      </div>
-                      {(editRecurrenceType === 'weekly' || editRecurrenceType === 'biweekly') && (
-                        <div className="flex gap-1">
-                          {['Pzr','Pzt','Sal','Çar','Per','Cum','Cmt'].map((day, i) => (
-                            <button key={i} onClick={() => setEditRecurrenceDays((p) => p.includes(i) ? p.filter((d) => d !== i) : [...p, i])}
-                              className={`rounded-lg px-2 py-1 text-[10px] font-medium ${editRecurrenceDays.includes(i) ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>{day}</button>
-                          ))}
-                        </div>
-                      )}
-                      <Input label={t.plan_end_date} type="date" value={editRecurrenceEnd} onChange={(e) => setEditRecurrenceEnd(e.target.value)} />
-                    </div>
-                  )}
-                </div>
+                {selectedBlock.routine_id ? (
+                  <ScopeChoice value={editScope} onChange={setEditScope} />
+                ) : !selectedBlock.task_id && (
+                  <RecurrencePicker value={editRecurrence} onChange={setEditRecurrence} />
+                )}
 
                 <div className="flex justify-between gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setEditingBlock(false)} disabled={savingBlock}>{t.plan_cancel}</Button>
@@ -912,11 +834,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
                   </p>
                   <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} – {selectedBlock.end_time.slice(0, 5)}</p>
                   <p className="mt-1 text-xs text-muted">Tip: {BLOCK_TYPE_LABELS[selectedBlock.block_type]}</p>
-                  {selectedBlock.is_recurring && (
-                    <p className="mt-1 text-xs font-medium text-accent">
-                      🔄 Tekrarlayan · {selectedBlock.recurrence_type === 'daily' ? 'Her gün' : selectedBlock.recurrence_type === 'weekly' ? 'Haftalık' : selectedBlock.recurrence_type === 'biweekly' ? '2 haftada bir' : 'Aylık'}
-                      {selectedBlock.recurrence_end ? ` · ${selectedBlock.recurrence_end}'e kadar` : ''}
-                    </p>
+                  {selectedBlock.routine_id ? (
+                    <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_routine_badge}</p>
+                  ) : selectedBlock.is_recurring && (
+                    <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_recurring}</p>
                   )}
                 </div>
                 {selectedBlock.block_type === 'workout' && (
@@ -949,8 +870,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
                     {t.plan_mark_done}
                   </button>
                 )}
+                {selectedBlock.routine_id && <ScopeChoice value={editScope} onChange={setEditScope} />}
                 <div className="flex justify-between gap-2">
-                  <Button variant="danger" size="sm" onClick={() => { void removeTimeBlock(supabase, selectedBlock.id); setSelectedBlock(null) }}>{t.plan_delete}</Button>
+                  <Button variant="danger" size="sm" onClick={() => void handleDeleteBlock()}>{t.plan_delete}</Button>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setEditingBlock(true)}>{t.plan_edit}</Button>
                     <Button variant="ghost" size="sm" onClick={() => setSelectedBlock(null)}>{t.plan_close}</Button>

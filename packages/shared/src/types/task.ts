@@ -52,7 +52,16 @@ export interface Task extends WsjfScores {
   is_time_blocked: boolean
 
   is_recurring: boolean
-  recurrence_rule: string | null // RRULE format
+  recurrence_rule: string | null // RRULE format, kullanılmıyor (054: routines)
+
+  /** Rutin örneği ise şablonu; NULL = sıradan görev. */
+  routine_id: string | null
+  /** Rutinin hangi günü için üretildi; tarih taşınsa da değişmez. */
+  occurrence_date: string | null
+  /** "Sadece bu" ile elle düzenlendi; seri değişince korunur. */
+  routine_modified: boolean
+  /** Gün sonu devrinde kaç kez yarına taşındı. */
+  carry_count: number
 
   tags: string[]
   sort_order: number
@@ -89,8 +98,12 @@ export interface CreateTaskInput {
   friction_score?: number
 }
 
-export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title'> & {
+export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title' | 'scheduled_date'> & {
   title: string
+  /** null: günden çıkar (backlog'a atarken). */
+  scheduled_date: string | null
+  /** "Hâlâ önemli" onayında sıfırlanır. */
+  carry_count: number
   status: TaskStatus
   is_time_blocked: boolean
   sort_order: number

@@ -1,6 +1,7 @@
 export * from './client'
 export * from './tasks'
 export * from './planning'
+export * from './routines'
 export * from './nutrition'
 export * from './workouts'
 export * from './workoutAnalytics'

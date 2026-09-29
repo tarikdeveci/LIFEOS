@@ -286,7 +286,8 @@ export async function getTaskCountsForDateRange(
   return Object.entries(map).map(([date, counts]) => ({ date, ...counts }))
 }
 
-// Dünden kalan tamamlanmamış görevler
+// Dünden kalan tamamlanmamış görevler. Rutin örnekleri devretmez: kaçırılan
+// rutin günü sessizce geride kalır (054, roll_over_tasks ile aynı kural).
 export async function getCarryoverTasks(supabase: Supabase, userId: string): Promise<Task[]> {
   const today = todayDate()
 
@@ -296,6 +297,7 @@ export async function getCarryoverTasks(supabase: Supabase, userId: string): Pro
     .eq('user_id', userId)
     .lt('scheduled_date', today)
     .not('status', 'in', '(done,deferred)')
+    .is('routine_id', null)
     .order('scheduled_date')
 
   if (error) throw error
