@@ -15,6 +15,7 @@ import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet
 import { NowCard } from '@/src/components/planning/NowCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
+import { DayToolbar } from '@/src/components/planning/DayToolbar'
 import { WeeklyRoutines } from '@/src/components/planning/WeeklyRoutines'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -367,7 +368,7 @@ export default function PlanningScreen() {
           </View>
         </GlassCard>
 
-        {isViewingToday && userId && <HabitsCard userId={userId} />}
+        {isViewingToday && userId && <><DayToolbar userId={userId} /><HabitsCard userId={userId} /></>}
 
         {/* Şu an neredeyiz — sadece bugün */}
         {dayPosition && dayBlocks.length > 0 && (

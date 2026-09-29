@@ -6,6 +6,7 @@ import type { Task } from '../types/task'
 import {
   getTimeBlocks,
   createTimeBlock,
+  createTimeBlocks,
   updateTimeBlock,
   deleteTimeBlock,
   getDailyPlan,
@@ -14,6 +15,7 @@ import {
   getCarryoverTasks,
 } from '../supabase/planning'
 import { todayDate } from '../utils/date'
+import type { Placement, ShiftResult } from '../utils/dayPlan'
 import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +37,11 @@ interface PlanningState {
   removeTimeBlock: (supabase: Supabase, blockId: string) => Promise<void>
   setBlockDone: (supabase: Supabase, blockId: string, done: boolean) => Promise<void>
   setEnergyLevel: (supabase: Supabase, level: 1 | 2 | 3 | 4 | 5) => Promise<void>
+  completeRitual: (supabase: Supabase) => Promise<void>
+  /** autoPlace sonucunu o güne görev blokları olarak yazar, sonra günü yeniden okur. */
+  placeTasks: (supabase: Supabase, userId: string, placements: Placement[], titles: Record<string, string>) => Promise<number>
+  /** shiftRemaining sonucunu uygular; yazma hatasında tüm bloklar geri sarılır. */
+  applyShift: (supabase: Supabase, updates: ShiftResult['updates']) => Promise<void>
 
   // Realtime handler
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
@@ -132,6 +139,53 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
       dailyPlan: state.dailyPlan ? { ...state.dailyPlan, energy_level: level } : null,
     }))
     await updateDailyPlan(supabase, dailyPlan.id, { energy_level: level })
+  },
+
+  completeRitual: async (supabase) => {
+    const { dailyPlan } = get()
+    if (!dailyPlan) return
+    const at = new Date().toISOString()
+    set({ dailyPlan: { ...dailyPlan, ritual_completed_at: at } })
+    try {
+      await updateDailyPlan(supabase, dailyPlan.id, { ritual_completed_at: at })
+    } catch (err) {
+      set({ dailyPlan })
+      throw err
+    }
+  },
+
+  placeTasks: async (supabase, userId, placements, titles) => {
+    const { date } = get()
+    const { inserted } = await createTimeBlocks(supabase, userId, placements.map((p) => ({
+      date,
+      start_time: p.start_time,
+      end_time: p.end_time,
+      block_type: 'task' as const,
+      label: titles[p.task_id],
+      task_id: p.task_id,
+    })))
+    await get().fetchDayData(supabase, userId, date)
+    return inserted
+  },
+
+  applyShift: async (supabase, updates) => {
+    if (updates.length === 0) return
+    const previous = get().timeBlocks
+    const byId = new Map(updates.map((u) => [u.id, u]))
+    set({
+      timeBlocks: previous
+        .map((b) => {
+          const u = byId.get(b.id)
+          return u ? { ...b, start_time: u.start_time, end_time: u.end_time } : b
+        })
+        .sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    })
+    try {
+      await Promise.all(updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })))
+    } catch (err) {
+      set({ timeBlocks: previous })
+      throw err
+    }
   },
 
   handleRealtimeEvent: (event) => {

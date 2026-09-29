@@ -181,7 +181,7 @@ export async function getDailyPlan(
 export async function updateDailyPlan(
   supabase: Supabase,
   planId: string,
-  updates: { energy_level?: number; notes?: string; ai_suggestions?: AiSuggestion[] },
+  updates: { energy_level?: number; notes?: string; ai_suggestions?: AiSuggestion[]; ritual_completed_at?: string | null },
 ): Promise<DailyPlan> {
   const { data, error } = await supabase
     .from('daily_plans')

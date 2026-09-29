@@ -26,6 +26,9 @@ import { FlexPool } from '@/components/planning/FlexPool'
 import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
 import { HabitsToday } from '@/components/planning/HabitsToday'
 import { CarryoverList } from '@/components/planning/CarryoverList'
+import { CapacityBar } from '@/components/planning/CapacityBar'
+import { ShiftButton } from '@/components/planning/ShiftButton'
+import { MorningRitual } from '@/components/planning/MorningRitual'
 import {
   RecurrencePicker, ScopeChoice, initialRecurrence, recurrenceToRoutineInput,
   type RecurrenceValue, type EditScope,
@@ -43,11 +46,12 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const AI_BUFFER_MINUTES = 15
   const {
     date, timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading,
-    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel,
+    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel, completeRitual,
   } = usePlanningStore()
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
   const { routines, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
+  const [ritualOpen, setRitualOpen] = useState(false)
   // Rutin değişince hafta görünümü kendi verisini yeniden okusun diye anahtar.
   const [routinesVersion, setRoutinesVersion] = useState(0)
   const { showToast } = useToast()
@@ -421,15 +425,8 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const carriedToday = date === todayDate() ? flexTasks.filter((task) => task.carry_count > 0) : []
   const freshFlexTasks = carriedToday.length > 0 ? flexTasks.filter((task) => !(task.carry_count > 0)) : flexTasks
 
-  // Block hours: tüm zaman bloklarının süresi (rutin, mola, odak dahil)
-  const blockHours = timeBlocks.reduce((s, b) => {
-    const [sh = 0, sm = 0] = b.start_time.split(':').map(Number)
-    const [eh = 0, em = 0] = b.end_time.split(':').map(Number)
-    return s + (eh * 60 + em - sh * 60 - sm) / 60
-  }, 0)
-  // Flex/carryover görev eforu (zaman bloğuna atanmamış görevler)
-  const taskEffortHours = allDayTasks.reduce((s, t) => s + t.effort_score, 0)
-  const totalDayEffort = Math.round((blockHours + taskEffortHours) * 10) / 10
+  // Kapasite: güne atanmış ama henüz bloğa konmamış görevler.
+  const unblockedTasks = allDayTasks.filter((task) => !timeBlocks.some((b) => b.task_id === task.id))
 
   const todayStr = todayDate()
   const isToday = date === todayStr
@@ -468,7 +465,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
               ))}
             </div>
             {viewMode === 'day' && (
-              <Button size="sm" variant="outline" onClick={openAddBlock}>{t.plan_add_block}</Button>
+              <>
+                {isToday && <ShiftButton />}
+                <Button size="sm" variant="outline" onClick={openAddBlock}>{t.plan_add_block}</Button>
+              </>
             )}
           </div>
         </div>
@@ -530,32 +530,17 @@ export function PlanningView({ userId }: PlanningViewProps) {
             </div>
           )}
 
-          <div className="glass rounded-2xl p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-primary">{t.plan_effort_daily}</span>
-              <span className={`font-semibold ${totalDayEffort > APP_DEFAULTS.DAILY_EFFORT_LIMIT ? 'text-danger' : totalDayEffort > APP_DEFAULTS.DAILY_EFFORT_LIMIT * 0.8 ? 'text-warning' : 'text-accent'}`}>
-                {totalDayEffort}h <span className="font-normal text-muted">/ {APP_DEFAULTS.DAILY_EFFORT_LIMIT}h</span>
-              </span>
-            </div>
-            <div className="mt-2 h-2 rounded-full bg-border/40">
-              <div className={`h-2 rounded-full transition-all ${totalDayEffort > APP_DEFAULTS.DAILY_EFFORT_LIMIT ? 'bg-danger' : totalDayEffort > APP_DEFAULTS.DAILY_EFFORT_LIMIT * 0.8 ? 'bg-warning' : 'bg-accent'}`}
-                style={{ width: `${Math.min((totalDayEffort / APP_DEFAULTS.DAILY_EFFORT_LIMIT) * 100, 100)}%` }} />
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
-              <div className="rounded-lg bg-accent/5 px-2 py-1 text-center">
-                <p className="font-semibold text-accent">{blockHours.toFixed(1)}h</p>
-                <p className="text-muted">blok</p>
-              </div>
-              <div className="rounded-lg bg-success/5 px-2 py-1 text-center">
-                <p className="font-semibold text-success">{taskEffortHours.toFixed(1)}h</p>
-                <p className="text-muted">{t.plan_effort_flexible}</p>
-              </div>
-              <div className="rounded-lg bg-background px-2 py-1 text-center">
-                <p className="font-semibold text-muted">{timeBlocks.length}</p>
-                <p className="text-muted">blok</p>
+          {isToday && dailyPlan && !dailyPlan.ritual_completed_at && (
+            <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4">
+              <p className="mb-3 text-sm font-medium text-primary">{t.ritual_banner}</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setRitualOpen(true)}>{t.ritual_start}</Button>
+                <Button size="sm" variant="ghost" onClick={() => void completeRitual(supabase)}>{t.ritual_skip}</Button>
               </div>
             </div>
-          </div>
+          )}
+
+          <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} />
 
           {/* Esnek Havuz + Quick add */}
           <div className="glass rounded-2xl p-4">
@@ -748,6 +733,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
           </div>
         </div>
       )}
+
+      <MorningRitual userId={userId} open={ritualOpen} onClose={() => setRitualOpen(false)}
+        carried={[...carryoverTasks, ...carriedToday]} />
 
       {/* ── Add Block Modal ── */}
       <Modal open={showAddBlock} onClose={() => setShowAddBlock(false)} title={t.plan_add_block_title} size="sm">

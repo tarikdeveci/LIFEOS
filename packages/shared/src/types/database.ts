@@ -78,6 +78,7 @@ export type Database = {
           created_at: string | null
           date: string
           energy_level: number | null
+          ritual_completed_at: string | null
           id: string
           notes: string | null
           updated_at: string | null
@@ -88,6 +89,7 @@ export type Database = {
           created_at?: string | null
           date: string
           energy_level?: number | null
+          ritual_completed_at?: string | null
           id?: string
           notes?: string | null
           updated_at?: string | null
@@ -98,6 +100,7 @@ export type Database = {
           created_at?: string | null
           date?: string
           energy_level?: number | null
+          ritual_completed_at?: string | null
           id?: string
           notes?: string | null
           updated_at?: string | null

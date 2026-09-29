@@ -43,6 +43,8 @@ export interface DailyPlan {
   energy_level: 1 | 2 | 3 | 4 | 5 | null
   notes: string | null
   ai_suggestions: AiSuggestion[]
+  /** Sabah ritüeli bitti (055); doluysa o gün tekrar açılmaz. */
+  ritual_completed_at: string | null
   created_at: string
   updated_at: string
 }

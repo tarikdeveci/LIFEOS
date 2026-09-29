@@ -1,0 +1,82 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+
+import {
+  autoPlace, dayCapacity, freeIntervals, mergeIntervals, shiftRemaining, taskMinutes,
+} from '../../packages/shared/src/utils/dayPlan.ts'
+
+const block = (id: string, start: string, end: string, done = false) =>
+  ({ id, start_time: start, end_time: end, completed_at: done ? '2026-09-29T08:00:00Z' : null })
+const task = (id: string, priority: number, minutes: number | null = null) =>
+  ({ id, priority_score: priority, estimated_minutes: minutes })
+
+test('süresiz görev 30 dakika sayılır', () => {
+  assert.equal(taskMinutes({ estimated_minutes: null }), 30)
+  assert.equal(taskMinutes({ estimated_minutes: 0 }), 30)
+  assert.equal(taskMinutes({ estimated_minutes: 45 }), 45)
+})
+
+test('çakışan aralıklar birleşir', () => {
+  assert.deepEqual(mergeIntervals([{ start: 60, end: 120 }, { start: 100, end: 180 }, { start: 200, end: 210 }]),
+    [{ start: 60, end: 180 }, { start: 200, end: 210 }])
+})
+
+test('boşluklar: bloklar, meşgul aralıklar ve şu an düşülür', () => {
+  const blocks = [block('a', '09:00', '10:00'), block('b', '09:30:00', '11:00:00')]
+  const free = freeIntervals(blocks, { dayStart: '08:00', dayEnd: '12:00', busy: [{ start: 11 * 60 + 30, end: 12 * 60 }] })
+  assert.deepEqual(free, [{ start: 480, end: 540 }, { start: 660, end: 690 }])
+  assert.deepEqual(freeIntervals(blocks, { dayStart: '08:00', dayEnd: '12:00', from: 8 * 60 + 45 }),
+    [{ start: 525, end: 540 }, { start: 660, end: 720 }])
+})
+
+test('kapasite: süresiz görev 30 dk, fazla yükte işaretlenir', () => {
+  const cap = dayCapacity([{ estimated_minutes: 90 }, { estimated_minutes: null }], [block('a', '08:00', '09:00')],
+    { dayStart: '08:00', dayEnd: '10:00' })
+  assert.equal(cap.availableMinutes, 60)
+  assert.equal(cap.plannedMinutes, 120)
+  assert.equal(cap.ratio, 2)
+  assert.equal(cap.overloaded, true)
+})
+
+test('otomatik yerleştir: öncelik sırası, sığmayan dışarıda kalır', () => {
+  const { placements, unplaced } = autoPlace(
+    [task('dusuk', 1, 30), task('yuksek', 3, 60), task('buyuk', 2, 120)],
+    [block('toplanti', '09:00', '10:00')],
+    { dayStart: '08:00', dayEnd: '11:00', gap: 0 },
+  )
+  assert.deepEqual(placements, [
+    { task_id: 'yuksek', start_time: '08:00', end_time: '09:00' },
+    { task_id: 'dusuk', start_time: '10:00', end_time: '10:30' },
+  ])
+  assert.deepEqual(unplaced.map((t) => t.id), ['buyuk'])
+})
+
+test('otomatik yerleştir: nefes payı bırakır ve geçmiş saate koymaz', () => {
+  const { placements } = autoPlace([task('a', 2, 30), task('b', 1, 30)], [],
+    { dayStart: '08:00', dayEnd: '12:00', from: 9 * 60 + 10, gap: 10 })
+  assert.deepEqual(placements.map((p) => p.start_time), ['09:10', '09:50'])
+})
+
+test('kalanı kaydır: boşluk gecikmeyi emer, biten ve geçmiş bloklara dokunmaz', () => {
+  const blocks = [
+    block('gecmis', '08:00', '09:00'),
+    block('aktif', '09:30', '10:30'),
+    block('bitmis', '10:30', '11:00', true),
+    block('bitisik', '10:30', '11:00'),
+    block('uzak', '12:00', '13:00'),
+  ]
+  const r = shiftRemaining(blocks, 20, 9 * 60 + 40)
+  assert.deepEqual(r.updates, [
+    { id: 'aktif', start_time: '09:50', end_time: '10:50' },
+    { id: 'bitisik', start_time: '10:50', end_time: '11:20' },
+  ])
+  assert.deepEqual(r.overflow, [])
+  assert.equal(r.pastDayEnd, false)
+})
+
+test('kalanı kaydır: gece yarısını aşan blok taşınmaz, gün sonu aşımı bildirilir', () => {
+  const r = shiftRemaining([block('a', '21:30', '22:30'), block('b', '22:30', '23:50')], 30, 21 * 60)
+  assert.deepEqual(r.updates, [{ id: 'a', start_time: '22:00', end_time: '23:00' }])
+  assert.deepEqual(r.overflow, ['b'])
+  assert.equal(r.pastDayEnd, true)
+})
