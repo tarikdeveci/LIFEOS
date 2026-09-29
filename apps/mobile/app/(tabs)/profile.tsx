@@ -23,6 +23,7 @@ import type { ThemeMode } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import type { Language } from '@/src/i18n'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
 
 const ACTIVITY_LEVELS_DEF = [
   { key: 'sedentary',          trLabel: 'Hareketsiz',  enLabel: 'Sedentary',      trSub: 'Masabaşı, spor yok',       enSub: 'Desk job, no exercise' },
@@ -402,6 +403,8 @@ export default function ProfileScreen() {
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Henüz hedef belirlenmemiş.</Text>
           )}
         </SectionCard>
+
+        <IntegrationsLink />
 
         {/* Calendar */}
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput, ImportedTask } from '@lifeos/shared'
 import { TASK_STATUS_COLORS } from '@lifeos/shared'
 import { useTaskStore } from '@lifeos/shared'
-import { getTaskById, updateTaskDetails } from '@lifeos/shared/supabase'
+import { getTaskById, importExternalTasks, updateTaskDetails } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { useCommandParam } from '@/lib/hooks/useCommandParam'
 import { TaskCard } from '@/components/tasks/TaskCard'
@@ -61,10 +61,24 @@ export default function TasksClientPage({ userId }: { userId: string }) {
   // Kaynakta tamamlanmış olsa da açık görev olarak girer: completed_at olmadan
   // 'done' yazmak seri ve haftalık istatistikleri bozar.
   const handleImportTasks = useCallback(
-    async (imported: ImportedTask[]) => {
-      await addTasks(supabase, userId, imported.map(({ title, description, due_date }) => ({ title, description, due_date })))
+    async (imported: ImportedTask[], source?: 'ticktick') => {
+      // Kimliği olan kaynak (TickTick yedeği) upsert edilir: aynı dosyayı tekrar yüklemek çift kayıt açmaz.
+      const withId = source ? imported.filter((task) => task.external_id) : []
+      const plain = imported.filter((task) => !withId.includes(task))
+      if (withId.length > 0 && source) {
+        await importExternalTasks(supabase, userId, source, withId.map(({ title, description, due_date, external_id }) => ({
+          title, description, due_date, external_id: external_id!, tags: [source],
+        })))
+      }
+      if (plain.length > 0) {
+        await addTasks(supabase, userId, plain.map(({ title, description, due_date }) => ({ title, description, due_date })))
+      }
+      // importExternalTasks store'u güncellemez: açık sekmeyi yeniden oku.
+      if (withId.length > 0) {
+        await (activeTab === 'backlog' ? fetchBacklog(supabase, userId) : fetchTasks(supabase, userId))
+      }
     },
-    [addTasks, userId],
+    [addTasks, fetchBacklog, fetchTasks, activeTab, userId],
   )
 
   const handleUpdateTask = useCallback(

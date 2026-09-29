@@ -1036,6 +1036,10 @@ export type Database = {
           created_at: string | null
           description: string | null
           due_date: string | null
+          source: string | null
+          external_id: string | null
+          external_url: string | null
+          external_updated_at: string | null
           effort_score: number | null
           estimated_minutes: number | null
           friction_score: number | null
@@ -1061,6 +1065,10 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           due_date?: string | null
+          source?: string | null
+          external_id?: string | null
+          external_url?: string | null
+          external_updated_at?: string | null
           effort_score?: number | null
           estimated_minutes?: number | null
           friction_score?: number | null
@@ -1086,6 +1094,10 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           due_date?: string | null
+          source?: string | null
+          external_id?: string | null
+          external_url?: string | null
+          external_updated_at?: string | null
           effort_score?: number | null
           estimated_minutes?: number | null
           friction_score?: number | null

@@ -11,7 +11,8 @@ import { readImportFile, useTaskImport } from '@/lib/hooks/useTaskImport'
 interface TaskImportModalProps {
   open: boolean
   onClose: () => void
-  onImport: (tasks: ImportedTask[]) => Promise<void>
+  /** source: tanınan araç (TickTick yedeği); varsa görevler kimlikle upsert edilir. */
+  onImport: (tasks: ImportedTask[], source?: 'ticktick') => Promise<void>
 }
 
 const FIELD_CLASS = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-primary outline-none placeholder:text-muted/50 focus:border-accent focus:bg-white'
@@ -47,7 +48,7 @@ export function TaskImportModal({ open, onClose, onImport }: TaskImportModalProp
     if (flow.chosen.length === 0) return
     setImporting(true)
     try {
-      await onImport(flow.chosen)
+      await onImport(flow.chosen, flow.result?.source)
       showToast(t.tasks_import_success.replace('{n}', String(flow.chosen.length)), 'success')
       flow.reset()
       onClose()

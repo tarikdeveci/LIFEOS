@@ -63,6 +63,13 @@ export interface Task extends WsjfScores {
   /** Gün sonu devrinde kaç kez yarına taşındı. */
   carry_count: number
 
+  /** Dış kaynak (056): 'api', 'todoist', 'ticktick', 'apple_reminders', 'jira'... NULL = LifeOS'ta oluşturuldu. */
+  source: string | null
+  /** Kaynaktaki kimlik; (user_id, source, external_id) tekil. */
+  external_id: string | null
+  external_url: string | null
+  external_updated_at: string | null
+
   tags: string[]
   sort_order: number
   completed_at: string | null

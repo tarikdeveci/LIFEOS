@@ -12,6 +12,34 @@ function corsHeaders(req: Request): Record<string, string> {
   }
 }
 
+/**
+ * Bağlı hesapların token'larını sağlayıcıda iptal eder. En iyi çaba: bir sağlayıcı
+ * yanıt vermezse hesap silme yine sürer. Vault kayıtları, satırlar kaskadla silinince
+ * 056'daki tetikleyiciyle gider.
+ */
+// deno-lint-ignore no-explicit-any
+async function revokeIntegrations(admin: any, userId: string): Promise<void> {
+  const { data: rows } = await admin.from('integrations').select('id, provider').eq('user_id', userId)
+  for (const row of (rows ?? []) as Array<{ id: string; provider: string }>) {
+    try {
+      const { data: token } = await admin.rpc('integration_get_secret', { p_integration: row.id })
+      if (typeof token !== 'string' || !token) continue
+      // Saklanan değer JSON ({ refresh_token, access_token }) ya da düz token olabilir.
+      let value = token
+      try {
+        const parsed = JSON.parse(token) as { refresh_token?: string; access_token?: string }
+        value = parsed.refresh_token ?? parsed.access_token ?? token
+      } catch { /* düz token */ }
+      if (row.provider === 'google_calendar') {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(value)}`, { method: 'POST' })
+      }
+      // Diğer sağlayıcılar bağlandıkça buraya eklenir (Jira, Slack, Notion).
+    } catch (err) {
+      console.error('delete-account: token iptali başarısız', row.provider, err instanceof Error ? err.message : 'unknown')
+    }
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const headers = corsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers })
@@ -28,6 +56,7 @@ Deno.serve(async (req: Request) => {
     if (userError || !user) return new Response(JSON.stringify({ error: 'Geçersiz oturum' }), { status: 401, headers })
 
     const adminClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await revokeIntegrations(adminClient, user.id)
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(user.id)
     if (deleteError) throw deleteError
 
