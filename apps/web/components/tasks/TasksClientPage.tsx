@@ -52,9 +52,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
   }, [fetchTasks, userId])
 
   const handleCreateTask = useCallback(
-    async (input: CreateTaskInput) => {
-      await addTask(supabase, userId, input)
-    },
+    async (input: CreateTaskInput) => await addTask(supabase, userId, input),
     [addTask, userId],
   )
 

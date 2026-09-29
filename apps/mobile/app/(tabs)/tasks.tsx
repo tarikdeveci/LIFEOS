@@ -3,7 +3,8 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { fromDateString, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
+import { addMinutesToClock, DEFAULT_TASK_MINUTES, fromDateString, parseQuickTask, relativeDateLabel, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
+import { createTimeBlocks } from '@lifeos/shared/supabase'
 import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -124,19 +125,43 @@ export default function TasksScreen() {
     }
   }, [setStatus])
 
+  const quickPreview = useMemo(() => {
+    if (!draft.title.trim()) return null
+    const p = parseQuickTask(draft.title, todayDate())
+    const parts = [
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date)}`,
+      p.estimated_minutes && `${p.estimated_minutes} dk`,
+      ...p.tags.map((tag) => `#${tag}`),
+    ].filter(Boolean)
+    return parts.length > 0 ? parts.join(' · ') : null
+  }, [draft.title, t.qtask_due_short])
+
   async function handleAdd() {
     if (!userId || !draft.title.trim()) return
     setAdding(true)
     try {
-      await addTask(supabase, userId, {
-        title: draft.title.trim(),
-        scheduled_date: draft.scheduled_date || undefined,
-        estimated_minutes: parseInt(draft.estimated_minutes) || 30,
+      // Türkçe doğal dil: "yarın 15:00 rapor 30dk"; elle doldurulan alanlar önce gelir.
+      const parsed = parseQuickTask(draft.title, todayDate())
+      const day = draft.scheduled_date || parsed.scheduled_date
+      const minutes = parseInt(draft.estimated_minutes) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
+      const task = await addTask(supabase, userId, {
+        title: parsed.title,
+        scheduled_date: day || undefined,
+        ...(parsed.due_date ? { due_date: parsed.due_date } : {}),
+        ...(parsed.tags.length > 0 ? { tags: parsed.tags } : {}),
+        estimated_minutes: minutes,
         value_score: draft.value_score,
         urgency_score: draft.urgency_score,
-        effort_score: draft.effort_score,
+        effort_score: parsed.effort_score ?? draft.effort_score,
         status: 'planned',
       })
+      if (parsed.start_time && day) {
+        await createTimeBlocks(supabase, userId, [{
+          date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+          block_type: 'task', label: task.title, task_id: task.id,
+        }])
+      }
       setDraft(emptyDraft())
       setShowAdd(false)
     } catch {
@@ -229,7 +254,8 @@ export default function TasksScreen() {
 
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus returnKeyType="next" />
+          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
+          {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" containerStyle={{ flex: 1 }} returnKeyType="next" />
             <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />

@@ -126,7 +126,7 @@ export async function getTaskById(supabase: Supabase, taskId: string): Promise<T
 }
 
 /** Dış kaynaktan gelen görevin kimliği (056); toplu eklemede aynı satırda yazılır. */
-interface ExternalFields { source: string; external_id: string; external_url?: string; external_updated_at?: string }
+interface ExternalFields { source: string; external_id: string | null; external_url?: string; external_updated_at?: string }
 
 function toTaskInsert(userId: string, input: CreateTaskInput, external?: ExternalFields): TaskInsert {
   return {

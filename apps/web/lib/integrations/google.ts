@@ -1,4 +1,6 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { callbackUri } from './oauth'
+
+export { newPkce } from './oauth'
 
 /**
  * Google Calendar OAuth ayarları. Kapsamlar en dar hâlinde: kendi açtığımız "LifeOS"
@@ -29,15 +31,5 @@ export function googleCredentials(): { clientId: string; clientSecret: string } 
 
 /** Yönlendirme adresi Google Cloud Console'da kayıtlı olanla birebir aynı olmalı. */
 export function googleRedirectUri(req: Request): string {
-  const base = process.env['NEXT_PUBLIC_SITE_URL'] ?? new URL(req.url).origin
-  return `${base.replace(/\/$/, '')}/api/integrations/google/callback`
-}
-
-export function newPkce(): { state: string; verifier: string; challenge: string } {
-  const verifier = randomBytes(48).toString('base64url')
-  return {
-    state: randomBytes(24).toString('base64url'),
-    verifier,
-    challenge: createHash('sha256').update(verifier).digest('base64url'),
-  }
+  return callbackUri(req, 'google')
 }

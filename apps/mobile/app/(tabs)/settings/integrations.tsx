@@ -7,6 +7,7 @@ import type { Integration, IntegrationProvider } from '@lifeos/shared'
 import { deleteIntegration, getIntegrations, importExternalTasks } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { readOpenReminders } from '@/src/utils/remindersImport'
+import { NotionSourcePicker } from '@/src/components/settings/NotionSourcePicker'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
@@ -23,7 +24,19 @@ const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   todoist: 'Todoist', ticktick: 'TickTick', microsoft_todo: 'Microsoft To Do',
 }
 
-/** Bağlı hesaplar ve tek seferlik içe aktarma (Apple Hatırlatıcılar, Todoist). */
+/** OAuth ile bağlanan görev kaynakları: rota slug'ı ve tablodaki sağlayıcı adı. */
+const SOURCES = [
+  { slug: 'jira', provider: 'jira', hint: 'integ_jira_hint' },
+  { slug: 'notion', provider: 'notion', hint: 'integ_notion_hint' },
+  { slug: 'microsoft', provider: 'microsoft_todo', hint: 'integ_microsoft_hint' },
+  { slug: 'slack', provider: 'slack', hint: 'integ_slack_hint' },
+] as const satisfies readonly { slug: string; provider: IntegrationProvider; hint: string }[]
+
+const SLUG_PROVIDER: Record<string, IntegrationProvider> = {
+  google: 'google_calendar', ...Object.fromEntries(SOURCES.map((s) => [s.slug, s.provider])),
+}
+
+/** Bağlı hesaplar, görev kaynakları ve tek seferlik içe aktarma (Apple Hatırlatıcılar, Todoist). */
 export default function IntegrationsScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
@@ -84,19 +97,21 @@ export default function IntegrationsScreen() {
     })
   }
 
-  const connectGoogle = async () => {
-    setBusy('google')
+  const connect = async (slug: string) => {
+    const name = PROVIDER_LABELS[SLUG_PROVIDER[slug]!]
+    setBusy(slug)
     try {
-      const res = await authedFetch('/api/integrations/google/start', { platform: 'mobile' })
-      if (res.status === 503) { Alert.alert(t.integ_google_unavailable); return }
+      const res = await authedFetch(`/api/integrations/${slug}/start`, { platform: 'mobile' })
+      if (res.status === 503) { Alert.alert(t.integ_unavailable.replace('{name}', name)); return }
       const { url } = (await res.json()) as { url?: string }
       if (!res.ok || !url) throw new Error(String(res.status))
-      const result = await WebBrowser.openAuthSessionAsync(url, 'lifeos://integrations/google')
+      const result = await WebBrowser.openAuthSessionAsync(url, `lifeos://integrations/${slug}`)
       if (result.type === 'success') {
-        Alert.alert(result.url.includes('status=ok') ? t.integ_google_ok : t.integ_google_error)
+        const ok = result.url.includes('status=ok')
+        Alert.alert((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', name))
         await load()
       }
-    } catch { Alert.alert(t.integ_google_error) }
+    } catch { Alert.alert(t.integ_connect_error.replace('{name}', name)) }
     finally { setBusy(null) }
   }
 
@@ -139,7 +154,7 @@ export default function IntegrationsScreen() {
           <Text style={[label, { marginBottom: spacing[3] }]}>{t.integ_connected}</Text>
           {items !== null && items.length === 0 && <Text style={hint}>{t.integ_none}</Text>}
           {items?.map((item) => (
-            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: spacing[2] }}>
+            <View key={item.id} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[3], paddingVertical: spacing[2] }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>
                   {PROVIDER_LABELS[item.provider]}{item.account_label ? ` · ${item.account_label}` : ''}
@@ -151,6 +166,12 @@ export default function IntegrationsScreen() {
                 </Text>
               </View>
               <Button label={t.integ_disconnect} onPress={() => disconnect(item)} size="sm" variant="ghost" />
+              {item.provider === 'notion' && (
+                <View style={{ width: '100%' }}>
+                  <NotionSourcePicker integrationId={item.id} hasSelection={typeof item.settings['data_source_id'] === 'string'}
+                    onSaved={() => void load()} />
+                </View>
+              )}
             </View>
           ))}
         </GlassCard>
@@ -160,8 +181,24 @@ export default function IntegrationsScreen() {
             <View style={{ gap: spacing[2] }}>
               <Text style={label}>{t.integ_google}</Text>
               <Text style={hint}>{t.integ_google_hint}</Text>
-              <Button label={t.integ_google_connect} onPress={() => void connectGoogle()} loading={busy === 'google'} />
+              <Button label={t.integ_google_connect} onPress={() => void connect('google')} loading={busy === 'google'} />
             </View>
+          </GlassCard>
+        )}
+
+        {items !== null && SOURCES.some((src) => !items.some((i) => i.provider === src.provider)) && (
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <Text style={label}>{t.integ_sources}</Text>
+            <Text style={[hint, { marginTop: spacing[1], marginBottom: spacing[3] }]}>{t.integ_sources_hint}</Text>
+            {SOURCES.filter((src) => !items.some((i) => i.provider === src.provider)).map((src) => (
+              <View key={src.slug} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: spacing[2] }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{PROVIDER_LABELS[src.provider]}</Text>
+                  <Text style={hint}>{t[src.hint]}</Text>
+                </View>
+                <Button label={t.integ_connect} onPress={() => void connect(src.slug)} loading={busy === src.slug} size="sm" variant="secondary" />
+              </View>
+            ))}
           </GlassCard>
         )}
 

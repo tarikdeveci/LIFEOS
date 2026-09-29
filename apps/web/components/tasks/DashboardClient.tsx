@@ -121,9 +121,9 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
     caloriePercent > 80  ? '#34A853' : '#4A90D9'
 
   const handleCreate = useCallback(
-    async (input: CreateTaskInput) => {
-      await addTask(supabase, userId, { ...input, scheduled_date: today })
-    },
+    async (input: CreateTaskInput) =>
+      // Metinde gün verilmediyse panodan eklenen görev bugüne düşer.
+      await addTask(supabase, userId, { ...input, scheduled_date: input.scheduled_date ?? today }),
     [addTask, today, userId],
   )
 

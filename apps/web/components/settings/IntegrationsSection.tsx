@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
+import { NotionSourcePicker } from './NotionSourcePicker'
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   google_calendar: 'Google Takvim',
@@ -16,6 +17,18 @@ const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   todoist: 'Todoist',
   ticktick: 'TickTick',
   microsoft_todo: 'Microsoft To Do',
+}
+
+/** OAuth ile bağlanan görev kaynakları: rota slug'ı ve tablodaki sağlayıcı adı. */
+const SOURCES = [
+  { slug: 'jira', provider: 'jira', hint: 'integ_jira_hint' },
+  { slug: 'notion', provider: 'notion', hint: 'integ_notion_hint' },
+  { slug: 'microsoft', provider: 'microsoft_todo', hint: 'integ_microsoft_hint' },
+  { slug: 'slack', provider: 'slack', hint: 'integ_slack_hint' },
+] as const satisfies readonly { slug: string; provider: IntegrationProvider; hint: string }[]
+
+const SLUG_PROVIDER: Record<string, IntegrationProvider> = {
+  google: 'google_calendar', ...Object.fromEntries(SOURCES.map((s) => [s.slug, s.provider])),
 }
 
 /** Bağlı hesaplar (durum, son senkron, bağlantıyı kes) ve tek seferlik içe aktarma. */
@@ -39,26 +52,29 @@ export function IntegrationsSection() {
 
   useEffect(() => { void load() }, [load])
 
-  // Google OAuth dönüşü: /settings?integration=google&status=ok|error|denied
+  // OAuth dönüşü: /settings?integration=<slug>&status=ok|error|denied
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('integration') !== 'google') return
-    const status = params.get('status')
-    showToast(status === 'ok' ? t.integ_google_ok : t.integ_google_error, status === 'ok' ? 'success' : 'error')
+    const provider = SLUG_PROVIDER[params.get('integration') ?? '']
+    if (!provider) return
+    const name = PROVIDER_LABELS[provider]
+    const ok = params.get('status') === 'ok'
+    showToast((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', name), ok ? 'success' : 'error')
     window.history.replaceState(null, '', window.location.pathname)
-  }, [showToast, t.integ_google_ok, t.integ_google_error])
+  }, [showToast, t.integ_connect_ok, t.integ_connect_error])
 
-  const connectGoogle = async () => {
-    setBusy('google')
+  const connect = async (slug: string) => {
+    setBusy(slug)
+    const name = PROVIDER_LABELS[SLUG_PROVIDER[slug]!]
     try {
-      const res = await fetch('/api/integrations/google/start', {
+      const res = await fetch(`/api/integrations/${slug}/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: 'web' }),
       })
-      if (res.status === 503) { showToast(t.integ_google_unavailable, 'error'); return }
+      if (res.status === 503) { showToast(t.integ_unavailable.replace('{name}', name), 'error'); return }
       const body = (await res.json()) as { url?: string }
       if (!res.ok || !body.url) throw new Error(String(res.status))
       window.location.href = body.url
-    } catch { showToast(t.integ_google_error, 'error') }
+    } catch { showToast(t.integ_connect_error.replace('{name}', name), 'error') }
     finally { setBusy(null) }
   }
 
@@ -115,7 +131,7 @@ export function IntegrationsSection() {
           <p className="text-xs text-muted">{t.integ_none}</p>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border/60 px-3 py-2">
+            <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 px-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-primary">
                   {PROVIDER_LABELS[item.provider]}{item.account_label ? ` · ${item.account_label}` : ''}
@@ -131,6 +147,12 @@ export function IntegrationsSection() {
               <Button size="sm" variant="ghost" onClick={() => void disconnect(item)} disabled={busy === item.id}>
                 {t.integ_disconnect}
               </Button>
+              {item.provider === 'notion' && (
+                <div className="basis-full">
+                  <NotionSourcePicker integrationId={item.id} hasSelection={typeof item.settings['data_source_id'] === 'string'}
+                    onSaved={() => void load()} />
+                </div>
+              )}
             </div>
           ))
         )}
@@ -140,7 +162,25 @@ export function IntegrationsSection() {
         <div className="space-y-2 rounded-xl bg-background/60 p-3">
           <p className="text-xs font-semibold text-primary">{t.integ_google}</p>
           <p className="text-xs text-muted">{t.integ_google_hint}</p>
-          <Button size="sm" onClick={() => void connectGoogle()} disabled={busy === 'google'}>{t.integ_google_connect}</Button>
+          <Button size="sm" onClick={() => void connect('google')} disabled={busy === 'google'}>{t.integ_google_connect}</Button>
+        </div>
+      )}
+
+      {items !== undefined && (
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <p className="text-sm font-medium text-primary">{t.integ_sources}</p>
+          <p className="text-xs text-muted">{t.integ_sources_hint}</p>
+          {SOURCES.filter((src) => !items.some((i) => i.provider === src.provider)).map((src) => (
+            <div key={src.slug} className="flex items-center gap-3 rounded-xl bg-background/60 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-primary">{PROVIDER_LABELS[src.provider]}</p>
+                <p className="text-xs text-muted">{t[src.hint]}</p>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => void connect(src.slug)} disabled={busy === src.slug}>
+                {t.integ_connect}
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 

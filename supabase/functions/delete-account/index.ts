@@ -33,7 +33,8 @@ async function revokeIntegrations(admin: any, userId: string): Promise<void> {
       if (row.provider === 'google_calendar') {
         await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(value)}`, { method: 'POST' })
       }
-      // Diğer sağlayıcılar bağlandıkça buraya eklenir (Jira, Slack, Notion).
+      // Jira, Notion ve Microsoft'ta sunucudan çağrılacak iptal ucu yok (kullanıcı hesabından
+      // kaldırır); Slack token saklanmıyor. Hepsinin Vault kaydı satırla birlikte silinir (056).
     } catch (err) {
       console.error('delete-account: token iptali başarısız', row.provider, err instanceof Error ? err.message : 'unknown')
     }
