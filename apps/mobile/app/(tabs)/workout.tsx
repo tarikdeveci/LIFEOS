@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
-  WEEKDAY_ORDER, equipmentLabel, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
-  missingEquipment, nextSlotTime, planProgram, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, EquipmentKey, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
+  WEEKDAY_ORDER, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
+  nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -16,6 +17,10 @@ import { EquipmentSheet } from '@/src/components/workout/EquipmentSheet'
 import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
+import { LiveWorkout } from '@/src/components/workout/LiveWorkout'
+import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
+import { AddSetSheet } from '@/src/components/workout/AddSetSheet'
+import { categoryLabel, exerciseName, missingLabel, muscleGroupName } from '@/src/components/workout/labels'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -36,12 +41,6 @@ function activeDays(program: WorkoutProgram | null): ProgramDay[] {
   return [...(program?.days ?? [])]
     .filter((d) => !d.is_rest)
     .sort((a, b) => a.day_number - b.day_number)
-}
-
-/** Egzersiz adı arayüz diline göre; İngilizce ad yoksa Türkçesi. */
-function exerciseName(e: { name: string; name_en?: string | null } | null | undefined, lang: Language, t: Translations): string {
-  if (!e) return t.wk_exercise
-  return lang === 'en' ? (e.name_en ?? e.name) : e.name
 }
 
 /** Takvim etkinliğinin not alanı: o günün hareket listesi. */
@@ -71,13 +70,6 @@ interface CoachProgram {
 }
 
 
-/** Kütüphane satırındaki eksik alet notu: "Alet yok: Kablo istasyonu". */
-function missingLabel(exercise: Exercise, owned: EquipmentKey[] | null, lang: Language, t: Translations): string | null {
-  const missing = missingEquipment(exercise, owned)
-  if (missing.length === 0) return null
-  return t.wk_missing_equipment.replace('{list}', missing.map((key) => equipmentLabel(key, lang)).join(', '))
-}
-
 /** Türkçe aksan ve noktalama farklarını eleyerek egzersiz adı eşler. */
 function foldName(value: string): string {
   return value
@@ -93,22 +85,22 @@ export default function WorkoutScreen() {
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const exName = (e: { name: string; name_en?: string | null } | null | undefined) => exerciseName(e, lang, t)
-  const groupName = (g: { name: string; name_en: string } | null | undefined) => (g ? (lang === 'en' ? g.name_en : g.name) : '-')
-  const categoryLabel = (c: string) => ({
-    strength: t.wk_cat_strength, cardio: t.wk_cat_cardio, flexibility: t.wk_cat_flexibility, mobility: t.wk_cat_mobility,
-  } as Record<string, string>)[c] ?? c
+  const groupName = (g: { name: string; name_en: string } | null | undefined) => muscleGroupName(g, lang)
+  const catLabel = (c: string) => categoryLabel(c, t)
   const historyLabel = (s: string) => ({
     completed: t.wk_hist_completed, in_progress: t.wk_hist_in_progress, planned: t.wk_hist_planned, skipped: t.wk_hist_skipped,
   } as Record<string, string>)[s] ?? s
   const dayLabel = (day: { day_name: string | null; day_number: number }) => day.day_name?.trim() || t.wk_day_n.replace('{n}', String(day.day_number))
   const defaultDayNames = () => [1, 2, 3].map((n) => t.wk_day_n.replace('{n}', String(n)))
   const weekdayNames = t.routines_day_names.split(',')
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSets, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
   const [setsExpanded, setSetsExpanded] = useState(false)
+  /** Canlı ekrandaki hareketin ana kası; kas haritası onu seçili gösterir. */
+  const [liveMuscleId, setLiveMuscleId] = useState<number | null>(null)
 
   // Start
   const [showStart, setShowStart] = useState(false)
@@ -117,9 +109,6 @@ export default function WorkoutScreen() {
 
   // Add set — selectedExercise stores the exercise object from DB
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
-  const [setReps, setSetReps] = useState('10')
-  const [setWeight, setSetWeight] = useState('')
-  const [addingSet, setAddingSet] = useState(false)
 
   // Finish
   const [showFinish, setShowFinish] = useState(false)
@@ -167,6 +156,8 @@ export default function WorkoutScreen() {
 
   // Library search + filter
   const [search, setSearch] = useState('')
+  // Bugün sekmesinin hızlı araması ayrı: kütüphanenin metni ve kas grubu süzgeci ona taşınmasın.
+  const [todaySearch, setTodaySearch] = useState('')
   const [filterGroupId, setFilterGroupId] = useState<number | null>(null)
   /** Kütüphane ve hareket seçicide yalnızca eldeki aletlerle yapılabilenler. */
   const [onlyAvailable, setOnlyAvailable] = useState(false)
@@ -192,7 +183,8 @@ export default function WorkoutScreen() {
 
   async function handleRefresh() {
     if (!userId) return
-    setRefreshing(true); await load(userId); setRefreshing(false)
+    // Aşağı çekince katalog da tazelenir (yeni görseller, düzeltilen adlar); açılışta önbellek yeter.
+    setRefreshing(true); await Promise.all([load(userId), fetchLibrary(supabase, { force: true })]); setRefreshing(false)
   }
 
   async function handleStart() {
@@ -205,24 +197,6 @@ export default function WorkoutScreen() {
       await fetchHistory(supabase, userId)
     } catch { Alert.alert(t.error, t.wk_err_start) }
     finally { setStarting(false) }
-  }
-
-  async function handleAddSet() {
-    if (!todayWorkout || !selectedExercise || addingSet) return
-    setAddingSet(true)
-    try {
-      // set_number = bu egzersizin kaçıncı seti (toplam set sayısı değil)
-      const doneForExercise = todayWorkout.workout_sets?.filter((s) => s.exercise_id === selectedExercise.id).length ?? 0
-      await addSet(supabase, {
-        workout_id: todayWorkout.id,
-        exercise_id: selectedExercise.id,
-        reps: parseInt(setReps) || 10,
-        weight_kg: setWeight ? parseFloat(setWeight) : undefined,
-        set_number: doneForExercise + 1,
-      })
-      setSelectedExercise(null); setSetReps('10'); setSetWeight('')
-    } catch { Alert.alert(t.error, t.wk_err_add_set) }
-    finally { setAddingSet(false) }
   }
 
   async function handleFinish() {
@@ -382,17 +356,7 @@ export default function WorkoutScreen() {
       })
 
       // Tek bir bulk insert — eskiden her set ayrı istekti (15+ round-trip)
-      const rows = dayExercises.flatMap((ex) => {
-        const setCount = Math.min(12, Math.max(1, ex.sets ?? 3))  // bozuk program datasına karşı sınır
-        return Array.from({ length: setCount }, (_, i) => ({
-          workout_id: workout.id,
-          exercise_id: ex.exercise_id,
-          set_number: i + 1,
-          reps: ex.reps ?? 10,
-          rest_seconds: ex.rest_seconds,
-        }))
-      })
-      await addSets(supabase, workout.id, rows)
+      await addSets(supabase, workout.id, programDaySetRows(workout.id, dayExercises, Date.now()))
       await fetchHistory(supabase, userId)
       setTab('today')
     } catch {
@@ -607,16 +571,17 @@ export default function WorkoutScreen() {
   // Süzgeç yalnızca seçim varken anlamlı; seçim yokken hiçbir şey elenmez.
   const equipmentFilterActive = equipment !== null && onlyAvailable
 
-  const filteredExercises = exercises.filter((e) => {
-    const matchSearch = !search || e.name.toLowerCase().includes(search.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(search.toLowerCase())
-    const matchGroup = !filterGroupId || e.muscle_group_id === filterGroupId
-    const matchEquipment = !equipmentFilterActive || isExerciseAvailable(e, equipment)
-    return matchSearch && matchGroup && matchEquipment
-  })
+  const matchesName = (e: Exercise, query: string) =>
+    !query || e.name.toLowerCase().includes(query.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(query.toLowerCase())
+  const matchesEquipment = (e: Exercise) => !equipmentFilterActive || isExerciseAvailable(e, equipment)
+
+  const filteredExercises = exercises.filter((e) =>
+    matchesName(e, search) && (!filterGroupId || e.muscle_group_id === filterGroupId) && matchesEquipment(e))
+
+  const todayMatches = exercises.filter((e) => matchesName(e, todaySearch) && matchesEquipment(e))
 
   const pickerExercises = exercises
-    .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
-    .filter((e) => !equipmentFilterActive || isExerciseAvailable(e, equipment))
+    .filter((e) => matchesName(e, pickerSearch) && matchesEquipment(e))
     .slice(0, 25)
 
   // Seçim varken uygun programlar üste: kullanıcı önce yapabileceğini görsün.
@@ -637,6 +602,21 @@ export default function WorkoutScreen() {
   const baseCoachSuggestions = [t.coach_suggestion_1, t.coach_suggestion_2, t.coach_suggestion_3, t.coach_suggestion_4]
   // Ekipman seçilmişse koç bunu zaten sunucu tarafında zorluyor; öneri yalnızca kullanıcıya bunu hatırlatır.
   const coachSuggestions = equipment === null ? baseCoachSuggestions : [t.coach_suggestion_equipment, ...baseCoachSuggestions]
+
+  const canAddSet = todayWorkout !== null && todayWorkout.status !== 'completed'
+  const liveActive = canAddSet && (todayWorkout.workout_sets?.length ?? 0) > 0
+  const openSetModal = (ex: Exercise) => setSelectedExercise(ex)
+  const muscleCard = (
+    <MuscleInsightsCard
+      sets={analyticsSets}
+      muscleGroups={muscleGroups}
+      bodyWeightKg={analyticsBodyWeightKg}
+      gender={analyticsGender}
+      loading={!analyticsLoaded}
+      error={analyticsError}
+      focusMuscleId={liveActive ? liveMuscleId : null}
+    />
+  )
 
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - new Date(w.date).getTime()) / 86400000
@@ -747,42 +727,48 @@ export default function WorkoutScreen() {
                   </View>
                 </View>
 
-                {/* Sets: always visible when in-progress, collapsible when completed */}
-                {(todayWorkout.status !== 'completed' || setsExpanded) && (
-                  <>
-                    {(todayWorkout.workout_sets?.length ?? 0) > 0 ? (
-                      <View style={{ gap: 2, marginBottom: spacing[4] }}>
-                        {todayWorkout.workout_sets?.map((set: WorkoutSet) => (
-                          <SetRow key={set.id} set={set} onDelete={todayWorkout.status !== 'completed' ? () => removeSet(supabase, set.id) : undefined} />
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
-                        {t.work_exercise_search}
-                      </Text>
-                    )}
-                  </>
+                {/* Süren antrenman: canlı ekran. Biten antrenman: açılır düz set listesi. */}
+                {liveActive && userId && (
+                  <LiveWorkout
+                    workout={todayWorkout}
+                    userId={userId}
+                    onAddSet={openSetModal}
+                    onFocusMuscle={setLiveMuscleId}
+                  />
+                )}
+                {todayWorkout.status !== 'completed' && (todayWorkout.workout_sets?.length ?? 0) === 0 && (
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
+                    {t.work_exercise_search}
+                  </Text>
+                )}
+                {todayWorkout.status === 'completed' && setsExpanded && (
+                  <View style={{ gap: 2, marginBottom: spacing[4] }}>
+                    {todayWorkout.workout_sets?.map((set: WorkoutSet) => <SetRow key={set.id} set={set} />)}
+                  </View>
                 )}
 
                 {todayWorkout.status !== 'completed' && (
                   <View style={{ gap: spacing[3] }}>
                     <Input
-                      value={search}
-                      onChangeText={setSearch}
+                      value={todaySearch}
+                      onChangeText={setTodaySearch}
+                      onClear={() => setTodaySearch('')}
+                      clearLabel={t.wk_search_clear}
                       placeholder={t.work_exercise_search}
                     />
-                    {search.trim().length > 0 && (
+                    {todaySearch.trim().length > 0 && (
                       <View style={{ gap: spacing[2] }}>
-                        {filteredExercises.slice(0, 5).map((ex) => (
+                        {todayMatches.slice(0, 5).map((ex) => (
                           <TouchableOpacity
                             key={ex.id}
-                            onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setSearch('') }}
+                            onPress={() => { openSetModal(ex); setTodaySearch('') }}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
                           >
+                            <ExerciseImage uri={ex.image_url} style={{ width: 44, height: 44, borderRadius: radius.sm }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                                {groupName(ex.muscle_group)} · {categoryLabel(ex.category)}
+                                {groupName(ex.muscle_group)} · {catLabel(ex.category)}
                                 {ex.is_bodyweight ? ` · ${t.wk_bodyweight}` : ''}
                               </Text>
                             </View>
@@ -791,7 +777,7 @@ export default function WorkoutScreen() {
                             </View>
                           </TouchableOpacity>
                         ))}
-                        {filteredExercises.length === 0 && (
+                        {todayMatches.length === 0 && (
                           <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.work_no_results}</Text>
                         )}
                       </View>
@@ -800,6 +786,9 @@ export default function WorkoutScreen() {
                 )}
               </GlassCard>
             ) : null}
+
+            {/* Antrenman sürerken harita canlı kartın hemen altında: işaretlenen set orada görünür. */}
+            {liveActive && muscleCard}
 
             <StreakCard streak={streak} />
 
@@ -832,21 +821,14 @@ export default function WorkoutScreen() {
               </View>
             </GlassCard>
 
-            <MuscleInsightsCard
-              sets={analyticsSets}
-              muscleGroups={muscleGroups}
-              bodyWeightKg={analyticsBodyWeightKg}
-              gender={analyticsGender}
-              loading={!analyticsLoaded}
-              error={analyticsError}
-            />
+            {!liveActive && muscleCard}
           </>
         )}
 
         {/* ── LIBRARY ── */}
         {tab === 'library' && (
           <>
-            <Input value={search} onChangeText={setSearch} placeholder={t.wk_library_search} containerStyle={{ marginBottom: spacing[3] }} />
+            <Input value={search} onChangeText={setSearch} onClear={() => setSearch('')} clearLabel={t.wk_search_clear} placeholder={t.wk_library_search} containerStyle={{ marginBottom: spacing[3] }} />
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing[4] }}>
               <View style={{ flexDirection: 'row', gap: spacing[2] }}>
@@ -868,32 +850,44 @@ export default function WorkoutScreen() {
             </ScrollView>
 
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: spacing[3] }}>
-              {t.wk_n_exercises.replace('{n}', String(filteredExercises.length))}{todayWorkout && todayWorkout.status !== 'completed' ? t.wk_add_set_hint : ''}
+              {filteredExercises.length === 1 ? t.wk_one_exercise : t.wk_n_exercises.replace('{n}', String(filteredExercises.length))}{canAddSet ? t.wk_add_set_hint : ''}
             </Text>
 
             <View style={{ gap: spacing[2] }}>
               {filteredExercises.map((ex) => (
                 <GlassCard key={ex.id} padding={spacing[4]} noShadow>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                  {/* Satır tek erişilebilirlik öğesi; iç "+ Set" ekran okuyucuya özel eylem olarak da sunulur. */}
+                  <TouchableOpacity
+                    onPress={() => router.push(`/exercise/${ex.id}` as never)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityActions={canAddSet ? [{ name: 'addSet', label: t.wk_add_set }] : undefined}
+                    onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'addSet') openSetModal(ex) }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}
+                  >
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                        {groupName(ex.muscle_group)} · {categoryLabel(ex.category)}
+                        {groupName(ex.muscle_group)} · {catLabel(ex.category)}
                         {ex.is_bodyweight ? ` · ${t.wk_bodyweight}` : ''}
                       </Text>
                       {missingLabel(ex, equipment, lang, t) && (
                         <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: 2 }}>{missingLabel(ex, equipment, lang, t)}</Text>
                       )}
                     </View>
-                    {todayWorkout && todayWorkout.status !== 'completed' && (
+                    {canAddSet && (
                       <TouchableOpacity
-                        onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }}
+                        onPress={() => openSetModal(ex)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.wk_add_set}
+                        hitSlop={8}
                         style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}
                       >
                         <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.semibold }}>+ Set</Text>
                       </TouchableOpacity>
                     )}
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                  </TouchableOpacity>
                 </GlassCard>
               ))}
               {filteredExercises.length === 0 && (
@@ -977,36 +971,7 @@ export default function WorkoutScreen() {
       </BottomSheet>
 
       {/* Add set (exercise selected from library) */}
-      <BottomSheet visible={!!selectedExercise} onClose={() => setSelectedExercise(null)} title={t.wk_add_set}>
-        <View style={{ gap: spacing[4] }}>
-          {selectedExercise && (
-            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}10`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
-              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{exName(selectedExercise)}</Text>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                {groupName(selectedExercise.muscle_group)} · {categoryLabel(selectedExercise.category)}
-              </Text>
-            </View>
-          )}
-          {selectedExercise && userId && (
-            <ProgressionHint
-              exercise={selectedExercise}
-              userId={userId}
-              excludeWorkoutId={todayWorkout?.id}
-              onApply={(reps, weightKg) => {
-                setSetReps(String(reps))
-                setSetWeight(weightKg !== null ? String(weightKg) : '')
-              }}
-            />
-          )}
-          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.wk_reps} value={setReps} onChangeText={setSetReps} keyboardType="number-pad" placeholder="10" containerStyle={{ flex: 1 }} />
-            {!selectedExercise?.is_bodyweight && (
-              <Input label={t.wk_weight_kg} value={setWeight} onChangeText={setSetWeight} keyboardType="decimal-pad" placeholder="60" containerStyle={{ flex: 1 }} />
-            )}
-          </View>
-          <Button label={addingSet ? t.wk_adding : t.wk_add_set} onPress={handleAddSet} loading={addingSet} fullWidth />
-        </View>
-      </BottomSheet>
+      {todayWorkout && <AddSetSheet exercise={selectedExercise} workout={todayWorkout} onClose={() => setSelectedExercise(null)} />}
 
       {/* Finish */}
       <BottomSheet visible={showFinish} onClose={() => setShowFinish(false)} title={t.wk_finish_title}>
@@ -1411,7 +1376,7 @@ function ProgramCard({ program, splitLabel, fit, onStart }: { program: WorkoutPr
   )
 }
 
-function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
+function SetRow({ set }: { set: WorkoutSet }) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const name = set.exercise ? exerciseName(set.exercise, lang, t) : t.wk_exercise_n.replace('{n}', String(set.set_number))
@@ -1426,11 +1391,6 @@ function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
           {t.wk_reps_n.replace('{n}', String(set.reps ?? '-'))}{set.weight_kg ? ` · ${set.weight_kg}kg` : ''}
         </Text>
       </View>
-      {onDelete && (
-        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
-        </TouchableOpacity>
-      )}
     </View>
   )
 }

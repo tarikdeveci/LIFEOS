@@ -29,6 +29,8 @@ interface Props {
   gender: 'male' | 'female' | null
   loading: boolean
   error: string | null
+  /** Canlı antrenmanda şimdiki hareketin kası: kullanıcı başka kas seçmediyse vurgulanır. */
+  focusMuscleId?: number | null
 }
 
 type Segment = 'balance' | 'recovery' | 'strength'
@@ -86,11 +88,12 @@ function formatSets(value: number, lang: string): string {
  * fonksiyonun kendisi tarafından uygulanır. Kas grupları veritabanından gelir
  * (`muscleGroups`), sabit kodlanmış bir liste yok.
  */
-export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, loading, error }: Props) {
+export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, loading, error, focusMuscleId = null }: Props) {
   const { colors, isDark } = useTheme()
   const { t, lang } = useLang()
   const [segment, setSegment] = useState<Segment>('balance')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [pickedId, setPickedId] = useState<number | null>(null)
+  const selectedId = pickedId ?? focusMuscleId
   const [listOpen, setListOpen] = useState(false)
 
   const anatomicalGroups = useMemo(
@@ -181,7 +184,9 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, l
     return trained + (risk >= 5 ? t.muscle_risk_suffix.replace('{n}', String(risk)) : '')
   }
 
-  const hasData = sets.length > 0
+  // Hesaplar yalnızca tamamlanan setleri sayar; işaretlenmemiş setlerle boş figür
+  // çizmek yerine nasıl dolacağı anlatılır. Canlı antrenmanda figür vurgu için açık kalır.
+  const hasData = sets.some((s) => s.completed) || focusMuscleId !== null
   const emptyNote =
     segment === 'balance' && balance.totalSets === 0
       ? t.muscle_none_week
@@ -222,7 +227,7 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, l
             legend={legend}
             gender={gender}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={setPickedId}
           />
 
           <View style={{ marginTop: spacing[3], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
