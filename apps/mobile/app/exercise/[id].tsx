@@ -1,12 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { equipmentLabel, useWorkoutStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
+import { AddSetSheet } from '@/src/components/workout/AddSetSheet'
+import { Button } from '@/src/components/ui/Button'
 import { categoryLabel, exerciseName, missingLabel, muscleGroupName } from '@/src/components/workout/labels'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -29,7 +32,9 @@ export default function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const { exercises, muscleGroups, equipment, libraryLoading, error, fetchLibrary } = useWorkoutStore()
+  const insets = useSafeAreaInsets()
+  const { exercises, muscleGroups, equipment, todayWorkout, libraryLoading, error, fetchLibrary } = useWorkoutStore()
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   // Kütüphane açılmadan gelinirse (derin bağlantı) katalog burada yüklenir.
   useEffect(() => { void fetchLibrary(supabase) }, [fetchLibrary])
@@ -80,6 +85,9 @@ export default function ExerciseDetailScreen() {
   const missing = missingLabel(exercise, equipment, lang, t)
   // Talimatlar veritabanında yalnızca Türkçe.
   const instructions = lang === 'tr' ? exercise.instructions : null
+  // Antrenman sürerken formu okuyan kullanıcı listeye dönmeden seti buradan girer.
+  const activeWorkout = todayWorkout && todayWorkout.status !== 'completed' ? todayWorkout : null
+  const setsToday = activeWorkout?.workout_sets?.filter((s) => s.exercise_id === exercise.id).length ?? 0
 
   return (
     <ScreenBackground edges={['top']}>
@@ -133,6 +141,18 @@ export default function ExerciseDetailScreen() {
           </GlassCard>
         )}
       </ScrollView>
+
+      {activeWorkout && (
+        <View style={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: insets.bottom + spacing[3], borderTopWidth: 1, borderTopColor: colors.border, gap: spacing[2] }}>
+          {setsToday > 0 && (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>
+              {t.wk_detail_sets_today.replace('{n}', String(setsToday))}
+            </Text>
+          )}
+          <Button label={t.wk_add_set} onPress={() => setSheetOpen(true)} fullWidth />
+        </View>
+      )}
+      {activeWorkout && <AddSetSheet exercise={sheetOpen ? exercise : null} workout={activeWorkout} onClose={() => setSheetOpen(false)} />}
     </ScreenBackground>
   )
 }

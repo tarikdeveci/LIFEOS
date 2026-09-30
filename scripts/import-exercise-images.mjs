@@ -2,7 +2,7 @@
 // Global egzersizlere free-exercise-db görsellerini bağlar.
 //
 //   node scripts/import-exercise-images.mjs --dry-run  # eşleşmeleri listeler, yazmaz
-//   node scripts/import-exercise-images.mjs            # görselleri yükler, image_url yazar
+//   node scripts/import-exercise-images.mjs            # KİLİTLİ, aşağıdaki lisans uyarısına bak
 //
 // Gerekli ortam değişkenleri (yoksa .env / .env.production okunur):
 //   SUPABASE_URL veya NEXT_PUBLIC_SUPABASE_URL
@@ -11,9 +11,11 @@
 // LİSANS UYARISI: free-exercise-db kodu ve metni Unlicense, ama fotoğraflar
 // wrkout/exercises.json'dan geliyor ve orada internetten toplandıkları, telif
 // hakkının kendilerine ait olmadığı, ticari projede kullanılmaması gerektiği
-// yazıyor (CONTRIBUTING.md). Ücretli sürüme çıkmadan lisanslı bir kaynakla
-// değiştirilmeli. wger (CC-BY-SA), exercises-dataset medyası ve openGym (AGPL)
-// bilerek kullanılmadı.
+// yazıyor (CONTRIBUTING.md). Bu yüzden 2026-10-01'de tüm image_url'ler NULL
+// yapıldı ve kova boşaltıldı; yazma modu lisanslı bir kaynak gelene kadar
+// kilitli, eşleştirme tablosu yeni kaynağa taşınırken işe yarasın diye duruyor.
+// wger (CC-BY-SA), exercises-dataset medyası ve openGym (AGPL) bilerek
+// kullanılmadı.
 //
 // Eşleşme exercises.name_en ile: önce ALIASES, yoksa noktalama ve büyük harf
 // farkı yok sayılarak birebir ad. Bulanık eşleşme yok; yanlış hareketin
@@ -226,6 +228,10 @@ async function fetchOk(url, init) {
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run')
+  if (!dryRun) {
+    console.error('Yazma kilitli: free-exercise-db fotoğraflarının ticari kullanım hakkı yok. Yalnızca --dry-run.')
+    process.exit(1)
+  }
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const env = { ...loadEnvFile(root, '.env.production'), ...loadEnvFile(root, '.env'), ...process.env }
   const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL

@@ -19,6 +19,7 @@ import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
 import { LiveWorkout } from '@/src/components/workout/LiveWorkout'
 import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
+import { AddSetSheet } from '@/src/components/workout/AddSetSheet'
 import { categoryLabel, exerciseName, missingLabel, muscleGroupName } from '@/src/components/workout/labels'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -92,7 +93,7 @@ export default function WorkoutScreen() {
   const dayLabel = (day: { day_name: string | null; day_number: number }) => day.day_name?.trim() || t.wk_day_n.replace('{n}', String(day.day_number))
   const defaultDayNames = () => [1, 2, 3].map((n) => t.wk_day_n.replace('{n}', String(n)))
   const weekdayNames = t.routines_day_names.split(',')
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSets, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -108,9 +109,6 @@ export default function WorkoutScreen() {
 
   // Add set — selectedExercise stores the exercise object from DB
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
-  const [setReps, setSetReps] = useState('10')
-  const [setWeight, setSetWeight] = useState('')
-  const [addingSet, setAddingSet] = useState(false)
 
   // Finish
   const [showFinish, setShowFinish] = useState(false)
@@ -199,24 +197,6 @@ export default function WorkoutScreen() {
       await fetchHistory(supabase, userId)
     } catch { Alert.alert(t.error, t.wk_err_start) }
     finally { setStarting(false) }
-  }
-
-  async function handleAddSet() {
-    if (!todayWorkout || !selectedExercise || addingSet) return
-    setAddingSet(true)
-    try {
-      // set_number = bu egzersizin kaçıncı seti (toplam set sayısı değil)
-      const doneForExercise = todayWorkout.workout_sets?.filter((s) => s.exercise_id === selectedExercise.id).length ?? 0
-      await addSet(supabase, {
-        workout_id: todayWorkout.id,
-        exercise_id: selectedExercise.id,
-        reps: parseInt(setReps) || 10,
-        weight_kg: setWeight ? parseFloat(setWeight) : undefined,
-        set_number: doneForExercise + 1,
-      })
-      setSelectedExercise(null); setSetReps('10'); setSetWeight('')
-    } catch { Alert.alert(t.error, t.wk_err_add_set) }
-    finally { setAddingSet(false) }
   }
 
   async function handleFinish() {
@@ -625,7 +605,7 @@ export default function WorkoutScreen() {
 
   const canAddSet = todayWorkout !== null && todayWorkout.status !== 'completed'
   const liveActive = canAddSet && (todayWorkout.workout_sets?.length ?? 0) > 0
-  const openSetModal = (ex: Exercise) => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }
+  const openSetModal = (ex: Exercise) => setSelectedExercise(ex)
   const muscleCard = (
     <MuscleInsightsCard
       sets={analyticsSets}
@@ -991,37 +971,7 @@ export default function WorkoutScreen() {
       </BottomSheet>
 
       {/* Add set (exercise selected from library) */}
-      <BottomSheet visible={!!selectedExercise} onClose={() => setSelectedExercise(null)} title={t.wk_add_set}>
-        <View style={{ gap: spacing[4] }}>
-          {selectedExercise && (
-            <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}10`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
-              <ExerciseImage uri={selectedExercise.image_url} style={{ width: '100%', height: 160, borderRadius: radius.md, marginBottom: spacing[2] }} />
-              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{exName(selectedExercise)}</Text>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                {groupName(selectedExercise.muscle_group)} · {catLabel(selectedExercise.category)}
-              </Text>
-            </View>
-          )}
-          {selectedExercise && userId && (
-            <ProgressionHint
-              exercise={selectedExercise}
-              userId={userId}
-              excludeWorkoutId={todayWorkout?.id}
-              onApply={(reps, weightKg) => {
-                setSetReps(String(reps))
-                setSetWeight(weightKg !== null ? String(weightKg) : '')
-              }}
-            />
-          )}
-          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.wk_reps} value={setReps} onChangeText={setSetReps} keyboardType="number-pad" placeholder="10" containerStyle={{ flex: 1 }} />
-            {!selectedExercise?.is_bodyweight && (
-              <Input label={t.wk_weight_kg} value={setWeight} onChangeText={setSetWeight} keyboardType="decimal-pad" placeholder="60" containerStyle={{ flex: 1 }} />
-            )}
-          </View>
-          <Button label={addingSet ? t.wk_adding : t.wk_add_set} onPress={handleAddSet} loading={addingSet} fullWidth />
-        </View>
-      </BottomSheet>
+      {todayWorkout && <AddSetSheet exercise={selectedExercise} workout={todayWorkout} onClose={() => setSelectedExercise(null)} />}
 
       {/* Finish */}
       <BottomSheet visible={showFinish} onClose={() => setShowFinish(false)} title={t.wk_finish_title}>
