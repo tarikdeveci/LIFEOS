@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Text, Alert } from 'react-native'
-import { useWorkoutStore } from '@lifeos/shared'
+import { parseSetEntry, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, Workout } from '@lifeos/shared'
 import { supabase } from '../../lib/supabase'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -28,12 +28,21 @@ export function AddSetSheet({ exercise, workout, onClose }: Props) {
   const [reps, setReps] = useState('10')
   const [weight, setWeight] = useState('')
   const [adding, setAdding] = useState(false)
+  // State bir sonraki çizime kadar güncellenmez; aynı karedeki ikinci dokunuş çift set yazmasın.
+  const busy = useRef(false)
 
   // Her yeni hareket boş formla açılır.
   useEffect(() => { setReps('10'); setWeight('') }, [exercise?.id])
 
   async function handleAdd() {
-    if (!exercise || adding) return
+    if (!exercise || busy.current) return
+    // "62,5" gibi virgüllü ağırlık da geçerli; boş tekrar 10 sayılır, 0 tekrar set değildir.
+    const entry = parseSetEntry(weight, reps)
+    if (!entry || entry.reps === 0) {
+      Alert.alert(t.error, t.wk_err_invalid_set)
+      return
+    }
+    busy.current = true
     setAdding(true)
     try {
       // set_number = bu egzersizin kaçıncı seti (toplam set sayısı değil)
@@ -41,13 +50,13 @@ export function AddSetSheet({ exercise, workout, onClose }: Props) {
       await addSet(supabase, {
         workout_id: workout.id,
         exercise_id: exercise.id,
-        reps: parseInt(reps) || 10,
-        weight_kg: weight ? parseFloat(weight) : undefined,
+        reps: entry.reps ?? 10,
+        weight_kg: entry.weight_kg,
         set_number: doneForExercise + 1,
       })
       onClose()
     } catch { Alert.alert(t.error, t.wk_err_add_set) }
-    finally { setAdding(false) }
+    finally { busy.current = false; setAdding(false) }
   }
 
   return (
