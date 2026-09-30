@@ -332,55 +332,57 @@ export default function PlanningScreen() {
 
         {isViewingToday && userId && <DayStartCard userId={userId} />}
 
-        {/* Şu an neredeyiz, günün kalanı: sadece bugün */}
-        {dayPosition && dayBlocks.length > 0 && (
+        {/* Şu an: aktif blok, kalan süre ve odak eylemi tek kartta; sadece bugün */}
+        {userId && (dayPosition && dayBlocks.length > 0 ? (
           <NowCard position={dayPosition} blockColors={BLOCK_COLORS} blockLabels={BLOCK_LABELS} onJumpToNow={handleJumpToNow}>
-            <CapacityRow />
+            <FocusCard userId={userId} date={selectedDate} activeBlock={dayPosition.activeBlock} />
           </NowCard>
-        )}
-        {userId && <FocusCard userId={userId} date={selectedDate} activeBlock={isViewingToday ? dayPosition?.activeBlock ?? null : null} />}
+        ) : (
+          <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
+        ))}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
-        {/* Day blocks */}
-        {dayBlocks.length === 0 && localEventsForDate.length === 0 ? (
-          <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
-            <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
-            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
-            <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-              <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
-              <Button
-                label={aiUnlocked
-                  ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
-                  : `Pro · ${t.plan_ai_plan}`}
-                onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
-                // Abonelik durumu okunurken kullanıcı da henüz yüklenmemiş
-                // olabilir; sohbet açılsa gönderim sessizce düşerdi. Başlıktaki
-                // AI düğmesi de aynı koşulda kapalı.
-                disabled={isCheckingPro}
-                variant="secondary"
-              />
+        <DayBlockList
+          blocks={dayBlocks}
+          events={localEventsForDate}
+          isToday={isViewingToday}
+          now={now}
+          blockColors={BLOCK_COLORS}
+          blockLabels={BLOCK_LABELS}
+          onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
+          onToggleDone={handleToggleBlockDone}
+          onNowAnchorLayout={(y) => {
+            nowAnchorY.current = y
+          }}
+          header={dayPosition && dayBlocks.length > 0 ? <CapacityRow /> : undefined}
+          emptyContent={
+            <View style={{ alignItems: 'center', gap: spacing[3], paddingVertical: spacing[3] }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${palette.accent}14`, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="calendar-outline" size={26} color={palette.accent} />
+              </View>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.plan_no_blocks}</Text>
+              <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+                <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" size="sm" />
+                <Button
+                  label={aiUnlocked
+                    ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
+                    : `Pro · ${t.plan_ai_plan}`}
+                  onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
+                  // Abonelik durumu okunurken kullanıcı da henüz yüklenmemiş
+                  // olabilir; sohbet açılsa gönderim sessizce düşerdi. Başlıktaki
+                  // AI düğmesi de aynı koşulda kapalı.
+                  disabled={isCheckingPro}
+                  size="sm"
+                />
+              </View>
             </View>
-          </View>
-        ) : (
-          <DayBlockList
-            blocks={dayBlocks}
-            events={localEventsForDate}
-            isToday={isViewingToday}
-            now={now}
-            blockColors={BLOCK_COLORS}
-            blockLabels={BLOCK_LABELS}
-            onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
-            onToggleDone={handleToggleBlockDone}
-            onNowAnchorLayout={(y) => {
-              nowAnchorY.current = y
-            }}
-          />
-        )}
+          }
+        />
 
         {/* Bu hafta: hedefler ve tekrarlayan şablonlar günün altında, her zaman görünür */}
         {userId && (
           <>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: spacing[6], marginBottom: spacing[3] }}>{t.plan_week_section}</Text>
+            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing[4], marginBottom: spacing[2], marginLeft: spacing[1] }}>{t.plan_week_section}</Text>
             <GoalsCard userId={userId} />
             <WeeklyRoutines userId={userId} blockColors={BLOCK_COLORS} onChanged={() => void load(userId, selectedDate)} />
           </>

@@ -75,16 +75,18 @@ export function GoalsCard({ userId }: Props) {
   return (
     <GlassCard style={{ marginBottom: spacing[4] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing[3] }}>
-        <Text style={{ flex: 1, fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-          🎯 {t.goals_title}
-        </Text>
-        <TouchableOpacity onPress={() => setSheet(true)} hitSlop={8} accessibilityLabel={t.goals_add}>
-          <Ionicons name="add-circle-outline" size={22} color={palette.accent} />
+        <Text style={{ flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.goals_title}</Text>
+        <TouchableOpacity onPress={() => setSheet(true)} accessibilityLabel={t.goals_add}
+          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="add" size={18} color={palette.accent} />
         </TouchableOpacity>
       </View>
 
       {weekly.length === 0 && (
-        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>{t.goals_empty}</Text>
+        <TouchableOpacity onPress={() => setSheet(true)} style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
+          <Ionicons name="flag-outline" size={26} color={colors.textSubtle} />
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.goals_empty}</Text>
+        </TouchableOpacity>
       )}
 
       <View style={{ gap: spacing[3] }}>
@@ -92,18 +94,23 @@ export function GoalsCard({ userId }: Props) {
           const p = progress.get(g.id)
           const pct = p?.pct ?? 0
           const done = pct >= 100 || g.status === 'done'
+          const tint = done ? palette.success : palette.accent
           return (
-            <TouchableOpacity key={g.id} onLongPress={() => confirmDelete(g.id)} delayLongPress={400}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textPrimary }} numberOfLines={1}>
-                  {g.icon ?? '🎯'} {g.title}
-                </Text>
-                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: done ? palette.success : colors.textSubtle }}>
-                  {p?.current ?? 0}/{p?.total ?? g.target ?? 0}{g.unit ? ` ${g.unit}` : ''}
-                </Text>
+            <TouchableOpacity key={g.id} onLongPress={() => confirmDelete(g.id)} delayLongPress={400}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+              <View style={{ width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${tint}18` }}>
+                <Text style={{ fontSize: 18 }}>{g.icon ?? '🎯'}</Text>
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border }}>
-                <View style={{ height: 6, borderRadius: 3, width: `${pct}%`, backgroundColor: done ? palette.success : palette.accent }} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }} numberOfLines={1}>{g.title}</Text>
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: done ? palette.success : colors.textMuted, fontVariant: ['tabular-nums'] }}>
+                    {done ? '✓ ' : ''}{p?.current ?? 0}/{p?.total ?? g.target ?? 0}{g.unit ? ` ${g.unit}` : ''}
+                  </Text>
+                </View>
+                <View style={{ height: 6, borderRadius: 3, backgroundColor: `${tint}1F` }}>
+                  <View style={{ height: 6, borderRadius: 3, width: `${pct}%`, backgroundColor: tint }} />
+                </View>
               </View>
             </TouchableOpacity>
           )
