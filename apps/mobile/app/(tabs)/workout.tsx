@@ -172,6 +172,8 @@ export default function WorkoutScreen() {
 
   // Library search + filter
   const [search, setSearch] = useState('')
+  // Bugün sekmesinin hızlı araması ayrı: kütüphanenin metni ve kas grubu süzgeci ona taşınmasın.
+  const [todaySearch, setTodaySearch] = useState('')
   const [filterGroupId, setFilterGroupId] = useState<number | null>(null)
   /** Kütüphane ve hareket seçicide yalnızca eldeki aletlerle yapılabilenler. */
   const [onlyAvailable, setOnlyAvailable] = useState(false)
@@ -602,16 +604,17 @@ export default function WorkoutScreen() {
   // Süzgeç yalnızca seçim varken anlamlı; seçim yokken hiçbir şey elenmez.
   const equipmentFilterActive = equipment !== null && onlyAvailable
 
-  const filteredExercises = exercises.filter((e) => {
-    const matchSearch = !search || e.name.toLowerCase().includes(search.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(search.toLowerCase())
-    const matchGroup = !filterGroupId || e.muscle_group_id === filterGroupId
-    const matchEquipment = !equipmentFilterActive || isExerciseAvailable(e, equipment)
-    return matchSearch && matchGroup && matchEquipment
-  })
+  const matchesName = (e: Exercise, query: string) =>
+    !query || e.name.toLowerCase().includes(query.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(query.toLowerCase())
+  const matchesEquipment = (e: Exercise) => !equipmentFilterActive || isExerciseAvailable(e, equipment)
+
+  const filteredExercises = exercises.filter((e) =>
+    matchesName(e, search) && (!filterGroupId || e.muscle_group_id === filterGroupId) && matchesEquipment(e))
+
+  const todayMatches = exercises.filter((e) => matchesName(e, todaySearch) && matchesEquipment(e))
 
   const pickerExercises = exercises
-    .filter((e) => !pickerSearch || e.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (e.name_en ?? '').toLowerCase().includes(pickerSearch.toLowerCase()))
-    .filter((e) => !equipmentFilterActive || isExerciseAvailable(e, equipment))
+    .filter((e) => matchesName(e, pickerSearch) && matchesEquipment(e))
     .slice(0, 25)
 
   // Seçim varken uygun programlar üste: kullanıcı önce yapabileceğini görsün.
@@ -778,16 +781,18 @@ export default function WorkoutScreen() {
                 {todayWorkout.status !== 'completed' && (
                   <View style={{ gap: spacing[3] }}>
                     <Input
-                      value={search}
-                      onChangeText={setSearch}
+                      value={todaySearch}
+                      onChangeText={setTodaySearch}
+                      onClear={() => setTodaySearch('')}
+                      clearLabel={t.wk_search_clear}
                       placeholder={t.work_exercise_search}
                     />
-                    {search.trim().length > 0 && (
+                    {todaySearch.trim().length > 0 && (
                       <View style={{ gap: spacing[2] }}>
-                        {filteredExercises.slice(0, 5).map((ex) => (
+                        {todayMatches.slice(0, 5).map((ex) => (
                           <TouchableOpacity
                             key={ex.id}
-                            onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setSearch('') }}
+                            onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setTodaySearch('') }}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
                           >
                             <ExerciseImage uri={ex.image_url} style={{ width: 44, height: 44, borderRadius: radius.sm }} />
@@ -803,7 +808,7 @@ export default function WorkoutScreen() {
                             </View>
                           </TouchableOpacity>
                         ))}
-                        {filteredExercises.length === 0 && (
+                        {todayMatches.length === 0 && (
                           <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.work_no_results}</Text>
                         )}
                       </View>
@@ -854,7 +859,7 @@ export default function WorkoutScreen() {
         {/* ── LIBRARY ── */}
         {tab === 'library' && (
           <>
-            <Input value={search} onChangeText={setSearch} placeholder={t.wk_library_search} containerStyle={{ marginBottom: spacing[3] }} />
+            <Input value={search} onChangeText={setSearch} onClear={() => setSearch('')} clearLabel={t.wk_search_clear} placeholder={t.wk_library_search} containerStyle={{ marginBottom: spacing[3] }} />
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing[4] }}>
               <View style={{ flexDirection: 'row', gap: spacing[2] }}>
