@@ -13,8 +13,9 @@
 //
 // Eşleşme exercises.name_en ile: önce ALIASES, yoksa noktalama ve büyük harf
 // farkı yok sayılarak birebir ad. Bulanık eşleşme yok; yanlış hareketin
-// görselini göstermek hiç göstermemekten kötü. Kardiyo, yoga ve spor dalları
-// (Running, Zumba, Warrior I) kaynakta olmadığı için görselsiz kalır.
+// görselini göstermek hiç göstermemekten kötü. Yüzme, yoga ve spor dalları
+// (Swimming, Zumba, Warrior I) kaynakta olmadığı için görselsiz kalır; bunlarda
+// detay sayfası kategori ikonunu gösterir.
 //
 // Idempotent: aynı görsel üzerine yazılır (x-upsert), image_url yeniden yazılır.
 // Eşleşmeyen satırın mevcut image_url'ine dokunulmaz.
@@ -39,6 +40,7 @@ export const ALIASES = {
   'Bench Press': 'Barbell Bench Press - Medium Grip',
   'Bicep Curl Machine': 'Machine Bicep Curl',
   'Box Jump': 'Front Box Jump',
+  'Cable EZ Curl': 'Standing Biceps Cable Curl',
   'Cable Face Pull': 'Face Pull',
   'Cable Fly': 'Cable Crossover',
   'Cable Lateral Raise': 'Cable Seated Lateral Raise',
@@ -62,6 +64,7 @@ export const ALIASES = {
   'Dips': 'Dips - Triceps Version',
   'Donkey Calf Raise': 'Donkey Calf Raises',
   'Dumbbell Arnold Press': 'Arnold Dumbbell Press',
+  'Dumbbell Bulgarian Split Squat': 'Split Squat with Dumbbells',
   'Dumbbell Calf Raise': 'Standing Dumbbell Calf Raise',
   'Dumbbell Curl': 'Dumbbell Bicep Curl',
   'Dumbbell Decline Bench Press': 'Decline Dumbbell Bench Press',
@@ -82,6 +85,8 @@ export const ALIASES = {
   'Dumbbell Tate Press': 'Tate Press',
   'Dumbbell Tricep Kickback': 'Tricep Dumbbell Kickback',
   'Dumbbell Upright Row': 'Standing Dumbbell Upright Row',
+  'Dumbbell Walking Lunge': 'Dumbbell Lunges',
+  'Elevated Push-Up': 'Incline Push-Up',
   'Elliptical': 'Elliptical Trainer',
   'Front Raise': 'Front Dumbbell Raise',
   'Glute Bridge': 'Butt Lift (Bridge)',
@@ -105,17 +110,22 @@ export const ALIASES = {
   'Leg Extension': 'Leg Extensions',
   'Leg Raise': 'Flat Bench Lying Leg Raise',
   'Low to High Cable Fly': 'Low Cable Crossover',
+  'Lunges': 'Bodyweight Walking Lunge',
   'Lying Leg Curl Machine': 'Lying Leg Curls',
   'Mountain Climber': 'Mountain Climbers',
   'Neck Stretch': 'Side Neck Stretch',
+  'Nordic Hamstring Curl': 'Natural Glute Ham Raise',
   'One-Arm Push-Up': 'Single-Arm Push-Up',
   'Overhead Press': 'Standing Military Press',
+  'Overhead Tricep Ext': 'Standing Dumbbell Triceps Extension',
   'Pec Deck': 'Butterfly',
   'Pull-Up': 'Pullups',
   'Push-Up': 'Pushups',
   'Rear Delt Fly': 'Reverse Flyes',
+  'Rear Delt Machine': 'Reverse Machine Flyes',
   'Reverse Grip Lat Pulldown': 'Underhand Cable Pulldowns',
   'Rowing Machine': 'Rowing, Stationary',
+  'Running': 'Trail Running/Walking',
   'Seated Dumbbell Shoulder Press': 'Seated Dumbbell Press',
   'Seated Leg Curl Machine': 'Seated Leg Curl',
   'Shoulder Press Machine': 'Machine Shoulder (Military) Press',
@@ -139,6 +149,19 @@ export const ALIASES = {
   'Upright Row': 'Upright Barbell Row',
   'Wide Push-Up': 'Push-Up Wide',
   'World Greatest Stretch': "World's Greatest Stretch",
+}
+
+/**
+ * Kaynakta her hareketin başlangıç (0) ve bitiş (1) karesi var; varsayılan 0.
+ * Başlangıç karesi hareketi anlatmıyorsa (düz duran biri) burada 1 seçilir.
+ */
+export const FRAMES = {
+  'Bodyweight Walking Lunge': 1,
+}
+
+/** Seçilen kare kaynakta yoksa ilk kareye düşer. */
+export function imagePathFor(entry, frames = FRAMES) {
+  return entry.images[frames[entry.name] ?? 0] ?? entry.images[0]
 }
 
 /** "Push-Up", "push up" ve "PUSH UP" aynı anahtara düşer. */
@@ -212,7 +235,7 @@ async function main() {
   const catalog = await (await fetchOk(`${FEDB_RAW}/dist/exercises.json`)).json()
   const exercises = await (await fetchOk(`${supabaseUrl}/rest/v1/exercises?select=id,name_en&user_id=is.null&order=name_en`, { headers: auth })).json()
   const { matched, unmatched, brokenAliases } = matchExercises(exercises, catalog)
-  const images = new Set(matched.map((m) => m.entry.images[0]))
+  const images = new Set(matched.map((m) => imagePathFor(m.entry)))
 
   console.log(`Katalog: ${catalog.length} kayıt (free-exercise-db @ ${FEDB_COMMIT.slice(0, 7)})`)
   console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length}, eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
@@ -226,7 +249,7 @@ async function main() {
   const urls = new Map()
   let failed = 0
   for (const { exercise, entry } of matched) {
-    const path = entry.images[0]
+    const path = imagePathFor(entry)
     try {
       if (!urls.has(path)) {
         const body = await (await fetchOk(`${FEDB_RAW}/exercises/${path}`)).arrayBuffer()

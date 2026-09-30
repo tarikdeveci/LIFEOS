@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ALIASES, matchExercises, normalizeName, publicImageUrl } from '../../scripts/import-exercise-images.mjs'
+import { ALIASES, FRAMES, imagePathFor, matchExercises, normalizeName, publicImageUrl } from '../../scripts/import-exercise-images.mjs'
 
 const entry = (name: string, images: string[] = [`${name.replace(/\W+/g, '_')}/0.jpg`]) => ({ name, images })
 const ex = (id: string, name_en: string | null) => ({ id, name_en })
@@ -69,6 +69,14 @@ test('takma ad tablosu: anahtarlar normalleştirildikten sonra da tekil', () => 
   const keys = Object.keys(ALIASES).map(normalizeName)
   assert.equal(new Set(keys).size, keys.length)
   for (const [ours, theirs] of Object.entries(ALIASES)) assert.ok(ours.trim() && theirs.trim(), ours)
+})
+
+test('kare seçimi: varsayılan ilk kare, tablodaki kare, olmayan kare ilk kareye düşer', () => {
+  const two = { name: 'Lunge', images: ['Lunge/0.jpg', 'Lunge/1.jpg'] }
+  assert.equal(imagePathFor(two, {}), 'Lunge/0.jpg')
+  assert.equal(imagePathFor(two, { Lunge: 1 }), 'Lunge/1.jpg')
+  assert.equal(imagePathFor({ name: 'Lunge', images: ['Lunge/0.jpg'] }, { Lunge: 1 }), 'Lunge/0.jpg')
+  for (const name of Object.keys(FRAMES)) assert.ok(Object.values(ALIASES).includes(name), name)
 })
 
 test('public URL: sondaki eğik çizgi tekrarlanmaz', () => {

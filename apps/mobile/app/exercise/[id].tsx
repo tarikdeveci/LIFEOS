@@ -11,6 +11,14 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
+// Görseli olmayan hareketlerde (yüzme, yoga, dans) fotoğraf yerine kategori ikonu.
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  strength: 'barbell-outline',
+  cardio: 'pulse-outline',
+  flexibility: 'body-outline',
+  mobility: 'sync-outline',
+}
+
 /**
  * Hareketin detayı. Görsel yalnızca burada gösterilir: kütüphane 148 görseli
  * aynı anda tam boyutta çözünce Android'in bitmap havuzu (150 MB) doluyor,
@@ -64,7 +72,15 @@ export default function ExerciseDetailScreen() {
     <ScreenBackground edges={['top']}>
       {header}
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
-        <ExerciseImage uri={exercise.image_url} style={{ width: '100%', aspectRatio: 3 / 2, borderRadius: radius.lg }} />
+        <ExerciseImage
+          uri={exercise.image_url}
+          style={{ width: '100%', aspectRatio: 3 / 2, borderRadius: radius.lg }}
+          fallback={(
+            <View style={{ height: 120, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+              <Ionicons name={CATEGORY_ICONS[exercise.category] ?? 'fitness-outline'} size={48} color={palette.accent} />
+            </View>
+          )}
+        />
 
         <View>
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
