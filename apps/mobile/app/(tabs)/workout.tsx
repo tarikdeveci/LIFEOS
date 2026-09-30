@@ -17,6 +17,7 @@ import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
 import { LiveWorkout } from '@/src/components/workout/LiveWorkout'
+import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -788,6 +789,7 @@ export default function WorkoutScreen() {
                             onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setSearch('') }}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
                           >
+                            <ExerciseImage uri={ex.image_url} style={{ width: 44, height: 44, borderRadius: radius.sm }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
@@ -880,6 +882,7 @@ export default function WorkoutScreen() {
               {filteredExercises.map((ex) => (
                 <GlassCard key={ex.id} padding={spacing[4]} noShadow>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                    <ExerciseImage uri={ex.image_url} style={{ width: 56, height: 56, borderRadius: radius.md }} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
@@ -986,6 +989,7 @@ export default function WorkoutScreen() {
         <View style={{ gap: spacing[4] }}>
           {selectedExercise && (
             <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}10`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
+              <ExerciseImage uri={selectedExercise.image_url} style={{ width: '100%', height: 160, borderRadius: radius.md, marginBottom: spacing[2] }} />
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{exName(selectedExercise)}</Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
                 {groupName(selectedExercise.muscle_group)} · {categoryLabel(selectedExercise.category)}
