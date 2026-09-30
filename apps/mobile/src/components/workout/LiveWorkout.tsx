@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { currentGroupIndex, groupSetsByExercise, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
+import { currentGroupIndex, groupSetsByExercise, parseSetEntry, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, ExerciseSetGroup, Workout, WorkoutSet } from '@lifeos/shared'
 import { ProgressionHint } from './ProgressionHint'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -20,16 +20,6 @@ interface Props {
 
 interface Draft { weight: string; reps: string }
 
-function parseWeight(value: string): number | undefined {
-  const n = parseFloat(value.replace(',', '.'))
-  return Number.isFinite(n) && n >= 0 && n < 1000 ? n : undefined
-}
-
-function parseReps(value: string): number | undefined {
-  const n = parseInt(value, 10)
-  return Number.isFinite(n) && n >= 0 && n <= 1000 ? n : undefined
-}
-
 /**
  * Süren antrenmanın ekranı: şimdiki hareketin setleri (ağırlık, tekrar,
  * tamamlandı), altında sıradaki ve biten hareketler. Sıradaki ya da biten bir
@@ -43,6 +33,8 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
+  /** Aynı karede gelen ikinci dokunuş, state güncellenmeden geçmesin. */
+  const busy = useRef(false)
 
   const sets = workout.workout_sets ?? []
   const groups = groupSetsByExercise(sets)
@@ -71,22 +63,38 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
   }
 
   async function toggleSet(group: ExerciseSetGroup, set: WorkoutSet) {
-    if (savingId) return
+    if (busy.current) return
     const draft = draftOf(group, set)
     const completed = !set.completed
+    const entry = completed ? parseSetEntry(draft.weight, draft.reps) : {}
+    if (!entry) {
+      Alert.alert(t.error, t.wk_err_invalid_set)
+      return
+    }
+    busy.current = true
     setSavingId(set.id)
     try {
-      await updateSet(supabase, set.id, {
-        completed,
-        ...(completed ? { weight_kg: parseWeight(draft.weight), reps: parseReps(draft.reps) } : {}),
-      })
+      await updateSet(supabase, set.id, { completed, ...entry })
       setDrafts(({ [set.id]: _saved, ...rest }) => rest)
       // Hareketin son seti de bittiyse seçim bırakılır, kart sıradakine geçer.
       if (completed && group.sets.every((s) => s.id === set.id || s.completed)) setFocusId(null)
     } catch {
       Alert.alert(t.error, t.wk_err_save_set)
     } finally {
+      busy.current = false
       setSavingId(null)
+    }
+  }
+
+  async function deleteSet(set: WorkoutSet) {
+    if (busy.current) return
+    busy.current = true
+    try {
+      await removeSet(supabase, set.id)
+    } catch {
+      Alert.alert(t.error, t.wk_err_remove_set)
+    } finally {
+      busy.current = false
     }
   }
 
@@ -166,7 +174,7 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
                 <TouchableOpacity onPress={() => void toggleSet(focused, set)} disabled={savingId !== null} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name={set.completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={32} color={set.completed ? palette.success : colors.textSubtle} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => void removeSet(supabase, set.id)} hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}>
+                <TouchableOpacity onPress={() => void deleteSet(set)} hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}>
                   <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
                 </TouchableOpacity>
               </View>

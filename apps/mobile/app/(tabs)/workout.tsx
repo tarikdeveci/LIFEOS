@@ -5,7 +5,7 @@ import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
   WEEKDAY_ORDER, equipmentLabel, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
-  missingEquipment, nextSlotTime, planProgram, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+  missingEquipment, nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, EquipmentKey, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
@@ -385,17 +385,7 @@ export default function WorkoutScreen() {
       })
 
       // Tek bir bulk insert — eskiden her set ayrı istekti (15+ round-trip)
-      const rows = dayExercises.flatMap((ex) => {
-        const setCount = Math.min(12, Math.max(1, ex.sets ?? 3))  // bozuk program datasına karşı sınır
-        return Array.from({ length: setCount }, (_, i) => ({
-          workout_id: workout.id,
-          exercise_id: ex.exercise_id,
-          set_number: i + 1,
-          reps: ex.reps ?? 10,
-          rest_seconds: ex.rest_seconds,
-        }))
-      })
-      await addSets(supabase, workout.id, rows)
+      await addSets(supabase, workout.id, programDaySetRows(workout.id, dayExercises, Date.now()))
       await fetchHistory(supabase, userId)
       setTab('today')
     } catch {

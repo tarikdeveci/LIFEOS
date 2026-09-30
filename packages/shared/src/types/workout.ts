@@ -103,6 +103,8 @@ export interface CreateWorkoutSetInput {
   notes?: string
   /** Varsayılan false; geçmiş kayıtlar tamamlanmış olarak yazılır. */
   completed?: boolean
+  /** Toplu eklemede sırayı korumak için; verilmezse veritabanı now() yazar. */
+  created_at?: string
 }
 
 export interface UpdateWorkoutSetInput {
