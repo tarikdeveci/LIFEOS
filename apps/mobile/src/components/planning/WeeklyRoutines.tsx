@@ -28,7 +28,10 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   useEffect(() => { void fetchRoutines(supabase, userId) }, [fetchRoutines, userId])
 
   const names = t.routines_day_names.split(',')
+  // Haftanın akışıyla oku: ilk günü ve saate göre; günü olmayan alışkanlıklar sonda.
+  const firstDay = (r: Routine) => Math.min(...r.days_of_week.map((d) => WEEKDAY_ORDER.indexOf(d)), 7)
   const active = routines.filter((r) => r.is_active)
+    .sort((a, b) => firstDay(a) - firstDay(b) || (a.start_time ?? '').localeCompare(b.start_time ?? ''))
   const open = (r: Routine | null) => { setEditing(r); setSheetOpen(true) }
 
   const describe = (r: Routine): string => {
@@ -52,7 +55,7 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   }
 
   return (
-    <GlassCard style={{ marginTop: spacing[5] }}>
+    <GlassCard style={{ marginBottom: spacing[4] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[2] }}>
         <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.routines_title}</Text>
         <TouchableOpacity onPress={() => open(null)} accessibilityLabel={t.routines_add}

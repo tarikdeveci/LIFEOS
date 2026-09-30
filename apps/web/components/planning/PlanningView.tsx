@@ -22,6 +22,7 @@ import { DayTimeline } from '@/components/planning/DayTimeline'
 import { WeekView } from '@/components/planning/WeekView'
 import { MonthView } from '@/components/planning/MonthView'
 import { GoalsPanel } from '@/components/planning/GoalsPanel'
+import { DayStartCard } from '@/components/planning/DayStartCard'
 import { FlexPool } from '@/components/planning/FlexPool'
 import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
 import { HabitsToday } from '@/components/planning/HabitsToday'
@@ -39,15 +40,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 
-const ENERGY_EMOJIS = ['😴', '😐', '🙂', '😊', '🔥'] as const
-
 interface PlanningViewProps { userId: string }
 
 export function PlanningView({ userId }: PlanningViewProps) {
   const AI_BUFFER_MINUTES = 15
   const {
-    date, timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy, loading,
-    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel, completeRitual,
+    date, timeBlocks, flexTasks, carryoverTasks, busy, loading,
+    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone,
   } = usePlanningStore()
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
@@ -67,14 +66,6 @@ export function PlanningView({ userId }: PlanningViewProps) {
   useEffect(() => {
     if (freePlansUsedUp) void track(supabase, userId, 'paywall_view', { source: 'free_limit' })
   }, [freePlansUsedUp, userId])
-
-  const ENERGY_LEVELS = [
-    { value: 1, emoji: ENERGY_EMOJIS[0], label: t.dash_energy_low },
-    { value: 2, emoji: ENERGY_EMOJIS[1], label: t.dash_energy_tired },
-    { value: 3, emoji: ENERGY_EMOJIS[2], label: t.dash_energy_ok },
-    { value: 4, emoji: ENERGY_EMOJIS[3], label: t.dash_energy_good },
-    { value: 5, emoji: ENERGY_EMOJIS[4], label: t.dash_energy_great },
-  ] as const
 
   // View mode
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day')
@@ -477,7 +468,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
         {viewMode === 'week' && (
           <>
             <WeekView key={routinesVersion} userId={userId} initialDate={date} onDayClick={(d) => { setViewMode('day'); void fetchDayData(supabase, userId, d) }} />
-            <WeeklyRoutines userId={userId} onChanged={refreshAfterRoutineChange} />
+            <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+              <GoalsPanel userId={userId} />
+              <WeeklyRoutines userId={userId} onChanged={refreshAfterRoutineChange} />
+            </div>
           </>
         )}
 
@@ -487,21 +481,6 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
         {viewMode === 'day' && (
           <>
-            {dailyPlan && !dailyPlan.energy_level && (
-              <div className="mb-4 rounded-2xl border border-accent/20 bg-accent/5 p-4">
-                <p className="mb-3 text-sm font-medium text-primary">{t.plan_energy_q}</p>
-                <div className="flex gap-2">
-                  {ENERGY_LEVELS.map((level) => (
-                    <button key={level.value} onClick={() => void setEnergyLevel(supabase, level.value as 1|2|3|4|5)}
-                      className="flex flex-col items-center gap-1 rounded-xl border border-border px-4 py-2 hover:border-accent hover:bg-accent/5">
-                      <span className="text-xl">{level.emoji}</span>
-                      <span className="text-[10px] text-muted">{level.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {loading ? (
               <div className="flex items-center justify-center py-24">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -522,24 +501,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       {/* Right panel — only in day mode */}
       {viewMode === 'day' && (
         <div className="col-span-4 space-y-4">
-          {dailyPlan?.energy_level && (
-            <div className="glass rounded-2xl p-4">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{ENERGY_LEVELS.find((e) => e.value === dailyPlan.energy_level)?.emoji}</span>
-                <span className="text-sm font-medium text-primary">{t.dash_energy}: {ENERGY_LEVELS.find((e) => e.value === dailyPlan.energy_level)?.label}</span>
-              </div>
-            </div>
-          )}
-
-          {isToday && dailyPlan && !dailyPlan.ritual_completed_at && (
-            <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4">
-              <p className="mb-3 text-sm font-medium text-primary">{t.ritual_banner}</p>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => setRitualOpen(true)}>{t.ritual_start}</Button>
-                <Button size="sm" variant="ghost" onClick={() => void completeRitual(supabase)}>{t.ritual_skip}</Button>
-              </div>
-            </div>
-          )}
+          <DayStartCard isToday={isToday} onStartRitual={() => setRitualOpen(true)} />
 
           <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} busy={busy} />
 
@@ -568,9 +530,6 @@ export function PlanningView({ userId }: PlanningViewProps) {
           <CarryoverList tasks={[...carryoverTasks, ...carriedToday]}
             onOpen={(task) => { setSelectedTask(task); setDrawerOpen(true) }}
             onChanged={() => void fetchDayData(supabase, userId, date)} />
-
-          {/* Haftalık Hedefler */}
-          <GoalsPanel userId={userId} />
 
           {/* Agentic AI Chat */}
           <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-lg shadow-indigo-900/10">
