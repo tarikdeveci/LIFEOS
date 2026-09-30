@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  habitDoneDays,
   habitWeekProgress,
   habitWeekStreak,
   isRoutineDay,
@@ -64,6 +65,17 @@ test('yaz saati geçişi haftayı kaydırmaz', () => {
 test('alışkanlık: sadece bu haftanın tekil günleri sayılır', () => {
   const p = habitWeekProgress(['2026-09-27', '2026-09-28', '2026-09-28', '2026-10-01'], 3, '2026-10-01')
   assert.deepEqual(p, { done: 2, target: 3, met: false })
+})
+
+test('günde N kez: sayaç hedefe ulaşmayan gün sayılmaz, sayaçsızda tek işaret yeter', () => {
+  const days = [
+    { completed_on: '2026-09-28', count: 5 },
+    { completed_on: '2026-09-29', count: 2 },
+    { completed_on: '2026-09-30', count: 6 },
+  ]
+  assert.deepEqual(habitDoneDays(days, 5), ['2026-09-28', '2026-09-30'])
+  assert.deepEqual(habitDoneDays(days, null), ['2026-09-28', '2026-09-29', '2026-09-30'])
+  assert.deepEqual(habitWeekProgress(habitDoneDays(days, 5), 7, '2026-09-30'), { done: 2, target: 7, met: false })
 })
 
 test('alışkanlık serisi: bitmemiş hafta seriyi bozmaz, kaçırılan hafta bozar', () => {

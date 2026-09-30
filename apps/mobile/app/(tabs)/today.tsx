@@ -153,7 +153,7 @@ export default function TodayScreen() {
           <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
             <StatCard label={t.today_pending} value={todayTasks.length} color={palette.accent} />
             <StatCard label={t.today_done_count} value={doneTasks} color={palette.success} />
-            <StatCard label={t.today_planned_hours} value={`${plannedHours}s`} color={palette.warning} />
+            <StatCard label={t.today_planned_hours} value={`${plannedHours}${lang === 'en' ? 'h' : 's'}`} color={palette.warning} />
           </View>
           {todayTasks.slice(0, 3).map((task) => (
             <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}` as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}>
@@ -213,7 +213,7 @@ export default function TodayScreen() {
                     {block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}
                     {isActive ? ` · ${formatDuration(timing.remainingMinutes, lang)} ${t.plan_remaining}` : ''}
                     {timing.phase === 'upcoming' && block.id === nextBlockId
-                      ? ` · ${formatDuration(timing.minutesUntilStart, lang)} ${t.plan_starts_in}`
+                      ? ` · ${t.plan_starts_in.replace('{d}', formatDuration(timing.minutesUntilStart, lang))}`
                       : ''}
                   </Text>
                 </View>

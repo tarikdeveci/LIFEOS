@@ -81,7 +81,7 @@ export function NowCard({ position, blockColors, blockLabels, onJumpToNow, child
             {label(nextBlock)}
           </Text>
           <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-            {formatDuration(nextTiming.minutesUntilStart, lang)} {t.plan_starts_in}
+            {t.plan_starts_in.replace('{d}', formatDuration(nextTiming.minutesUntilStart, lang))}
           </Text>
         </View>
       ) : null}

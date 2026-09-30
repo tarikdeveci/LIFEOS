@@ -6,6 +6,7 @@ import type { GoalCountMode } from '@lifeos/shared'
 import { goalPeriodStart, goalTreeProgress, todayDate, useGoalStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { CollapsibleTitle } from '@/src/components/planning/CollapsibleTitle'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -18,7 +19,10 @@ interface Props { userId: string }
 interface Draft { title: string; target: string; unit: string; tags: string; countMode: GoalCountMode }
 const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode: 'tasks' }
 
-/** Bu haftanın hedefleri ve ilerlemesi. Ay ve çeyrek hedefleri web'de düzenlenir; burada sadece hafta. */
+/**
+ * Bu haftanın hedefleri ve ilerlemesi. Ay ve çeyrek hedefleri web'de düzenlenir; burada sadece hafta.
+ * Kapalı başlar: haftada bir bakılan şey günlük akışı uzatmasın.
+ */
 export function GoalsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
@@ -26,6 +30,7 @@ export function GoalsCard({ userId }: Props) {
   const [sheet, setSheet] = useState(false)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState(false)
   const week = goalPeriodStart('week', todayDate())
 
   // Sekmeye her dönüşte: başka sekmede tamamlanan bağlı görev ilerlemeye yansısın.
@@ -33,6 +38,10 @@ export function GoalsCard({ userId }: Props) {
 
   const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
   const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')
+  const isDone = (g: (typeof weekly)[number]) => (progress.get(g.id)?.pct ?? 0) >= 100 || g.status === 'done'
+  const summary = weekly.length === 0
+    ? t.goals_none_yet
+    : t.goals_summary.replace('{done}', String(weekly.filter(isDone).length)).replace('{n}', String(weekly.length))
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
 
   const save = async () => {
@@ -73,27 +82,22 @@ export function GoalsCard({ userId }: Props) {
   })
 
   return (
-    <GlassCard style={{ marginBottom: spacing[4] }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing[3] }}>
-        <Text style={{ flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.goals_title}</Text>
-        <TouchableOpacity onPress={() => setSheet(true)} accessibilityLabel={t.goals_add}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="add" size={18} color={palette.accent} />
-        </TouchableOpacity>
-      </View>
+    <GlassCard style={{ marginBottom: spacing[3] }}>
+      <CollapsibleTitle title={t.goals_title} summary={summary} open={open} onToggle={() => setOpen((v) => !v)}
+        onAdd={() => setSheet(true)} addLabel={t.goals_add} />
 
-      {weekly.length === 0 && (
+      {open && weekly.length === 0 && (
         <TouchableOpacity onPress={() => setSheet(true)} style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
           <Ionicons name="flag-outline" size={26} color={colors.textSubtle} />
           <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.goals_empty}</Text>
         </TouchableOpacity>
       )}
 
-      <View style={{ gap: spacing[3] }}>
+      {open && <View style={{ gap: spacing[3] }}>
         {weekly.map((g) => {
           const p = progress.get(g.id)
           const pct = p?.pct ?? 0
-          const done = pct >= 100 || g.status === 'done'
+          const done = isDone(g)
           const tint = done ? palette.success : palette.accent
           return (
             <TouchableOpacity key={g.id} onLongPress={() => confirmDelete(g.id)} delayLongPress={400}
@@ -115,7 +119,7 @@ export function GoalsCard({ userId }: Props) {
             </TouchableOpacity>
           )
         })}
-      </View>
+      </View>}
 
       <BottomSheet visible={sheet} onClose={() => setSheet(false)} title={t.goals_add} scrollable>
         <View style={{ gap: spacing[3] }}>

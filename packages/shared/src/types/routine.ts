@@ -5,7 +5,8 @@ import type { BlockType } from './planning'
 
 /**
  * block: saatli takvim bloğu. task: o güne planlanan görev (saat verilirse bağlı blok da).
- * habit: "haftada N kez" esnek alışkanlık; örnek üretilmez, tamamlama işaretlenir.
+ * habit: esnek alışkanlık; örnek üretilmez, tamamlama işaretlenir. Hedef "haftada N gün"
+ * ya da "günde N kez" (times_per_day).
  */
 export type RoutineKind = 'block' | 'task' | 'habit'
 
@@ -21,6 +22,7 @@ export interface Routine {
   days_of_week: Weekday[]
   every_n_weeks: number        // 1-4
   times_per_week: number | null // sadece habit
+  times_per_day: number | null  // sadece habit; NULL = günde tek işaret
   start_time: string | null     // 'HH:MM:SS'
   end_time: string | null
   estimated_minutes: number | null
@@ -41,6 +43,8 @@ export interface RoutineCompletion {
   routine_id: string
   user_id: string
   completed_on: string
+  /** O günkü işaret sayısı (günde N kez alışkanlıkta sayaç). */
+  count: number
   created_at: string
 }
 
@@ -51,6 +55,7 @@ export interface CreateRoutineInput {
   days_of_week?: Weekday[]
   every_n_weeks?: number
   times_per_week?: number
+  times_per_day?: number | null
   start_time?: string
   end_time?: string
   estimated_minutes?: number

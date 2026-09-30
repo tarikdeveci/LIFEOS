@@ -20,6 +20,8 @@ interface Props {
   onClose: () => void
   onSave: (input: CreateRoutineInput) => Promise<void>
   onDelete?: () => Promise<void>
+  /** Yeni rutinde seçili gelen tür (alışkanlık kartından açılınca 'habit'). */
+  defaultKind?: RoutineKind
 }
 
 interface FormState {
@@ -27,18 +29,23 @@ interface FormState {
   kind: RoutineKind
   days: Weekday[]
   biweekly: boolean
+  /** Alışkanlık hedefi: günde N kez ya da haftada N gün. */
+  habitMode: 'daily' | 'weekly'
   timesPerWeek: string
+  timesPerDay: string
   start: string
   end: string
 }
 
-function toForm(r: Routine | null): FormState {
+function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
   return {
     title: r?.title ?? '',
-    kind: r?.kind ?? 'block',
+    kind: r?.kind ?? defaultKind,
     days: r?.days_of_week ?? [new Date().getDay() as Weekday],
     biweekly: (r?.every_n_weeks ?? 1) === 2,
+    habitMode: r && r.kind === 'habit' && r.times_per_day === null && r.times_per_week !== 7 ? 'weekly' : 'daily',
     timesPerWeek: String(r?.times_per_week ?? 3),
+    timesPerDay: String(r?.times_per_day ?? 1),
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
   }
@@ -49,8 +56,13 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
   const title = f.title.trim()
   if (!title) return 'Ad gerekli'
   if (f.kind === 'habit') {
-    const n = Math.min(7, Math.max(1, Number(f.timesPerWeek) || 1))
-    return { title, kind: 'habit', days_of_week: [], times_per_week: n }
+    if (f.habitMode === 'weekly') {
+      const n = Math.min(7, Math.max(1, Number(f.timesPerWeek) || 1))
+      return { title, kind: 'habit', days_of_week: [], times_per_week: n, times_per_day: null }
+    }
+    // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
+    const n = Math.min(20, Math.max(1, Number(f.timesPerDay) || 1))
+    return { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: n > 1 ? n : null }
   }
   if (f.days.length === 0) return 'En az bir gün seç'
   const hasTime = f.start !== '' || f.end !== ''
@@ -69,13 +81,13 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
   }
 }
 
-export function RoutineSheet({ visible, routine, onClose, onSave, onDelete }: Props) {
+export function RoutineSheet({ visible, routine, onClose, onSave, onDelete, defaultKind = 'block' }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const [form, setForm] = useState<FormState>(() => toForm(routine))
+  const [form, setForm] = useState<FormState>(() => toForm(routine, defaultKind))
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { if (visible) setForm(toForm(routine)) }, [visible, routine])
+  useEffect(() => { if (visible) setForm(toForm(routine, defaultKind)) }, [visible, routine, defaultKind])
 
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
   const names = t.routines_day_names.split(',')
@@ -132,8 +144,22 @@ export function RoutineSheet({ visible, routine, onClose, onSave, onDelete }: Pr
         </View>
 
         {form.kind === 'habit' ? (
-          <Input label={t.routines_times_per_week} value={form.timesPerWeek} keyboardType="number-pad"
-            onChangeText={(v) => patch({ timesPerWeek: v.replace(/\D/g, '').slice(0, 1) })} />
+          <>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              {(['daily', 'weekly'] as const).map((m) => (
+                <TouchableOpacity key={m} onPress={() => patch({ habitMode: m })} style={chip(form.habitMode === m)}>
+                  <Text style={chipText(form.habitMode === m)}>{m === 'daily' ? t.routines_habit_daily : t.routines_habit_weekly}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {form.habitMode === 'daily' ? (
+              <Input label={t.routines_times_per_day} value={form.timesPerDay} keyboardType="number-pad"
+                onChangeText={(v) => patch({ timesPerDay: v.replace(/\D/g, '').slice(0, 2) })} />
+            ) : (
+              <Input label={t.routines_times_per_week} value={form.timesPerWeek} keyboardType="number-pad"
+                onChangeText={(v) => patch({ timesPerWeek: v.replace(/\D/g, '').slice(0, 1) })} />
+            )}
+          </>
         ) : (
           <>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted }}>{t.routines_days}</Text>

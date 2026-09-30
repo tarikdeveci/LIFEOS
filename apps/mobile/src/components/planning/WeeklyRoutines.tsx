@@ -5,12 +5,11 @@ import type { CreateRoutineInput, Routine } from '@lifeos/shared'
 import { useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { CollapsibleTitle } from '@/src/components/planning/CollapsibleTitle'
 import { RoutineSheet, WEEKDAY_ORDER } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
-
-const COLLAPSED = 3
 
 interface Props {
   userId: string
@@ -21,7 +20,7 @@ interface Props {
 
 /**
  * "Haftam": rutin şablonları. Örnekleri sunucu üretir, burası sadece şablonu düzenler.
- * İlk üçü görünür, gerisi "Tümünü göster" ile açılır.
+ * Bir ayar listesi olduğu için kapalı başlar; rutinler günde zaten blok olarak görünür.
  */
 export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const { colors } = useTheme()
@@ -41,7 +40,10 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const open = (r: Routine | null) => { setEditing(r); setSheetOpen(true) }
 
   const describe = (r: Routine): string => {
-    if (r.kind === 'habit') return t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
+    if (r.kind === 'habit') {
+      if (r.times_per_day) return t.routines_habit_daily_target.replace('{n}', String(r.times_per_day))
+      return r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
+    }
     const days = WEEKDAY_ORDER.filter((d) => r.days_of_week.includes(d)).map((d) => names[d]).join(' ')
     const time = r.start_time ? ` · ${r.start_time.slice(0, 5)}` : ''
     const every = r.every_n_weeks > 1 ? ` · ${t.routines_biweekly}` : ''
@@ -60,20 +62,15 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
     onChanged()
   }
 
-  const shown = expanded ? active : active.slice(0, COLLAPSED)
   const kindIcon = (r: Routine) => r.kind === 'habit' ? 'leaf-outline' : r.kind === 'task' ? 'checkbox-outline' : 'repeat-outline'
 
   return (
-    <GlassCard style={{ marginBottom: spacing[4] }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing[2] }}>
-        <Text style={{ flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.routines_title}</Text>
-        <TouchableOpacity onPress={() => open(null)} accessibilityLabel={t.routines_add}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="add" size={18} color={palette.accent} />
-        </TouchableOpacity>
-      </View>
+    <GlassCard style={{ marginBottom: spacing[3] }}>
+      <CollapsibleTitle title={t.routines_title} open={expanded} onToggle={() => setExpanded((v) => !v)}
+        summary={active.length === 0 ? t.routines_none_yet : t.routines_count.replace('{n}', String(active.length))}
+        onAdd={() => open(null)} addLabel={t.routines_add} />
 
-      {!loading && active.length === 0 ? (
+      {expanded && (!loading && active.length === 0 ? (
         <TouchableOpacity onPress={() => open(null)} style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
           <Ionicons name="repeat-outline" size={26} color={colors.textSubtle} />
           <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.routines_empty}</Text>
@@ -81,7 +78,7 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
         </TouchableOpacity>
       ) : (
         <View>
-          {shown.map((r, i) => {
+          {active.map((r, i) => {
             const color = r.kind === 'habit' ? palette.accent : (r.color ?? blockColors[r.block_type] ?? palette.accent)
             return (
               <TouchableOpacity key={r.id} onPress={() => open(r)}
@@ -97,17 +94,8 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
               </TouchableOpacity>
             )
           })}
-          {active.length > COLLAPSED && (
-            <TouchableOpacity onPress={() => setExpanded((v) => !v)} hitSlop={8}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: spacing[3], borderTopWidth: 1, borderTopColor: colors.border }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>
-                {expanded ? t.routines_show_less : t.routines_show_all.replace('{n}', String(active.length))}
-              </Text>
-              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={palette.accent} />
-            </TouchableOpacity>
-          )}
         </View>
-      )}
+      ))}
 
       <RoutineSheet visible={sheetOpen} routine={editing}
         onClose={() => setSheetOpen(false)}

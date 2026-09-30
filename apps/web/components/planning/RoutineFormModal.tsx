@@ -16,6 +16,8 @@ interface RoutineFormModalProps {
   onClose: () => void
   onSave: (input: CreateRoutineInput) => Promise<void>
   onDelete?: () => Promise<void>
+  /** Yeni rutinde seçili gelen tür (alışkanlık kartından açılınca 'habit'). */
+  defaultKind?: RoutineKind
 }
 
 interface FormState {
@@ -24,20 +26,25 @@ interface FormState {
   blockType: BlockType
   days: Weekday[]
   biweekly: boolean
+  /** Alışkanlık hedefi: günde N kez ya da haftada N gün. */
+  habitMode: 'daily' | 'weekly'
   timesPerWeek: number
+  timesPerDay: number
   start: string
   end: string
   endsOn: string
 }
 
-function toForm(r: Routine | null): FormState {
+function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
   return {
     title: r?.title ?? '',
-    kind: r?.kind ?? 'block',
+    kind: r?.kind ?? defaultKind,
     blockType: r?.block_type ?? 'focus',
     days: r?.days_of_week ?? [new Date().getDay() as Weekday],
     biweekly: (r?.every_n_weeks ?? 1) === 2,
+    habitMode: r && r.kind === 'habit' && r.times_per_day === null && r.times_per_week !== 7 ? 'weekly' : 'daily',
     timesPerWeek: r?.times_per_week ?? 3,
+    timesPerDay: r?.times_per_day ?? 1,
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
     endsOn: r?.ends_on ?? '',
@@ -49,7 +56,10 @@ function toInput(f: FormState, isNew: boolean): CreateRoutineInput | string {
   const title = f.title.trim()
   if (!title) return 'Ad gerekli'
   if (f.kind === 'habit') {
-    return { title, kind: 'habit', days_of_week: [], times_per_week: f.timesPerWeek, ends_on: f.endsOn || null }
+    // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
+    return f.habitMode === 'weekly'
+      ? { title, kind: 'habit', days_of_week: [], times_per_week: f.timesPerWeek, times_per_day: null, ends_on: f.endsOn || null }
+      : { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: f.timesPerDay > 1 ? f.timesPerDay : null, ends_on: f.endsOn || null }
   }
   if (f.days.length === 0) return 'En az bir gün seç'
   const hasTime = f.start !== '' && f.end !== ''
@@ -69,15 +79,15 @@ function toInput(f: FormState, isNew: boolean): CreateRoutineInput | string {
   }
 }
 
-export function RoutineFormModal({ open, routine, onClose, onSave, onDelete }: RoutineFormModalProps) {
+export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, defaultKind = 'block' }: RoutineFormModalProps) {
   const { t } = useLang()
-  const [form, setForm] = useState<FormState>(() => toForm(routine))
+  const [form, setForm] = useState<FormState>(() => toForm(routine, defaultKind))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (open) { setForm(toForm(routine)); setError(null) }
-  }, [open, routine])
+    if (open) { setForm(toForm(routine, defaultKind)); setError(null) }
+  }, [open, routine, defaultKind])
 
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
 
@@ -119,8 +129,23 @@ export function RoutineFormModal({ open, routine, onClose, onSave, onDelete }: R
         </div>
 
         {form.kind === 'habit' ? (
-          <Input label={t.routines_times_per_week} type="number" min={1} max={7} value={form.timesPerWeek}
-            onChange={(e) => patch({ timesPerWeek: Math.min(7, Math.max(1, Number(e.target.value) || 1)) })} />
+          <>
+            <div className="flex gap-1 rounded-xl bg-background p-1">
+              {(['daily', 'weekly'] as const).map((m) => (
+                <button key={m} type="button" onClick={() => patch({ habitMode: m })}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-all ${form.habitMode === m ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'}`}>
+                  {m === 'daily' ? t.routines_habit_daily : t.routines_habit_weekly}
+                </button>
+              ))}
+            </div>
+            {form.habitMode === 'daily' ? (
+              <Input label={t.routines_times_per_day} type="number" min={1} max={20} value={form.timesPerDay}
+                onChange={(e) => patch({ timesPerDay: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} />
+            ) : (
+              <Input label={t.routines_times_per_week} type="number" min={1} max={7} value={form.timesPerWeek}
+                onChange={(e) => patch({ timesPerWeek: Math.min(7, Math.max(1, Number(e.target.value) || 1)) })} />
+            )}
+          </>
         ) : (
           <>
             <div>

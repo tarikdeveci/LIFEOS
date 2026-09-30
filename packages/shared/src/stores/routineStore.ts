@@ -12,7 +12,7 @@ import {
   updateRoutineSeries,
   deleteRoutine,
   getRoutineCompletions,
-  setRoutineCompletion,
+  setHabitCount as writeHabitCount,
 } from '../supabase/routines'
 import { todayDate, shiftIsoDate } from '../utils/date'
 import { mondayOf } from '../utils/routine'
@@ -37,12 +37,13 @@ interface RoutineState {
     fromDate?: string,
   ) => Promise<void>
   removeRoutine: (supabase: Supabase, routineId: string) => Promise<void>
-  toggleHabit: (
+  /** O günkü sayacı yazar (0 = işaret yok). İyimser: önce ekran, hata olursa geri alınır. */
+  setHabitCount: (
     supabase: Supabase,
     userId: string,
     routineId: string,
     day: string,
-    completed: boolean,
+    count: number,
   ) => Promise<void>
 
   // Realtime handler (routines tablosu)
@@ -113,16 +114,16 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
     }
   },
 
-  toggleHabit: async (supabase, userId, routineId, day, completed) => {
+  setHabitCount: async (supabase, userId, routineId, day, count) => {
     const previous = get().completions
     const without = previous.filter((c) => !(c.routine_id === routineId && c.completed_on === day))
     set({
-      completions: completed
-        ? [...without, { routine_id: routineId, user_id: userId, completed_on: day, created_at: new Date().toISOString() }]
+      completions: count > 0
+        ? [...without, { routine_id: routineId, user_id: userId, completed_on: day, count, created_at: new Date().toISOString() }]
         : without,
     })
     try {
-      await setRoutineCompletion(supabase, userId, routineId, day, completed)
+      await writeHabitCount(supabase, userId, routineId, day, count)
     } catch (err) {
       set({ completions: previous })
       throw err

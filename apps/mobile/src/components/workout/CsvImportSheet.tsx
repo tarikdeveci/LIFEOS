@@ -9,6 +9,7 @@ import { importCsvWorkouts, type CsvImportOutcome } from '@lifeos/shared/supabas
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { supabase } from '../../lib/supabase'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
@@ -32,6 +33,7 @@ const SOURCE_LABELS: Record<CsvParseResult['source'], string> = {
  */
 export function CsvImportSheet({ visible, onClose, userId }: Props) {
   const { colors } = useTheme()
+  const { t, lang } = useLang()
   const exercises = useWorkoutStore((s) => s.exercises)
   const fetchLibrary = useWorkoutStore((s) => s.fetchLibrary)
   const fetchHistory = useWorkoutStore((s) => s.fetchHistory)
@@ -61,19 +63,19 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
       if (result.canceled) return
       const asset = result.assets[0]
       if (!asset || !asset.name.toLowerCase().endsWith('.csv')) {
-        Alert.alert('Hata', 'Lütfen bir .csv dosyası seç.')
+        Alert.alert(t.error, t.wk_csv_pick_csv)
         return
       }
       const text = await new File(asset.uri).text()
       const result2 = parseImportCsv(text)
       if (!result2 || result2.workouts.length === 0) {
-        Alert.alert('Hata', 'Dosya tanınmadı. Strong, Hevy veya FitNotes dışa aktarımı olduğundan emin ol.')
+        Alert.alert(t.error, t.wk_csv_unknown)
         return
       }
       if (exercises.length === 0) await fetchLibrary(supabase)
       setParsed(result2)
     } catch (err) {
-      Alert.alert('Hata', err instanceof Error ? err.message : 'Dosya okunamadı')
+      Alert.alert(t.error, err instanceof Error ? err.message : t.wk_csv_read_error)
     } finally {
       setPicking(false)
     }
@@ -89,7 +91,7 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
       await Promise.all([fetchHistory(supabase, userId), fetchAnalytics(supabase, userId)])
       setOutcome(result)
     } catch (err) {
-      Alert.alert('Hata', err instanceof Error ? err.message : 'İçe aktarma başarısız oldu')
+      Alert.alert(t.error, err instanceof Error ? err.message : t.wk_csv_import_error)
     } finally {
       setImporting(false)
     }
@@ -104,21 +106,21 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
     for (const name of names) {
       const match = findExerciseMatch(name, exercises)
       if (!match) unmatched.push(name)
-      else if (match.approximate) approx.push(`${name} → ${match.exercise.name}`)
+      else if (match.approximate) approx.push(`${name} → ${lang === 'en' ? (match.exercise.name_en ?? match.exercise.name) : match.exercise.name}`)
     }
     return { unmatchedNames: unmatched, approximate: approx }
-  }, [parsed, exercises])
+  }, [parsed, exercises, lang])
 
   return (
-    <BottomSheet visible={visible} onClose={handleClose} title="Antrenman Verisi İçe Aktar" scrollable>
+    <BottomSheet visible={visible} onClose={handleClose} title={t.wk_csv_title} scrollable>
       <View style={{ gap: spacing[4] }}>
         {!parsed && !outcome && (
           <>
             <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>
-              Strong, Hevy veya FitNotes uygulamasından dışa aktardığın .csv dosyasını seç. Antrenmanların ve setlerin buraya aktarılır.
+              {t.wk_csv_intro}
             </Text>
             <Button
-              label={picking ? 'Okunuyor...' : 'Dosya Seç'}
+              label={picking ? t.wk_csv_reading : t.wk_csv_choose}
               onPress={() => void handlePick()}
               loading={picking}
               fullWidth
@@ -129,13 +131,13 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
         {parsed && !outcome && (
           <>
             <View style={{ gap: spacing[2], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
-              <Row label="Kaynak" value={SOURCE_LABELS[parsed.source]} />
-              <Row label="Antrenman günü" value={String(parsed.workouts.length)} />
-              <Row label="Set sayısı" value={String(totalSets)} />
-              {parsed.warmupSets > 0 && <Row label="Isınma seti (alınmayacak)" value={String(parsed.warmupSets)} />}
-              {parsed.skippedRows > 0 && <Row label="Atlanan satır" value={String(parsed.skippedRows)} color={palette.warning} />}
+              <Row label={t.wk_csv_source} value={SOURCE_LABELS[parsed.source]} />
+              <Row label={t.wk_csv_days} value={String(parsed.workouts.length)} />
+              <Row label={t.wk_csv_sets} value={String(totalSets)} />
+              {parsed.warmupSets > 0 && <Row label={t.wk_csv_warmups} value={String(parsed.warmupSets)} />}
+              {parsed.skippedRows > 0 && <Row label={t.wk_csv_skipped_rows} value={String(parsed.skippedRows)} color={palette.warning} />}
               {unmatchedNames.length > 0 && (
-                <Row label="Yeni egzersiz" value={`${unmatchedNames.length} (otomatik oluşturulacak)`} color={palette.info} />
+                <Row label={t.wk_csv_new_exercises} value={t.wk_csv_auto_created.replace('{n}', String(unmatchedNames.length))} color={palette.info} />
               )}
             </View>
 
@@ -143,7 +145,7 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[2] }}>
                 <Ionicons name="information-circle-outline" size={16} color={colors.textSubtle} style={{ marginTop: 1 }} />
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, flex: 1 }}>
-                  Katalogda eşleşmeyen isimler kendi egzersizin olarak eklenir: {unmatchedNames.slice(0, 5).join(', ')}
+                  {t.wk_csv_unmatched.replace('{names}', unmatchedNames.slice(0, 5).join(', '))}
                   {unmatchedNames.length > 5 ? '…' : ''}
                 </Text>
               </View>
@@ -153,23 +155,23 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing[2] }}>
                 <Ionicons name="git-compare-outline" size={16} color={colors.textSubtle} style={{ marginTop: 1 }} />
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, flex: 1 }}>
-                  Yakın adla eşleşenler: {approximate.slice(0, 5).join(', ')}
-                  {approximate.length > 5 ? ` ve ${approximate.length - 5} tane daha` : ''}
+                  {t.wk_csv_approx.replace('{names}', approximate.slice(0, 5).join(', '))}
+                  {approximate.length > 5 ? t.wk_csv_more.replace('{n}', String(approximate.length - 5)) : ''}
                 </Text>
               </View>
             )}
 
             <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-              Zaten antrenman kaydın olan günler atlanır, üzerine yazılmaz.
+              {t.wk_csv_existing_days}
             </Text>
 
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
               <View style={{ flex: 1 }}>
-                <Button label="Vazgeç" variant="secondary" onPress={reset} disabled={importing} fullWidth />
+                <Button label={t.cancel} variant="secondary" onPress={reset} disabled={importing} fullWidth />
               </View>
               <View style={{ flex: 1 }}>
                 <Button
-                  label={importing ? 'Aktarılıyor...' : 'İçe Aktar'}
+                  label={importing ? t.wk_csv_importing : t.wk_csv_import}
                   onPress={() => void handleConfirm()}
                   loading={importing}
                   fullWidth
@@ -184,18 +186,18 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
             <View style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
               <Ionicons name="checkmark-circle" size={40} color={palette.success} />
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                {outcome.workoutsImported} antrenman, {outcome.setsImported} set aktarıldı
+                {t.wk_csv_done.replace('{w}', String(outcome.workoutsImported)).replace('{s}', String(outcome.setsImported))}
               </Text>
               {outcome.exercisesCreated > 0 && (
-                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{outcome.exercisesCreated} yeni egzersiz oluşturuldu</Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{t.wk_csv_created.replace('{n}', String(outcome.exercisesCreated))}</Text>
               )}
               {outcome.daysSkipped > 0 && (
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-                  {outcome.daysSkipped} gün zaten kayıtlı olduğu için atlandı
+                  {t.wk_csv_days_skipped.replace('{n}', String(outcome.daysSkipped))}
                 </Text>
               )}
             </View>
-            <Button label="Kapat" onPress={handleClose} fullWidth />
+            <Button label={t.close} onPress={handleClose} fullWidth />
           </>
         )}
       </View>

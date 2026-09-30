@@ -34,7 +34,12 @@ export async function createRoutine(
 ): Promise<Routine> {
   const { data, error } = await supabase
     .from('routines')
-    .insert({ ...input, user_id: userId, times_per_week: input.kind === 'habit' ? input.times_per_week : null })
+    .insert({
+      ...input,
+      user_id: userId,
+      times_per_week: input.kind === 'habit' ? input.times_per_week : null,
+      times_per_day: input.kind === 'habit' ? input.times_per_day ?? null : null,
+    })
     .select()
     .single()
 
@@ -100,23 +105,23 @@ export async function getRoutineCompletions(
   return data as unknown as RoutineCompletion[]
 }
 
-/** Alışkanlığı o gün için işaretler veya işareti kaldırır. Dönüş: yeni durum. */
-export async function setRoutineCompletion(
+/** Alışkanlığın o günkü sayacını yazar; 0 işareti kaldırır. */
+export async function setHabitCount(
   supabase: Supabase,
   userId: string,
   routineId: string,
   day: string,
-  completed: boolean,
-): Promise<boolean> {
-  if (completed) {
+  count: number,
+): Promise<void> {
+  if (count > 0) {
     const { error } = await supabase
       .from('routine_completions')
       .upsert(
-        { routine_id: routineId, user_id: userId, completed_on: day },
-        { onConflict: 'routine_id,completed_on', ignoreDuplicates: true },
+        { routine_id: routineId, user_id: userId, completed_on: day, count },
+        { onConflict: 'routine_id,completed_on' },
       )
     if (error) throw error
-    return true
+    return
   }
 
   const { error } = await supabase
@@ -125,5 +130,4 @@ export async function setRoutineCompletion(
     .eq('routine_id', routineId)
     .eq('completed_on', day)
   if (error) throw error
-  return false
 }

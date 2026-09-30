@@ -40,19 +40,27 @@ interface Props {
 }
 
 const TIME_COL = 44
+// Aralıklar ve uzun bloklar süreyle orantılı yükseklik alır; tavan, 6 saatlik bir
+// boşluğun ekranı tek başına doldurmasını engeller.
+const PX_PER_MIN = 0.6
+const MAX_SPAN_PX = 150
+const MIN_GAP_MIN = 15
+const LABEL_GAP_MIN = 30
+const spanPx = (minutes: number) => Math.min(minutes * PX_PER_MIN, MAX_SPAN_PX)
 
 type Item =
-  | { kind: 'block'; start: number; block: TimeBlock; timing: BlockTiming; index: number }
-  | { kind: 'event'; start: number; event: LocalCalendarEvent }
+  | { kind: 'block'; start: number; end: number; block: TimeBlock; timing: BlockTiming; index: number }
+  | { kind: 'event'; start: number; end: number; event: LocalCalendarEvent }
 
-const eventStart = (event: LocalCalendarEvent) => {
-  const d = new Date(event.startsAt)
+const clockMinute = (iso: string) => {
+  const d = new Date(iso)
   return d.getHours() * 60 + d.getMinutes()
 }
 
 /**
  * Seçili günün programı: bloklar ve takvim etkinlikleri tek kartta, saate göre
- * sıralı bir zaman çizelgesi. Bugün boşluktaysak araya "şu an" çizgisi girer.
+ * sıralı bir zaman çizelgesi. Satırlar arası boşluk süreyle orantılı; bugün boşluktaysak
+ * araya "şu an" çizgisi girer.
  */
 export function DayBlockList({
   blocks, events, isToday, now, blockColors, blockLabels, onDelete, onToggleDone, onNowAnchorLayout, header, emptyContent,
@@ -87,9 +95,10 @@ export function DayBlockList({
   const items: Item[] = [
     ...blocks.flatMap((block, index): Item[] => {
       const timing = timings[index]
-      return timing ? [{ kind: 'block', start: timing.startMinute, block, timing, index }] : []
+      return timing ? [{ kind: 'block', start: timing.startMinute, end: timing.endMinute, block, timing, index }] : []
     }),
-    ...events.filter((e) => !e.isAllDay).map((event): Item => ({ kind: 'event', start: eventStart(event), event })),
+    ...events.filter((e) => !e.isAllDay)
+      .map((event): Item => ({ kind: 'event', start: clockMinute(event.startsAt), end: clockMinute(event.endsAt), event })),
   ].sort((a, b) => a.start - b.start)
 
   const rows: ReactNode[] = allDay.map((event) => <EventRow key={event.id} event={event} />)
@@ -98,9 +107,22 @@ export function DayBlockList({
   let nowLineDrawn = !isToday || activeIndex !== -1 || blocks.length === 0
   const nowLine = () => <NowLine key="now-line" nowMinute={nowMinute} onLayoutY={reportAnchor} />
 
-  items.forEach((item) => {
-    if (!nowLineDrawn && item.start > nowMinute) { rows.push(nowLine()); nowLineDrawn = true }
-    if (item.kind === 'event') { rows.push(<EventRow key={item.event.id} event={item.event} />); return }
+  // Önceki satırın bittiği dakika; çakışan satırlarda en geç biten esas alınır.
+  let cursor: number | null = null
+  const pushGap = (from: number | null, to: number, key: string) => {
+    if (from !== null && to - from >= MIN_GAP_MIN) rows.push(<GapRow key={key} minutes={to - from} />)
+  }
+
+  items.forEach((item, i) => {
+    if (!nowLineDrawn && item.start > nowMinute) {
+      pushGap(cursor, nowMinute, `gap-now-${i}`)
+      rows.push(nowLine())
+      nowLineDrawn = true
+      cursor = Math.max(cursor ?? nowMinute, nowMinute)
+    }
+    pushGap(cursor, item.start, `gap-${i}`)
+    cursor = Math.max(cursor ?? item.end, item.end)
+    if (item.kind === 'event') { rows.push(<EventRow key={item.event.id} event={item.event} minHeight={spanPx(item.end - item.start)} />); return }
     const { block, timing, index } = item
     rows.push(
       <BlockRow
@@ -114,10 +136,14 @@ export function DayBlockList({
         onDelete={() => onDelete(block.id)}
         onToggleDone={() => onToggleDone(block.id, !block.completed_at)}
         onLayoutY={index === activeIndex ? reportAnchor : undefined}
+        minHeight={spanPx(timing.endMinute - timing.startMinute)}
       />,
     )
   })
-  if (!nowLineDrawn) rows.push(nowLine())
+  if (!nowLineDrawn) {
+    pushGap(cursor, nowMinute, 'gap-end')
+    rows.push(nowLine())
+  }
 
   const doneCount = blocks.filter((b) => b.completed_at).length
 
@@ -137,6 +163,22 @@ export function DayBlockList({
           <View onLayout={(e) => track(listY)(e.nativeEvent.layout.y)} style={{ gap: 2 }}>{rows}</View>
         )}
       </GlassCard>
+    </View>
+  )
+}
+
+function GapRow({ minutes }: { minutes: number }) {
+  const { colors } = useTheme()
+  const { t, lang } = useLang()
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', height: Math.max(spanPx(minutes), spacing[4]) }}>
+      <View style={{ width: TIME_COL + spacing[2] }} />
+      <View style={{ width: 0, alignSelf: 'stretch', marginLeft: 1, borderLeftWidth: 1, borderStyle: 'dashed', borderColor: colors.border }} />
+      {minutes >= LABEL_GAP_MIN && (
+        <Text style={{ marginLeft: spacing[3], fontSize: fontSize.xs, color: colors.textSubtle }}>
+          {t.plan_gap_free.replace('{d}', formatDuration(minutes, lang))}
+        </Text>
+      )}
     </View>
   )
 }
@@ -166,9 +208,11 @@ interface BlockRowProps {
   onDelete: () => void
   onToggleDone: () => void
   onLayoutY?: (y: number) => void
+  /** Süreyle orantılı en küçük yükseklik. */
+  minHeight: number
 }
 
-function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onToggleDone, onLayoutY }: BlockRowProps) {
+function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onToggleDone, onLayoutY, minHeight }: BlockRowProps) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
 
@@ -183,7 +227,7 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
   if (focusMinutes > 0) meta.push(`🎯 ${formatDuration(focusMinutes, lang)}`)
   const status = isActive
     ? `${formatDuration(timing.remainingMinutes, lang)} ${t.plan_remaining}`
-    : isNext ? `${formatDuration(timing.minutesUntilStart, lang)} ${t.plan_starts_in}` : null
+    : isNext ? t.plan_starts_in.replace('{d}', formatDuration(timing.minutesUntilStart, lang)) : null
 
   const confirmDelete = () => {
     Alert.alert(t.plan_block_delete_q, block.label ?? typeLabel, [
@@ -199,7 +243,7 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
       delayLongPress={400}
       onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}
       style={{
-        flexDirection: 'row', alignItems: 'center', gap: spacing[2],
+        flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight,
         paddingVertical: spacing[3], paddingHorizontal: spacing[2], marginHorizontal: -spacing[2],
         borderRadius: radius.md, backgroundColor: isActive ? `${color}14` : 'transparent',
       }}
@@ -228,12 +272,12 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
   )
 }
 
-function EventRow({ event }: { event: LocalCalendarEvent }) {
+function EventRow({ event, minHeight = 0 }: { event: LocalCalendarEvent; minHeight?: number }) {
   const { colors } = useTheme()
   const time = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3], minHeight }}>
       <View style={{ width: TIME_COL }}>
         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>
           {event.isAllDay ? 'Tüm gün' : time(event.startsAt)}

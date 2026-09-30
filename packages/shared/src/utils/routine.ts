@@ -5,7 +5,7 @@
  * alışkanlık ilerlemesi için kullanır; gerçek satırları sunucu üretir.
  */
 
-import type { RoutineSchedule } from '../types/routine'
+import type { RoutineCompletion, RoutineSchedule } from '../types/routine'
 import { daysBetween, fromDateString, shiftIsoDate, toDateString, weekStart } from './date'
 
 /** Pazartesi başlangıçlı hafta çapası ('YYYY-MM-DD'). Postgres date_trunc('week') ile aynı. */
@@ -43,6 +43,18 @@ export interface HabitWeekProgress {
   target: number
   /** Haftalık hedef tuttu mu. Kaçırılan tek gün seriyi bozmaz, sadece hafta sayılır. */
   met: boolean
+}
+
+/**
+ * Hedefi tutan günler. Günde N kez alışkanlıkta sayaç N'ye ulaşmayan gün sayılmaz;
+ * sayaçsız alışkanlıkta tek işaret yeter.
+ */
+export function habitDoneDays(
+  completions: readonly Pick<RoutineCompletion, 'completed_on' | 'count'>[],
+  timesPerDay: number | null,
+): string[] {
+  const need = timesPerDay ?? 1
+  return completions.filter((c) => c.count >= need).map((c) => c.completed_on)
 }
 
 /** Alışkanlığın içinde bulunulan haftadaki ilerlemesi ("Bu hafta 2/3"). */

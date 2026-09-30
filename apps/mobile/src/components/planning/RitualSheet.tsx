@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import type { Task } from '@lifeos/shared'
 import { autoPlace, minutesOfDay, todayDate, usePlanningStore, useTaskStore } from '@lifeos/shared'
 import { assignTaskToDate, getBacklogTasks } from '@lifeos/shared/supabase'
@@ -11,22 +12,37 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
+const ENERGY_LEVELS = [
+  { level: 1 as const, emoji: '😴', label: 'Bitkin' },
+  { level: 2 as const, emoji: '😑', label: 'Düşük' },
+  { level: 3 as const, emoji: '😐', label: 'Orta' },
+  { level: 4 as const, emoji: '😊', label: 'İyi' },
+  { level: 5 as const, emoji: '🔥', label: 'Harika' },
+]
+
+/** Giriş adımı: enerji ve plan yolu seçimi. 0, 1, 2 ritüelin üç adımı. */
+const INTRO = -1
+
 interface Props {
   userId: string
   visible: boolean
   onClose: () => void
+  /** AI yolu seçildi; pencereyi kapatıp AI sohbetini açmak çağıranın işi. */
+  onAiPlan: () => void
+  /** Pro durumu ve kalan ücretsiz plan sayısıyla AI düğmesinin etiketi. */
+  aiLabel: string
 }
 
 /** Ritüelin durumu: adım, backlog, seçilenler, meşgul bayrağı. */
 function useRitualState(visible: boolean, userId: string) {
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(INTRO)
   const [backlog, setBacklog] = useState<Task[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!visible) return
-    setStep(0); setPicked(new Set()); setBacklog(null)
+    setStep(INTRO); setPicked(new Set()); setBacklog(null)
     void (async () => {
       try {
         const tasks = await getBacklogTasks(supabase, userId)
@@ -44,13 +60,14 @@ function useRitualState(visible: boolean, userId: string) {
 }
 
 /**
- * Sabah ritüeli (web MorningRitual ile aynı akış): dünden kalanlar, backlog'dan seç,
- * otomatik yerleştir. Bitince daily_plans.ritual_completed_at yazılır.
+ * "Günü planla": planlamanın tek girişi. Önce enerji sorulur (AI planı ona göre kurar), sonra
+ * iki yol: AI ile planla ya da sabah ritüeli (web MorningRitual ile aynı akış: dünden kalanlar,
+ * backlog'dan seç, otomatik yerleştir). Ritüel bitince daily_plans.ritual_completed_at yazılır.
  */
-export function RitualSheet({ userId, visible, onClose }: Props) {
+export function RitualSheet({ userId, visible, onClose, onAiPlan, aiLabel }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { flexTasks, carryoverTasks, timeBlocks, busy, fetchDayData, placeTasks, completeRitual } = usePlanningStore()
+  const { dailyPlan, flexTasks, carryoverTasks, timeBlocks, busy, fetchDayData, placeTasks, completeRitual, setEnergyLevel } = usePlanningStore()
   const { updateTask } = useTaskStore()
   const s = useRitualState(visible, userId)
   const [handled, setHandled] = useState<Set<string>>(new Set())
@@ -99,16 +116,61 @@ export function RitualSheet({ userId, visible, onClose }: Props) {
     onClose()
   }
 
+  const pickEnergy = (level: 1 | 2 | 3 | 4 | 5) => {
+    setEnergyLevel(supabase, level).catch(() => Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi'))
+  }
+
+  const option = (icon: 'list-outline' | 'sparkles-outline', title: string, hint: string, onPress: () => void) => (
+    <TouchableOpacity onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+      <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: `${palette.accent}18` }}>
+        <Ionicons name={icon} size={18} color={palette.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{title}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{hint}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+    </TouchableOpacity>
+  )
+
   const row = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing[2], padding: spacing[2], borderRadius: radius.md, backgroundColor: colors.glassInner }
   const chip = (primary: boolean) => ({ paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.md, backgroundColor: primary ? `${palette.accent}18` : colors.bgSurface })
   const steps = [t.ritual_step1, t.ritual_step2, t.ritual_step3]
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title={t.ritual_title} scrollable>
+    <BottomSheet visible={visible} onClose={onClose} title={t.ritual_start} scrollable>
       <View style={{ gap: spacing[3] }}>
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>
-          {s.step + 1}/3 · {steps[s.step]}
-        </Text>
+        {s.step === INTRO && (
+          <>
+            {dailyPlan && (
+              <>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted }}>{t.plan_energy_q}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing[2] }}>
+                  {ENERGY_LEVELS.map(({ level, emoji, label }) => {
+                    const active = dailyPlan.energy_level === level
+                    return (
+                      <TouchableOpacity key={level} onPress={() => pickEnergy(level)} accessibilityLabel={label} accessibilityState={{ selected: active }}
+                        style={{ alignItems: 'center', gap: 4, width: 56 }}>
+                        <View style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? `${palette.accent}1F` : colors.glassInner, borderWidth: 2, borderColor: active ? palette.accent : 'transparent' }}>
+                          <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                        </View>
+                        <Text style={{ fontSize: fontSize.xs, color: active ? palette.accent : colors.textSubtle, fontWeight: active ? fontWeight.semibold : fontWeight.regular }}>{label}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </>
+            )}
+            {option('sparkles-outline', aiLabel, t.ritual_ai_hint, onAiPlan)}
+            {option('list-outline', t.ritual_manual, t.ritual_manual_hint, () => s.setStep(0))}
+          </>
+        )}
+
+        {s.step !== INTRO && (
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>
+            {s.step + 1}/3 · {steps[s.step]}
+          </Text>
+        )}
 
         {s.step === 0 && (pending.length === 0
           ? <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>{t.ritual_step1_empty}</Text>
@@ -144,15 +206,15 @@ export function RitualSheet({ userId, visible, onClose }: Props) {
           </>
         )}
 
-        <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
-          {s.step > 0 && <Button label={t.ritual_back} onPress={() => s.setStep(s.step - 1)} variant="ghost" disabled={s.busy} style={{ flex: 1 }} />}
+        {s.step !== INTRO && <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
+          <Button label={t.ritual_back} onPress={() => s.setStep(s.step - 1)} variant="ghost" disabled={s.busy} style={{ flex: 1 }} />
           <Button
             label={s.step === 2 ? t.ritual_finish : t.ritual_next}
             onPress={() => void (s.step === 0 ? leaveStepOne() : s.step === 1 ? leaveStepTwo() : finish())}
             loading={s.busy}
             style={{ flex: 1 }}
           />
-        </View>
+        </View>}
       </View>
     </BottomSheet>
   )

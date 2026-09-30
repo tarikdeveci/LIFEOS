@@ -1,9 +1,10 @@
 import { View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { EQUIPMENT } from '@lifeos/shared'
+import { equipmentLabel } from '@lifeos/shared'
 import type { EquipmentKey, ProgramEquipmentFit } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
 interface CardProps {
@@ -13,9 +14,9 @@ interface CardProps {
 }
 
 /** Kısa özet: ilk üç aletin adı, kalanı sayı. */
-function summarize(equipment: EquipmentKey[]): string {
-  if (equipment.length === 0) return 'Sadece vücut ağırlığı'
-  const names = equipment.slice(0, 3).map((key) => EQUIPMENT[key].label)
+function summarize(equipment: EquipmentKey[], lang: 'tr' | 'en', bodyweightOnly: string): string {
+  if (equipment.length === 0) return bodyweightOnly
+  const names = equipment.slice(0, 3).map((key) => equipmentLabel(key, lang))
   const rest = equipment.length - names.length
   return rest > 0 ? `${names.join(', ')} +${rest}` : names.join(', ')
 }
@@ -27,6 +28,7 @@ function summarize(equipment: EquipmentKey[]): string {
  */
 export function EquipmentCard({ equipment, loaded, onEdit }: CardProps) {
   const { colors } = useTheme()
+  const { t, lang } = useLang()
   const chosen = equipment !== null
 
   return (
@@ -36,17 +38,17 @@ export function EquipmentCard({ equipment, loaded, onEdit }: CardProps) {
           <Ionicons name="construct-outline" size={18} color={palette.workout} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Ekipmanım</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.wk_my_equipment}</Text>
           <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={2}>
             {!loaded
-              ? 'Yükleniyor...'
+              ? t.wk_loading
               : chosen
-                ? summarize(equipment)
-                : 'Seçilmedi: programlar tam donanımlı salon varsayıyor'}
+                ? summarize(equipment, lang, t.wk_bodyweight_only)
+                : t.wk_not_chosen}
           </Text>
         </View>
         <View style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
-          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.workout }}>{chosen ? 'Düzenle' : 'Seç'}</Text>
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.workout }}>{chosen ? t.wk_edit : t.wk_choose}</Text>
         </View>
       </TouchableOpacity>
     </GlassCard>
@@ -58,13 +60,14 @@ export function EquipmentCard({ equipment, loaded, onEdit }: CardProps) {
  * "tam salona uygun" demek bilgi vermiyor.
  */
 export function ProgramFitBadge({ fit }: { fit: ProgramEquipmentFit | null }) {
+  const { t } = useLang()
   if (!fit || fit.total === 0) return null
   const unavailable = fit.total - fit.available
   const ok = unavailable === 0
   const tint = ok ? palette.success : palette.warning
   const label = ok
-    ? 'Ekipmanına uygun'
-    : `${unavailable} hareket için alet yok`
+    ? t.wk_fits_yours
+    : t.wk_lacks_n.replace('{n}', String(unavailable))
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${tint}12`, borderWidth: 1, borderColor: `${tint}25` }}>
