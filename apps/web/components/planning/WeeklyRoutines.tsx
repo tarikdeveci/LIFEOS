@@ -45,7 +45,7 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
   }
 
   return (
-    <div className="glass rounded-2xl p-4">
+    <div className="glass mt-4 rounded-2xl p-4">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-primary">{t.routines_title}</h3>
