@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
@@ -881,8 +882,7 @@ export default function WorkoutScreen() {
             <View style={{ gap: spacing[2] }}>
               {filteredExercises.map((ex) => (
                 <GlassCard key={ex.id} padding={spacing[4]} noShadow>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
-                    <ExerciseImage uri={ex.image_url} style={{ width: 56, height: 56, borderRadius: radius.md }} />
+                  <TouchableOpacity onPress={() => router.push(`/exercise/${ex.id}` as never)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
@@ -901,7 +901,8 @@ export default function WorkoutScreen() {
                         <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.semibold }}>+ Set</Text>
                       </TouchableOpacity>
                     )}
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                  </TouchableOpacity>
                 </GlassCard>
               ))}
               {filteredExercises.length === 0 && (
