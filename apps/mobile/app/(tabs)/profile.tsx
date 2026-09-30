@@ -24,6 +24,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import type { Language } from '@/src/i18n'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
+import { SupportCard } from '@/src/components/settings/SupportCard'
 
 const ACTIVITY_LEVELS_DEF = [
   { key: 'sedentary',          trLabel: 'Hareketsiz',  enLabel: 'Sedentary',      trSub: 'Masabaşı, spor yok',       enSub: 'Desk job, no exercise' },
@@ -527,6 +528,9 @@ export default function ProfileScreen() {
             ))}
           </View>
         </GlassCard>
+
+        {/* Puanla / paylaş / geri bildirim (Play test raporu 2026-09-30) */}
+        <SupportCard />
 
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[3] }}>
