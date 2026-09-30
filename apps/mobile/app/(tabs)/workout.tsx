@@ -403,8 +403,8 @@ export default function WorkoutScreen() {
     }
   }
 
-  function openProgramPlanner() {
-    const days = activeDays(liveProgram)
+  function openProgramPlanner(program: WorkoutProgram | null = liveProgram) {
+    const days = activeDays(program)
     const spread = spreadWeekdays(days.length)
     const map: Record<string, number> = {}
     days.forEach((day, i) => { map[day.id] = spread[i] ?? 1 })
@@ -581,9 +581,14 @@ export default function WorkoutScreen() {
               doneLabel: t.coach_saved,
               onPress: async () => {
                 try {
-                  await createProgramFromPlan(supabase, userId, plan)
+                  const saved = await createProgramFromPlan(supabase, userId, plan)
+                  // Kaydın hemen ardından planlayıcı açılıyor, varsayılanlar dolu:
+                  // kullanıcı günleri ve saati görüp tek dokunuşla takvime yazar.
+                  const full = useWorkoutStore.getState().programs.find((p) => p.id === saved.id) ?? saved
                   setShowCoach(false)
                   setTab('programs')
+                  setSelectedProgram(full)
+                  openProgramPlanner(full)
                 } catch {
                   Alert.alert(t.error, t.coach_save_error)
                   throw new Error('save failed')
@@ -1163,7 +1168,7 @@ export default function WorkoutScreen() {
 
           {activeDays(liveProgram).length > 0 && (
             <TouchableOpacity
-              onPress={openProgramPlanner}
+              onPress={() => openProgramPlanner()}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}40`, marginBottom: spacing[1] }}
             >
               <Ionicons name="calendar-outline" size={16} color={palette.workout} />
