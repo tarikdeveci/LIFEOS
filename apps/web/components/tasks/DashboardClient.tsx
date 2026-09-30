@@ -28,6 +28,8 @@ import { supabase } from '@/lib/supabase/client'
 import { TaskCard } from '@/components/tasks/TaskCard'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { QuickTaskInput } from '@/components/tasks/QuickTaskInput'
+import { BrainDumpModal } from '@/components/tasks/BrainDumpModal'
+import { Button } from '@/components/ui/Button'
 import { WeeklyStatsChart } from '@/components/WeeklyStatsChart'
 import { CalendarDays, CheckSquare, BarChart2, Dumbbell, Salad, TrendingUp } from 'lucide-react'
 import { useLang } from '@/lib/contexts/LangContext'
@@ -53,6 +55,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [weekStats, setWeekStats] = useState<WeeklyDayStat[]>([])
+  const [brainOpen, setBrainOpen] = useState(false)
 
   const { tasks, loading, fetchTasks, addTask, updateTask, deleteTask, setStatus } = useTaskStore()
   const { timeBlocks, dailyPlan, fetchDayData } = usePlanningStore()
@@ -150,8 +153,12 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
             {dailyPlan?.energy_level ? ` · ${ENERGY_LABELS[dailyPlan.energy_level]}` : ''}
           </p>
         </div>
-        <QuickTaskInput onCreateTask={handleCreate} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setBrainOpen(true)} title={t.brain_title}>🧠 {t.brain_button}</Button>
+          <QuickTaskInput onCreateTask={handleCreate} />
+        </div>
       </div>
+      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreate} />
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-12 gap-6">

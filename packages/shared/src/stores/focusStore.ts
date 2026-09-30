@@ -1,0 +1,133 @@
+import { create } from 'zustand'
+import { createFocusSession, getFocusSessionsBetween } from '../supabase/focus'
+import type { CreateFocusSessionInput, FocusSession, PomodoroState } from '../types/focus'
+import { advancePomodoro, completedFocusWork, startPomodoro, stopPomodoro } from '../utils/focus'
+
+interface FocusBlock {
+  id: string
+  task_id: string | null
+  block_type: string
+  label: string | null
+}
+
+interface ActiveFocus {
+  id: string
+  userId: string
+  blockId: string
+  taskId: string | null
+  label: string
+  timer: PomodoroState
+}
+
+interface PendingFocus {
+  userId: string
+  input: CreateFocusSessionInput
+}
+
+type FocusClient = Parameters<typeof createFocusSession>[0]
+
+interface FocusStore {
+  active: ActiveFocus | null
+  pending: PendingFocus | null
+  sessions: FocusSession[]
+  sessionsUserId: string | null
+  loading: boolean
+  saving: boolean
+  loadError: boolean
+  saveError: boolean
+  loadRequest: number
+  start: (id: string, userId: string, block: FocusBlock, now: number) => void
+  tick: (now: number) => void
+  finish: (now: number) => void
+  close: () => void
+  save: (client: FocusClient, retry?: boolean) => Promise<void>
+  load: (client: FocusClient, userId: string, from: string, to: string) => Promise<void>
+}
+
+function pendingWork(active: ActiveFocus, now: number): PendingFocus | null {
+  const work = completedFocusWork(active.timer, now)
+  return work ? {
+    userId: active.userId,
+    input: { ...work, id: active.id, block_id: active.blockId, task_id: active.taskId },
+  } : null
+}
+
+/** One active work period per app, shared by timer and planning rows. */
+export const useFocusStore = create<FocusStore>((set, get) => ({
+  active: null,
+  pending: null,
+  sessions: [],
+  sessionsUserId: null,
+  loading: false,
+  saving: false,
+  loadError: false,
+  saveError: false,
+  loadRequest: 0,
+  start: (id, userId, block, now) => {
+    const { active, pending, saving } = get()
+    if (pending || saving || (active && active.timer.phase !== 'ready' && active.timer.phase !== 'stopped')) return
+    set({
+      active: {
+        id, userId, blockId: block.id,
+        taskId: block.block_type === 'task' ? block.task_id : null,
+        label: block.label ?? '', timer: startPomodoro(now),
+      }, saveError: false,
+    })
+  },
+  tick: (now) => {
+    const { active } = get()
+    if (!active) return
+    const timer = advancePomodoro(active.timer, now)
+    if (timer === active.timer) return
+    set({ active: { ...active, timer }, pending: get().pending ?? pendingWork(active, now) })
+  },
+  finish: (now) => {
+    const { active } = get()
+    if (!active) return
+    // Bir dakikadan kısa odak yanlışlıkla başlatılmış sayılır ve kaydedilmez;
+    // yoksa en az bir dakika kuralı her yanlış dokunuşu kayda çevirirdi.
+    const accidental = active.timer.phase === 'work' && now - active.timer.phaseStartedAt < 60_000
+    set({
+      active: { ...active, timer: stopPomodoro(active.timer) },
+      pending: get().pending ?? (accidental ? null : pendingWork(active, now)),
+    })
+  },
+  close: () => {
+    const { active, pending, saving } = get()
+    if (!pending && !saving && active?.timer.phase === 'stopped') set({ active: null })
+  },
+  save: async (client, retry = false) => {
+    const { pending, saving, saveError } = get()
+    if (!pending || saving || (saveError && !retry)) return
+    set({ saving: true, saveError: false })
+    try {
+      const session = await createFocusSession(client, pending.userId, pending.input)
+      set((state) => ({
+        pending: null, saving: false,
+        sessions: state.sessionsUserId === session.user_id
+          ? [...state.sessions.filter((item) => item.id !== session.id), session]
+          : state.sessions,
+      }))
+    } catch {
+      set({ saving: false, saveError: true })
+    }
+  },
+  load: async (client, userId, from, to) => {
+    const request = get().loadRequest + 1
+    set((state) => ({
+      loadRequest: request, loading: true, loadError: false, sessionsUserId: userId,
+      sessions: state.sessionsUserId === userId ? state.sessions : [],
+    }))
+    try {
+      const sessions = await getFocusSessionsBetween(client, userId, from, to)
+      if (get().loadRequest !== request) return
+      // Keep locally saved sessions if this fetch began before their insert completed.
+      set((state) => ({
+        sessions: [...new Map([...sessions, ...state.sessions].map((session) => [session.id, session])).values()],
+        loading: false,
+      }))
+    } catch {
+      if (get().loadRequest === request) set({ loading: false, loadError: true })
+    }
+  },
+}))

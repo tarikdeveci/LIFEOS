@@ -1,0 +1,193 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Goal, GoalHorizon } from '@lifeos/shared'
+import {
+  goalPeriodStart,
+  goalTreeProgress,
+  goalsNeedingReview,
+  legacyWeeklyGoalsToInputs,
+  todayDate,
+  useGoalStore,
+} from '@lifeos/shared'
+import { supabase } from '@/lib/supabase/client'
+import { useLang } from '@/lib/contexts/LangContext'
+import { GoalReviewCard } from './GoalReviewCard'
+import { GoalForm } from './GoalForm'
+
+interface GoalsPanelProps { userId: string }
+
+const HORIZONS: GoalHorizon[] = ['week', 'month', 'quarter']
+const PARENT_OF: Record<GoalHorizon, GoalHorizon | null> = { week: 'month', month: 'quarter', quarter: null }
+
+/** Çeyrek, ay ve hafta hedefleri. Eski localStorage haftalık hedeflerini bir kez DB'ye taşır. */
+export function GoalsPanel({ userId }: GoalsPanelProps) {
+  const { t } = useLang()
+  const { goals, tasks, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal } = useGoalStore()
+  const [tab, setTab] = useState<GoalHorizon>('week')
+  const [editing, setEditing] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const migrated = useRef(false)
+  const today = todayDate()
+
+  useEffect(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals])
+
+  // localStorage `wgoals_<userId>` → goals (bir kez). Aynı başlık bu hafta varsa tekrar eklenmez.
+  useEffect(() => {
+    if (loading || error || migrated.current) return
+    migrated.current = true
+    const key = `wgoals_${userId}`
+    let raw: unknown = null
+    try { raw = JSON.parse(localStorage.getItem(key) ?? 'null') } catch { raw = null }
+    if (raw === null) return
+    const week = goalPeriodStart('week', today)
+    const existing = new Set(goals.filter((g) => g.horizon === 'week' && g.period_start === week).map((g) => g.title))
+    const inputs = legacyWeeklyGoalsToInputs(raw, week).filter((i) => !existing.has(i.title))
+    const migrate = async () => {
+      try {
+        await importGoals(supabase, userId, inputs)
+        localStorage.removeItem(key)
+      } catch {
+        migrated.current = false
+      }
+    }
+    void migrate()
+  }, [loading, error, goals, importGoals, userId, today])
+
+  const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
+  const period = goalPeriodStart(tab, today)
+  const visible = goals.filter((g) => g.horizon === tab && g.period_start === period && g.status !== 'dropped')
+  const parentHorizon = PARENT_OF[tab]
+  const parents = parentHorizon
+    ? goals.filter((g) => g.horizon === parentHorizon && g.status === 'active' && g.period_start === goalPeriodStart(parentHorizon, today))
+    : []
+  const toReview = goalsNeedingReview(goals, today)
+  const overall = visible.length > 0
+    ? Math.round(visible.reduce((s, g) => s + (progress.get(g.id)?.pct ?? 0), 0) / visible.length)
+    : 0
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setActionError(null)
+    try { await fn() } catch { setActionError(t.goal_error) }
+  }
+
+  if (loading && goals.length === 0) {
+    return (
+      <div className="glass rounded-2xl p-4">
+        <div className="h-4 w-32 animate-pulse rounded bg-border/40" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="glass rounded-2xl p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="flex items-center gap-2 text-sm font-semibold text-primary">
+          🎯 {t.goal_title}
+          <span className="text-[10px] text-muted">({overall}%)</span>
+        </span>
+        <button onClick={() => setEditing((e) => !e)} className="text-[10px] text-muted hover:text-accent">
+          {editing ? t.plan_weekly_close : t.plan_weekly_edit}
+        </button>
+      </div>
+
+      <GoalReviewCard
+        goals={toReview}
+        onReview={(goal, decision, note) => run(() => reviewGoal(supabase, userId, goal, decision, note))}
+      />
+
+      <div className="mb-3 flex gap-1 rounded-xl bg-border/30 p-0.5">
+        {HORIZONS.map((h) => (
+          <button
+            key={h}
+            onClick={() => setTab(h)}
+            className={`flex-1 rounded-lg py-1 text-[11px] font-medium ${tab === h ? 'bg-surface text-primary shadow-sm' : 'text-muted'}`}
+          >
+            {h === 'week' ? t.goal_tab_week : h === 'month' ? t.goal_tab_month : t.goal_tab_quarter}
+          </button>
+        ))}
+      </div>
+
+      {(error || actionError) && <p className="mb-2 text-[11px] text-danger">{actionError ?? error}</p>}
+
+      {visible.length === 0 && <p className="text-center text-[11px] text-muted">{t.goal_empty}</p>}
+
+      <div className="space-y-3">
+        {visible.map((goal) => (
+          <GoalRow
+            key={goal.id}
+            goal={goal}
+            pct={progress.get(goal.id)?.pct ?? 0}
+            label={progressLabel(goal, progress.get(goal.id))}
+            parentTitle={goals.find((p) => p.id === goal.parent_id)?.title ?? null}
+            editing={editing}
+            onToggleDone={() => run(() => editGoal(supabase, goal.id, { status: goal.status === 'done' ? 'active' : 'done' }))}
+            onDelete={() => run(() => removeGoal(supabase, goal.id))}
+            doneLabel={goal.status === 'done' ? t.goal_reopen : t.goal_mark_done}
+            deleteLabel={t.goal_delete}
+          />
+        ))}
+      </div>
+
+      {editing && (
+        <GoalForm
+          horizon={tab}
+          periodStart={period}
+          parents={parents}
+          onSubmit={(input) => run(() => addGoal(supabase, userId, input))}
+        />
+      )}
+
+      {tab !== 'week' && visible.length > 0 && (
+        <p className="mt-2 text-center text-[10px] text-muted">{t.goal_ratio_hint}</p>
+      )}
+    </div>
+  )
+}
+
+function progressLabel(goal: Goal, p: { current: number; total: number; pct: number } | undefined): string {
+  if (!p) return ''
+  if (goal.target != null) return `${p.current}/${p.total}${goal.unit ? ` ${goal.unit}` : ''}`
+  return p.total > 0 ? `${p.current}/${p.total}` : `${p.pct}%`
+}
+
+interface GoalRowProps {
+  goal: Goal
+  pct: number
+  label: string
+  parentTitle: string | null
+  editing: boolean
+  onToggleDone: () => void
+  onDelete: () => void
+  doneLabel: string
+  deleteLabel: string
+}
+
+function GoalRow({ goal, pct, label, parentTitle, editing, onToggleDone, onDelete, doneLabel, deleteLabel }: GoalRowProps) {
+  const done = goal.status === 'done' || pct >= 100
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="flex min-w-0 items-center gap-1.5 font-medium text-primary">
+          <span>{goal.icon ?? '🎯'}</span>
+          <span className="truncate">{goal.title}</span>
+          {done && <span className="text-success">✓</span>}
+        </span>
+        <span className={done ? 'font-bold text-success' : 'text-muted'}>{label}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-border/40">
+        <div
+          className={`h-1.5 rounded-full transition-all ${done ? 'bg-success' : 'bg-accent'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {parentTitle && <p className="mt-0.5 text-[10px] text-muted">↳ {parentTitle}</p>}
+      {editing && (
+        <div className="mt-1 flex gap-2">
+          <button onClick={onToggleDone} className="text-[10px] text-accent hover:underline">{doneLabel}</button>
+          <button onClick={onDelete} className="text-[10px] text-danger hover:underline">{deleteLabel}</button>
+        </div>
+      )}
+    </div>
+  )
+}

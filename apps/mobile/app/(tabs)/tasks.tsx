@@ -9,6 +9,7 @@ import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
+import { BrainDumpSheet } from '@/src/components/tasks/BrainDumpSheet'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
 import { StatusBadge } from '@/src/components/ui/Badge'
@@ -18,6 +19,7 @@ import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type Tab = 'today' | 'week' | 'all'
@@ -52,6 +54,8 @@ export default function TasksScreen() {
   const [adding, setAdding] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
+  const [showBrain, setShowBrain] = useState(false)
+  const { isPro, requirePro } = useProGate(userId)
 
   // toISOString() UTC verir: UTC+3'te gece yarısı ile 03:00 arasında bir önceki
   // günü gösteriyordu. todayDate() yerel takvim gününü döndürür.
@@ -177,9 +181,18 @@ export default function TasksScreen() {
         <View style={{ paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
             <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.tasks_title}</Text>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <TouchableOpacity
+                onPress={() => setShowBrain(true)}
+                accessibilityLabel={t.brain_button}
+                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="bulb-outline" size={20} color={palette.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="add" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
@@ -251,6 +264,8 @@ export default function TasksScreen() {
           ))}
         </ScrollView>
       </View>
+
+      <BrainDumpSheet visible={showBrain} onClose={() => setShowBrain(false)} userId={userId} isPro={isPro} requirePro={requirePro} />
 
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>

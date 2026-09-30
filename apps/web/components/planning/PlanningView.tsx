@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/Toast'
 import { DayTimeline } from '@/components/planning/DayTimeline'
 import { WeekView } from '@/components/planning/WeekView'
 import { MonthView } from '@/components/planning/MonthView'
-import { WeeklyGoals } from '@/components/planning/WeeklyGoals'
+import { GoalsPanel } from '@/components/planning/GoalsPanel'
 import { FlexPool } from '@/components/planning/FlexPool'
 import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
 import { HabitsToday } from '@/components/planning/HabitsToday'
@@ -29,6 +29,7 @@ import { CarryoverList } from '@/components/planning/CarryoverList'
 import { CapacityBar } from '@/components/planning/CapacityBar'
 import { ShiftButton } from '@/components/planning/ShiftButton'
 import { MorningRitual } from '@/components/planning/MorningRitual'
+import { FocusBlockAction } from '@/components/planning/FocusTimer'
 import {
   RecurrencePicker, ScopeChoice, initialRecurrence, recurrenceToRoutineInput,
   type RecurrenceValue, type EditScope,
@@ -569,7 +570,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
             onChanged={() => void fetchDayData(supabase, userId, date)} />
 
           {/* Haftalık Hedefler */}
-          <WeeklyGoals userId={userId} />
+          <GoalsPanel userId={userId} />
 
           {/* Agentic AI Chat */}
           <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-lg shadow-indigo-900/10">
@@ -838,6 +839,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
                     <span>{t.plan_go_nutrition}</span>
                   </Link>
                 )}
+                <FocusBlockAction block={selectedBlock} userId={userId} onStarted={() => setSelectedBlock(null)} />
                 {/* Tamamlama sunucuya yazılıyor: bağlı görev varsa store onu da kapatır. */}
                 {selectedBlock.completed_at ? (
                   <div className="flex items-center justify-center gap-2 rounded-xl bg-success/10 py-2.5">

@@ -13,10 +13,12 @@ import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { NowCard } from '@/src/components/planning/NowCard'
+import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
 import { DayToolbar } from '@/src/components/planning/DayToolbar'
 import { WeeklyRoutines } from '@/src/components/planning/WeeklyRoutines'
+import { GoalsCard } from '@/src/components/planning/GoalsCard'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -379,6 +381,7 @@ export default function PlanningScreen() {
             onJumpToNow={handleJumpToNow}
           />
         )}
+        {userId && <FocusCard userId={userId} date={selectedDate} activeBlock={isViewingToday ? dayPosition?.activeBlock ?? null : null} />}
 
         {/* Week navigation */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
@@ -450,6 +453,7 @@ export default function PlanningScreen() {
           />
         )}
 
+        {userId && <GoalsCard userId={userId} />}
         {userId && <WeeklyRoutines userId={userId} blockColors={BLOCK_COLORS} onChanged={() => void load(userId, selectedDate)} />}
       </ScrollView>
 
