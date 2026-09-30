@@ -1,6 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { todayDate } from '@lifeos/shared'
 import type { ParseMealResponse } from '@lifeos/shared'
 
+import { LANG_STORAGE_KEY } from '../i18n'
 import { supabase } from './supabase'
 
 const BASE = process.env['EXPO_PUBLIC_SUPABASE_URL']!
@@ -40,12 +42,14 @@ export function aiErrorMessage(error: unknown, fallback: string): string {
 
 export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T> {
   const token = await getToken()
+  // Arayüz dili: sunucu koçun cevap dilini buna göre seçer, gönderilmezse Türkçe cevaplar.
+  const language = (await AsyncStorage.getItem(LANG_STORAGE_KEY).catch(() => null)) === 'en' ? 'en' : 'tr'
   const res = await fetch(`${BASE}/functions/v1/ai-suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${token}` },
     // Yerel bugün tarihi daima gönderilir: sunucu UTC'de çalışıyor ve
     // toISOString() UTC+3'te gece yarısından sonra bir önceki günü veriyor.
-    body: JSON.stringify({ today: todayDate(), ...body }),
+    body: JSON.stringify({ today: todayDate(), language, ...body }),
   })
   if (!res.ok) {
     if (res.status === 402 || res.status === 403) {

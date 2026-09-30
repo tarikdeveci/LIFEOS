@@ -3,6 +3,7 @@ import { View, Text, type LayoutChangeEvent } from 'react-native'
 import Body, { type ExtendedBodyPart, type Slug } from 'react-native-body-highlighter'
 import type { MuscleGroup } from '@lifeos/shared'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, spacing } from '../../theme/tokens'
 
 /**
@@ -74,6 +75,7 @@ function bodyNeutralFill(isDark: boolean): string {
  */
 export function MuscleBodyMap({ muscleGroups, fills, legend, gender, selectedId, onSelect }: Props) {
   const { colors, isDark } = useTheme()
+  const { t } = useLang()
   const [width, setWidth] = useState(0)
 
   const slugToGroup = useMemo(() => {
@@ -134,7 +136,7 @@ export function MuscleBodyMap({ muscleGroups, fills, legend, gender, selectedId,
                 onBodyPartPress={handlePress}
               />
               <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: spacing[1] }}>
-                {side === 'front' ? 'Ön' : 'Arka'}
+                {side === 'front' ? t.muscle_front : t.muscle_back}
               </Text>
             </View>
           ))}

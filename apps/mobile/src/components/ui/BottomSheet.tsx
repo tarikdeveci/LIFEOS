@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, View, TouchableOpacity, ScrollView, Text, Keyboard, Platform, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { radius, spacing, fontSize, fontWeight } from '../../theme/tokens'
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 
 export function BottomSheet({ visible, onClose, title, children, scrollable = false }: Props) {
   const { colors } = useTheme()
+  const { t } = useLang()
   const { height: screenHeight } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const [keyboardHeight, setKeyboardHeight] = useState(0)
@@ -73,7 +75,7 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
               <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{title}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={{ fontSize: fontSize.base, color: colors.textMuted }}>İptal</Text>
+                <Text style={{ fontSize: fontSize.base, color: colors.textMuted }}>{t.cancel}</Text>
               </TouchableOpacity>
             </View>
           )}

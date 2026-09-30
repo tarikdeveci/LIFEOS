@@ -468,10 +468,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         {viewMode === 'week' && (
           <>
             <WeekView key={routinesVersion} userId={userId} initialDate={date} onDayClick={(d) => { setViewMode('day'); void fetchDayData(supabase, userId, d) }} />
-            <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-              <GoalsPanel userId={userId} />
-              <WeeklyRoutines userId={userId} onChanged={refreshAfterRoutineChange} />
-            </div>
+            <WeeklyRoutines userId={userId} onChanged={refreshAfterRoutineChange} />
           </>
         )}
 
@@ -530,6 +527,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
           <CarryoverList tasks={[...carryoverTasks, ...carriedToday]}
             onOpen={(task) => { setSelectedTask(task); setDrawerOpen(true) }}
             onChanged={() => void fetchDayData(supabase, userId, date)} />
+
+          {/* Haftalık Hedefler */}
+          <GoalsPanel userId={userId} />
 
           {/* Agentic AI Chat */}
           <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-lg shadow-indigo-900/10">

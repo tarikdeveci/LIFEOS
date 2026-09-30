@@ -29,6 +29,9 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
   const habits = routines.filter((r) => r.kind === 'habit' && r.is_active)
 
   const open = (r: Routine | null) => { setEditing(r); setFormOpen(true) }
+  const habitTarget = (r: Routine) => r.times_per_day
+    ? t.routines_habit_daily_target.replace('{n}', String(r.times_per_day))
+    : r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
 
   const handleSave = async (input: CreateRoutineInput) => {
     if (editing) await updateSeries(supabase, editing.id, input)
@@ -45,7 +48,7 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
   }
 
   return (
-    <div className="glass rounded-2xl p-4">
+    <div className="glass mt-4 rounded-2xl p-4">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-primary">{t.routines_title}</h3>
@@ -84,7 +87,7 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
             {habits.map((r) => (
               <button key={r.id} onClick={() => open(r)}
                 className="rounded-lg bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/20">
-                {r.title} · {t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))}
+                {r.title} · {habitTarget(r)}
               </button>
             ))}
           </div>

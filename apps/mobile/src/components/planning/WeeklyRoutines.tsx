@@ -5,10 +5,11 @@ import type { CreateRoutineInput, Routine } from '@lifeos/shared'
 import { useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { CollapsibleTitle } from '@/src/components/planning/CollapsibleTitle'
 import { RoutineSheet, WEEKDAY_ORDER } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 interface Props {
   userId: string
@@ -17,13 +18,17 @@ interface Props {
   onChanged: () => void
 }
 
-/** "Haftam": rutin şablonları. Örnekleri sunucu üretir, burası sadece şablonu düzenler. */
+/**
+ * "Haftam": rutin şablonları. Örnekleri sunucu üretir, burası sadece şablonu düzenler.
+ * Bir ayar listesi olduğu için kapalı başlar; rutinler günde zaten blok olarak görünür.
+ */
 export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
   const { routines, loading, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
   const [editing, setEditing] = useState<Routine | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => { void fetchRoutines(supabase, userId) }, [fetchRoutines, userId])
 
@@ -35,7 +40,10 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const open = (r: Routine | null) => { setEditing(r); setSheetOpen(true) }
 
   const describe = (r: Routine): string => {
-    if (r.kind === 'habit') return t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
+    if (r.kind === 'habit') {
+      if (r.times_per_day) return t.routines_habit_daily_target.replace('{n}', String(r.times_per_day))
+      return r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
+    }
     const days = WEEKDAY_ORDER.filter((d) => r.days_of_week.includes(d)).map((d) => names[d]).join(' ')
     const time = r.start_time ? ` · ${r.start_time.slice(0, 5)}` : ''
     const every = r.every_n_weeks > 1 ? ` · ${t.routines_biweekly}` : ''
@@ -54,34 +62,40 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
     onChanged()
   }
 
-  return (
-    <GlassCard style={{ marginBottom: spacing[4] }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[2] }}>
-        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.routines_title}</Text>
-        <TouchableOpacity onPress={() => open(null)} accessibilityLabel={t.routines_add}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${palette.accent}18`, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="add" size={18} color={palette.accent} />
-        </TouchableOpacity>
-      </View>
-      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: spacing[3] }}>{t.routines_subtitle}</Text>
+  const kindIcon = (r: Routine) => r.kind === 'habit' ? 'leaf-outline' : r.kind === 'task' ? 'checkbox-outline' : 'repeat-outline'
 
-      {!loading && active.length === 0 ? (
-        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>{t.routines_empty}</Text>
+  return (
+    <GlassCard style={{ marginBottom: spacing[3] }}>
+      <CollapsibleTitle title={t.routines_title} open={expanded} onToggle={() => setExpanded((v) => !v)}
+        summary={active.length === 0 ? t.routines_none_yet : t.routines_count.replace('{n}', String(active.length))}
+        onAdd={() => open(null)} addLabel={t.routines_add} />
+
+      {expanded && (!loading && active.length === 0 ? (
+        <TouchableOpacity onPress={() => open(null)} style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
+          <Ionicons name="repeat-outline" size={26} color={colors.textSubtle} />
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.routines_empty}</Text>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center' }}>{t.routines_subtitle}</Text>
+        </TouchableOpacity>
       ) : (
-        <View style={{ gap: spacing[2] }}>
-          {active.map((r) => (
-            <TouchableOpacity key={r.id} onPress={() => open(r)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[2], borderRadius: radius.md, backgroundColor: colors.glassInner }}>
-              <View style={{ width: 3, height: 30, borderRadius: 2, backgroundColor: r.kind === 'habit' ? palette.accent : (r.color ?? blockColors[r.block_type] ?? palette.accent) }} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }} numberOfLines={1}>{r.title}</Text>
-                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{describe(r)}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
-            </TouchableOpacity>
-          ))}
+        <View>
+          {active.map((r, i) => {
+            const color = r.kind === 'habit' ? palette.accent : (r.color ?? blockColors[r.block_type] ?? palette.accent)
+            return (
+              <TouchableOpacity key={r.id} onPress={() => open(r)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: spacing[3], borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border }}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: `${color}1F` }}>
+                  <Ionicons name={kindIcon(r)} size={16} color={color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }} numberOfLines={1}>{r.title}</Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 }}>{describe(r)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
+              </TouchableOpacity>
+            )
+          })}
         </View>
-      )}
+      ))}
 
       <RoutineSheet visible={sheetOpen} routine={editing}
         onClose={() => setSheetOpen(false)}

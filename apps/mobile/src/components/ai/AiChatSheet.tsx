@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Input } from '../ui/Input'
 import { fontSize, radius, spacing } from '../../theme/tokens'
@@ -99,6 +100,7 @@ export function AiChatSheet({
   suggestions, onSuggestionPress,
 }: Props) {
   const { colors } = useTheme()
+  const { t } = useLang()
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title={title} scrollable>
@@ -155,7 +157,7 @@ export function AiChatSheet({
 
         {loading && (
           <View style={{ alignSelf: 'flex-start', padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner }}>
-            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yazıyor...</Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{t.coach_typing}</Text>
           </View>
         )}
 

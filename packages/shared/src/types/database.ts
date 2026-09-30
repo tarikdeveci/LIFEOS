@@ -1201,18 +1201,21 @@ export type Database = {
       routine_completions: {
         Row: {
           completed_on: string
+          count: number
           created_at: string
           routine_id: string
           user_id: string
         }
         Insert: {
           completed_on: string
+          count?: number
           created_at?: string
           routine_id: string
           user_id: string
         }
         Update: {
           completed_on?: string
+          count?: number
           created_at?: string
           routine_id?: string
           user_id?: string
@@ -1271,6 +1274,7 @@ export type Database = {
           risk_score: number
           start_time: string | null
           starts_on: string
+          times_per_day: number | null
           times_per_week: number | null
           title: string
           updated_at: string
@@ -1295,6 +1299,7 @@ export type Database = {
           risk_score?: number
           start_time?: string | null
           starts_on?: string
+          times_per_day?: number | null
           times_per_week?: number | null
           title: string
           updated_at?: string
@@ -1319,6 +1324,7 @@ export type Database = {
           risk_score?: number
           start_time?: string | null
           starts_on?: string
+          times_per_day?: number | null
           times_per_week?: number | null
           title?: string
           updated_at?: string

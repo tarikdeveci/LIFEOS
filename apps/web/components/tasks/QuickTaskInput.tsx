@@ -39,20 +39,17 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<TaskDraft>(EMPTY_DRAFT)
   const [loading, setLoading] = useState(false)
-  const [isMac, setIsMac] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    setIsMac(navigator.platform.toUpperCase().includes('MAC') || /Mac/.test(navigator.userAgent))
-  }, [])
-
-  // Cmd+K / Ctrl+K global shortcut
+  // "N" ile yeni görev. Ctrl+K komut paletinin (arama, komut, görev oluşturma);
+  // ikisi aynı tuşu dinleyince palet ve bu pencere birlikte açılıyordu.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setOpen(true)
-      }
+      if (e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      e.preventDefault()
+      setOpen(true)
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -132,8 +129,6 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
     return parts.length > 0 ? parts.join(' · ') : null
   }, [draft.title, t.qtask_due_label])
 
-  const shortcutLabel = isMac ? '⌘K' : 'Ctrl K'
-
   return (
     <>
       <button
@@ -145,7 +140,7 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
         </svg>
         {t.tasks_new}
         <kbd className="ml-2 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-muted">
-          {shortcutLabel}
+          N
         </kbd>
       </button>
 

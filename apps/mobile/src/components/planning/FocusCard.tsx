@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { View, Text, TouchableOpacity, AppState } from 'react-native'
 import {
   DEFAULT_POMODORO,
@@ -36,6 +36,8 @@ interface Props {
   date: string
   /** Şu an içinde bulunulan blok; sadece bugün görüntülenirken dolu */
   activeBlock: TimeBlock | null
+  /** Hero kart yokken kendi kartında dursun. */
+  wrap?: boolean
 }
 
 /**
@@ -43,7 +45,7 @@ interface Props {
  * hesaplanır: uygulama arka plandayken de doğru kalır, döndüğünde tek seferde yakalar.
  * Bitişler yerel bildirimle haber verilir. Uygulama kapatılırsa süren tur kaybolur.
  */
-export function FocusCard({ userId, date, activeBlock }: Props) {
+export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
   const { active, pending, saving, saveError, start, tick, finish, close, save, load } = useFocusStore()
@@ -106,15 +108,21 @@ export function FocusCard({ userId, date, activeBlock }: Props) {
 
   const blocked = pending !== null || saving
 
+  const frame = (body: ReactNode) => wrap
+    ? <GlassCard style={{ marginBottom: spacing[4] }}>{body}</GlassCard>
+    : <View style={{ marginTop: spacing[4] }}>{body}</View>
+
   if (active) {
     const remaining = remainingFocusSeconds(active.timer, now)
     const phaseLabel = phase === 'work' ? t.focus_work : phase === 'break' ? t.focus_break : phase === 'ready' ? t.focus_ready : t.focus_stopped
-    return (
-      <GlassCard style={{ marginBottom: spacing[4], borderColor: `${palette.accent}55`, borderWidth: 1 }}>
-        <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: palette.accent, letterSpacing: 0.6, textTransform: 'uppercase' }}>{phaseLabel}</Text>
-        <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>{active.label || t.focus_work}</Text>
+    return frame(
+      <>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: palette.accent, letterSpacing: 0.6, textTransform: 'uppercase' }}>{phaseLabel}</Text>
+          <Text style={{ flex: 1, fontSize: fontSize.xs, color: colors.textMuted }} numberOfLines={1}>{active.label || t.focus_work}</Text>
+        </View>
         {running && (
-          <Text style={{ fontSize: 44, fontWeight: fontWeight.extrabold, color: colors.textPrimary, fontVariant: ['tabular-nums'], marginVertical: spacing[2] }}>
+          <Text style={{ fontSize: 44, fontWeight: fontWeight.extrabold, color: colors.textPrimary, fontVariant: ['tabular-nums'], textAlign: 'center', marginVertical: spacing[1] }}>
             {clock(remaining)}
           </Text>
         )}
@@ -133,7 +141,7 @@ export function FocusCard({ userId, date, activeBlock }: Props) {
             </>
           )}
         </View>
-      </GlassCard>
+      </>,
     )
   }
 
@@ -141,20 +149,19 @@ export function FocusCard({ userId, date, activeBlock }: Props) {
 
   const actual = minutesByBlock.get(activeBlock.id) ?? 0
   const plan = minutesBetween(activeBlock.start_time.slice(0, 5), activeBlock.end_time.slice(0, 5))
-  return (
-    <View style={{ marginTop: -spacing[2], marginBottom: spacing[4], gap: spacing[1] }}>
+  return frame(
+    <>
       <Button
-        label={`▶ ${t.focus_start.replace('{n}', String(DEFAULT_POMODORO.workMinutes))}`}
+        label={`▶  ${t.focus_start.replace('{n}', String(DEFAULT_POMODORO.workMinutes))}`}
         onPress={() => handleStart(activeBlock)}
-        variant="secondary"
         disabled={blocked}
         fullWidth
       />
       {actual > 0 && (
-        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'center' }}>
+        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
           {t.focus_actual.replace('{actual}', String(actual)).replace('{plan}', String(plan))}
         </Text>
       )}
-    </View>
+    </>,
   )
 }
