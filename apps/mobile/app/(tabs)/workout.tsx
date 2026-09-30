@@ -5,9 +5,9 @@ import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
-  WEEKDAY_ORDER, equipmentLabel, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
-  missingEquipment, nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
-import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, EquipmentKey, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
+  WEEKDAY_ORDER, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
+  nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -19,6 +19,7 @@ import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
 import { LiveWorkout } from '@/src/components/workout/LiveWorkout'
 import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
+import { categoryLabel, exerciseName, missingLabel, muscleGroupName } from '@/src/components/workout/labels'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -39,12 +40,6 @@ function activeDays(program: WorkoutProgram | null): ProgramDay[] {
   return [...(program?.days ?? [])]
     .filter((d) => !d.is_rest)
     .sort((a, b) => a.day_number - b.day_number)
-}
-
-/** Egzersiz adı arayüz diline göre; İngilizce ad yoksa Türkçesi. */
-function exerciseName(e: { name: string; name_en?: string | null } | null | undefined, lang: Language, t: Translations): string {
-  if (!e) return t.wk_exercise
-  return lang === 'en' ? (e.name_en ?? e.name) : e.name
 }
 
 /** Takvim etkinliğinin not alanı: o günün hareket listesi. */
@@ -74,13 +69,6 @@ interface CoachProgram {
 }
 
 
-/** Kütüphane satırındaki eksik alet notu: "Alet yok: Kablo istasyonu". */
-function missingLabel(exercise: Exercise, owned: EquipmentKey[] | null, lang: Language, t: Translations): string | null {
-  const missing = missingEquipment(exercise, owned)
-  if (missing.length === 0) return null
-  return t.wk_missing_equipment.replace('{list}', missing.map((key) => equipmentLabel(key, lang)).join(', '))
-}
-
 /** Türkçe aksan ve noktalama farklarını eleyerek egzersiz adı eşler. */
 function foldName(value: string): string {
   return value
@@ -96,10 +84,8 @@ export default function WorkoutScreen() {
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const exName = (e: { name: string; name_en?: string | null } | null | undefined) => exerciseName(e, lang, t)
-  const groupName = (g: { name: string; name_en: string } | null | undefined) => (g ? (lang === 'en' ? g.name_en : g.name) : '-')
-  const categoryLabel = (c: string) => ({
-    strength: t.wk_cat_strength, cardio: t.wk_cat_cardio, flexibility: t.wk_cat_flexibility, mobility: t.wk_cat_mobility,
-  } as Record<string, string>)[c] ?? c
+  const groupName = (g: { name: string; name_en: string } | null | undefined) => muscleGroupName(g, lang)
+  const catLabel = (c: string) => categoryLabel(c, t)
   const historyLabel = (s: string) => ({
     completed: t.wk_hist_completed, in_progress: t.wk_hist_in_progress, planned: t.wk_hist_planned, skipped: t.wk_hist_skipped,
   } as Record<string, string>)[s] ?? s
@@ -199,7 +185,8 @@ export default function WorkoutScreen() {
 
   async function handleRefresh() {
     if (!userId) return
-    setRefreshing(true); await load(userId); setRefreshing(false)
+    // Aşağı çekince katalog da tazelenir (yeni görseller, düzeltilen adlar); açılışta önbellek yeter.
+    setRefreshing(true); await Promise.all([load(userId), fetchLibrary(supabase, { force: true })]); setRefreshing(false)
   }
 
   async function handleStart() {
@@ -636,7 +623,9 @@ export default function WorkoutScreen() {
   // Ekipman seçilmişse koç bunu zaten sunucu tarafında zorluyor; öneri yalnızca kullanıcıya bunu hatırlatır.
   const coachSuggestions = equipment === null ? baseCoachSuggestions : [t.coach_suggestion_equipment, ...baseCoachSuggestions]
 
-  const liveActive = todayWorkout !== null && todayWorkout.status !== 'completed' && (todayWorkout.workout_sets?.length ?? 0) > 0
+  const canAddSet = todayWorkout !== null && todayWorkout.status !== 'completed'
+  const liveActive = canAddSet && (todayWorkout.workout_sets?.length ?? 0) > 0
+  const openSetModal = (ex: Exercise) => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }
   const muscleCard = (
     <MuscleInsightsCard
       sets={analyticsSets}
@@ -763,7 +752,7 @@ export default function WorkoutScreen() {
                   <LiveWorkout
                     workout={todayWorkout}
                     userId={userId}
-                    onAddSet={(ex) => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }}
+                    onAddSet={openSetModal}
                     onFocusMuscle={setLiveMuscleId}
                   />
                 )}
@@ -792,14 +781,14 @@ export default function WorkoutScreen() {
                         {todayMatches.slice(0, 5).map((ex) => (
                           <TouchableOpacity
                             key={ex.id}
-                            onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight(''); setTodaySearch('') }}
+                            onPress={() => { openSetModal(ex); setTodaySearch('') }}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], padding: spacing[3], borderRadius: radius.md, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
                           >
                             <ExerciseImage uri={ex.image_url} style={{ width: 44, height: 44, borderRadius: radius.sm }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                                {groupName(ex.muscle_group)} · {categoryLabel(ex.category)}
+                                {groupName(ex.muscle_group)} · {catLabel(ex.category)}
                                 {ex.is_bodyweight ? ` · ${t.wk_bodyweight}` : ''}
                               </Text>
                             </View>
@@ -881,26 +870,37 @@ export default function WorkoutScreen() {
             </ScrollView>
 
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginBottom: spacing[3] }}>
-              {t.wk_n_exercises.replace('{n}', String(filteredExercises.length))}{todayWorkout && todayWorkout.status !== 'completed' ? t.wk_add_set_hint : ''}
+              {filteredExercises.length === 1 ? t.wk_one_exercise : t.wk_n_exercises.replace('{n}', String(filteredExercises.length))}{canAddSet ? t.wk_add_set_hint : ''}
             </Text>
 
             <View style={{ gap: spacing[2] }}>
               {filteredExercises.map((ex) => (
                 <GlassCard key={ex.id} padding={spacing[4]} noShadow>
-                  <TouchableOpacity onPress={() => router.push(`/exercise/${ex.id}` as never)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+                  {/* Satır tek erişilebilirlik öğesi; iç "+ Set" ekran okuyucuya özel eylem olarak da sunulur. */}
+                  <TouchableOpacity
+                    onPress={() => router.push(`/exercise/${ex.id}` as never)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityActions={canAddSet ? [{ name: 'addSet', label: t.wk_add_set }] : undefined}
+                    onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'addSet') openSetModal(ex) }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}
+                  >
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{exName(ex)}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                        {groupName(ex.muscle_group)} · {categoryLabel(ex.category)}
+                        {groupName(ex.muscle_group)} · {catLabel(ex.category)}
                         {ex.is_bodyweight ? ` · ${t.wk_bodyweight}` : ''}
                       </Text>
                       {missingLabel(ex, equipment, lang, t) && (
                         <Text style={{ fontSize: fontSize.xs, color: palette.warning, marginTop: 2 }}>{missingLabel(ex, equipment, lang, t)}</Text>
                       )}
                     </View>
-                    {todayWorkout && todayWorkout.status !== 'completed' && (
+                    {canAddSet && (
                       <TouchableOpacity
-                        onPress={() => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }}
+                        onPress={() => openSetModal(ex)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.wk_add_set}
+                        hitSlop={8}
                         style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}
                       >
                         <Text style={{ fontSize: fontSize.xs, color: palette.workout, fontWeight: fontWeight.semibold }}>+ Set</Text>
@@ -998,7 +998,7 @@ export default function WorkoutScreen() {
               <ExerciseImage uri={selectedExercise.image_url} style={{ width: '100%', height: 160, borderRadius: radius.md, marginBottom: spacing[2] }} />
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{exName(selectedExercise)}</Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                {groupName(selectedExercise.muscle_group)} · {categoryLabel(selectedExercise.category)}
+                {groupName(selectedExercise.muscle_group)} · {catLabel(selectedExercise.category)}
               </Text>
             </View>
           )}

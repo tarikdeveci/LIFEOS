@@ -3,13 +3,13 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { useTheme } from '../../contexts/ThemeContext'
 import { radius, fontSize, spacing } from '../../theme/tokens'
 
-interface Props extends TextInputProps {
+interface BaseProps extends TextInputProps {
   label?: string
   containerStyle?: StyleProp<ViewStyle>
-  /** Verilirse kutu doluyken sağda bir temizle (×) düğmesi çıkar. */
-  onClear?: () => void
-  clearLabel?: string
 }
+
+/** onClear verilirse kutu doluyken sağda bir temizle (×) düğmesi çıkar; ekran okuyucu etiketi zorunlu. */
+type Props = BaseProps & ({ onClear?: undefined; clearLabel?: undefined } | { onClear: () => void; clearLabel: string })
 
 export function Input({ label, containerStyle, style, onClear, clearLabel, ...props }: Props) {
   const { colors } = useTheme()
@@ -46,7 +46,7 @@ export function Input({ label, containerStyle, style, onClear, clearLabel, ...pr
             onPress={onClear}
             accessibilityRole="button"
             accessibilityLabel={clearLabel}
-            hitSlop={8}
+            hitSlop={12}
             style={{ position: 'absolute', right: spacing[3] }}
           >
             <Ionicons name="close-circle" size={20} color={colors.textSubtle} />

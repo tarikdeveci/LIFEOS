@@ -2,11 +2,12 @@ import { useEffect } from 'react'
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { equipmentLabel, missingEquipment, useWorkoutStore } from '@lifeos/shared'
+import { equipmentLabel, useWorkoutStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
+import { categoryLabel, exerciseName, missingLabel, muscleGroupName } from '@/src/components/workout/labels'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -28,22 +29,24 @@ export default function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const { exercises, muscleGroups, equipment, libraryLoading, fetchLibrary } = useWorkoutStore()
+  const { exercises, muscleGroups, equipment, libraryLoading, error, fetchLibrary } = useWorkoutStore()
 
   // Kütüphane açılmadan gelinirse (derin bağlantı) katalog burada yüklenir.
   useEffect(() => { void fetchLibrary(supabase) }, [fetchLibrary])
 
   const exercise = exercises.find((e) => e.id === id)
-  const groupName = (g: { name: string; name_en: string } | null | undefined) => (g ? (lang === 'en' ? g.name_en : g.name) : '-')
-  const categoryLabel = ({
-    strength: t.wk_cat_strength, cardio: t.wk_cat_cardio, flexibility: t.wk_cat_flexibility, mobility: t.wk_cat_mobility,
-  } as Record<string, string>)
+  const groupName = (g: { name: string; name_en: string } | null | undefined) => muscleGroupName(g, lang)
   const sectionTitle = { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing[2] } as const
   const bodyText = { fontSize: fontSize.base, color: colors.textPrimary } as const
 
   const header = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <TouchableOpacity
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/workout' as never))}
+        accessibilityRole="button"
+        hitSlop={8}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+      >
         <Ionicons name="chevron-back" size={20} color={palette.accent} />
         <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.back}</Text>
       </TouchableOpacity>
@@ -51,11 +54,20 @@ export default function ExerciseDetailScreen() {
   )
 
   if (!exercise) {
+    // Katalog hiç gelmediyse "bulunamadı" demek yanlış olur: ya yükleniyor ya da yüklenemedi.
+    const loadFailed = exercises.length === 0 && !libraryLoading && !!error
     return (
       <ScreenBackground edges={['top']}>
         {header}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          {libraryLoading
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[3], padding: spacing[5] }}>
+          {loadFailed ? (
+            <>
+              <Text style={{ color: colors.textSubtle, textAlign: 'center' }}>{t.wk_err_load_library}</Text>
+              <TouchableOpacity onPress={() => void fetchLibrary(supabase, { force: true })} accessibilityRole="button" hitSlop={8}>
+                <Text style={{ color: palette.accent, fontWeight: fontWeight.medium }}>{t.retry}</Text>
+              </TouchableOpacity>
+            </>
+          ) : libraryLoading || exercises.length === 0
             ? <ActivityIndicator color={palette.accent} />
             : <Text style={{ color: colors.textSubtle }}>{t.wk_detail_not_found}</Text>}
         </View>
@@ -63,8 +75,9 @@ export default function ExerciseDetailScreen() {
     )
   }
 
-  const secondary = muscleGroups.filter((g) => exercise.secondary_muscle_group_ids.includes(g.id))
-  const missing = missingEquipment(exercise, equipment)
+  const secondaryIds = exercise.secondary_muscle_group_ids ?? []
+  const secondary = muscleGroups.filter((g) => secondaryIds.includes(g.id))
+  const missing = missingLabel(exercise, equipment, lang, t)
   // Talimatlar veritabanında yalnızca Türkçe.
   const instructions = lang === 'tr' ? exercise.instructions : null
 
@@ -84,10 +97,10 @@ export default function ExerciseDetailScreen() {
 
         <View>
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-            {lang === 'en' ? (exercise.name_en ?? exercise.name) : exercise.name}
+            {exerciseName(exercise, lang, t)}
           </Text>
           <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 4 }}>
-            {groupName(exercise.muscle_group)} · {categoryLabel[exercise.category] ?? exercise.category}
+            {groupName(exercise.muscle_group)} · {categoryLabel(exercise.category, t)}
             {exercise.is_bodyweight ? ` · ${t.wk_bodyweight}` : ''}
           </Text>
         </View>
@@ -107,10 +120,8 @@ export default function ExerciseDetailScreen() {
                 ? t.wk_detail_no_equipment
                 : exercise.equipment.map((key) => equipmentLabel(key, lang)).join(', ')}
             </Text>
-            {missing.length > 0 && (
-              <Text style={{ fontSize: fontSize.sm, color: palette.warning, marginTop: spacing[2] }}>
-                {t.wk_missing_equipment.replace('{list}', missing.map((key) => equipmentLabel(key, lang)).join(', '))}
-              </Text>
+            {missing && (
+              <Text style={{ fontSize: fontSize.sm, color: palette.warning, marginTop: spacing[2] }}>{missing}</Text>
             )}
           </GlassCard>
         )}

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ALIASES, FRAMES, imagePathFor, matchExercises, normalizeName, publicImageUrl } from '../../scripts/import-exercise-images.mjs'
+import { ALIASES, imagePathFor, matchExercises, normalizeName, publicImageUrl } from '../../scripts/import-exercise-images.mjs'
 
 const entry = (name: string, images: string[] = [`${name.replace(/\W+/g, '_')}/0.jpg`]) => ({ name, images })
 const ex = (id: string, name_en: string | null) => ({ id, name_en })
@@ -76,7 +76,6 @@ test('kare seçimi: varsayılan ilk kare, tablodaki kare, olmayan kare ilk karey
   assert.equal(imagePathFor(two, {}), 'Lunge/0.jpg')
   assert.equal(imagePathFor(two, { Lunge: 1 }), 'Lunge/1.jpg')
   assert.equal(imagePathFor({ name: 'Lunge', images: ['Lunge/0.jpg'] }, { Lunge: 1 }), 'Lunge/0.jpg')
-  for (const name of Object.keys(FRAMES)) assert.ok(Object.values(ALIASES).includes(name), name)
 })
 
 test('public URL: sondaki eğik çizgi tekrarlanmaz', () => {

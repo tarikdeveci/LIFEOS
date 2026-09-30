@@ -1,11 +1,13 @@
 -- Egzersiz görselleri.
 --
--- Kaynak free-exercise-db (Unlicense, kamu malı). Görseller herkese açık
+-- Kaynak free-exercise-db. Kodu Unlicense, ama fotoğrafların ticari kullanım
+-- hakkı belirsiz (bkz. scripts/import-exercise-images.mjs). Görseller herkese açık
 -- 'exercise-images' kovasına scripts/import-exercise-images.mjs ile yüklenir,
 -- kovanın public adresi exercises.image_url'e yazılır. Yazma yalnızca service
 -- role ile (RLS'i atlar); okuma public URL üzerinden, policy gerekmez.
 --
--- NULL = görsel yok. Uygulama o zaman görsel alanını hiç çizmez.
+-- NULL = görsel yok. Detay sayfası o zaman kategori ikonu çizer, diğer yerler
+-- görsel alanını hiç çizmez.
 
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS image_url TEXT;
 

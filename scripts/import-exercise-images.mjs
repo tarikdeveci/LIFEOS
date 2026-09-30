@@ -8,8 +8,12 @@
 //   SUPABASE_URL veya NEXT_PUBLIC_SUPABASE_URL
 //   SUPABASE_SERVICE_ROLE_KEY
 //
-// LİSANS: free-exercise-db Unlicense (kamu malı), atıf şartı yok. wger
-// (CC-BY-SA), exercises-dataset medyası ve openGym (AGPL) bilerek kullanılmadı.
+// LİSANS UYARISI: free-exercise-db kodu ve metni Unlicense, ama fotoğraflar
+// wrkout/exercises.json'dan geliyor ve orada internetten toplandıkları, telif
+// hakkının kendilerine ait olmadığı, ticari projede kullanılmaması gerektiği
+// yazıyor (CONTRIBUTING.md). Ücretli sürüme çıkmadan lisanslı bir kaynakla
+// değiştirilmeli. wger (CC-BY-SA), exercises-dataset medyası ve openGym (AGPL)
+// bilerek kullanılmadı.
 //
 // Eşleşme exercises.name_en ile: önce ALIASES, yoksa noktalama ve büyük harf
 // farkı yok sayılarak birebir ad. Bulanık eşleşme yok; yanlış hareketin
@@ -239,7 +243,11 @@ async function main() {
 
   console.log(`Katalog: ${catalog.length} kayıt (free-exercise-db @ ${FEDB_COMMIT.slice(0, 7)})`)
   console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length}, eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
-  if (brokenAliases.length) console.warn(`Kaynakta bulunamayan takma adlar: ${brokenAliases.join(', ')}`)
+  // Kaynak sabit bir commit; kırık takma ad tablodaki yazım hatasıdır, sessizce görselsiz bırakma.
+  if (brokenAliases.length) {
+    console.error(`Kaynakta bulunamayan takma adlar: ${brokenAliases.join(', ')}`)
+    process.exit(1)
+  }
   if (dryRun) {
     for (const { exercise, entry } of matched) console.log(`  ✓ ${exercise.name_en} → ${entry.name}`)
     console.log(`Görselsiz kalacaklar: ${unmatched.map((e) => e.name_en ?? `(name_en yok: ${e.id})`).join(', ')}`)
