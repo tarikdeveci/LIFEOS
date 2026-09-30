@@ -7,16 +7,20 @@ import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
 import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
-import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { Segmented } from '@/src/components/ui/Segmented'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { NowCard } from '@/src/components/planning/NowCard'
+import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
-import { DayToolbar } from '@/src/components/planning/DayToolbar'
+import { DayStartCard } from '@/src/components/planning/DayStartCard'
+import { CapacityRow } from '@/src/components/planning/CapacityRow'
+import { WeekStrip } from '@/src/components/planning/WeekStrip'
 import { WeeklyRoutines } from '@/src/components/planning/WeeklyRoutines'
+import { GoalsCard } from '@/src/components/planning/GoalsCard'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -30,16 +34,6 @@ import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
 const BLOCK_LABELS: Record<BlockType, string> = { task: 'Görev', routine: 'Rutin', break: 'Mola', focus: 'Odak', meal: 'Yemek', workout: 'Antrenman' }
-const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
-
-const ENERGY_LEVELS = [
-  { level: 1 as const, emoji: '😴', label: 'Bitkin' },
-  { level: 2 as const, emoji: '😑', label: 'Düşük' },
-  { level: 3 as const, emoji: '😐', label: 'Orta' },
-  { level: 4 as const, emoji: '😊', label: 'İyi' },
-  { level: 5 as const, emoji: '🔥', label: 'Harika' },
-]
-
 function localIsoDate(date = new Date()): string {
   const tzOffsetMs = date.getTimezoneOffset() * 60000
   return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
@@ -90,8 +84,8 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone, setEnergyLevel } = usePlanningStore()
-  const { localEvents, isSyncing, hasPermission, initialize, syncEvents } = useCalendarStore()
+  const { timeBlocks, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { localEvents, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   // Free kullanıcı ürünün vaadini (gününü AI kursun) görebilsin diye AI
@@ -112,6 +106,8 @@ export default function PlanningScreen() {
     return requirePro('free_limit')
   }
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
+  // Gün: seçili günün planı. Hafta: hedefler ve tekrarlayan şablonlar.
+  const [view, setView] = useState<'day' | 'week'>('day')
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -132,8 +128,6 @@ export default function PlanningScreen() {
 
   const todayStr = localIsoDate()
   const weekDays = getWeekDays(weekAnchor)
-  const weekStart = weekDays[0]
-  const weekEnd = weekDays[6]
 
   // Seçili güne ait local takvim etkinlikleri
   const localEventsForDate = useMemo(
@@ -161,22 +155,9 @@ export default function PlanningScreen() {
     setRefreshing(true)
     await Promise.all([load(userId, selectedDate), syncEvents()])
     setRefreshing(false)
-  }
-
-  async function handleManualCalendarSync() {
-    try {
-      await syncEvents()
-      if (!hasPermission) {
-        Alert.alert('Takvim Senkronu', 'Takvim izni verilmedi. Ayarlar ekranından izin verin.')
-        return
-      }
-      // Okunamayan takvimi sessizce yutma — kullanıcı senkronun neden boş
-      // olduğunu göremiyordu.
-      const error = useCalendarStore.getState().lastSyncError
-      Alert.alert('Takvim Senkronu', error ? `Takvim senkronize edildi, ancak ${error}.` : 'Takvim senkronize edildi.')
-    } catch {
-      Alert.alert('Takvim Senkronu', 'Senkronizasyon başarısız')
-    }
+    // Okunamayan takvimi sessizce yutma: senkronun neden boş kaldığı görünmüyordu.
+    const syncError = useCalendarStore.getState().lastSyncError
+    if (syncError) Alert.alert('Takvim Senkronu', `Takvim senkronize edildi, ancak ${syncError}.`)
   }
 
   async function handleAdd() {
@@ -292,12 +273,6 @@ export default function PlanningScreen() {
     }
   }
 
-  async function handleEnergyLevel(level: 1 | 2 | 3 | 4 | 5) {
-    if (!userId) return
-    try { await setEnergyLevel(supabase, level) }
-    catch { Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi') }
-  }
-
   const dayBlocks = useMemo(
     () =>
       timeBlocks
@@ -307,6 +282,7 @@ export default function PlanningScreen() {
   )
 
   const isViewingToday = selectedDate === todayStr
+  const dayTitle = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })
   // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
   const dayPosition = useMemo(
     () => (isViewingToday ? getDayPosition(dayBlocks, now) : null),
@@ -328,129 +304,96 @@ export default function PlanningScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity onPress={() => void handleManualCalendarSync()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.info}18`, borderWidth: 1, borderColor: `${palette.info}30`, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name={isSyncing ? 'sync-outline' : 'calendar-outline'} size={18} color={palette.info} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked ? 1 : 0.55 }}>
-              <Ionicons name={aiUnlocked ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
-              {hasFreePlan && freePlansLeft !== null && (
-                <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={openAddSheet} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
+          <View>
+            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
+            {view === 'day' && <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{dayTitle}</Text>}
           </View>
-        </View>
-
-        {/* Energy level: günün ilk girdisi, AI planı buna göre kurulur */}
-        <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.plan_energy}</Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            {ENERGY_LEVELS.map(({ level, emoji, label }) => {
-              const active = dailyPlan?.energy_level === level
-              return (
-                <TouchableOpacity
-                  key={level}
-                  onPress={() => handleEnergyLevel(level)}
-                  style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: spacing[3], marginHorizontal: 2, borderRadius: radius.lg, backgroundColor: active ? `${palette.accent}18` : 'transparent', borderWidth: active ? 1 : 0, borderColor: palette.accent }}
-                >
-                  <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                  <Text style={{ fontSize: fontSize.xs, color: active ? palette.accent : colors.textSubtle, fontWeight: active ? fontWeight.semibold : fontWeight.regular }}>{label}</Text>
-                </TouchableOpacity>
-              )
-            })}
-          </View>
-        </GlassCard>
-
-        {isViewingToday && userId && <><DayToolbar userId={userId} /><HabitsCard userId={userId} /></>}
-
-        {/* Şu an neredeyiz — sadece bugün */}
-        {dayPosition && dayBlocks.length > 0 && (
-          <NowCard
-            position={dayPosition}
-            blockColors={BLOCK_COLORS}
-            blockLabels={BLOCK_LABELS}
-            onJumpToNow={handleJumpToNow}
-          />
-        )}
-
-        {/* Week navigation */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
-          <TouchableOpacity onPress={() => { const d = new Date(weekAnchor); d.setDate(d.getDate() - 7); setWeekAnchor(d) }}>
-            <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary }}>
-            {weekStart?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''} – {weekEnd?.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) ?? ''}
-          </Text>
-          <TouchableOpacity onPress={() => { const d = new Date(weekAnchor); d.setDate(d.getDate() + 7); setWeekAnchor(d) }}>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Week days */}
-        <GlassCard style={{ marginBottom: spacing[5] }} padding={spacing[3]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            {weekDays.map((day, i) => {
-              const dateStr = localIsoDate(day)
-              const isSelected = dateStr === selectedDate
-              const isToday = dateStr === todayStr
-              const hasBlocks = timeBlocks.some((b) => b.date === dateStr)
-              return (
-                <TouchableOpacity key={dateStr} onPress={() => setSelectedDate(dateStr)} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
-                  <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontWeight: fontWeight.medium }}>{DAY_LABELS[i]}</Text>
-                  <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? palette.accent : isToday ? `${palette.accent}18` : 'transparent', borderWidth: isToday && !isSelected ? 1 : 0, borderColor: palette.accent }}>
-                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: isSelected ? '#fff' : isToday ? palette.accent : colors.textSecondary }}>{day.getDate()}</Text>
+          {view === 'day' && (
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <TouchableOpacity onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked ? 1 : 0.55 }}>
+                <Ionicons name={aiUnlocked ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
+                {hasFreePlan && freePlansLeft !== null && (
+                  <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
                   </View>
-                  {hasBlocks && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? palette.accent : colors.textSubtle }} />}
-                </TouchableOpacity>
-              )
-            })}
-          </View>
-        </GlassCard>
-
-        {/* Day blocks */}
-        {dayBlocks.length === 0 && localEventsForDate.length === 0 ? (
-          <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
-            <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
-            <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
-            <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-              <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
-              <Button
-                label={aiUnlocked
-                  ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
-                  : `Pro · ${t.plan_ai_plan}`}
-                onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
-                // Abonelik durumu okunurken kullanıcı da henüz yüklenmemiş
-                // olabilir; sohbet açılsa gönderim sessizce düşerdi. Başlıktaki
-                // AI düğmesi de aynı koşulda kapalı.
-                disabled={isCheckingPro}
-                variant="secondary"
-              />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openAddSheet} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="add" size={22} color="#fff" />
+              </TouchableOpacity>
             </View>
-          </View>
-        ) : (
-          <DayBlockList
-            blocks={dayBlocks}
-            events={localEventsForDate}
-            isToday={isViewingToday}
-            now={now}
-            blockColors={BLOCK_COLORS}
-            blockLabels={BLOCK_LABELS}
-            onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
-            onToggleDone={handleToggleBlockDone}
-            onNowAnchorLayout={(y) => {
-              nowAnchorY.current = y
-            }}
-          />
-        )}
+          )}
+        </View>
 
-        {userId && <WeeklyRoutines userId={userId} blockColors={BLOCK_COLORS} onChanged={() => void load(userId, selectedDate)} />}
+        <Segmented options={[{ key: 'day', label: t.plan_view_day }, { key: 'week', label: t.plan_view_week }]} value={view} onChange={setView} />
+
+        {view === 'week' ? (
+          userId ? (
+            <>
+              <GoalsCard userId={userId} />
+              <WeeklyRoutines userId={userId} blockColors={BLOCK_COLORS} onChanged={() => void load(userId, selectedDate)} />
+            </>
+          ) : null
+        ) : (
+          <>
+            <WeekStrip
+              days={weekDays}
+              selectedDate={selectedDate}
+              today={todayStr}
+              hasBlocks={(date) => timeBlocks.some((b) => b.date === date)}
+              onSelect={setSelectedDate}
+              onShiftWeek={(weeks) => setWeekAnchor((a) => { const d = new Date(a); d.setDate(d.getDate() + weeks * 7); return d })}
+            />
+
+            {isViewingToday && userId && <DayStartCard userId={userId} />}
+
+            {/* Şu an neredeyiz, günün kalanı: sadece bugün */}
+            {dayPosition && dayBlocks.length > 0 && (
+              <NowCard position={dayPosition} blockColors={BLOCK_COLORS} blockLabels={BLOCK_LABELS} onJumpToNow={handleJumpToNow}>
+                <CapacityRow />
+              </NowCard>
+            )}
+            {userId && <FocusCard userId={userId} date={selectedDate} activeBlock={isViewingToday ? dayPosition?.activeBlock ?? null : null} />}
+            {isViewingToday && userId && <HabitsCard userId={userId} />}
+
+            {/* Day blocks */}
+            {dayBlocks.length === 0 && localEventsForDate.length === 0 ? (
+              <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+                <Ionicons name="calendar-outline" size={48} color={colors.textSubtle} />
+                <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.plan_no_blocks}</Text>
+                <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+                  <Button label={t.plan_add_block_btn} onPress={openAddSheet} variant="secondary" />
+                  <Button
+                    label={aiUnlocked
+                      ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
+                      : `Pro · ${t.plan_ai_plan}`}
+                    onPress={() => { if (requirePlanAccess()) setShowAiChat(true) }}
+                    // Abonelik durumu okunurken kullanıcı da henüz yüklenmemiş
+                    // olabilir; sohbet açılsa gönderim sessizce düşerdi. Başlıktaki
+                    // AI düğmesi de aynı koşulda kapalı.
+                    disabled={isCheckingPro}
+                    variant="secondary"
+                  />
+                </View>
+              </View>
+            ) : (
+              <DayBlockList
+                blocks={dayBlocks}
+                events={localEventsForDate}
+                isToday={isViewingToday}
+                now={now}
+                blockColors={BLOCK_COLORS}
+                blockLabels={BLOCK_LABELS}
+                onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
+                onToggleDone={handleToggleBlockDone}
+                onNowAnchorLayout={(y) => {
+                  nowAnchorY.current = y
+                }}
+              />
+            )}
+          </>
+        )}
       </ScrollView>
 
       {/* Add block modal */}

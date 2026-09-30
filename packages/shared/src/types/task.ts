@@ -60,6 +60,8 @@ export interface Task extends WsjfScores {
   occurrence_date: string | null
   /** "Sadece bu" ile elle düzenlendi; seri değişince korunur. */
   routine_modified: boolean
+  /** Bağlı hedef (059); bağlanınca value_score en az 4. */
+  goal_id: string | null
   /** Gün sonu devrinde kaç kez yarına taşındı. */
   carry_count: number
 
@@ -115,4 +117,6 @@ export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title' | 'scheduled
   is_time_blocked: boolean
   sort_order: number
   completed_at: string | null
+  /** 059: hedef bağı; value_score valueScoreForGoal ile birlikte gönderilir. */
+  goal_id: string | null
 }>

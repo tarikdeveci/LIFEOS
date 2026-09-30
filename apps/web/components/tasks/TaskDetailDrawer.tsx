@@ -2,12 +2,13 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import type { Task, TaskStatus, WsjfScores, UpdateTaskInput, ChecklistItem } from '@lifeos/shared'
-import { TASK_STATUS_LABELS, describeAiError } from '@lifeos/shared'
+import { TASK_STATUS_LABELS, describeAiError, valueScoreForGoal } from '@lifeos/shared'
 import { Sheet } from '@/components/ui/Sheet'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { TaskStatusSelect } from './TaskStatusSelect'
 import { WsjfSliders } from './WsjfSliders'
+import { TaskGoalSelect } from './TaskGoalSelect'
 import { supabase } from '@/lib/supabase/client'
 
 interface TaskDetailDrawerProps {
@@ -255,6 +256,13 @@ export function TaskDetailDrawer({
             }
             min={0}
             step={5}
+          />
+          <TaskGoalSelect
+            userId={task.user_id}
+            goalId={task.goal_id ?? null}
+            onChange={(goalId) =>
+              void onUpdate(task.id, { goal_id: goalId, value_score: valueScoreForGoal(task.value_score, goalId) })
+            }
           />
         </div>
 

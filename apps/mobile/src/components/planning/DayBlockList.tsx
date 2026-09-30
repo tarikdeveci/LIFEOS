@@ -7,6 +7,7 @@ import {
   formatDuration,
   minutesOfDay,
   minutesToClock,
+  useFocusStore,
   type BlockTiming,
 } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
@@ -183,6 +184,8 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
   // ilerleme çubuğunu izlemek kullanıcıya bir şey söylemiyor.
   const isActive = !isDone && isToday && timing.phase === 'active'
   const isPast = !isDone && isToday && timing.phase === 'past'
+  // Odak zamanlayıcısıyla bu blokta gerçekten çalışılan süre (FocusCard seçili günü yükler).
+  const focusMinutes = useFocusStore((s) => s.sessions.reduce((sum, x) => (x.block_id === block.id ? sum + x.minutes : sum), 0))
 
   return (
     <View onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}>
@@ -236,6 +239,11 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
               {isNext && (
                 <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>
                   · {formatDuration(timing.minutesUntilStart, lang)} {t.plan_starts_in}
+                </Text>
+              )}
+              {focusMinutes > 0 && (
+                <Text style={{ fontSize: fontSize.sm, color: palette.accent }}>
+                  · 🎯 {formatDuration(focusMinutes, lang)}
                 </Text>
               )}
             </View>

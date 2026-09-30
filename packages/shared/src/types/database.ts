@@ -263,6 +263,54 @@ export type Database = {
           },
         ]
       }
+      focus_sessions: {
+        Row: {
+          block_id: string | null
+          created_at: string
+          ended_at: string
+          id: string
+          minutes: number
+          started_at: string
+          task_id: string | null
+          user_id: string
+        }
+        Insert: {
+          block_id?: string | null
+          created_at?: string
+          ended_at: string
+          id?: string
+          minutes: number
+          started_at: string
+          task_id?: string | null
+          user_id: string
+        }
+        Update: {
+          block_id?: string | null
+          created_at?: string
+          ended_at?: string
+          id?: string
+          minutes?: number
+          started_at?: string
+          task_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_sessions_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "time_blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_sessions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       food_aliases: {
         Row: {
           corpus_fdc_id: string | null
@@ -469,6 +517,71 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      goals: {
+        Row: {
+          count_mode: string | null
+          created_at: string
+          horizon: string
+          icon: string | null
+          id: string
+          parent_id: string | null
+          period_start: string
+          review_note: string | null
+          reviewed_at: string | null
+          status: string
+          tag_filter: string[]
+          target: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          count_mode?: string | null
+          created_at?: string
+          horizon: string
+          icon?: string | null
+          id?: string
+          parent_id?: string | null
+          period_start: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tag_filter?: string[]
+          target?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          count_mode?: string | null
+          created_at?: string
+          horizon?: string
+          icon?: string | null
+          id?: string
+          parent_id?: string | null
+          period_start?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tag_filter?: string[]
+          target?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       health_daily: {
         Row: {
@@ -1335,6 +1448,7 @@ export type Database = {
           external_updated_at: string | null
           external_url: string | null
           friction_score: number | null
+          goal_id: string | null
           id: string
           is_recurring: boolean | null
           is_time_blocked: boolean | null
@@ -1368,6 +1482,7 @@ export type Database = {
           external_updated_at?: string | null
           external_url?: string | null
           friction_score?: number | null
+          goal_id?: string | null
           id?: string
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
@@ -1401,6 +1516,7 @@ export type Database = {
           external_updated_at?: string | null
           external_url?: string | null
           friction_score?: number | null
+          goal_id?: string | null
           id?: string
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
@@ -1423,6 +1539,13 @@ export type Database = {
           value_score?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_parent_task_id_fkey"
             columns: ["parent_task_id"]

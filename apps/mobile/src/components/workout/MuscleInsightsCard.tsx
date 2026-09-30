@@ -12,6 +12,7 @@ import {
 } from '@lifeos/shared'
 import type { LoggedSet, MuscleGroup, MuscleLevel, FatigueState, MuscleRetention } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
+import { Segmented } from '../ui/Segmented'
 import { MuscleLevelBar } from './MuscleLevelBar'
 import { MuscleBodyMap, bodyBaseFill, type BodyMapLegendItem } from './MuscleBodyMap'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -205,26 +206,7 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, l
 
       {!loading && !error && hasData && (
         <>
-          <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[4] }}>
-            {SEGMENTS.map((s) => (
-              <TouchableOpacity
-                key={s.key}
-                onPress={() => setSegment(s.key)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: radius.md,
-                  alignItems: 'center',
-                  backgroundColor: segment === s.key ? colors.bgSurface : 'transparent',
-                  ...(segment === s.key ? colors.shadowCard : {}),
-                }}
-              >
-                <Text style={{ fontSize: fontSize.sm, fontWeight: segment === s.key ? fontWeight.semibold : fontWeight.regular, color: segment === s.key ? colors.textPrimary : colors.textMuted }}>
-                  {s.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Segmented options={SEGMENTS} value={segment} onChange={setSegment} />
 
           <MuscleBodyMap
             muscleGroups={anatomicalGroups}

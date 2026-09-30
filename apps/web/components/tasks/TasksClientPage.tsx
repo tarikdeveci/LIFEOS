@@ -11,6 +11,7 @@ import { TaskCard } from '@/components/tasks/TaskCard'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { QuickTaskInput } from '@/components/tasks/QuickTaskInput'
 import { TaskImportModal } from '@/components/tasks/TaskImportModal'
+import { BrainDumpModal } from '@/components/tasks/BrainDumpModal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useLang } from '@/lib/contexts/LangContext'
@@ -30,6 +31,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
   const [hideRoutine, setHideRoutine]     = useState(true)
   const [hideDone, setHideDone]           = useState(true)
   const [importOpen, setImportOpen]       = useState(false)
+  const [brainOpen, setBrainOpen]         = useState(false)
 
   const ROUTINE_TAGS = ['spor', 'yazılım', 'must-do', 'sağlık', 'kariyer']
 
@@ -166,10 +168,12 @@ export default function TasksClientPage({ userId }: { userId: string }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>{t.tasks_import}</Button>
+          <Button variant="outline" size="sm" onClick={() => setBrainOpen(true)} title={t.brain_title}>🧠 {t.brain_button}</Button>
           <QuickTaskInput onCreateTask={handleCreateTask} />
         </div>
       </div>
       <TaskImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImportTasks} />
+      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreateTask} />
 
       {/* Tab bar */}
       <div className="flex gap-1 rounded-xl bg-border/40 p-1">

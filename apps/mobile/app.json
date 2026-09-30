@@ -53,6 +53,7 @@
         "android.permission.WRITE_CALENDAR",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
+        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",

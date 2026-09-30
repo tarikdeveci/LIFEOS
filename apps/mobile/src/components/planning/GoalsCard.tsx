@@ -1,0 +1,136 @@
+import { useCallback, useMemo, useState } from 'react'
+import { View, Text, TouchableOpacity, Alert } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
+import { useFocusEffect } from 'expo-router'
+import type { GoalCountMode } from '@lifeos/shared'
+import { goalPeriodStart, goalTreeProgress, todayDate, useGoalStore } from '@lifeos/shared'
+import { supabase } from '@/src/lib/supabase'
+import { GlassCard } from '@/src/components/ui/GlassCard'
+import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+
+interface Props { userId: string }
+
+interface Draft { title: string; target: string; unit: string; tags: string; countMode: GoalCountMode }
+const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode: 'tasks' }
+
+/** Bu haftanın hedefleri ve ilerlemesi. Ay ve çeyrek hedefleri web'de düzenlenir; burada sadece hafta. */
+export function GoalsCard({ userId }: Props) {
+  const { colors } = useTheme()
+  const { t } = useLang()
+  const { goals, tasks, fetchGoals, addGoal, removeGoal } = useGoalStore()
+  const [sheet, setSheet] = useState(false)
+  const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [saving, setSaving] = useState(false)
+  const week = goalPeriodStart('week', todayDate())
+
+  // Sekmeye her dönüşte: başka sekmede tamamlanan bağlı görev ilerlemeye yansısın.
+  useFocusEffect(useCallback(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals]))
+
+  const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
+  const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')
+  const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
+
+  const save = async () => {
+    const target = parseInt(draft.target, 10)
+    if (!draft.title.trim() || !(target > 0)) return
+    setSaving(true)
+    try {
+      await addGoal(supabase, userId, {
+        horizon: 'week', title: draft.title.trim(), period_start: week, target,
+        unit: draft.unit.trim() || null, count_mode: draft.countMode,
+        tag_filter: draft.tags.split(',').map((x) => x.trim()).filter(Boolean),
+      })
+      setDraft(EMPTY)
+      setSheet(false)
+    } catch {
+      Alert.alert(t.goals_error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmDelete = (goalId: string) => {
+    Alert.alert(t.goals_delete_confirm, undefined, [
+      { text: t.cancel, style: 'cancel' },
+      {
+        text: t.goals_delete, style: 'destructive',
+        onPress: async () => {
+          try { await removeGoal(supabase, goalId) } catch { Alert.alert(t.goals_error) }
+        },
+      },
+    ])
+  }
+
+  const chip = (active: boolean) => ({
+    paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.md, borderWidth: 1,
+    backgroundColor: active ? palette.accent : colors.glassInner,
+    borderColor: active ? palette.accent : colors.border,
+  })
+
+  return (
+    <GlassCard style={{ marginBottom: spacing[4] }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing[3] }}>
+        <Text style={{ flex: 1, fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+          🎯 {t.goals_title}
+        </Text>
+        <TouchableOpacity onPress={() => setSheet(true)} hitSlop={8} accessibilityLabel={t.goals_add}>
+          <Ionicons name="add-circle-outline" size={22} color={palette.accent} />
+        </TouchableOpacity>
+      </View>
+
+      {weekly.length === 0 && (
+        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>{t.goals_empty}</Text>
+      )}
+
+      <View style={{ gap: spacing[3] }}>
+        {weekly.map((g) => {
+          const p = progress.get(g.id)
+          const pct = p?.pct ?? 0
+          const done = pct >= 100 || g.status === 'done'
+          return (
+            <TouchableOpacity key={g.id} onLongPress={() => confirmDelete(g.id)} delayLongPress={400}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textPrimary }} numberOfLines={1}>
+                  {g.icon ?? '🎯'} {g.title}
+                </Text>
+                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: done ? palette.success : colors.textSubtle }}>
+                  {p?.current ?? 0}/{p?.total ?? g.target ?? 0}{g.unit ? ` ${g.unit}` : ''}
+                </Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border }}>
+                <View style={{ height: 6, borderRadius: 3, width: `${pct}%`, backgroundColor: done ? palette.success : palette.accent }} />
+              </View>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+
+      <BottomSheet visible={sheet} onClose={() => setSheet(false)} title={t.goals_add} scrollable>
+        <View style={{ gap: spacing[3] }}>
+          <Input label={t.goals_name} value={draft.title} onChangeText={(v) => patch({ title: v })} maxLength={200} />
+          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+            <Input label={t.goals_target} value={draft.target} keyboardType="number-pad"
+              onChangeText={(v) => patch({ target: v.replace(/\D/g, '') })} containerStyle={{ flex: 1 }} />
+            <Input label={t.goals_unit} value={draft.unit} onChangeText={(v) => patch({ unit: v })} containerStyle={{ flex: 1 }} />
+          </View>
+          <Input label={t.goals_tags} value={draft.tags} onChangeText={(v) => patch({ tags: v })} placeholder="spor, koşu" />
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            {(['tasks', 'hours'] as const).map((m) => (
+              <TouchableOpacity key={m} onPress={() => patch({ countMode: m })} style={chip(draft.countMode === m)}>
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.countMode === m ? '#fff' : colors.textMuted }}>
+                  {m === 'tasks' ? t.goals_count_tasks : t.goals_count_hours}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Button label={t.goals_save} onPress={() => void save()} loading={saving} fullWidth />
+        </View>
+      </BottomSheet>
+    </GlassCard>
+  )
+}

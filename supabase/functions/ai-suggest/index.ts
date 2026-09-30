@@ -150,7 +150,7 @@ function normalizeMeals(raw: unknown): MealSummary[] {
 }
 
 interface SuggestRequest {
-  type: 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan' | 'nutrition_chat'
+  type: 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan' | 'nutrition_chat' | 'brain_dump'
   language?: Lang
   date?: string
   /**
@@ -416,6 +416,41 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
       }
 
       return json({ suggestions })
+    }
+
+    if (type === 'brain_dump') {
+      // Sesle ya da elle dökülen serbest metin → temiz görev listesi. İstemci dönen
+      // listeyi sanitizeBrainDumpItems ile yeniden doğrular ve onay ekranında gösterir.
+      const text = typeof user_message === 'string' ? user_message.trim().slice(0, 4000) : ''
+      if (!text) return json({ error: 'Metin boş' }, 400)
+
+      const response = await client.messages.create({
+        model: chatModel,
+        thinking: { type: 'disabled' as const },
+        max_tokens: 2048,
+        system: `Kullanıcı aklındaki işleri dağınık, konuşma diliyle döktü. Bunu yapılacak görevlere çevir.
+Bugün: ${today} (YYYY-MM-DD). Göreli tarihleri ("yarın", "cuma", "haftaya") bu güne göre çöz.
+Kurallar:
+- Her görev kısa, eylemle başlayan bir başlık olsun; tekrarları birleştir, görev olmayan cümleleri at.
+- Sadece metinde geçen bilgiyi kullan; tarih, saat ya da süre uydurma.
+- En fazla 30 görev.
+${langInstr}
+Sadece JSON döndür:
+{"tasks":[{"title":"...","scheduled_date":"YYYY-MM-DD veya yok","due_date":"YYYY-MM-DD veya yok","start_time":"HH:MM veya yok","estimated_minutes":N veya yok,"tags":["..."]}]}
+Bilinmeyen alanı hiç yazma.`,
+        messages: [{ role: 'user', content: text }],
+      })
+      await ledger.record(response)
+
+      let tasks: unknown = []
+      try {
+        const jsonMatch = firstText(response).match(/\{[\s\S]*\}/)
+        if (!jsonMatch) throw new Error('no json')
+        tasks = (JSON.parse(jsonMatch[0]) as { tasks?: unknown }).tasks ?? []
+      } catch {
+        return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
+      }
+      return json({ tasks: Array.isArray(tasks) ? tasks.slice(0, 30) : [] })
     }
 
     if (type === 'task_priority' && task_id) {

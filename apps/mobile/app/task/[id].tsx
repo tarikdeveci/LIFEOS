@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { useTaskStore } from '@lifeos/shared'
+import { useTaskStore, valueScoreForGoal } from '@lifeos/shared'
+import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
@@ -92,6 +93,17 @@ export default function TaskDetailScreen() {
       await updateTask(supabase, task.id, { [field]: value })
       setTask((p) => p ? { ...p, [field]: value } : null)
     } finally { setSaving(false) }
+  }
+
+  async function handleGoal(goalId: string | null) {
+    if (!task) return
+    const patch = { goal_id: goalId, value_score: valueScoreForGoal(task.value_score, goalId) }
+    setSaving(true)
+    try {
+      await updateTask(supabase, task.id, patch)
+      setTask((p) => p ? { ...p, ...patch } : null)
+    } catch { Alert.alert('Hata', 'Hedef kaydedilemedi') }
+    finally { setSaving(false) }
   }
 
   async function handleAiSuggest() {
@@ -264,6 +276,7 @@ export default function TaskDetailScreen() {
                 </View>
               </View>
             )}
+            {userId && <TaskGoalPicker userId={userId} goalId={task.goal_id ?? null} onChange={(g) => void handleGoal(g)} />}
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
               Oluşturuldu: {new Date(task.created_at).toLocaleDateString('tr-TR')}
             </Text>

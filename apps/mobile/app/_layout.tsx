@@ -5,10 +5,11 @@ import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
 import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
-import { emptyWidgetSnapshot } from '@lifeos/shared'
+import { emptyWidgetSnapshot, useFocusStore, useGoalStore } from '@lifeos/shared'
 import { configureEvents } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
+import { cancelFocusNotifications } from '@/src/notifications/focus'
 import { initRevenueCat } from '@/src/utils/purchases'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { hasSeenOnboarding } from '@/src/onboarding/storage'
@@ -54,6 +55,9 @@ function AppNavigator() {
       // Çıkışta başka kullanıcının sağlık verisi ve widget'ı cihazda kalmasın
       if (event === 'SIGNED_OUT') {
         useHealthStore.getState().reset()
+        useGoalStore.getState().reset()
+        useFocusStore.getState().reset()
+        void cancelFocusNotifications()
         void persistWidgetSnapshot(emptyWidgetSnapshot())
       }
     })

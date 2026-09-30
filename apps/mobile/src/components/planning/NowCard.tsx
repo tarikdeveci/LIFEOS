@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { formatDuration, minutesToClock, type DayPosition } from '@lifeos/shared'
@@ -12,13 +13,15 @@ interface Props {
   blockLabels: Record<string, string>
   /** Aktif (ya da sıradaki) bloğa kaydırma isteği */
   onJumpToNow?: () => void
+  /** Kartın alt satırı (ör. kapasite). */
+  children?: ReactNode
 }
 
 /**
  * Planlama ekranının tepesindeki "şu an neredeyim" kartı.
  * Sadece bugün görüntülenirken gösterilmeli.
  */
-export function NowCard({ position, blockColors, blockLabels, onJumpToNow }: Props) {
+export function NowCard({ position, blockColors, blockLabels, onJumpToNow, children }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const { activeBlock, activeTiming, nextBlock, nextTiming, nowMinute, afterLastBlock } = position
@@ -119,6 +122,7 @@ export function NowCard({ position, blockColors, blockLabels, onJumpToNow }: Pro
           </Text>
         </View>
       ) : null}
+      {children}
     </GlassCard>
   )
 }
