@@ -30,20 +30,21 @@ export function GoalsPanel({ userId }: GoalsPanelProps) {
   const migrated = useRef(false)
   const today = todayDate()
 
-  useEffect(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals])
-
-  // localStorage `wgoals_<userId>` → goals (bir kez). Aynı başlık bu hafta varsa tekrar eklenmez.
+  // Yükle, sonra localStorage `wgoals_<userId>` → goals (bir kez). Aktarım DB'deki hedefler
+  // geldikten sonra yapılır: aynı başlık bu hafta varsa tekrar eklenmez.
   useEffect(() => {
-    if (loading || error || migrated.current) return
-    migrated.current = true
-    const key = `wgoals_${userId}`
-    let raw: unknown = null
-    try { raw = JSON.parse(localStorage.getItem(key) ?? 'null') } catch { raw = null }
-    if (raw === null) return
-    const week = goalPeriodStart('week', today)
-    const existing = new Set(goals.filter((g) => g.horizon === 'week' && g.period_start === week).map((g) => g.title))
-    const inputs = legacyWeeklyGoalsToInputs(raw, week).filter((i) => !existing.has(i.title))
-    const migrate = async () => {
+    const load = async () => {
+      await fetchGoals(supabase, userId)
+      const state = useGoalStore.getState()
+      if (state.error || migrated.current) return
+      migrated.current = true
+      const key = `wgoals_${userId}`
+      let raw: unknown = null
+      try { raw = JSON.parse(localStorage.getItem(key) ?? 'null') } catch { raw = null }
+      if (raw === null) return
+      const week = goalPeriodStart('week', todayDate())
+      const existing = new Set(state.goals.filter((g) => g.horizon === 'week' && g.period_start === week).map((g) => g.title))
+      const inputs = legacyWeeklyGoalsToInputs(raw, week).filter((i) => !existing.has(i.title))
       try {
         await importGoals(supabase, userId, inputs)
         localStorage.removeItem(key)
@@ -51,8 +52,8 @@ export function GoalsPanel({ userId }: GoalsPanelProps) {
         migrated.current = false
       }
     }
-    void migrate()
-  }, [loading, error, goals, importGoals, userId, today])
+    void load()
+  }, [userId, fetchGoals, importGoals])
 
   const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
   const period = goalPeriodStart(tab, today)
@@ -66,9 +67,9 @@ export function GoalsPanel({ userId }: GoalsPanelProps) {
     ? Math.round(visible.reduce((s, g) => s + (progress.get(g.id)?.pct ?? 0), 0) / visible.length)
     : 0
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = async (fn: () => Promise<unknown>): Promise<boolean> => {
     setActionError(null)
-    try { await fn() } catch { setActionError(t.goal_error) }
+    try { await fn(); return true } catch { setActionError(t.goal_error); return false }
   }
 
   if (loading && goals.length === 0) {

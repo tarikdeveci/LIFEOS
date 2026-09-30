@@ -42,6 +42,8 @@ interface FocusStore {
   close: () => void
   save: (client: FocusClient, retry?: boolean) => Promise<void>
   load: (client: FocusClient, userId: string, from: string, to: string) => Promise<void>
+  /** Çıkışta: süren tur ve oturumlar sonraki hesaba geçmesin. */
+  reset: () => void
 }
 
 function pendingWork(active: ActiveFocus, now: number): PendingFocus | null {
@@ -63,6 +65,12 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   loadError: false,
   saveError: false,
   loadRequest: 0,
+  reset: () => set((state) => ({
+    active: null, pending: null, sessions: [], sessionsUserId: null, loading: false,
+    saving: false, loadError: false, saveError: false,
+    // Uçuştaki yüklemenin sonucu yok sayılsın.
+    loadRequest: state.loadRequest + 1,
+  })),
   start: (id, userId, block, now) => {
     const { active, pending, saving } = get()
     if (pending || saving || (active && active.timer.phase !== 'ready' && active.timer.phase !== 'stopped')) return
@@ -108,7 +116,15 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
           ? [...state.sessions.filter((item) => item.id !== session.id), session]
           : state.sessions,
       }))
-    } catch {
+    } catch (err) {
+      // Odak sürerken blok ya da görev silindiyse kayıt FK/RLS'e takılır ve hiç geçmez;
+      // pending kalınca zamanlayıcı kilitlenirdi. Bağlantısız olarak bir kez daha dene.
+      const code = (err as { code?: string } | null)?.code
+      const linked = pending.input.block_id !== null || pending.input.task_id !== null
+      if (linked && (code === '23503' || code === '42501')) {
+        set({ saving: false, pending: { ...pending, input: { ...pending.input, block_id: null, task_id: null } } })
+        return get().save(client, true)
+      }
       set({ saving: false, saveError: true })
     }
   },

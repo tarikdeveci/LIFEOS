@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CreateGoalInput, Goal, GoalTaskLike, UpdateGoalInput } from '../types/goal'
+import { fromDateString, shiftIsoDate } from '../utils/date'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -24,7 +25,8 @@ export async function getGoals(supabase: Supabase, userId: string, since: string
 
 /**
  * İlerleme hesabı için görevler: hedefe bağlı olanların hepsi ve [from, to] içinde
- * tamamlanmış olanlar (etiketle eşleşen haftalık hedefler için).
+ * tamamlanmış olanlar (etiketle eşleşen hedefler için). Planlanmamış görev, tamamlandığı
+ * an yerel [from, to] günlerine düşüyorsa gelir.
  */
 export async function getGoalTasks(
   supabase: Supabase,
@@ -32,11 +34,17 @@ export async function getGoalTasks(
   from: string,
   to: string,
 ): Promise<GoalTask[]> {
+  const doneFrom = fromDateString(from).toISOString()
+  const doneTo = fromDateString(shiftIsoDate(to, 1)).toISOString()
   const { data, error } = await supabase
     .from('tasks')
     .select(GOAL_TASK_COLUMNS)
     .eq('user_id', userId)
-    .or(`goal_id.not.is.null,and(status.eq.done,scheduled_date.gte.${from},scheduled_date.lte.${to})`)
+    .or([
+      'goal_id.not.is.null',
+      `and(status.eq.done,scheduled_date.gte.${from},scheduled_date.lte.${to})`,
+      `and(status.eq.done,scheduled_date.is.null,completed_at.gte."${doneFrom}",completed_at.lt."${doneTo}")`,
+    ].join(','))
 
   if (error) throw error
   return data as unknown as GoalTask[]

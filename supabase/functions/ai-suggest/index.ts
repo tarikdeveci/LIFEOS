@@ -444,8 +444,9 @@ Bilinmeyen alanı hiç yazma.`,
 
       let tasks: unknown = []
       try {
-        const jsonMatch = firstText(response).match(/{[sS]*}/)
-        if (jsonMatch) tasks = (JSON.parse(jsonMatch[0]) as { tasks?: unknown }).tasks ?? []
+        const jsonMatch = firstText(response).match(/\{[\s\S]*\}/)
+        if (!jsonMatch) throw new Error('no json')
+        tasks = (JSON.parse(jsonMatch[0]) as { tasks?: unknown }).tasks ?? []
       } catch {
         return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
       }

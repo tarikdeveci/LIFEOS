@@ -9,7 +9,8 @@ interface GoalFormProps {
   periodStart: string
   /** Bir üst ufkun bu dönemdeki aktif hedefleri. */
   parents: Goal[]
-  onSubmit: (input: CreateGoalInput) => Promise<void>
+  /** false dönerse kayıt başarısız: taslak korunur. */
+  onSubmit: (input: CreateGoalInput) => Promise<boolean>
 }
 
 interface Draft {
@@ -38,7 +39,7 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
 
   const submit = async () => {
     if (!draft.title.trim()) return
-    await onSubmit({
+    const ok = await onSubmit({
       horizon,
       title: draft.title.trim(),
       icon: draft.icon || null,
@@ -49,7 +50,7 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
       count_mode: countable ? draft.countMode : null,
       tag_filter: countable ? draft.tags.split(',').map((x) => x.trim()).filter(Boolean) : [],
     })
-    setDraft(EMPTY)
+    if (ok) setDraft(EMPTY)
   }
 
   if (!draft.open) {

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { useFocusEffect } from 'expo-router'
 import type { GoalCountMode } from '@lifeos/shared'
 import { goalPeriodStart, goalTreeProgress, todayDate, useGoalStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
@@ -27,7 +28,8 @@ export function GoalsCard({ userId }: Props) {
   const [saving, setSaving] = useState(false)
   const week = goalPeriodStart('week', todayDate())
 
-  useEffect(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals])
+  // Sekmeye her dönüşte: başka sekmede tamamlanan bağlı görev ilerlemeye yansısın.
+  useFocusEffect(useCallback(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals]))
 
   const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
   const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')

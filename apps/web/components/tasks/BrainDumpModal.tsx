@@ -78,6 +78,8 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
           ...(item.estimated_minutes && { estimated_minutes: item.estimated_minutes }),
           ...(item.effort_score !== undefined && { effort_score: item.effort_score }),
         })
+        // Görev yazıldı: blok yazımı başarısız olsa da tekrar denemede yeniden eklenmesin.
+        remaining = remaining.filter((x) => x !== item)
         if (created && item.start_time && item.scheduled_date) {
           await createTimeBlocks(supabase, created.user_id, [{
             date: item.scheduled_date,
@@ -86,7 +88,6 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
             block_type: 'task', label: created.title, task_id: created.id,
           }])
         }
-        remaining = remaining.filter((x) => x !== item)
       }
       reset()
     } catch {

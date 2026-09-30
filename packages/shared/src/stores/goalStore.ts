@@ -40,13 +40,15 @@ interface GoalState {
     note: string,
     today?: string,
   ) => Promise<void>
+  /** Çıkışta: sonraki hesap öncekinin hedeflerini görmesin. */
+  reset: () => void
 }
 
+const INITIAL = { goals: [] as Goal[], tasks: [] as GoalTask[], loading: false, error: null }
+
 export const useGoalStore = create<GoalState>((set, get) => ({
-  goals: [],
-  tasks: [],
-  loading: false,
-  error: null,
+  ...INITIAL,
+  reset: () => set(INITIAL),
 
   fetchGoals: async (supabase, userId, today = todayDate()) => {
     set({ loading: true, error: null })
@@ -114,7 +116,8 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       review_note: note.trim() || null,
       reviewed_at: new Date().toISOString(),
     }
-    await get().editGoal(supabase, goal.id, reviewed)
+    // Önce yeni hedef: oluşturma başarısız olursa eski hedef değerlendirme listesinde
+    // kalır ve tekrar denenebilir. Ters sırada eski hedef sessizce kaybolurdu.
     if (decision === 'carry') {
       await get().addGoal(supabase, userId, {
         horizon: goal.horizon,
@@ -128,5 +131,6 @@ export const useGoalStore = create<GoalState>((set, get) => ({
         tag_filter: goal.tag_filter,
       })
     }
+    await get().editGoal(supabase, goal.id, reviewed)
   },
 }))

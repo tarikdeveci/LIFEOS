@@ -6,7 +6,7 @@ import { useLang } from '@/lib/contexts/LangContext'
 
 interface GoalReviewCardProps {
   goals: Goal[]
-  onReview: (goal: Goal, decision: GoalReviewDecision, note: string) => Promise<void>
+  onReview: (goal: Goal, decision: GoalReviewDecision, note: string) => Promise<unknown>
 }
 
 /** Ay değişince geçen ayın aktif hedefleri: Tamamlandı / Bıraktım / Bu aya taşı. */

@@ -83,6 +83,8 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
             ...(item.estimated_minutes && { estimated_minutes: item.estimated_minutes }),
             ...(item.effort_score !== undefined && { effort_score: item.effort_score }),
           })
+          // Görev yazıldı: blok yazımı başarısız olsa da tekrar denemede yeniden eklenmesin.
+          remaining = remaining.filter((x) => x !== item)
           if (item.start_time && item.scheduled_date) {
             await createTimeBlocks(supabase, userId, [{
               date: item.scheduled_date, start_time: item.start_time,
@@ -91,7 +93,6 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
             }])
           }
         }
-        remaining = remaining.filter((x) => x !== item)
       }
       reset()
       onDone()

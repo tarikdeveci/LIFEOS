@@ -13,15 +13,12 @@ import {
   type TimeBlock,
 } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
-import { scheduleFocusNotification, cancelFocusNotification } from '@/src/notifications/focus'
+import { scheduleFocusNotification, cancelFocusNotifications, FOCUS_WORK_END_ID, FOCUS_BREAK_END_ID } from '@/src/notifications/focus'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
-
-const WORK_NOTIFICATION = 'focus-work-end'
-const BREAK_NOTIFICATION = 'focus-break-end'
 
 function clock(seconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
@@ -81,27 +78,22 @@ export function FocusCard({ userId, date, activeBlock }: Props) {
   useEffect(() => {
     if (!active || workStartedAt === null) return
     const workEnd = pomodoroDeadline(active.timer)
-    void scheduleFocusNotification(WORK_NOTIFICATION, workEnd, 'work').catch(() => undefined)
-    void scheduleFocusNotification(BREAK_NOTIFICATION, workEnd + active.timer.breakMinutes * 60_000, 'break').catch(() => undefined)
+    void scheduleFocusNotification(FOCUS_WORK_END_ID, workEnd, 'work').catch(() => undefined)
+    void scheduleFocusNotification(FOCUS_BREAK_END_ID, workEnd + active.timer.breakMinutes * 60_000, 'break').catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, workStartedAt])
-
-  function cancelNotifications() {
-    void cancelFocusNotification(WORK_NOTIFICATION).catch(() => undefined)
-    void cancelFocusNotification(BREAK_NOTIFICATION).catch(() => undefined)
-  }
 
   function handleStart(block: TimeBlock) {
     start(newFocusSessionId(), userId, block, Date.now())
   }
 
   function handleFinish() {
-    cancelNotifications()
+    void cancelFocusNotifications()
     finish(Date.now())
   }
 
   function handleClose() {
-    cancelNotifications()
+    void cancelFocusNotifications()
     finish(Date.now())
     close()
   }

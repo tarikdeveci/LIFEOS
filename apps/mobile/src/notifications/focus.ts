@@ -31,6 +31,12 @@ export async function scheduleFocusNotification(
   return true
 }
 
-export async function cancelFocusNotification(identifier: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(identifier)
+export const FOCUS_WORK_END_ID = 'focus-work-end'
+export const FOCUS_BREAK_END_ID = 'focus-break-end'
+
+/** Odak ve mola bitiş bildirimlerini birlikte iptal eder; hata yutulur. */
+export async function cancelFocusNotifications(): Promise<void> {
+  await Promise.all([FOCUS_WORK_END_ID, FOCUS_BREAK_END_ID].map((id) =>
+    Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined),
+  ))
 }

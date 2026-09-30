@@ -39,7 +39,7 @@ export function TaskGoalSelect({ userId, goalId, onChange }: TaskGoalSelectProps
         className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-primary"
       >
         <option value="">Hedef yok</option>
-        {current && current.period_start !== goalPeriodStart(current.horizon, today) && (
+        {current && (current.status !== 'active' || current.period_start !== goalPeriodStart(current.horizon, today)) && (
           <option value={current.id}>{current.icon ?? '🎯'} {current.title}</option>
         )}
         {GROUPS.map(({ horizon, label }) => {
