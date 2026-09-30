@@ -264,11 +264,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   removeWorkout: async (supabase, workoutId) => {
+    const userId = get().todayWorkout?.user_id
     await deleteWorkout(supabase, workoutId)
     set((state) => ({
       todayWorkout: state.todayWorkout?.id === workoutId ? null : state.todayWorkout,
       workoutHistory: state.workoutHistory.filter((w) => w.id !== workoutId),
     }))
+    // Silinen antrenmanın işaretli setleri haritada kalmasın.
+    if (userId) void get().fetchAnalytics(supabase, userId)
   },
 
   addSet: async (supabase, input) => {
@@ -315,6 +318,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         },
       }
     })
+    // Kas haritası yalnızca tamamlanan setleri sayıyor: işaretlenen set
+    // antrenman bitmeden haritaya yansısın.
+    const userId = get().todayWorkout?.user_id
+    if (updates.completed !== undefined && userId) void get().fetchAnalytics(supabase, userId)
   },
 
   removeSet: async (supabase, setId) => {

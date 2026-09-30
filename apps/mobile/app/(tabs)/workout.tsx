@@ -16,6 +16,7 @@ import { EquipmentSheet } from '@/src/components/workout/EquipmentSheet'
 import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { ProgressionHint } from '@/src/components/workout/ProgressionHint'
+import { LiveWorkout } from '@/src/components/workout/LiveWorkout'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -103,12 +104,14 @@ export default function WorkoutScreen() {
   const dayLabel = (day: { day_name: string | null; day_number: number }) => day.day_name?.trim() || t.wk_day_n.replace('{n}', String(day.day_number))
   const defaultDayNames = () => [1, 2, 3].map((n) => t.wk_day_n.replace('{n}', String(n)))
   const weekdayNames = t.routines_day_names.split(',')
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, removeSet, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, applyProgramAdaptation, startWorkout, finishWorkout, removeWorkout, addSet, addSets, createProgramWithDays, createProgramFromPlan, addExerciseToDay, removeExerciseFromDay, deleteProgram } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
   const [setsExpanded, setSetsExpanded] = useState(false)
+  /** Canlı ekrandaki hareketin ana kası; kas haritası onu seçili gösterir. */
+  const [liveMuscleId, setLiveMuscleId] = useState<number | null>(null)
 
   // Start
   const [showStart, setShowStart] = useState(false)
@@ -638,6 +641,19 @@ export default function WorkoutScreen() {
   // Ekipman seçilmişse koç bunu zaten sunucu tarafında zorluyor; öneri yalnızca kullanıcıya bunu hatırlatır.
   const coachSuggestions = equipment === null ? baseCoachSuggestions : [t.coach_suggestion_equipment, ...baseCoachSuggestions]
 
+  const liveActive = todayWorkout !== null && todayWorkout.status !== 'completed' && (todayWorkout.workout_sets?.length ?? 0) > 0
+  const muscleCard = (
+    <MuscleInsightsCard
+      sets={analyticsSets}
+      muscleGroups={muscleGroups}
+      bodyWeightKg={analyticsBodyWeightKg}
+      gender={analyticsGender}
+      loading={!analyticsLoaded}
+      error={analyticsError}
+      focusMuscleId={liveActive ? liveMuscleId : null}
+    />
+  )
+
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - new Date(w.date).getTime()) / 86400000
     return diff <= 7
@@ -747,21 +763,24 @@ export default function WorkoutScreen() {
                   </View>
                 </View>
 
-                {/* Sets: always visible when in-progress, collapsible when completed */}
-                {(todayWorkout.status !== 'completed' || setsExpanded) && (
-                  <>
-                    {(todayWorkout.workout_sets?.length ?? 0) > 0 ? (
-                      <View style={{ gap: 2, marginBottom: spacing[4] }}>
-                        {todayWorkout.workout_sets?.map((set: WorkoutSet) => (
-                          <SetRow key={set.id} set={set} onDelete={todayWorkout.status !== 'completed' ? () => removeSet(supabase, set.id) : undefined} />
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
-                        {t.work_exercise_search}
-                      </Text>
-                    )}
-                  </>
+                {/* Süren antrenman: canlı ekran. Biten antrenman: açılır düz set listesi. */}
+                {liveActive && userId && (
+                  <LiveWorkout
+                    workout={todayWorkout}
+                    userId={userId}
+                    onAddSet={(ex) => { setSelectedExercise(ex); setSetReps('10'); setSetWeight('') }}
+                    onFocusMuscle={setLiveMuscleId}
+                  />
+                )}
+                {todayWorkout.status !== 'completed' && (todayWorkout.workout_sets?.length ?? 0) === 0 && (
+                  <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[3] }}>
+                    {t.work_exercise_search}
+                  </Text>
+                )}
+                {todayWorkout.status === 'completed' && setsExpanded && (
+                  <View style={{ gap: 2, marginBottom: spacing[4] }}>
+                    {todayWorkout.workout_sets?.map((set: WorkoutSet) => <SetRow key={set.id} set={set} />)}
+                  </View>
                 )}
 
                 {todayWorkout.status !== 'completed' && (
@@ -801,6 +820,9 @@ export default function WorkoutScreen() {
               </GlassCard>
             ) : null}
 
+            {/* Antrenman sürerken harita canlı kartın hemen altında: işaretlenen set orada görünür. */}
+            {liveActive && muscleCard}
+
             <StreakCard streak={streak} />
 
             <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
@@ -832,14 +854,7 @@ export default function WorkoutScreen() {
               </View>
             </GlassCard>
 
-            <MuscleInsightsCard
-              sets={analyticsSets}
-              muscleGroups={muscleGroups}
-              bodyWeightKg={analyticsBodyWeightKg}
-              gender={analyticsGender}
-              loading={!analyticsLoaded}
-              error={analyticsError}
-            />
+            {!liveActive && muscleCard}
           </>
         )}
 
@@ -1411,7 +1426,7 @@ function ProgramCard({ program, splitLabel, fit, onStart }: { program: WorkoutPr
   )
 }
 
-function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
+function SetRow({ set }: { set: WorkoutSet }) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const name = set.exercise ? exerciseName(set.exercise, lang, t) : t.wk_exercise_n.replace('{n}', String(set.set_number))
@@ -1426,11 +1441,6 @@ function SetRow({ set, onDelete }: { set: WorkoutSet; onDelete?: () => void }) {
           {t.wk_reps_n.replace('{n}', String(set.reps ?? '-'))}{set.weight_kg ? ` · ${set.weight_kg}kg` : ''}
         </Text>
       </View>
-      {onDelete && (
-        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
-        </TouchableOpacity>
-      )}
     </View>
   )
 }

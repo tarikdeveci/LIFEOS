@@ -26,3 +26,4 @@ export * from './notionMapping'
 export * from './quickParse'
 
 export * from './focus'
+export * from './liveWorkout'
