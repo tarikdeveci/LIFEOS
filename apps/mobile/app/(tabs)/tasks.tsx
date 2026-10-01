@@ -135,8 +135,8 @@ export default function TasksScreen() {
     if (!draft.title.trim()) return null
     const p = parseQuickTask(draft.title, todayDate())
     const parts = [
-      p.scheduled_date && `${relativeDateLabel(p.scheduled_date)}${p.start_time ? ` ${p.start_time}` : ''}`,
-      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date)}`,
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date, lang)}`,
       p.estimated_minutes && `${p.estimated_minutes} dk`,
       ...p.tags.map((tag) => `#${tag}`),
     ].filter(Boolean)

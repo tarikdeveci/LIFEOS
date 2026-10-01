@@ -114,7 +114,7 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
 /** Aklındakileri dök: yaz ya da klavyenin mikrofonuyla konuş, görevlere bölünsün, onayla ve ekle. */
 export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: Props) {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const bd = useBrainDump(userId, t.brain_error, onClose)
   const kept = bd.items?.filter((i) => i.keep && i.title.trim()).length ?? 0
 
@@ -156,7 +156,7 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
           {bd.items.length === 0 && <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{t.brain_empty}</Text>}
           {bd.items.map((item, i) => {
             const meta = [
-              item.scheduled_date && `${relativeDateLabel(item.scheduled_date)}${item.start_time ? ` ${item.start_time}` : ''}`,
+              item.scheduled_date && `${relativeDateLabel(item.scheduled_date, lang)}${item.start_time ? ` ${item.start_time}` : ''}`,
               item.estimated_minutes && `${item.estimated_minutes} dk`,
               ...item.tags.map((tag) => `#${tag}`),
             ].filter(Boolean).join(' · ')
