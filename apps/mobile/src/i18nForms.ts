@@ -50,6 +50,7 @@ export const formsEn = {
   task_save_failed: 'Could not save',
   task_status_error: 'Could not update the task status. Check your connection.',
   task_add_error: 'Could not add the task',
+  integ_disconnect_error: 'Could not disconnect, try again',
 } as const
 
 export const formsTr: Record<keyof typeof formsEn, string> = {
@@ -101,4 +102,5 @@ export const formsTr: Record<keyof typeof formsEn, string> = {
   task_save_failed: 'Kaydedilemedi',
   task_status_error: 'Görev durumu güncellenemedi. Bağlantını kontrol et.',
   task_add_error: 'Görev eklenemedi',
+  integ_disconnect_error: 'Bağlantı kesilemedi, tekrar dene',
 }

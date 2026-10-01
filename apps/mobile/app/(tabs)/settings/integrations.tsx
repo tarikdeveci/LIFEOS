@@ -137,7 +137,7 @@ export default function IntegrationsScreen() {
               await deleteIntegration(supabase, item.id)
             }
             setItems((prev) => prev?.filter((i) => i.id !== item.id) ?? null)
-          } catch { Alert.alert(t.integ_import_error) }
+          } catch { Alert.alert(t.integ_disconnect_error) }
         },
       },
     ])

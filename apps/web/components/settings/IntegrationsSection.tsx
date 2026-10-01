@@ -97,7 +97,7 @@ export function IntegrationsSection() {
       }
       setItems((prev) => prev?.filter((i) => i.id !== item.id))
       showToast(t.integ_disconnected, 'success')
-    } catch { showToast(t.integ_import_error, 'error') }
+    } catch { showToast(t.integ_disconnect_error, 'error') }
     finally { setBusy(null) }
   }
 
