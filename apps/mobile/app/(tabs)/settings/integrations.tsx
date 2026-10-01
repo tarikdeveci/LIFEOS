@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
+import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import type { Integration, IntegrationProvider } from '@lifeos/shared'
 import { deleteIntegration, getIntegrations, importExternalTasks } from '@lifeos/shared/supabase'
@@ -107,7 +108,15 @@ export default function IntegrationsScreen() {
       if (!res.ok || !url) throw new Error(String(res.status))
       const result = await WebBrowser.openAuthSessionAsync(url, `lifeos://integrations/${slug}`)
       if (result.type === 'success') {
-        const ok = result.url.includes('status=ok')
+        // Sunucu bağlantıyı burada yazmaz: kodu devreder, uygulama kendi oturumuyla bitirir.
+        // Böylece başkasının başlattığı yetki adresi onu onaylayanın hesabını bağlayamaz.
+        const { queryParams } = Linking.parse(result.url)
+        const { handoff, code, status } = queryParams ?? {}
+        let ok = status === 'ok'
+        if (status === 'pending' && typeof handoff === 'string' && typeof code === 'string') {
+          const done = await authedFetch(`/api/integrations/${slug}/complete`, { handoff, code })
+          ok = done.ok && ((await done.json()) as { ok?: boolean }).ok === true
+        }
         Alert.alert((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', name))
         await load()
       }

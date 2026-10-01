@@ -26,10 +26,8 @@ export function returnTarget(platform: 'web' | 'mobile', slug: string): string {
 /**
  * Web akışında yetki dönüşü, bağlantıyı başlatan kullanıcının oturumunu taşıyan tarayıcıda
  * bitmeli: state tek başına tarayıcıya bağlı değil, başkasına gönderilen yetki adresi onun
- * dış hesabını başlatanın LifeOS hesabına bağlar. Mobil akışta (lifeos:// dönüşü) yetki
- * tarayıcısında oturum çerezi yok; o yol bu denetimle kapanmaz.
+ * dış hesabını başlatanın LifeOS hesabına bağlar. Mobil akış bunu handoff.ts ile çözer.
  */
-export async function returnsToStarter(req: Request, redirectTo: string, userId: string): Promise<boolean> {
-  if (!redirectTo.startsWith('/')) return true
+export async function returnsToStarter(req: Request, userId: string): Promise<boolean> {
   return (await authenticateRequest(req))?.userId === userId
 }
