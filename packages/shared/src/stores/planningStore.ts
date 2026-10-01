@@ -194,12 +194,22 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
         })
         .sort((a, b) => a.start_time.localeCompare(b.start_time)),
     })
-    try {
-      await Promise.all(updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })))
-    } catch (err) {
-      set({ timeBlocks: previous })
-      throw err
-    }
+    const results = await Promise.allSettled(
+      updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })),
+    )
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (!failed) return
+    // Kaydırma tek işlem değil: yalnız ekranı geri almak, veritabanında başarılı olan blokları
+    // yeni saatte bırakıyordu. Onlar da eski saatine döner; bu da olmazsa gün yeniden yüklenince düzelir.
+    const before = new Map(previous.map((b) => [b.id, b]))
+    await Promise.allSettled(updates.flatMap((u, i) => {
+      const old = before.get(u.id)
+      return results[i]?.status === 'fulfilled' && old
+        ? [updateTimeBlock(supabase, u.id, { start_time: old.start_time, end_time: old.end_time })]
+        : []
+    }))
+    set({ timeBlocks: previous })
+    throw failed.reason
   },
 
   handleRealtimeEvent: (event) => {

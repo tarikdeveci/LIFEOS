@@ -80,3 +80,18 @@ test('eski yazma başarısız olsa da sonradan girilen değer ekranda kalır', a
   await second
   assert.equal(countOf('r1'), 2)
 })
+
+test('şablon yazılıp örnek üretimi başarısız olursa ekran yeni şablonda kalır', async () => {
+  const old = { id: 'r1', title: 'Eski', kind: 'block', start_time: '09:00', created_at: '' }
+  useRoutineStore.setState({ routines: [old] as never })
+  const client = {
+    from: () => ({
+      update: (patch: Record<string, unknown>) => ({
+        eq: () => ({ select: () => ({ single: async () => ({ data: { ...old, ...patch }, error: null }) }) }),
+      }),
+    }),
+    rpc: async () => ({ data: null, error: { message: 'ağ' } }),
+  } as unknown as SupabaseClient
+  await assert.rejects(useRoutineStore.getState().updateSeries(client, 'r1', { title: 'Yeni' }))
+  assert.equal(useRoutineStore.getState().routines[0]?.title, 'Yeni')
+})

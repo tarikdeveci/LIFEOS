@@ -13,6 +13,7 @@ import {
   deleteRoutine,
   getRoutineCompletions,
   setHabitCount as writeHabitCount,
+  RoutineRegenerateError,
 } from '../supabase/routines'
 import { todayDate, shiftIsoDate } from '../utils/date'
 import { mondayOf } from '../utils/routine'
@@ -100,7 +101,9 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
         routines: state.routines.map((r) => (r.id === routineId ? updated : r)).sort(byStartTime),
       }))
     } catch (err) {
-      if (previous) {
+      if (err instanceof RoutineRegenerateError) {
+        set((state) => ({ routines: state.routines.map((r) => (r.id === routineId ? err.routine : r)).sort(byStartTime) }))
+      } else if (previous) {
         set((state) => ({ routines: state.routines.map((r) => (r.id === routineId ? previous : r)) }))
       }
       throw err
