@@ -122,12 +122,17 @@ export const useGoalStore = create<GoalState>((set, get) => ({
     }
     // Önce yeni hedef: oluşturma başarısız olursa eski hedef değerlendirme listesinde
     // kalır ve tekrar denenebilir. Ters sırada eski hedef sessizce kaybolurdu.
-    if (decision === 'carry') {
+    // Yeni hedef yazılıp eski hedefin kapanışı başarısız olduysa, tekrar denemede aynı dönem
+    // ve başlıkla ikinci hedef açılmasın: önceki denemenin hedefi zaten listede.
+    const periodStart = goalPeriodStart(goal.horizon, today)
+    const alreadyCarried = get().goals.some((g) =>
+      g.id !== goal.id && g.horizon === goal.horizon && g.period_start === periodStart && g.title === goal.title)
+    if (decision === 'carry' && !alreadyCarried) {
       await get().addGoal(supabase, userId, {
         horizon: goal.horizon,
         title: goal.title,
         icon: goal.icon,
-        period_start: goalPeriodStart(goal.horizon, today),
+        period_start: periodStart,
         parent_id: null,
         target: goal.target,
         unit: goal.unit,

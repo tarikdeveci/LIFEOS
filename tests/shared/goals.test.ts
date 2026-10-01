@@ -142,3 +142,36 @@ test('eski localStorage hedefleri taşınır, bozuk kayıt atlanır', () => {
   })
   assert.deepEqual(legacyWeeklyGoalsToInputs(null, '2026-09-28'), [])
 })
+
+test('hedef taşıma yarıda kalıp tekrar denenince ikinci yeni hedef açılmaz', async () => {
+  const { useGoalStore } = await import('../../packages/shared/src/stores/goalStore.ts')
+  const inserts: unknown[] = []
+  let updateFails = true
+  const client = {
+    from: () => ({
+      insert: (rows: Record<string, unknown>[]) => {
+        inserts.push(rows)
+        return { select: async () => ({ data: rows.map((r, i) => ({ ...r, id: `new-${inserts.length}-${i}` })), error: null }) }
+      },
+      update: (patch: Record<string, unknown>) => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => (updateFails
+              ? { data: null, error: { message: 'ağ' } }
+              : { data: { id: 'old', ...patch }, error: null }),
+          }),
+        }),
+      }),
+    }),
+  } as unknown as Parameters<ReturnType<typeof useGoalStore.getState>['reviewGoal']>[0]
+  const old = {
+    id: 'old', horizon: 'month', title: 'Koş', icon: null, period_start: '2026-09-01', parent_id: null,
+    target: 4, unit: null, count_mode: 'tasks', tag_filter: [], status: 'active',
+  } as unknown as Parameters<ReturnType<typeof useGoalStore.getState>['reviewGoal']>[2]
+  useGoalStore.setState({ goals: [old], tasks: [] })
+
+  await assert.rejects(useGoalStore.getState().reviewGoal(client, 'u', old, 'carry', '', '2026-10-05'))
+  updateFails = false
+  await useGoalStore.getState().reviewGoal(client, 'u', old, 'carry', '', '2026-10-05')
+  assert.equal(inserts.length, 1)
+})
