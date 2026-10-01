@@ -85,9 +85,17 @@ export function RitualSheet({ userId, visible, onClose, onAiPlan, aiLabel }: Pro
 
   const decide = (task: Task, keep: boolean) => {
     setHandled((prev) => new Set(prev).add(task.id))
-    void guard(() => updateTask(supabase, task.id, keep
-      ? { status: 'planned', scheduled_date: today, carry_count: 0 }
-      : { status: 'backlog', scheduled_date: null }))
+    void guard(async () => {
+      try {
+        await updateTask(supabase, task.id, keep
+          ? { status: 'planned', scheduled_date: today, carry_count: 0 }
+          : { status: 'backlog', scheduled_date: null })
+      } catch (err) {
+        // Yazılamadıysa satır geri gelsin: yoksa görev listeden kaybolur ve yeniden denenemez.
+        setHandled((prev) => { const next = new Set(prev); next.delete(task.id); return next })
+        throw err
+      }
+    })
   }
 
   // Karar verilmeyen devredenler bugüne alınır; sayaçları sıfırlanmaz.

@@ -26,7 +26,7 @@ const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode
 export function GoalsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { goals, tasks, fetchGoals, addGoal, removeGoal } = useGoalStore()
+  const { goals, tasks, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
   const [sheet, setSheet] = useState(false)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -39,14 +39,19 @@ export function GoalsCard({ userId }: Props) {
   const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
   const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')
   const isDone = (g: (typeof weekly)[number]) => (progress.get(g.id)?.pct ?? 0) >= 100 || g.status === 'done'
-  const summary = weekly.length === 0
+  // Yükleme hatası boş liste gibi görünmesin: "henüz hedef yok" mevcut hedefleri saklıyordu.
+  const loadFailed = error !== null && goals.length === 0
+  const summary = loadFailed ? t.goals_load_error
+    : weekly.length === 0
     ? t.goals_none_yet
     : t.goals_summary.replace('{done}', String(weekly.filter(isDone).length)).replace('{n}', String(weekly.length))
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
 
   const save = async () => {
     const target = parseInt(draft.target, 10)
-    if (!draft.title.trim() || !(target > 0)) return
+    // Sessiz ret yok: pencere açık kalıp hiçbir şey olmaması bozuk düğme gibi görünüyordu.
+    if (!draft.title.trim()) { Alert.alert(t.plan_err_name_required); return }
+    if (!(target > 0)) { Alert.alert(t.goals_err_target); return }
     setSaving(true)
     try {
       await addGoal(supabase, userId, {
@@ -86,7 +91,13 @@ export function GoalsCard({ userId }: Props) {
       <CollapsibleTitle title={t.goals_title} summary={summary} open={open} onToggle={() => setOpen((v) => !v)}
         onAdd={() => setSheet(true)} addLabel={t.goals_add} />
 
-      {open && weekly.length === 0 && (
+      {open && loadFailed && (
+        <TouchableOpacity onPress={() => void fetchGoals(supabase, userId)} style={{ alignItems: 'center', paddingVertical: spacing[3] }}>
+          <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.retry}</Text>
+        </TouchableOpacity>
+      )}
+
+      {open && !loadFailed && weekly.length === 0 && (
         <TouchableOpacity onPress={() => setSheet(true)} style={{ alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3] }}>
           <Ionicons name="flag-outline" size={26} color={colors.textSubtle} />
           <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>{t.goals_empty}</Text>

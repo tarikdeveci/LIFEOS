@@ -69,10 +69,16 @@ test('haftalık sayım: etiket veya goal_id, sadece tamamlanmış ve periyot iç
   assert.deepEqual(computeGoalProgress(goal(), tasks), { current: 2, total: 3, pct: 67 })
 })
 
-test('saat modu tahmini dakikayı saate yuvarlar, tahmin yoksa 60 dk', () => {
+test('saat modu dakikayı kesirli saate çevirir, tahmin yoksa 60 dk', () => {
   const g = goal({ count_mode: 'hours', target: 2 })
   const tasks = [task({ tags: ['spor'], estimated_minutes: 90 }), task({ tags: ['spor'] })]
-  assert.deepEqual(computeGoalProgress(g, tasks), { current: 3, total: 2, pct: 100 })
+  assert.deepEqual(computeGoalProgress(g, tasks), { current: 2.5, total: 2, pct: 100 })
+})
+
+test('saat modu: yüzde yuvarlanmış saatten değil gerçek süreden hesaplanır', () => {
+  const g = goal({ count_mode: 'hours', target: 1 })
+  assert.deepEqual(computeGoalProgress(g, [task({ tags: ['spor'], estimated_minutes: 30 })]), { current: 0.5, total: 1, pct: 50 })
+  assert.equal(computeGoalProgress(g, [task({ tags: ['spor'], estimated_minutes: 25 })]).pct, 42)
 })
 
 test('planlanmamış görev tamamlandığı güne sayılır', () => {

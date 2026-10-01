@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
@@ -6,7 +6,7 @@ import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import {
   WEEKDAY_ORDER, estimateWorkoutMinutes, isExerciseAvailable, localDateTime,
-  nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, useWorkoutStore } from '@lifeos/shared'
+  nextSlotTime, planProgram, programDaySetRows, programEquipmentFit, spreadWeekdays, todayDate, fromDateString, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, WorkoutSet, WorkoutProgram, ProgramDay, AiProgramPlan, ProgramAdaptation, ProgramEquipmentFit } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { createRecurringEvent, findWritableCalendarId, requestCalendarPermission } from '@/src/utils/calendarSync'
@@ -106,6 +106,8 @@ export default function WorkoutScreen() {
   const [showStart, setShowStart] = useState(false)
   const [workoutName, setWorkoutName] = useState('')
   const [starting, setStarting] = useState(false)
+  // Durum bir sonraki çizimde güncellenir: hızlı ikinci dokunuş aynı güne iki antrenman açıyordu.
+  const startingRef = useRef(false)
 
   // Add set — selectedExercise stores the exercise object from DB
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
@@ -188,15 +190,16 @@ export default function WorkoutScreen() {
   }
 
   async function handleStart() {
-    if (!userId || starting || !workoutName.trim()) return
+    if (!userId || startingRef.current || !workoutName.trim()) return
     if (todayWorkout) { setShowStart(false); return }  // aynı güne ikinci antrenman açma
+    startingRef.current = true
     setStarting(true)
     try {
       await startWorkout(supabase, userId, { name: workoutName.trim(), date: todayStr, status: 'in_progress' })
       setWorkoutName(''); setShowStart(false)
       await fetchHistory(supabase, userId)
     } catch { Alert.alert(t.error, t.wk_err_start) }
-    finally { setStarting(false) }
+    finally { startingRef.current = false; setStarting(false) }
   }
 
   async function handleFinish() {
@@ -329,7 +332,7 @@ export default function WorkoutScreen() {
   }
 
   async function handleStartFromProgramDay(program: WorkoutProgram, dayId: string) {
-    if (!userId || starting) return  // çift dokunuş koruması
+    if (!userId || startingRef.current) return  // çift dokunuş koruması
     const day = program.days?.find((d) => d.id === dayId)
     if (!day || day.is_rest) return
 
@@ -344,6 +347,7 @@ export default function WorkoutScreen() {
     }
 
     const dayName = dayLabel(day)
+    startingRef.current = true
     setStarting(true)
     setSelectedProgram(null)  // sheet'i hemen kapat — yükleme sürerken ikinci güne basılamasın
     setExpandedDay(null)
@@ -363,6 +367,7 @@ export default function WorkoutScreen() {
       Alert.alert(t.error, t.wk_err_start_day)
       if (userId) await fetchTodayWorkout(supabase, userId, todayStr)
     } finally {
+      startingRef.current = false
       setStarting(false)
     }
   }
@@ -619,7 +624,7 @@ export default function WorkoutScreen() {
   )
 
   const weekCount = workoutHistory.filter((w) => {
-    const diff = (Date.now() - new Date(w.date).getTime()) / 86400000
+    const diff = (Date.now() - fromDateString(w.date).getTime()) / 86400000
     return diff <= 7
   }).length
 
@@ -945,7 +950,7 @@ export default function WorkoutScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{w.name?.trim() || t.wk_workout}</Text>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                        {new Date(w.date).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                        {fromDateString(w.date).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
                         {w.duration_minutes ? ` · ${t.wk_min_n.replace('{n}', String(w.duration_minutes))}` : ''}
                       </Text>
                     </View>

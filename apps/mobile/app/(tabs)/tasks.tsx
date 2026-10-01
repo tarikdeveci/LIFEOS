@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
@@ -33,12 +33,12 @@ interface Draft {
   effort_score: number
 }
 
-// Sabit değil fonksiyon: modül seviyesinde bir kez hesaplansaydı, uygulama gece
-// yarısını açık geçtiğinde yeni görev formu hâlâ dünün tarihini önerirdi.
+// Tarih ve süre boş başlar (bugün ve 30 dk yalnızca ipucu): dolu gelseydi metindeki
+// "yarın 15:00 ... 45dk" her zaman bu varsayılanlara yenilirdi.
 function emptyDraft(): Draft {
   return {
-    title: '', scheduled_date: todayDate(),
-    estimated_minutes: '30', value_score: 3, urgency_score: 3, effort_score: 3,
+    title: '', scheduled_date: '',
+    estimated_minutes: '', value_score: 3, urgency_score: 3, effort_score: 3,
   }
 }
 
@@ -52,6 +52,8 @@ export default function TasksScreen() {
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [adding, setAdding] = useState(false)
+  // Durum bir sonraki çizimde güncellenir: hızlı ikinci dokunuş onu görmeden görevi ikinci kez ekliyordu.
+  const addingRef = useRef(false)
   const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
   const [showBrain, setShowBrain] = useState(false)
@@ -142,12 +144,13 @@ export default function TasksScreen() {
   }, [draft.title, t.qtask_due_short])
 
   async function handleAdd() {
-    if (!userId || !draft.title.trim()) return
+    if (!userId || !draft.title.trim() || addingRef.current) return
+    addingRef.current = true
     setAdding(true)
     try {
       // Türkçe doğal dil: "yarın 15:00 rapor 30dk"; elle doldurulan alanlar önce gelir.
       const parsed = parseQuickTask(draft.title, todayDate())
-      const day = draft.scheduled_date || parsed.scheduled_date
+      const day = draft.scheduled_date.trim() || parsed.scheduled_date || todayDate()
       const minutes = parseInt(draft.estimated_minutes) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
       const task = await addTask(supabase, userId, {
         title: parsed.title,
@@ -171,6 +174,7 @@ export default function TasksScreen() {
     } catch {
       Alert.alert('Hata', 'Görev eklenemedi')
     } finally {
+      addingRef.current = false
       setAdding(false)
     }
   }
@@ -272,8 +276,8 @@ export default function TasksScreen() {
           <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
           {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" containerStyle={{ flex: 1 }} returnKeyType="next" />
-            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 
           {/* Primary action — visible before WSJF so keyboard never hides it */}

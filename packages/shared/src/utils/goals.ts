@@ -72,10 +72,12 @@ export function computeGoalProgress(
 ): GoalProgressInfo {
   if (goal.target != null && goal.count_mode) {
     const done = tasks.filter((t) => t.status === 'done' && matchesGoal(goal, t) && inPeriod(goal, taskDay(t)))
-    const current = goal.count_mode === 'tasks'
+    // Saat kesirli kalır: tam saate yuvarlanınca 1 saatlik hedefte 30 dk %100, 25 dk %0 görünüyordu.
+    const amount = goal.count_mode === 'tasks'
       ? done.length
-      : Math.round(done.reduce((s, t) => s + (t.estimated_minutes ?? 60), 0) / 60)
-    return { current, total: goal.target, pct: Math.min(100, Math.round((current / goal.target) * 100)) }
+      : done.reduce((s, t) => s + (t.estimated_minutes ?? 60), 0) / 60
+    const current = Math.round(amount * 10) / 10
+    return { current, total: goal.target, pct: Math.min(100, Math.round((amount / goal.target) * 100)) }
   }
 
   const liveChildren = children.filter((c) => c.status !== 'dropped')

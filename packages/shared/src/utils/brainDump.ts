@@ -40,6 +40,13 @@ export function parseBrainDump(text: string, today: string): QuickParseResult[] 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
+/** Biçim yetmez: "2026-02-31" kayıtta hata verir ve sıralı toplu kaydı ortasında keser. */
+function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !DATE_RE.test(value)) return false
+  const time = Date.parse(`${value}T00:00:00Z`)
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value
+}
+
 /**
  * AI yanıtını güvenli biçime getirir: bilinmeyen alan atılır, geçersiz tarih/saat
  * düşer, başlık kırpılır. Model ne döndürürse döndürsün istemci bu listeye güvenir.
@@ -53,8 +60,8 @@ export function sanitizeBrainDumpItems(raw: unknown): QuickParseResult[] {
     const title = typeof rec.title === 'string' ? rec.title.trim().slice(0, 200) : ''
     if (!title) continue
     const result: QuickParseResult = { title, tags: [] }
-    if (typeof rec.scheduled_date === 'string' && DATE_RE.test(rec.scheduled_date)) result.scheduled_date = rec.scheduled_date
-    if (typeof rec.due_date === 'string' && DATE_RE.test(rec.due_date)) result.due_date = rec.due_date
+    if (isCalendarDate(rec.scheduled_date)) result.scheduled_date = rec.scheduled_date
+    if (isCalendarDate(rec.due_date)) result.due_date = rec.due_date
     if (typeof rec.start_time === 'string' && TIME_RE.test(rec.start_time) && result.scheduled_date) {
       result.start_time = rec.start_time
     }

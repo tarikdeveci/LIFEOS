@@ -30,7 +30,8 @@ interface Props {
   requirePro: (source?: string) => boolean
 }
 
-interface Candidate extends QuickParseResult { keep: boolean }
+/** `taskId`: görev yazıldı ama zaman bloğu düştüyse görev burada kalır, tekrar denemede yalnız blok yazılır. */
+interface Candidate extends QuickParseResult { keep: boolean; taskId?: string; taskTitle?: string }
 
 /** Metin, aday listesi, meşgul ve hata durumu tek yerde; bileşen sadece çizer. */
 function useBrainDump(userId: string | null, errorText: string, onDone: () => void) {
@@ -75,7 +76,7 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
         const title = item.title.trim()
         if (item.keep && title) {
           const minutes = item.estimated_minutes ?? DEFAULT_TASK_MINUTES
-          const task = await addTask(supabase, userId, {
+          const task = item.taskId ? { id: item.taskId, title: item.taskTitle ?? title } : await addTask(supabase, userId, {
             title,
             ...(item.tags.length > 0 && { tags: item.tags }),
             ...(item.scheduled_date && { scheduled_date: item.scheduled_date, status: 'planned' as const }),
@@ -83,8 +84,10 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
             ...(item.estimated_minutes && { estimated_minutes: item.estimated_minutes }),
             ...(item.effort_score !== undefined && { effort_score: item.effort_score }),
           })
-          // Görev yazıldı: blok yazımı başarısız olsa da tekrar denemede yeniden eklenmesin.
-          remaining = remaining.filter((x) => x !== item)
+          // Görev yazıldı: yeniden eklenmesin. Blok yazımı düşerse satır görevle birlikte listede
+          // kalır ve tekrar denemede yalnız blok yazılır.
+          const written: Candidate = { ...item, taskId: task.id, taskTitle: task.title }
+          remaining = remaining.map((x) => (x === item ? written : x))
           if (item.start_time && item.scheduled_date) {
             await createTimeBlocks(supabase, userId, [{
               date: item.scheduled_date, start_time: item.start_time,
@@ -92,6 +95,7 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
               block_type: 'task', label: task.title, task_id: task.id,
             }])
           }
+          remaining = remaining.filter((x) => x !== written)
         }
       }
       reset()

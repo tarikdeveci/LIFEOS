@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router, useLocalSearchParams } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
@@ -74,6 +74,8 @@ function inferRequestedDate(input: string, fallbackDate: string): string {
  * herkes iki alanı da elle siliyordu. `nextSlotTime()` bir sonraki yarım saati
  * verdiği için değer çoğu zaman doğrudan kaydedilebilir oluyor.
  */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
 function emptyBlockDraft() {
   const start = nextSlotTime()
   return { label: '', start_time: start, end_time: addMinutesToClock(start, 60), block_type: 'focus' as BlockType }
@@ -147,22 +149,46 @@ export default function PlanningScreen() {
     void initialize()
 
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) { setUserId(data.user.id); void load(data.user.id, selectedDate) }
+      if (data.user) setUserId(data.user.id)
     })
-  }, [load, selectedDate, initialize])
+  }, [initialize])
+
+  // Sekmeye her dönüşte ve gün değişince: Görevler sekmesinde açılan blok buraya
+  // ancak elle yenileyince geliyordu.
+  useFocusEffect(useCallback(() => {
+    if (userId) void load(userId, selectedDate)
+  }, [userId, selectedDate, load]))
+
+  /** Kullanıcı başka güne geçince AI sohbeti sıfırlanır: önceki günün bağlamı yeni günü planlamasın. */
+  function selectDay(date: string) {
+    if (date !== selectedDate) setAiChatMsgs([])
+    setSelectedDate(date)
+  }
 
   async function handleRefresh() {
     if (!userId) return
     setRefreshing(true)
-    await Promise.all([load(userId, selectedDate), syncEvents()])
-    setRefreshing(false)
+    try {
+      await Promise.all([load(userId, selectedDate), syncEvents()])
+    } catch {
+      Alert.alert(t.error, t.plan_refresh_error)
+      return
+    } finally {
+      setRefreshing(false)
+    }
     // Okunamayan takvimi sessizce yutma: senkronun neden boş kaldığı görünmüyordu.
     const syncError = useCalendarStore.getState().lastSyncError
     if (syncError) Alert.alert('Takvim Senkronu', `Takvim senkronize edildi, ancak ${syncError}.`)
   }
 
   async function handleAdd() {
-    if (!userId || !draft.label.trim()) return
+    if (!userId) return
+    // Boş başlık ve hatalı saat sessizce reddedilmez; ağ hatasıyla aynı mesajı da almaz.
+    const invalid = !draft.label.trim() ? t.plan_err_name_required
+      : !TIME_RE.test(draft.start_time) || !TIME_RE.test(draft.end_time) ? t.plan_err_time_invalid
+      : draft.end_time <= draft.start_time ? t.plan_err_end_after_start
+      : null
+    if (invalid) { Alert.alert(invalid); return }
     setAdding(true)
     try {
       await addTimeBlock(supabase, userId, {
@@ -174,7 +200,7 @@ export default function PlanningScreen() {
       })
       setDraft(emptyBlockDraft())
       setShowAdd(false)
-    } catch { Alert.alert('Hata', 'Blok eklenemedi') }
+    } catch { Alert.alert(t.error, t.plan_block_add_error) }
     finally { setAdding(false) }
   }
 
@@ -347,7 +373,7 @@ export default function PlanningScreen() {
           selectedDate={selectedDate}
           today={todayStr}
           hasBlocks={(date) => timeBlocks.some((b) => b.date === date)}
-          onSelect={setSelectedDate}
+          onSelect={selectDay}
           onShiftWeek={(weeks) => setWeekAnchor((a) => { const d = new Date(a); d.setDate(d.getDate() + weeks * 7); return d })}
         />
 

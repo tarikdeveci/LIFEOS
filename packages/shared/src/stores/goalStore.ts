@@ -46,11 +46,15 @@ interface GoalState {
 
 const INITIAL = { goals: [] as Goal[], tasks: [] as GoalTask[], loading: false, error: null }
 
+// Çıkışta artar: önceki hesabın geciken yanıtı yeni hesabın store'una yazılmasın.
+let generation = 0
+
 export const useGoalStore = create<GoalState>((set, get) => ({
   ...INITIAL,
-  reset: () => set(INITIAL),
+  reset: () => { generation++; set(INITIAL) },
 
   fetchGoals: async (supabase, userId, today = todayDate()) => {
+    const gen = generation
     set({ loading: true, error: null })
     try {
       const quarter = goalPeriodStart('quarter', today)
@@ -60,9 +64,9 @@ export const useGoalStore = create<GoalState>((set, get) => ({
         getGoals(supabase, userId, since),
         getGoalTasks(supabase, userId, since, goalPeriodEnd('quarter', quarter)),
       ])
-      set({ goals, tasks, loading: false })
+      if (gen === generation) set({ goals, tasks, loading: false })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
+      if (gen === generation) set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
   },
 

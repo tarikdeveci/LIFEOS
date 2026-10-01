@@ -98,3 +98,19 @@ test('büyük harf ve Türkçe karakter', () => {
   assert.equal(r.scheduled_date, '2026-09-30')
   assert.equal(r.start_time, '19:00')
 })
+
+test('gün bölümü iki noktalı saati öğleden sonraya çevirir', () => {
+  const r = p('yarın akşam 7:30 toplantı')
+  assert.equal(r.title, 'toplantı')
+  assert.equal(r.scheduled_date, '2026-09-30')
+  assert.equal(r.start_time, '19:30')
+  assert.equal(p('sabah 7:30 koşu').start_time, '07:30')
+  assert.equal(p('akşam 19:30 yemek').start_time, '19:30')
+})
+
+test('@today ve @tomorrow kısayolları', () => {
+  const r = p('rapor @tomorrow')
+  assert.equal(r.title, 'rapor')
+  assert.equal(r.scheduled_date, '2026-09-30')
+  assert.equal(p('rapor @today').scheduled_date, TODAY)
+})
