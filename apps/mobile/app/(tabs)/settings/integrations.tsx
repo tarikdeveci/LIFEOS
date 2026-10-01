@@ -126,7 +126,7 @@ export default function IntegrationsScreen() {
 
   const disconnect = (item: Integration) => {
     Alert.alert(t.integ_disconnect_confirm, undefined, [
-      { text: 'Vazgeç', style: 'cancel' },
+      { text: t.cancel, style: 'cancel' },
       {
         text: t.integ_disconnect, style: 'destructive', onPress: async () => {
           try {

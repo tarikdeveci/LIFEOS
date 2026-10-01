@@ -127,7 +127,7 @@ export default function TasksScreen() {
     try {
       await setStatus(supabase, task.id, task.status === 'done' ? 'planned' : 'done')
     } catch {
-      Alert.alert('Kaydedilemedi', 'Görev durumu güncellenemedi. Bağlantını kontrol et.')
+      Alert.alert(t.task_save_failed, t.task_status_error)
     }
   }, [setStatus])
 
@@ -172,7 +172,7 @@ export default function TasksScreen() {
       setDraft(emptyDraft())
       setShowAdd(false)
     } catch {
-      Alert.alert('Hata', 'Görev eklenemedi')
+      Alert.alert(t.error, t.task_add_error)
     } finally {
       addingRef.current = false
       setAdding(false)
@@ -273,23 +273,23 @@ export default function TasksScreen() {
 
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
+          <Input label={t.task_field_title} value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
           {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
-            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
+            <Input label={t.task_field_date} value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label={t.task_field_minutes} value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 
           {/* Primary action — visible before WSJF so keyboard never hides it */}
-          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth />
+          <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth />
 
           {/* WSJF — optional, collapsible feel via section header */}
           <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', marginTop: spacing[1] }}>
-            WSJF skorları (opsiyonel — varsayılan 3)
+            {t.task_scores_hint}
           </Text>
-          <ScoreRow label="Değer" value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
-          <ScoreRow label="Aciliyet" value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
-          <ScoreRow label="Çaba" value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+          <ScoreRow label={t.task_score_value} value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
+          <ScoreRow label={t.task_score_urgency} value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
+          <ScoreRow label={t.task_score_effort} value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
         </View>
       </BottomSheet>
     </ScreenBackground>
