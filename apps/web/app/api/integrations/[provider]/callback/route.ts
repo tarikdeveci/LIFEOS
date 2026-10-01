@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { callbackUri } from '@/lib/integrations/oauth'
+import { callbackUri, returnsToStarter } from '@/lib/integrations/oauth'
 import { providerBySlug, providerCredentials } from '@/lib/integrations/providers'
 
 export const runtime = 'nodejs'
@@ -38,6 +38,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   if (!row) return NextResponse.json({ ok: false, error: 'Geçersiz ya da süresi dolmuş istek' }, { status: 400 })
   const saved = row as { user_id: string; code_verifier: string; redirect_to: string; created_at: string }
   if (Date.now() - new Date(saved.created_at).getTime() > STATE_TTL_MS) return finish(req, slug, saved.redirect_to, 'error')
+  if (!(await returnsToStarter(req, saved.redirect_to, saved.user_id))) return finish(req, slug, saved.redirect_to, 'error')
   if (query.get('error')) return finish(req, slug, saved.redirect_to, 'denied')
 
   const creds = providerCredentials(provider)

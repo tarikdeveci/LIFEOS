@@ -25,6 +25,8 @@ import { isDoableWith, parseEquipmentPreference } from '../_shared/ai/equipment.
 import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import {
   flattenWorkoutRows,
+  isIsoDate,
+  localDate,
   muscleLoadLine,
   summarizeMuscleLoad,
   type MuscleGroupRef,
@@ -157,7 +159,8 @@ interface SuggestRequest {
    * İstemcinin YEREL bugün tarihi (YYYY-MM-DD). Sunucu UTC'de çalıştığı için
    * toISOString() burada yanlış gün verir: UTC+3'te gece 00:00–03:00 arası
    * bir önceki günü döndürür, bu da "hedef gün bugün mü" testini bozup
-   * planlamayı geçmiş saatlerden başlatır. İstemci göndermezse UTC'ye düşeriz.
+   * planlamayı geçmiş saatlerden başlatır. İstemci göndermezse (web antrenman
+   * rotaları, eski sürümler) kullanıcının kayıtlı saat diliminden hesaplanır.
    */
   today?: string
   task_id?: string
@@ -222,15 +225,21 @@ function firstText(response: { content: Array<{ type: string; text?: string }> }
   return block?.type === 'text' && typeof block.text === 'string' ? block.text : ''
 }
 
+type Db = ReturnType<typeof createClient>
+
+/** Kullanıcının saat dilimi (bildirim tercihleri); kayıt yoksa İstanbul. */
+async function userTimeZone(supabase: Db, userId: string): Promise<string> {
+  const { data: prefs } = await supabase.from('notification_preferences').select('timezone').eq('user_id', userId).maybeSingle()
+  return (prefs as { timezone?: string } | null)?.timezone ?? 'Europe/Istanbul'
+}
+
 /**
  * Google takviminden gelen dolu aralıklar (057 calendar_busy), planlayıcı çakışma
  * yapmasın diye mevcut blok gibi verilir. Başlık yok, sadece "Meşgul".
  */
-// deno-lint-ignore no-explicit-any
-async function busyBlocks(supabase: any, userId: string, date: string): Promise<{ start: string; end: string; label: string }[]> {
+async function busyBlocks(supabase: Db, userId: string, date: string): Promise<{ start: string; end: string; label: string }[]> {
   try {
-    const { data: prefs } = await supabase.from('notification_preferences').select('timezone').eq('user_id', userId).maybeSingle()
-    const timeZone = (prefs as { timezone?: string } | null)?.timezone ?? 'Europe/Istanbul'
+    const timeZone = await userTimeZone(supabase, userId)
     const dayStart = new Date(`${date}T00:00:00Z`).getTime() - 14 * 3600_000
     const { data } = await supabase
       .from('calendar_busy')
@@ -316,7 +325,7 @@ serve(async (req: Request) => {
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
     const lang: Lang = language === 'en' ? 'en' : 'tr'
     const langInstr = lang === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'
-    const today = clientToday ?? new Date().toISOString().split('T')[0]!
+    const today = isIsoDate(clientToday) ? clientToday : localDate(await userTimeZone(supabase, user.id))
 
     if (type === 'daily_plan') {
       // Günlük plan önerileri

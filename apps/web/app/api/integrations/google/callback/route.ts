@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   GOOGLE_CAL_API, GOOGLE_TOKEN_URL, googleCredentials, googleRedirectUri,
 } from '@/lib/integrations/google'
+import { returnsToStarter } from '@/lib/integrations/oauth'
 
 export const runtime = 'nodejs'
 
@@ -39,6 +40,7 @@ export async function GET(req: Request) {
   if (!row) return NextResponse.json({ ok: false, error: 'Geçersiz ya da süresi dolmuş istek' }, { status: 400 })
   const saved = row as { user_id: string; code_verifier: string; redirect_to: string; created_at: string }
   if (Date.now() - new Date(saved.created_at).getTime() > STATE_TTL_MS) return finish(req, saved.redirect_to, 'error')
+  if (!(await returnsToStarter(req, saved.redirect_to, saved.user_id))) return finish(req, saved.redirect_to, 'error')
   if (params.get('error')) return finish(req, saved.redirect_to, 'denied')
 
   const creds = googleCredentials()
@@ -85,6 +87,14 @@ export async function GET(req: Request) {
     }
 
     let calendarId = current.settings?.calendar_id
+    // Başka bir Google hesabıyla yeniden bağlanıldıysa (ya da takvim Google'da silindiyse)
+    // kayıtlı takvim bu token'la bulunmaz; eski kimlik kalırsa her senkron 404 alır.
+    if (calendarId) {
+      const found = await fetch(`${GOOGLE_CAL_API}/calendars/${encodeURIComponent(calendarId)}`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      })
+      if (found.status === 404) calendarId = undefined
+    }
     if (!calendarId) {
       const { data: prefs } = await admin.from('notification_preferences').select('timezone').eq('user_id', saved.user_id).maybeSingle()
       const calRes = await fetch(`${GOOGLE_CAL_API}/calendars`, {
@@ -94,7 +104,10 @@ export async function GET(req: Request) {
       })
       if (!calRes.ok) throw new Error(`calendar ${calRes.status}`)
       calendarId = ((await calRes.json()) as { id: string }).id
-      await admin.from('integrations').update({ settings: { ...(current.settings ?? {}), calendar_id: calendarId } }).eq('id', current.id)
+      const { error } = await admin.from('integrations')
+        .update({ settings: { ...(current.settings ?? {}), calendar_id: calendarId } })
+        .eq('id', current.id)
+      if (error) throw new Error(error.message)
     }
 
     await admin.rpc('enqueue_initial_calendar_sync', { p_user: saved.user_id })

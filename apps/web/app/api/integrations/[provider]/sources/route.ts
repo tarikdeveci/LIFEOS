@@ -7,6 +7,7 @@ export const runtime = 'nodejs'
 
 const NOTION_API = 'https://api.notion.com/v1'
 const NOTION_VERSION = '2025-09-03'
+const MAX_PAGES = 5
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -44,16 +45,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   const access = await notionAccess(admin, auth.userId, id)
   if (!access) return NextResponse.json({ ok: false, error: 'Bağlantı bulunamadı' }, { status: 404 })
 
-  const res = await notion(access.token, '/search', {
-    method: 'POST',
-    body: JSON.stringify({ filter: { property: 'object', value: 'data_source' }, page_size: 50 }),
-  })
-  if (!res.ok) return NextResponse.json({ ok: false, error: 'Notion yanıt vermedi' }, { status: 502 })
-  const body = (await res.json()) as { results?: { id: string; title?: { plain_text?: string }[] }[] }
-  const sources = (body.results ?? []).map((s) => ({
-    id: s.id,
-    name: (s.title ?? []).map((t) => t.plain_text ?? '').join('').trim() || 'Adsız',
-  }))
+  // Üst sayfa paylaşılınca altındaki bütün veritabanları gelir: tek sayfayla yetinilirse
+  // sonrakiler seçicide hiç görünmez.
+  const sources: { id: string; name: string }[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await notion(access.token, '/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filter: { property: 'object', value: 'data_source' }, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}),
+      }),
+    })
+    if (!res.ok) return NextResponse.json({ ok: false, error: 'Notion yanıt vermedi' }, { status: 502 })
+    const body = (await res.json()) as {
+      results?: { id: string; title?: { plain_text?: string }[] }[]; has_more?: boolean; next_cursor?: string | null
+    }
+    for (const s of body.results ?? []) {
+      sources.push({ id: s.id, name: (s.title ?? []).map((t) => t.plain_text ?? '').join('').trim() || 'Adsız' })
+    }
+    if (!body.has_more || !body.next_cursor) break
+    cursor = body.next_cursor
+  }
   return NextResponse.json({ ok: true, sources, selected: access.settings['data_source_id'] ?? null })
 }
 
