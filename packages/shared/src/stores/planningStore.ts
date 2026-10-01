@@ -51,6 +51,9 @@ interface PlanningState {
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
 }
 
+/** Son fetchDayData isteği; eski yanıtlar yok sayılır. */
+let dayRequest = 0
+
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   date: todayDate(),
   timeBlocks: [],
@@ -62,23 +65,23 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   error: null,
 
   fetchDayData: async (supabase, userId, date = todayDate()) => {
-    set({ loading: true, error: null, date })
+    const request = ++dayRequest
+    // Başka güne geçerken önceki günün meşgul aralıkları kalmasın: yerleşim onlarla hesaplanıyordu.
+    set((state) => ({ loading: true, error: null, date, busy: state.date === date ? state.busy : [] }))
     try {
-      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks] = await Promise.all([
+      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy] = await Promise.all([
         getTimeBlocks(supabase, userId, date),
         getDailyPlan(supabase, userId, date),
         getFlexTasks(supabase, userId, date),
         getCarryoverTasks(supabase, userId),
+        // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
+        getCalendarBusy(supabase, userId, date).then((rows) => busyToIntervals(rows, date), () => []),
       ])
-      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading: false })
-      // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
-      try {
-        set({ busy: busyToIntervals(await getCalendarBusy(supabase, userId, date), date) })
-      } catch {
-        set({ busy: [] })
-      }
+      // Geciken eski gün yanıtı yeni seçili günün verisini ezmesin.
+      if (request !== dayRequest) return
+      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy, loading: false })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
+      if (request === dayRequest) set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
   },
 

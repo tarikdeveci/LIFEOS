@@ -92,3 +92,20 @@ test('meşgul aralıklar yerel güne kırpılır ve birleşir', async () => {
   ], '2026-10-05')
   assert.deepEqual(r, [{ start: 0, end: 60 }, { start: 540, end: 660 }])
 })
+
+test('yaz saati geçişi olan günde meşgul aralık duvar saatiyle hesaplanır', async () => {
+  const { busyToIntervals } = await import('../../packages/shared/src/utils/dayPlan.ts')
+  const previous = process.env['TZ']
+  process.env['TZ'] = 'Europe/Berlin'
+  try {
+    // 25 Ekim 2026 03:00'te saat bir geri alınır: gece yarısından 09:00'a 10 gerçek saat geçer.
+    const r = busyToIntervals([
+      { starts_at: '2026-10-25T08:00:00Z', ends_at: '2026-10-25T09:00:00Z' },
+      { starts_at: '2026-10-25T21:30:00Z', ends_at: '2026-10-26T01:00:00Z' },
+    ], '2026-10-25')
+    assert.deepEqual(r, [{ start: 540, end: 600 }, { start: 1350, end: 1440 }])
+  } finally {
+    if (previous === undefined) delete process.env['TZ']
+    else process.env['TZ'] = previous
+  }
+})
