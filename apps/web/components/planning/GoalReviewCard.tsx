@@ -13,16 +13,24 @@ interface GoalReviewCardProps {
 export function GoalReviewCard({ goals, onReview }: GoalReviewCardProps) {
   const { t } = useLang()
   const [notes, setNotes] = useState<Record<string, string>>({})
-  const [busyId, setBusyId] = useState<string | null>(null)
+  // Hedef başına kilit: biri sürerken diğerine karar verilebilir, ikisi birbirinin kilidini açmaz.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
 
   if (goals.length === 0) return null
 
+  const setBusy = (id: string, busy: boolean) => setBusyIds((prev) => {
+    const next = new Set(prev)
+    if (busy) next.add(id); else next.delete(id)
+    return next
+  })
+
   const decide = async (goal: Goal, decision: GoalReviewDecision) => {
-    setBusyId(goal.id)
+    if (busyIds.has(goal.id)) return
+    setBusy(goal.id, true)
     try {
       await onReview(goal, decision, notes[goal.id] ?? '')
     } finally {
-      setBusyId(null)
+      setBusy(goal.id, false)
     }
   }
 
@@ -49,7 +57,7 @@ export function GoalReviewCard({ goals, onReview }: GoalReviewCardProps) {
             ] as const).map(([decision, label]) => (
               <button
                 key={decision}
-                disabled={busyId === goal.id}
+                disabled={busyIds.has(goal.id)}
                 onClick={() => void decide(goal, decision)}
                 className="flex-1 rounded-lg border border-border py-1 text-[10px] font-medium text-primary hover:bg-border/30 disabled:opacity-40"
               >

@@ -90,6 +90,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
   })
   const [chatLoading, setChatLoading]   = useState(false)
   const [pendingActions, setPendingActions] = useState<ReplanAction[] | null>(null)
+  const [applyingActions, setApplyingActions] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -142,9 +143,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
   // ── Add block ───────────────────────────────────────────────────────────────
   const handleAddBlock = useCallback(async () => {
+    if (savingBlock) return
+    setSavingBlock(true)
     try {
       if (recurrence.enabled) {
-        if (recurrence.every !== 'daily' && recurrence.days.length === 0) { showToast('En az bir gün seç', 'error'); return }
+        if (recurrence.every !== 'daily' && recurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
         await addRoutine(supabase, userId, recurrenceToRoutineInput(recurrence,
           { label: newBlockLabel, block_type: newBlockType, start_time: newBlockTime, end_time: newBlockEnd, date },
           BLOCK_TYPE_LABELS[newBlockType]))
@@ -158,9 +161,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
         await addTimeBlock(supabase, userId, input)
       }
       setShowAddBlock(false); setNewBlockLabel(''); setRecurrence(initialRecurrence(fromDateString(date)))
-    } catch { showToast(recurrence.enabled ? t.plan_routine_error : 'Blok eklenemedi', 'error') }
+    } catch { showToast(recurrence.enabled ? t.plan_routine_error : t.plan_block_add_error, 'error') }
+    finally { setSavingBlock(false) }
   }, [addTimeBlock, addRoutine, userId, date, newBlockTime, newBlockEnd, newBlockType, newBlockLabel,
-      recurrence, refreshAfterRoutineChange, showToast, t])
+      recurrence, refreshAfterRoutineChange, savingBlock, showToast, t])
 
   /**
    * Blok tamamlama. Açık olan detay penceresindeki kopya da güncelleniyor:
@@ -175,11 +179,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
           ? { ...current, completed_at: done ? new Date().toISOString() : null }
           : current,
       )
-      showToast(done ? 'Tamamlandı ✓' : 'Geri alındı', 'success')
+      showToast(done ? t.plan_block_done_toast : t.plan_block_undone_toast, 'success')
     } catch {
-      showToast('Blok güncellenemedi', 'error')
+      showToast(t.plan_block_update_error, 'error')
     }
-  }, [setBlockDone, showToast])
+  }, [setBlockDone, showToast, t])
 
   const handleSlotClick = useCallback((time: string) => {
     setNewBlockTime(time)
@@ -212,7 +216,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
   // Sıradan blok tekrara çevrilirse blok silinir, aynı günden başlayan rutin kurulur.
   const handleSaveBlockEdit = useCallback(async () => {
     if (!selectedBlock) return
-    if (editBlockEnd <= editBlockStart) { showToast('Bitiş saati başlangıçtan sonra olmalı', 'error'); return }
+    if (editBlockEnd <= editBlockStart) { showToast(t.plan_err_end_after_start, 'error'); return }
     setSavingBlock(true)
     try {
       if (selectedBlock.routine_id && editScope === 'following') {
@@ -226,7 +230,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         return
       }
       if (!selectedBlock.routine_id && !selectedBlock.task_id && editRecurrence.enabled) {
-        if (editRecurrence.every !== 'daily' && editRecurrence.days.length === 0) { showToast('En az bir gün seç', 'error'); return }
+        if (editRecurrence.every !== 'daily' && editRecurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
         const block = { label: editBlockLabel, block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd, date: selectedBlock.date }
         await removeTimeBlock(supabase, selectedBlock.id)
         await addRoutine(supabase, userId, recurrenceToRoutineInput(editRecurrence, block, BLOCK_TYPE_LABELS[editBlockType]))
@@ -240,10 +244,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
         block_type: editBlockType, label: editBlockLabel || undefined,
       }
       await updateTimeBlock(supabase, selectedBlock.id, updates)
-      showToast('Blok güncellendi', 'success')
+      showToast(t.plan_block_updated, 'success')
       setEditingBlock(false)
       setSelectedBlock((prev) => prev ? { ...prev, ...updates } : null)
-    } catch { showToast('Blok güncellenemedi', 'error') }
+    } catch { showToast(t.plan_block_update_error, 'error') }
     finally { setSavingBlock(false) }
   }, [selectedBlock, editBlockStart, editBlockEnd, editBlockType, editBlockLabel, editRecurrence, editScope,
       updateTimeBlock, removeTimeBlock, updateSeries, addRoutine, userId, refreshAfterRoutineChange, showToast, t])
@@ -271,7 +275,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       } else {
         await removeTimeBlock(supabase, block.id)
       }
-    } catch { showToast('Blok silinemedi', 'error') }
+    } catch { showToast(t.plan_block_delete_error, 'error') }
   }, [selectedBlock, editScope, routines, removeRoutine, updateSeries, removeTimeBlock, refreshAfterRoutineChange, showToast, t])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -340,7 +344,8 @@ export function PlanningView({ userId }: PlanningViewProps) {
   }, [chatInput, chatLoading, chatMessages, date, lang, timeBlocks, freePlansUsedUp, isPro, refreshFreePlans])
 
   const handleApplyPendingActions = useCallback(async () => {
-    if (!pendingActions) return
+    if (!pendingActions || applyingActions) return
+    setApplyingActions(true)
     let added = 0; let removed = 0; let moved = 0
     const removedIds = new Set<string>()
     try {
@@ -375,16 +380,20 @@ export function PlanningView({ userId }: PlanningViewProps) {
           added++
         }
       }
-      const parts = [added > 0 && `${added} blok eklendi`, removed > 0 && `${removed} blok değiştirildi`, moved > 0 && `${moved} blok taşındı`].filter(Boolean)
+      const parts = [
+        added > 0 && t.plan_applied_added.replace('{n}', String(added)),
+        removed > 0 && t.plan_applied_replaced.replace('{n}', String(removed)),
+        moved > 0 && t.plan_applied_moved.replace('{n}', String(moved)),
+      ].filter(Boolean)
       showToast(parts.join(', '), 'success')
       setPendingActions(null)
       void fetchDayData(supabase, userId, date)
     } catch {
-      showToast('Değişiklikler uygulanamadı — plan yenileniyor', 'error')
+      showToast(t.plan_apply_error, 'error')
       // Partial failures: always refetch to show consistent state
       void fetchDayData(supabase, userId, date)
-    }
-  }, [pendingActions, userId, date, addTimeBlock, removeTimeBlock, updateTimeBlock, fetchDayData, showToast])
+    } finally { setApplyingActions(false) }
+  }, [pendingActions, applyingActions, userId, date, addTimeBlock, removeTimeBlock, updateTimeBlock, fetchDayData, showToast, t])
 
   // ── Assign to timeline / quick-add task ────────────────────────────────────
   const handleAssignToTimeline = useCallback(async (task: Task) => {
@@ -393,10 +402,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
       const slot = findNextAvailableSlot(Math.min(durationMinutes, 120))
       await assignTaskToDate(supabase, task.id, date)
       await addTimeBlock(supabase, userId, { date, start_time: slot.start, end_time: slot.end, block_type: 'task', label: task.title, task_id: task.id })
-      showToast(`"${task.title}" ${slot.start}–${slot.end} arasına eklendi`, 'success')
+      showToast(t.plan_assigned_toast.replace('{title}', () => task.title).replace('{start}', slot.start).replace('{end}', slot.end), 'success')
       void fetchDayData(supabase, userId, date)
-    } catch { showToast('Görev atanamadı', 'error') }
-  }, [date, userId, addTimeBlock, fetchDayData, showToast, findNextAvailableSlot])
+    } catch { showToast(t.plan_assign_error, 'error') }
+  }, [date, userId, addTimeBlock, fetchDayData, showToast, findNextAvailableSlot, t])
 
   const handleQuickAddTask = useCallback(async () => {
     const title = quickAddTask.trim()
@@ -406,10 +415,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
       await addTask(supabase, userId, { title, scheduled_date: date, status: 'planned' })
       setQuickAddTask('')
       void fetchDayData(supabase, userId, date)
-      showToast(`"${title}" esnek havuza eklendi`, 'success')
-    } catch { showToast('Görev eklenemedi', 'error') }
+      showToast(t.plan_flex_added.replace('{title}', () => title), 'success')
+    } catch { showToast(t.plan_task_add_error, 'error') }
     finally { setQuickAddLoading(false) }
-  }, [quickAddTask, addTask, userId, date, fetchDayData, showToast])
+  }, [quickAddTask, addTask, userId, date, fetchDayData, showToast, t])
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const allDayTasks = [...flexTasks, ...carryoverTasks]
@@ -486,8 +495,13 @@ export function PlanningView({ userId }: PlanningViewProps) {
               <div className="glass rounded-2xl p-4 pt-2">
                 <DayTimeline busy={busy} timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
                   onBlockDrop={(blockId, newStart, newEnd) => {
-                    void updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd })
-                    showToast('Blok taşındı', 'success')
+                    updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd })
+                      .then(() => showToast(t.plan_block_moved, 'success'))
+                      .catch(() => {
+                        // Store iyimser güncelledi, yazma düştü: günü yeniden okuyup eski saate dön.
+                        showToast(t.plan_block_update_error, 'error')
+                        void fetchDayData(supabase, userId, date)
+                      })
                   }} />
               </div>
             )}
@@ -519,7 +533,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
             <FlexPool tasks={freshFlexTasks} dailyEffortLimit={APP_DEFAULTS.DAILY_EFFORT_LIMIT}
               onTaskClick={(task) => { setSelectedTask(task); setDrawerOpen(true) }}
               onAssignToTimeline={(task) => void handleAssignToTimeline(task)}
-              onMarkDone={(taskId) => { void setStatus(supabase, taskId, 'done').then(() => { void fetchDayData(supabase, userId, date); showToast('Görev tamamlandı ✓', 'success') }) }} />
+              onMarkDone={(taskId) => {
+                setStatus(supabase, taskId, 'done')
+                  .then(() => { void fetchDayData(supabase, userId, date); showToast(t.plan_task_done_toast, 'success') })
+                  .catch(() => showToast(t.plan_task_update_error, 'error'))
+              }} />
           </div>
 
           {isToday && <HabitsToday userId={userId} />}
@@ -630,7 +648,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
               <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50">
                 <div className="px-3 py-2">
                   <p className="text-xs font-semibold text-indigo-800">
-                    🤖 {pendingActions.length} değişiklik önerisi
+                    🤖 {t.plan_ai_changes.replace('{n}', String(pendingActions.length))}
                   </p>
                   <div className="mt-1.5 space-y-0.5">
                     {pendingActions.slice(0, 3).map((a, i) => (
@@ -641,13 +659,13 @@ export function PlanningView({ userId }: PlanningViewProps) {
                       </p>
                     ))}
                     {pendingActions.length > 3 && (
-                      <p className="text-[11px] text-indigo-400">+{pendingActions.length - 3} daha…</p>
+                      <p className="text-[11px] text-indigo-400">{t.plan_ai_more.replace('{n}', String(pendingActions.length - 3))}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex border-t border-indigo-200">
-                  <button onClick={() => void handleApplyPendingActions()}
-                    className="flex-1 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                  <button onClick={() => void handleApplyPendingActions()} disabled={applyingActions}
+                    className="flex-1 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-40">
                     ✓ {t.plan_apply_yes}
                   </button>
                   <div className="w-px bg-indigo-200" />
@@ -721,7 +739,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowAddBlock(false)}>{t.plan_cancel}</Button>
-            <Button size="sm" onClick={() => void handleAddBlock()}>{recurrence.enabled ? t.plan_add_repeat : t.plan_add}</Button>
+            <Button size="sm" onClick={() => void handleAddBlock()} disabled={savingBlock}>{recurrence.enabled ? t.plan_add_repeat : t.plan_add}</Button>
           </div>
         </div>
       </Modal>
@@ -771,7 +789,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
                 <div className="flex justify-between gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setEditingBlock(false)} disabled={savingBlock}>{t.plan_cancel}</Button>
-                  <Button size="sm" onClick={() => void handleSaveBlockEdit()} disabled={savingBlock}>{savingBlock ? 'Kaydediliyor…' : 'Kaydet'}</Button>
+                  <Button size="sm" onClick={() => void handleSaveBlockEdit()} disabled={savingBlock}>{savingBlock ? t.plan_saving : t.plan_save}</Button>
                 </div>
               </>
             ) : (
@@ -781,7 +799,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
                     {selectedBlock.label ?? BLOCK_TYPE_LABELS[selectedBlock.block_type]}
                   </p>
                   <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} – {selectedBlock.end_time.slice(0, 5)}</p>
-                  <p className="mt-1 text-xs text-muted">Tip: {BLOCK_TYPE_LABELS[selectedBlock.block_type]}</p>
+                  <p className="mt-1 text-xs text-muted">{t.plan_block_type}: {BLOCK_TYPE_LABELS[selectedBlock.block_type]}</p>
                   {selectedBlock.routine_id ? (
                     <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_routine_badge}</p>
                   ) : selectedBlock.is_recurring && (

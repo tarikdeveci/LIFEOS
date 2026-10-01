@@ -27,30 +27,41 @@ interface Draft {
 
 const EMPTY: Draft = {
   open: false, title: '', icon: '🎯', parentId: '', countable: true,
-  target: 3, unit: 'gün', tags: '', countMode: 'tasks',
+  target: 3, unit: '', tags: '', countMode: 'tasks',
 }
 
 export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormProps) {
   const { t } = useLang()
   const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [saving, setSaving] = useState(false)
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
   // Sayılabilir hedef varsayılanı sadece haftada açık; ay ve çeyrek oranla ölçülür.
   const countable = horizon === 'week' ? draft.countable : false
+  // Sekme değişince önceki ufkun üst hedefi listede yoksa seçim boşa düşer.
+  const parentId = parents.some((p) => p.id === draft.parentId) ? draft.parentId : ''
+  // Birim, seçili dilde yazılıp öyle saklanır; dil değişirse ilk seçeneğe döner.
+  const units = [t.goal_unit_day, t.goal_unit_hour, t.goal_unit_meal, t.goal_unit_time]
+  const unit = units.includes(draft.unit) ? draft.unit : units[0]!
 
   const submit = async () => {
-    if (!draft.title.trim()) return
-    const ok = await onSubmit({
-      horizon,
-      title: draft.title.trim(),
-      icon: draft.icon || null,
-      period_start: periodStart,
-      parent_id: draft.parentId || null,
-      target: countable ? draft.target : null,
-      unit: countable ? draft.unit : null,
-      count_mode: countable ? draft.countMode : null,
-      tag_filter: countable ? draft.tags.split(',').map((x) => x.trim()).filter(Boolean) : [],
-    })
-    if (ok) setDraft(EMPTY)
+    if (saving || !draft.title.trim()) return
+    setSaving(true)
+    try {
+      const ok = await onSubmit({
+        horizon,
+        title: draft.title.trim(),
+        icon: draft.icon || null,
+        period_start: periodStart,
+        parent_id: parentId || null,
+        target: countable ? draft.target : null,
+        unit: countable ? unit : null,
+        count_mode: countable ? draft.countMode : null,
+        tag_filter: countable ? draft.tags.split(',').map((x) => x.trim()).filter(Boolean) : [],
+      })
+      if (ok) setDraft(EMPTY)
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!draft.open) {
@@ -77,7 +88,7 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
       {parents.length > 0 && (
         <label className="flex items-center gap-2 text-[10px] text-muted">
           {t.goal_parent}
-          <select value={draft.parentId} onChange={(e) => set({ parentId: e.target.value })} className={`flex-1 ${inputCls}`}>
+          <select value={parentId} onChange={(e) => set({ parentId: e.target.value })} className={`flex-1 ${inputCls}`}>
             <option value="">{t.goal_none}</option>
             {parents.map((p) => <option key={p.id} value={p.id}>{p.icon ?? '🎯'} {p.title}</option>)}
           </select>
@@ -100,14 +111,14 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
                 onChange={(e) => set({ target: Math.max(1, parseInt(e.target.value) || 1) })}
                 className={`w-12 text-center ${inputCls}`} />
             </span>
-            <select value={draft.unit} onChange={(e) => set({ unit: e.target.value })} className={inputCls}>
-              {['gün', 'saat', 'öğün', 'kez'].map((u) => <option key={u} value={u}>{u}</option>)}
+            <select value={unit} onChange={(e) => set({ unit: e.target.value })} className={inputCls}>
+              {units.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-muted">{t.plan_weekly_tags}</span>
             <input value={draft.tags} onChange={(e) => set({ tags: e.target.value })}
-              className={`flex-1 ${inputCls}`} placeholder="spor, koşu" />
+              className={`flex-1 ${inputCls}`} placeholder={t.goal_tags_placeholder} />
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted">{t.plan_weekly_count}</span>
@@ -126,7 +137,7 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
           className="flex-1 rounded-lg border border-border py-1 text-[10px] text-muted hover:bg-border/30">
           {t.plan_weekly_cancel}
         </button>
-        <button onClick={() => void submit()} disabled={!draft.title.trim()}
+        <button onClick={() => void submit()} disabled={saving || !draft.title.trim()}
           className="flex-1 rounded-lg bg-accent py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-40">
           {t.plan_weekly_add}
         </button>

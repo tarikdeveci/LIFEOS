@@ -9,8 +9,8 @@ import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
 import { NotionSourcePicker } from './NotionSourcePicker'
 
-const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
-  google_calendar: 'Google Takvim',
+/** Marka adları; Google Takvim dile göre değiştiği için `providerLabel` içinde sözlükten gelir. */
+const PROVIDER_LABELS: Record<Exclude<IntegrationProvider, 'google_calendar'>, string> = {
   jira: 'Jira',
   slack: 'Slack',
   notion: 'Notion',
@@ -39,6 +39,10 @@ export function IntegrationsSection() {
   const [items, setItems] = useState<Integration[] | undefined>(undefined)
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const providerLabel = useCallback(
+    (provider: IntegrationProvider) => (provider === 'google_calendar' ? t.integ_google : PROVIDER_LABELS[provider]),
+    [t.integ_google],
+  )
 
   const load = useCallback(async () => {
     try {
@@ -57,15 +61,15 @@ export function IntegrationsSection() {
     const params = new URLSearchParams(window.location.search)
     const provider = SLUG_PROVIDER[params.get('integration') ?? '']
     if (!provider) return
-    const name = PROVIDER_LABELS[provider]
+    const name = providerLabel(provider)
     const ok = params.get('status') === 'ok'
     showToast((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', name), ok ? 'success' : 'error')
     window.history.replaceState(null, '', window.location.pathname)
-  }, [showToast, t.integ_connect_ok, t.integ_connect_error])
+  }, [showToast, providerLabel, t.integ_connect_ok, t.integ_connect_error])
 
   const connect = async (slug: string) => {
     setBusy(slug)
-    const name = PROVIDER_LABELS[SLUG_PROVIDER[slug]!]
+    const name = providerLabel(SLUG_PROVIDER[slug]!)
     try {
       const res = await fetch(`/api/integrations/${slug}/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: 'web' }),
@@ -134,7 +138,7 @@ export function IntegrationsSection() {
             <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 px-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-primary">
-                  {PROVIDER_LABELS[item.provider]}{item.account_label ? ` · ${item.account_label}` : ''}
+                  {providerLabel(item.provider)}{item.account_label ? ` · ${item.account_label}` : ''}
                 </p>
                 <p className={`text-xs ${item.status === 'active' ? 'text-muted' : 'text-warning'}`}>
                   {item.status !== 'active'
@@ -173,7 +177,7 @@ export function IntegrationsSection() {
           {SOURCES.filter((src) => !items.some((i) => i.provider === src.provider)).map((src) => (
             <div key={src.slug} className="flex items-center gap-3 rounded-xl bg-background/60 p-3">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-primary">{PROVIDER_LABELS[src.provider]}</p>
+                <p className="text-xs font-semibold text-primary">{providerLabel(src.provider)}</p>
                 <p className="text-xs text-muted">{t[src.hint]}</p>
               </div>
               <Button size="sm" variant="secondary" onClick={() => void connect(src.slug)} disabled={busy === src.slug}>

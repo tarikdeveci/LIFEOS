@@ -27,7 +27,7 @@ export function CarryoverList({ tasks, onOpen, onChanged }: CarryoverListProps) 
 
   const run = async (p: Promise<unknown>, msg: string) => {
     try { await p; onChanged(); showToast(msg, 'success') }
-    catch { showToast('Görev güncellenemedi', 'error') }
+    catch { showToast(t.plan_task_update_error, 'error') }
   }
 
   // "Bugün tut": kullanıcı önemini onayladı, sayaç sıfırlanır; üç devir daha olursa yine sorulur.
@@ -49,16 +49,16 @@ export function CarryoverList({ tasks, onOpen, onChanged }: CarryoverListProps) 
               {task.effort_score > 0 && (
                 <span className="shrink-0 rounded-md bg-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted">{task.effort_score}h</span>
               )}
-              <button onClick={() => void run(setStatus(supabase, task.id, 'done'), 'Görev tamamlandı ✓')}
+              <button onClick={() => void run(setStatus(supabase, task.id, 'done'), t.plan_task_done_toast)}
                 className="shrink-0 rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-success/10 hover:text-success group-hover:opacity-100"
-                title="Tamamla">
+                title={t.plan_mark_done}>
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </button>
-              <button onClick={() => void run(setStatus(supabase, task.id, 'deferred'), 'Görev ertelendi')}
+              <button onClick={() => void run(setStatus(supabase, task.id, 'deferred'), t.plan_task_deferred_toast)}
                 className="shrink-0 rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-border/40 hover:text-primary group-hover:opacity-100"
-                title="Pass geç (ertele)">
+                title={t.plan_defer}>
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                 </svg>

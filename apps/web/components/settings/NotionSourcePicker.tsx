@@ -20,11 +20,13 @@ export function NotionSourcePicker({ integrationId, hasSelection, onSaved }: Pro
   const { showToast } = useToast()
   const [open, setOpen] = useState(!hasSelection)
   const [sources, setSources] = useState<Source[] | null>(null)
+  // Yükleme hatası boş listeden ayrı tutulur: "paylaşılmış veritabanı yok" demek yanlış olur, tekrar denenebilmeli.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [choice, setChoice] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!open || sources !== null) return
+    if (!open || sources !== null || loadFailed) return
     void (async () => {
       try {
         const res = await fetch(`/api/integrations/notion/sources?integration=${encodeURIComponent(integrationId)}`)
@@ -33,11 +35,10 @@ export function NotionSourcePicker({ integrationId, hasSelection, onSaved }: Pro
         setSources(body.sources ?? [])
         setChoice(body.selected ?? body.sources?.[0]?.id ?? '')
       } catch {
-        setSources([])
-        showToast(t.integ_error, 'error')
+        setLoadFailed(true)
       }
     })()
-  }, [open, sources, integrationId, showToast, t.integ_error])
+  }, [open, sources, loadFailed, integrationId])
 
   const save = async () => {
     setSaving(true)
@@ -66,7 +67,12 @@ export function NotionSourcePicker({ integrationId, hasSelection, onSaved }: Pro
   return (
     <div className="space-y-2 pt-1">
       <p className="text-xs text-muted">{t.integ_notion_pick}</p>
-      {sources === null ? (
+      {loadFailed ? (
+        <p className="text-xs text-warning">
+          {t.integ_error}{' '}
+          <button type="button" onClick={() => setLoadFailed(false)} className="text-accent hover:underline">{t.integ_retry}</button>
+        </p>
+      ) : sources === null ? (
         <div className="h-9 animate-pulse rounded-xl bg-border/40" />
       ) : sources.length === 0 ? (
         <p className="text-xs text-warning">{t.integ_notion_none}</p>
