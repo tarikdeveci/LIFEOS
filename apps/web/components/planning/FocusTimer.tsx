@@ -7,6 +7,7 @@ import {
   focusMinutesByBlock,
   minutesBetween,
   newFocusSessionId,
+  persistFocus,
   remainingFocusSeconds,
   shiftIsoDate,
   todayDate,
@@ -34,12 +35,22 @@ interface FocusTimerProps {
 /**
  * Sağ alttaki odak zamanlayıcısı (25/5). Korumalı düzende bir kez durur, sayfa değişse de
  * sayar. Durum paylaşılan focusStore'da; bu bileşen saniyede bir ilerletir ve biten odak
- * süresini `focus_sessions`'a yazar. Sayfa yenilenirse süren tur kaybolur (bellekte tutuluyor).
+ * süresini `focus_sessions`'a yazar. Süren tur localStorage'da da durur: sayfa yenilense de sürer.
  */
 export function FocusTimer({ userId }: FocusTimerProps) {
   const { t } = useLang()
   const { active, pending, saving, saveError, tick, finish, close, save, start } = useFocusStore()
   const [now, setNow] = useState(() => Date.now())
+
+  // Süren tur ve bekleyen kayıt sayfa yenilenince kaybolmasın.
+  useEffect(() => {
+    let storage: Storage
+    try { storage = window.localStorage } catch { return }
+    let stop: (() => void) | undefined
+    let cancelled = false
+    void persistFocus(storage, userId).then((unsubscribe) => { if (cancelled) unsubscribe(); else stop = unsubscribe })
+    return () => { cancelled = true; stop?.() }
+  }, [userId])
 
   const running = active !== null && (active.timer.phase === 'work' || active.timer.phase === 'break')
   useEffect(() => {
