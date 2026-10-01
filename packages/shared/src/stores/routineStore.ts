@@ -17,6 +17,10 @@ import {
 import { todayDate, shiftIsoDate } from '../utils/date'
 import { mondayOf } from '../utils/routine'
 
+/** Alışkanlık sayacı yazma kuyruğu ve sürümü, rutin/gün anahtarıyla. */
+const habitQueues = new Map<string, Promise<void>>()
+const habitVersions = new Map<string, number>()
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
 
@@ -115,18 +119,30 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
   },
 
   setHabitCount: async (supabase, userId, routineId, day, count) => {
-    const previous = get().completions
-    const without = previous.filter((c) => !(c.routine_id === routineId && c.completed_on === day))
-    set({
-      completions: count > 0
-        ? [...without, { routine_id: routineId, user_id: userId, completed_on: day, count, created_at: new Date().toISOString() }]
-        : without,
-    })
+    const key = `${routineId}|${day}`
+    const version = (habitVersions.get(key) ?? 0) + 1
+    habitVersions.set(key, version)
+    const isKey = (c: RoutineCompletion) => c.routine_id === routineId && c.completed_on === day
+    const before = get().completions.find(isKey)
+    const replace = (entry: RoutineCompletion | undefined) =>
+      set((state) => ({ completions: [...state.completions.filter((c) => !isKey(c)), ...(entry ? [entry] : [])] }))
+    replace(count > 0 ? { routine_id: routineId, user_id: userId, completed_on: day, count, created_at: new Date().toISOString() } : undefined)
+
+    // Aynı sayaca yazmalar sırayla gider: art arda 1 ve 2 gönderilince sunucunun önce 2'yi
+    // sonra 1'i işlemesi ekranda 2, veritabanında 1 bırakıyordu.
+    const write = (habitQueues.get(key) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => writeHabitCount(supabase, userId, routineId, day, count))
+    habitQueues.set(key, write)
     try {
-      await writeHabitCount(supabase, userId, routineId, day, count)
+      await write
     } catch (err) {
-      set({ completions: previous })
+      // Yalnız bu rutin/gün geri alınır (eskiden bütün liste dönüyor, başka alışkanlığın
+      // başarılı işareti de siliniyordu); bu arada daha yeni bir değer girildiyse o kalır.
+      if (habitVersions.get(key) === version) replace(before)
       throw err
+    } finally {
+      if (habitQueues.get(key) === write) habitQueues.delete(key)
     }
   },
 

@@ -79,8 +79,13 @@ export function HabitsCard({ userId }: Props) {
             const perDay = h.times_per_day
             const doneToday = count >= (perDay ?? 1)
             const week = habitWeekProgress(habitDoneDays(own, perDay), h.times_per_week ?? 1, today)
-            // Günde N kez: dolana kadar her dokunuş +1. Tek işaretlide dokunuş aç/kapa.
-            const tap = () => void write(h.id, perDay ? count + 1 : doneToday ? 0 : 1)
+            // Günde N kez: dolana kadar her dokunuş +1. Tek işaretlide dokunuş aç/kapa. Sayaç
+            // dokunuş anında store'dan okunur: hızlı ikinci dokunuş eski render'ın değerini yazmasın.
+            const tap = () => {
+              const current = useRoutineStore.getState().completions
+                .find((c) => c.routine_id === h.id && c.completed_on === today)?.count ?? 0
+              void write(h.id, perDay ? current + 1 : current >= 1 ? 0 : 1)
+            }
             const counter = perDay ? `${count}/${perDay}` : `${week.done}/${week.target} ${t.habits_week}`
             return (
               <TouchableOpacity key={h.id} onPress={tap} onLongPress={() => showActions(h, count)} delayLongPress={400}
