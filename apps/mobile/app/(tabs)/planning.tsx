@@ -4,8 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
+import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
-import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -45,7 +45,6 @@ function getWeekDays(anchor: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d })
 }
 
-interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> & { date?: string } }
 const PLAN_SUGGESTIONS = [
   'Bugünü yeniden düzenle',
   'Boş saatleri bekleyen görevlerle doldur',
@@ -85,7 +84,7 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
   const { localEvents, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
@@ -230,7 +229,7 @@ export default function PlanningScreen() {
         .eq('date', requestedDate)
         .order('start_time')
 
-      const data = await callAiSuggest<{ message?: string; actions?: AiAction[] }>({
+      const data = await callAiSuggest<{ message?: string; actions?: AiPlanAction[] }>({
         type: 'replan',
         current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         date: requestedDate,
@@ -240,40 +239,24 @@ export default function PlanningScreen() {
       })
       // Sunucu hakkı bu çağrıda düştü; blokların uygulanması başarısız olsa da sayaç güncel kalsın.
       if (!isPro) void refreshFreePlans()
-      setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: data.message ?? 'Yanit alinamadi.' }])
-      // Apply AI actions
-      if (data.actions && userId) {
-        let affectedDate = requestedDate
-        for (const action of data.actions) {
-          if (action.action === 'remove' && action.block_id) {
-            await removeTimeBlock(supabase, action.block_id)
-          } else if (action.action === 'move' && action.block_id && action.block) {
-            const b = action.block
-            const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
-            affectedDate = blockDate
-            await updateTimeBlock(supabase, action.block_id, {
-              date: blockDate,
-              start_time: b.start_time,
-              end_time: b.end_time,
-            })
-          } else if (action.action === 'add' && action.block) {
-            const b = action.block
-            if (b.label && b.start_time && b.end_time && b.block_type) {
-              const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
-              affectedDate = blockDate
-              await addTimeBlock(supabase, userId, {
-                date: blockDate,
-                label: b.label,
-                start_time: b.start_time,
-                end_time: b.end_time,
-                block_type: b.block_type as BlockType,
-              })
-            }
-          }
-        }
-        setSelectedDate(affectedDate)
-        await load(userId, affectedDate)
-      }
+      const actions = validAiActions(data.actions)
+      const reply = data.message ?? 'Yanit alinamadi.'
+      // Değişiklikler hemen yazılmaz: önce sohbette listelenir, kullanıcı onaylayınca uygulanır.
+      // Eski önerilerin düğmesi kaldırılır; onların blok kimlikleri artık geçerli olmayabilir.
+      setAiChatMsgs((messages) => [
+        ...messages.map((m) => (m.actions ? { ...m, actions: undefined } : m)),
+        actions.length === 0 ? { role: 'assistant', content: reply } : {
+          role: 'assistant',
+          content: `${reply}
+
+${t.plan_ai_changes.replace('{n}', String(actions.length))}
+${describeAiActions(actions, targetBlocks ?? [])}`,
+          actions: [{
+            label: t.plan_ai_apply, doneLabel: t.plan_ai_applied, icon: 'checkmark-done',
+            onPress: () => applyAiPlan(actions, requestedDate),
+          }],
+        },
+      ])
     } catch (error) {
       if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
         // Ücretsiz hak bitti (başka cihazda harcanmış da olabilir). iOS iç
@@ -286,6 +269,20 @@ export default function PlanningScreen() {
       }
     }
     finally { setAiLoading(false) }
+  }
+
+  /** Onay düğmesi: hata olursa düğme "uygulandı"ya geçmez, kullanıcı tekrar deneyebilir. */
+  async function applyAiPlan(actions: AiPlanAction[], requestedDate: string) {
+    if (!userId) return
+    try {
+      const affectedDate = await applyAiActions(userId, actions, requestedDate)
+      setSelectedDate(affectedDate)
+      await load(userId, affectedDate)
+    } catch (error) {
+      Alert.alert(t.error, t.plan_ai_apply_error)
+      void load(userId, requestedDate)
+      throw error
+    }
   }
 
   /**

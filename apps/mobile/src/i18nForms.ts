@@ -1,4 +1,4 @@
-// Form doğrulama ve kayıt hatası metinleri (planlama, rutin, hedef). Ana i18n.ts 500 satırı
+// Form doğrulama, kayıt hatası ve AI plan onayı metinleri (planlama, rutin, hedef). Ana i18n.ts 500 satırı
 // aştığı için ayrı dosyada; getTranslations birleştirir. tr, en ile aynı anahtarları taşımak zorunda.
 
 export const formsEn = {
@@ -13,6 +13,10 @@ export const formsEn = {
   routines_err_per_day: 'Enter a number from 1 to 20',
   goals_err_target: 'Target must be at least 1',
   goals_load_error: 'Goals could not be loaded',
+  plan_ai_changes: 'Proposed changes ({n}):',
+  plan_ai_apply: 'Apply changes',
+  plan_ai_applied: 'Applied',
+  plan_ai_apply_error: 'Some changes could not be applied. Check your plan.',
 } as const
 
 export const formsTr: Record<keyof typeof formsEn, string> = {
@@ -27,4 +31,8 @@ export const formsTr: Record<keyof typeof formsEn, string> = {
   routines_err_per_day: '1 ile 20 arasında bir sayı gir',
   goals_err_target: 'Hedef en az 1 olmalı',
   goals_load_error: 'Hedefler yüklenemedi',
+  plan_ai_changes: 'Önerilen değişiklikler ({n}):',
+  plan_ai_apply: 'Değişiklikleri uygula',
+  plan_ai_applied: 'Uygulandı',
+  plan_ai_apply_error: 'Bazı değişiklikler uygulanamadı. Planını kontrol et.',
 }
