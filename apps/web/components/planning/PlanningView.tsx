@@ -10,7 +10,7 @@ import {
   usePlanningStore,
   useTaskStore,
   useRoutineStore,
-  BLOCK_TYPE_LABELS, BLOCK_TYPE_COLORS, APP_DEFAULTS,
+  BLOCK_TYPE_COLORS, APP_DEFAULTS,
   type BlockType, describeAiError } from '@lifeos/shared'
 import { updateTaskDetails, assignTaskToDate, track } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
@@ -150,7 +150,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         if (recurrence.every !== 'daily' && recurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
         await addRoutine(supabase, userId, recurrenceToRoutineInput(recurrence,
           { label: newBlockLabel, block_type: newBlockType, start_time: newBlockTime, end_time: newBlockEnd, date },
-          BLOCK_TYPE_LABELS[newBlockType]))
+          t[`review_type_${newBlockType}`]))
         refreshAfterRoutineChange()
         showToast(t.plan_routine_added, 'success')
       } else {
@@ -221,7 +221,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
     try {
       if (selectedBlock.routine_id && editScope === 'following') {
         await updateSeries(supabase, selectedBlock.routine_id, {
-          title: editBlockLabel.trim() || BLOCK_TYPE_LABELS[editBlockType],
+          title: editBlockLabel.trim() || t[`review_type_${editBlockType}`],
           block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd,
         }, selectedBlock.occurrence_date ?? selectedBlock.date)
         refreshAfterRoutineChange()
@@ -233,7 +233,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         if (editRecurrence.every !== 'daily' && editRecurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
         const block = { label: editBlockLabel, block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd, date: selectedBlock.date }
         await removeTimeBlock(supabase, selectedBlock.id)
-        await addRoutine(supabase, userId, recurrenceToRoutineInput(editRecurrence, block, BLOCK_TYPE_LABELS[editBlockType]))
+        await addRoutine(supabase, userId, recurrenceToRoutineInput(editRecurrence, block, t[`review_type_${editBlockType}`]))
         refreshAfterRoutineChange()
         showToast(t.plan_routine_added, 'success')
         setSelectedBlock(null)
@@ -725,10 +725,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
           <div>
             <label className="mb-1 block text-sm font-medium text-primary">{t.plan_block_type}</label>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((type) => (
+              {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).map((type) => (
                 <button key={type} onClick={() => setNewBlockType(type)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${newBlockType === type ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                  {BLOCK_TYPE_LABELS[type]}
+                  {t[`review_type_${type}`]}
                 </button>
               ))}
             </div>
@@ -771,10 +771,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-primary">{t.plan_block_type}</label>
                   <div className="flex flex-wrap gap-2">
-                    {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((type) => (
+                    {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).map((type) => (
                       <button key={type} onClick={() => setEditBlockType(type)}
                         className={`rounded-lg px-3 py-1.5 text-xs font-medium ${editBlockType === type ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                        {BLOCK_TYPE_LABELS[type]}
+                        {t[`review_type_${type}`]}
                       </button>
                     ))}
                   </div>
@@ -796,10 +796,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
               <>
                 <div className="rounded-xl p-4" style={{ backgroundColor: `${selectedBlock.color ?? BLOCK_TYPE_COLORS[selectedBlock.block_type]}15` }}>
                   <p className="text-lg font-semibold" style={{ color: selectedBlock.color ?? BLOCK_TYPE_COLORS[selectedBlock.block_type] }}>
-                    {selectedBlock.label ?? BLOCK_TYPE_LABELS[selectedBlock.block_type]}
+                    {selectedBlock.label ?? t[`review_type_${selectedBlock.block_type}`]}
                   </p>
                   <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} – {selectedBlock.end_time.slice(0, 5)}</p>
-                  <p className="mt-1 text-xs text-muted">{t.plan_block_type}: {BLOCK_TYPE_LABELS[selectedBlock.block_type]}</p>
+                  <p className="mt-1 text-xs text-muted">{t.plan_block_type}: {t[`review_type_${selectedBlock.block_type}`]}</p>
                   {selectedBlock.routine_id ? (
                     <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_routine_badge}</p>
                   ) : selectedBlock.is_recurring && (

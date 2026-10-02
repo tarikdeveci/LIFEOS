@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { BlockType, CreateRoutineInput, Routine, RoutineKind, Weekday } from '@lifeos/shared'
-import { BLOCK_TYPE_LABELS, todayDate } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, todayDate } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -165,10 +165,10 @@ export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, def
             {form.kind === 'task' && <p className="-mt-2 text-[10px] text-muted">{t.routines_time_optional}</p>}
             {form.kind === 'block' && (
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).filter((b) => b !== 'task').map((b) => (
+                {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).filter((b) => b !== 'task').map((b) => (
                   <button key={b} type="button" onClick={() => patch({ blockType: b })}
                     className={`rounded-lg px-3 py-1 text-xs font-medium ${form.blockType === b ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                    {BLOCK_TYPE_LABELS[b]}
+                    {t[`review_type_${b}`]}
                   </button>
                 ))}
               </div>

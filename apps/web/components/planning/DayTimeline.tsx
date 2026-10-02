@@ -14,11 +14,11 @@ import { useDraggable } from '@dnd-kit/core'
 import type { TimeBlock } from '@lifeos/shared'
 import {
   BLOCK_TYPE_COLORS,
-  BLOCK_TYPE_LABELS,
   minutesBetween,
   parseClockParts,
   APP_DEFAULTS,
 } from '@lifeos/shared'
+import { useLang } from '@/lib/contexts/LangContext'
 
 interface DayTimelineProps {
   timeBlocks: TimeBlock[]
@@ -60,9 +60,10 @@ interface DraggableBlockProps {
 }
 
 function DraggableBlock({ block, top, height, isDragging, onClick }: DraggableBlockProps) {
+  const { t } = useLang()
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: block.id })
   const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-  const label = block.label ?? BLOCK_TYPE_LABELS[block.block_type]
+  const label = block.label ?? t[`review_type_${block.block_type}`]
   const duration = minutesBetween(block.start_time, block.end_time)
 
   const style: React.CSSProperties = {
@@ -108,8 +109,9 @@ function DraggableBlock({ block, top, height, isDragging, onClick }: DraggableBl
 
 // ---------- Overlay (sürüklenen klon) ----------
 function BlockOverlay({ block, height }: { block: TimeBlock; height: number }) {
+  const { t } = useLang()
   const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-  const label = block.label ?? BLOCK_TYPE_LABELS[block.block_type]
+  const label = block.label ?? t[`review_type_${block.block_type}`]
   return (
     <div
       style={{

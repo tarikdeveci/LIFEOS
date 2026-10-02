@@ -14,7 +14,6 @@ import {
   useNutritionStore,
   useWorkoutStore,
   BLOCK_TYPE_COLORS,
-  BLOCK_TYPE_LABELS,
   WORKOUT_STATUS_LABELS,
   APP_DEFAULTS,
 } from '@lifeos/shared'
@@ -185,7 +184,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
             <div className="space-y-2">
               {todayBlocks.map((block) => {
                 const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-                const label = block.label ?? BLOCK_TYPE_LABELS[block.block_type]
+                const label = block.label ?? t[`review_type_${block.block_type}`]
                 return (
                   <div
                     key={block.id}
