@@ -1459,6 +1459,7 @@ export type Database = {
           friction_score: number | null
           goal_id: string | null
           id: string
+          integration_id: string | null
           is_recurring: boolean | null
           is_time_blocked: boolean | null
           occurrence_date: string | null
@@ -1493,6 +1494,7 @@ export type Database = {
           friction_score?: number | null
           goal_id?: string | null
           id?: string
+          integration_id?: string | null
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
           occurrence_date?: string | null
@@ -1527,6 +1529,7 @@ export type Database = {
           friction_score?: number | null
           goal_id?: string | null
           id?: string
+          integration_id?: string | null
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
           occurrence_date?: string | null
@@ -1553,6 +1556,13 @@ export type Database = {
             columns: ["goal_id"]
             isOneToOne: false
             referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
             referencedColumns: ["id"]
           },
           {
