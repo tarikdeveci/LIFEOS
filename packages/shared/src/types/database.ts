@@ -216,8 +216,8 @@ export type Database = {
           created_at: string | null
           equipment: string[] | null
           id: string
-          image_url: string | null
           image_start_url: string | null
+          image_url: string | null
           instructions: string | null
           is_bodyweight: boolean | null
           met_value: number | null
@@ -232,8 +232,8 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
-          image_url?: string | null
           image_start_url?: string | null
+          image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null
@@ -248,8 +248,8 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
-          image_url?: string | null
           image_start_url?: string | null
+          image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null
