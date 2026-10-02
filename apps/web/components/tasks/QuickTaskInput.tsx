@@ -7,6 +7,7 @@ import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
 
 interface TaskDraft {
@@ -35,7 +36,8 @@ interface QuickTaskInputProps {
 }
 
 export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<TaskDraft>(EMPTY_DRAFT)
   const [loading, setLoading] = useState(false)
@@ -68,7 +70,7 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
-      if (!draft.title.trim()) return
+      if (loading || !draft.title.trim()) return
 
       setLoading(true)
 
@@ -103,31 +105,36 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
         const day = draft.scheduledDate || scheduledDate
         if (created && parsed.start_time && day) {
           const minutes = (draft.estimatedMinutes && parseInt(draft.estimatedMinutes, 10)) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
-          await createTimeBlocks(supabase, created.user_id, [{
-            date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
-            block_type: 'task', label: created.title, task_id: created.id,
-          }])
+          // Görev yazıldı: blok düşerse taslak yine temizlenir, yoksa tekrar denemek aynı görevi ikinci kez ekler.
+          try {
+            await createTimeBlocks(supabase, created.user_id, [{
+              date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+              block_type: 'task', label: created.title, task_id: created.id,
+            }])
+          } catch { showToast(t.qtask_block_error, 'error') }
         }
         setDraft(EMPTY_DRAFT)
         setOpen(false)
+      } catch {
+        showToast(t.plan_task_add_error, 'error')
       } finally {
         setLoading(false)
       }
     },
-    [draft, onCreateTask],
+    [draft, loading, onCreateTask, showToast, t],
   )
 
   const preview = useMemo(() => {
     if (!draft.title.trim()) return null
     const p = parseQuickTask(draft.title, todayDate())
     const parts = [
-      p.scheduled_date && `${relativeDateLabel(p.scheduled_date)}${p.start_time ? ` ${p.start_time}` : ''}`,
-      p.due_date && `${t.qtask_due_label}: ${relativeDateLabel(p.due_date)}`,
-      p.estimated_minutes && `${p.estimated_minutes} dk`,
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_label}: ${relativeDateLabel(p.due_date, lang)}`,
+      p.estimated_minutes && `${p.estimated_minutes} ${t.unit_min_short}`,
       ...p.tags.map((tag) => `#${tag}`),
     ].filter(Boolean)
     return parts.length > 0 ? parts.join(' · ') : null
-  }, [draft.title, t.qtask_due_label])
+  }, [draft.title, lang, t.qtask_due_label, t.unit_min_short])
 
   return (
     <>

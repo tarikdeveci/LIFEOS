@@ -108,8 +108,12 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     const { pending, saving, saveError } = get()
     if (!pending || saving || (saveError && !retry)) return
     set({ saving: true, saveError: false })
+    // Yanıt gelene kadar store sıfırlanmış (hesap değişmiş) ya da başka kayıt beklemeye girmiş
+    // olabilir: eski yanıt yeni bekleyen kaydı silmesin, onun kilidini de açmasın.
+    const current = () => get().pending?.input.id === pending.input.id
     try {
       const session = await createFocusSession(client, pending.userId, pending.input)
+      if (!current()) return
       set((state) => ({
         pending: null, saving: false,
         sessions: state.sessionsUserId === session.user_id
@@ -117,6 +121,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
           : state.sessions,
       }))
     } catch (err) {
+      if (!current()) return
       // Odak sürerken blok ya da görev silindiyse kayıt FK/RLS'e takılır ve hiç geçmez;
       // pending kalınca zamanlayıcı kilitlenirdi. Bağlantısız olarak bir kez daha dene.
       const code = (err as { code?: string } | null)?.code
@@ -147,3 +152,44 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     }
   },
 }))
+
+const FOCUS_KEY = 'lifeos.focus.v1'
+
+interface FocusStorage {
+  getItem: (key: string) => string | null | Promise<string | null>
+  setItem: (key: string, value: string) => unknown
+  removeItem: (key: string) => unknown
+}
+
+/**
+ * Süren odak ve kaydedilmeyi bekleyen süre yalnız bellekteydi: uygulama kapanınca ya da sayfa
+ * yenilenince çalışılan süre kayboluyordu. Oturum açılınca bir kez çağrılır: aynı kullanıcının
+ * kaydını geri yükler (zamanlayıcı mutlak zamanla çalıştığı için kaldığı yerden sürer), sonra
+ * her değişikliği depoya yazar. Dönen fonksiyon aboneliği bitirir.
+ */
+export async function persistFocus(storage: FocusStorage, userId: string): Promise<() => void> {
+  try {
+    const raw = await storage.getItem(FOCUS_KEY)
+    const saved = raw ? (JSON.parse(raw) as { active?: ActiveFocus | null; pending?: PendingFocus | null }) : null
+    const { active, pending } = useFocusStore.getState()
+    if (saved && !active && !pending) {
+      useFocusStore.setState({
+        active: saved.active?.userId === userId ? saved.active : null,
+        pending: saved.pending?.userId === userId ? saved.pending : null,
+      })
+    }
+  } catch { /* bozuk kayıt: yok say, aşağıdaki ilk yazma üzerine yazar */ }
+
+  let last: string | null = null
+  const write = ({ active, pending }: Pick<FocusStore, 'active' | 'pending'>) => {
+    const next = active || pending ? JSON.stringify({ active, pending }) : ''
+    if (next === last) return
+    last = next
+    // Depo hatası (dolu, gizli sekme) odak akışını durdurmasın: yalnız kalıcılık kaybolur.
+    try {
+      void Promise.resolve(next ? storage.setItem(FOCUS_KEY, next) : storage.removeItem(FOCUS_KEY)).catch(() => undefined)
+    } catch { /* yukarıdaki not */ }
+  }
+  write(useFocusStore.getState())
+  return useFocusStore.subscribe(write)
+}

@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router, useLocalSearchParams } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
+import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
-import type { TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -32,7 +32,6 @@ import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 
 type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
-const BLOCK_LABELS: Record<BlockType, string> = { task: 'Görev', routine: 'Rutin', break: 'Mola', focus: 'Odak', meal: 'Yemek', workout: 'Antrenman' }
 function localIsoDate(date = new Date()): string {
   const tzOffsetMs = date.getTimezoneOffset() * 60000
   return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
@@ -45,13 +44,6 @@ function getWeekDays(anchor: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d })
 }
 
-interface AiAction { action: 'add' | 'remove' | 'move'; block_id?: string; block?: Partial<TimeBlock> & { date?: string } }
-const PLAN_SUGGESTIONS = [
-  'Bugünü yeniden düzenle',
-  'Boş saatleri bekleyen görevlerle doldur',
-  'Öğleden sonra 2 saatlik odak bloğu ekle',
-  'Yarını planla',
-]
 
 function addDays(date: string, days: number): string {
   const next = new Date(`${date}T00:00:00`)
@@ -74,6 +66,8 @@ function inferRequestedDate(input: string, fallbackDate: string): string {
  * herkes iki alanı da elle siliyordu. `nextSlotTime()` bir sonraki yarım saati
  * verdiği için değer çoğu zaman doğrudan kaydedilebilir oluyor.
  */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
 function emptyBlockDraft() {
   const start = nextSlotTime()
   return { label: '', start_time: start, end_time: addMinutesToClock(start, 60), block_type: 'focus' as BlockType }
@@ -83,7 +77,11 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const BLOCK_LABELS: Record<BlockType, string> = {
+    task: t.block_task, routine: t.block_routine, break: t.block_break,
+    focus: t.block_focus, meal: t.block_meal, workout: t.block_workout,
+  }
   const { localEvents, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
@@ -98,7 +96,7 @@ export default function PlanningScreen() {
   const hasFreePlan = !isPro && freePlansLeft !== 0
   const aiUnlocked = isPro || hasFreePlan
   const freePlansLabel = hasFreePlan && freePlansLeft !== null
-    ? `${freePlansLeft} ${lang === 'tr' ? 'ücretsiz' : 'free'}`
+    ? `${freePlansLeft} ${t.plan_free_label}`
     : null
   const aiPlanLabel = aiUnlocked
     ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
@@ -147,22 +145,46 @@ export default function PlanningScreen() {
     void initialize()
 
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) { setUserId(data.user.id); void load(data.user.id, selectedDate) }
+      if (data.user) setUserId(data.user.id)
     })
-  }, [load, selectedDate, initialize])
+  }, [initialize])
+
+  // Sekmeye her dönüşte ve gün değişince: Görevler sekmesinde açılan blok buraya
+  // ancak elle yenileyince geliyordu.
+  useFocusEffect(useCallback(() => {
+    if (userId) void load(userId, selectedDate)
+  }, [userId, selectedDate, load]))
+
+  /** Kullanıcı başka güne geçince AI sohbeti sıfırlanır: önceki günün bağlamı yeni günü planlamasın. */
+  function selectDay(date: string) {
+    if (date !== selectedDate) setAiChatMsgs([])
+    setSelectedDate(date)
+  }
 
   async function handleRefresh() {
     if (!userId) return
     setRefreshing(true)
-    await Promise.all([load(userId, selectedDate), syncEvents()])
-    setRefreshing(false)
+    try {
+      await Promise.all([load(userId, selectedDate), syncEvents()])
+    } catch {
+      Alert.alert(t.error, t.plan_refresh_error)
+      return
+    } finally {
+      setRefreshing(false)
+    }
     // Okunamayan takvimi sessizce yutma: senkronun neden boş kaldığı görünmüyordu.
     const syncError = useCalendarStore.getState().lastSyncError
-    if (syncError) Alert.alert('Takvim Senkronu', `Takvim senkronize edildi, ancak ${syncError}.`)
+    if (syncError) Alert.alert(t.plan_calendar_sync, t.plan_calendar_sync_partial.replace('{err}', syncError))
   }
 
   async function handleAdd() {
-    if (!userId || !draft.label.trim()) return
+    if (!userId) return
+    // Boş başlık ve hatalı saat sessizce reddedilmez; ağ hatasıyla aynı mesajı da almaz.
+    const invalid = !draft.label.trim() ? t.plan_err_name_required
+      : !TIME_RE.test(draft.start_time) || !TIME_RE.test(draft.end_time) ? t.plan_err_time_invalid
+      : draft.end_time <= draft.start_time ? t.plan_err_end_after_start
+      : null
+    if (invalid) { Alert.alert(invalid); return }
     setAdding(true)
     try {
       await addTimeBlock(supabase, userId, {
@@ -174,7 +196,7 @@ export default function PlanningScreen() {
       })
       setDraft(emptyBlockDraft())
       setShowAdd(false)
-    } catch { Alert.alert('Hata', 'Blok eklenemedi') }
+    } catch { Alert.alert(t.error, t.plan_block_add_error) }
     finally { setAdding(false) }
   }
 
@@ -204,7 +226,7 @@ export default function PlanningScreen() {
         .eq('date', requestedDate)
         .order('start_time')
 
-      const data = await callAiSuggest<{ message?: string; actions?: AiAction[] }>({
+      const data = await callAiSuggest<{ message?: string; actions?: AiPlanAction[] }>({
         type: 'replan',
         current_time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         date: requestedDate,
@@ -214,40 +236,24 @@ export default function PlanningScreen() {
       })
       // Sunucu hakkı bu çağrıda düştü; blokların uygulanması başarısız olsa da sayaç güncel kalsın.
       if (!isPro) void refreshFreePlans()
-      setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: data.message ?? 'Yanit alinamadi.' }])
-      // Apply AI actions
-      if (data.actions && userId) {
-        let affectedDate = requestedDate
-        for (const action of data.actions) {
-          if (action.action === 'remove' && action.block_id) {
-            await removeTimeBlock(supabase, action.block_id)
-          } else if (action.action === 'move' && action.block_id && action.block) {
-            const b = action.block
-            const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
-            affectedDate = blockDate
-            await updateTimeBlock(supabase, action.block_id, {
-              date: blockDate,
-              start_time: b.start_time,
-              end_time: b.end_time,
-            })
-          } else if (action.action === 'add' && action.block) {
-            const b = action.block
-            if (b.label && b.start_time && b.end_time && b.block_type) {
-              const blockDate = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : requestedDate
-              affectedDate = blockDate
-              await addTimeBlock(supabase, userId, {
-                date: blockDate,
-                label: b.label,
-                start_time: b.start_time,
-                end_time: b.end_time,
-                block_type: b.block_type as BlockType,
-              })
-            }
-          }
-        }
-        setSelectedDate(affectedDate)
-        await load(userId, affectedDate)
-      }
+      const actions = validAiActions(data.actions)
+      const reply = data.message ?? t.plan_ai_no_reply
+      // Değişiklikler hemen yazılmaz: önce sohbette listelenir, kullanıcı onaylayınca uygulanır.
+      // Eski önerilerin düğmesi kaldırılır; onların blok kimlikleri artık geçerli olmayabilir.
+      setAiChatMsgs((messages) => [
+        ...messages.map((m) => (m.actions ? { ...m, actions: undefined } : m)),
+        actions.length === 0 ? { role: 'assistant', content: reply } : {
+          role: 'assistant',
+          content: `${reply}
+
+${t.plan_ai_changes.replace('{n}', String(actions.length))}
+${describeAiActions(actions, targetBlocks ?? [])}`,
+          actions: [{
+            label: t.plan_ai_apply, doneLabel: t.plan_ai_applied, icon: 'checkmark-done',
+            onPress: () => applyAiPlan(actions, requestedDate),
+          }],
+        },
+      ])
     } catch (error) {
       if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
         // Ücretsiz hak bitti (başka cihazda harcanmış da olabilir). iOS iç
@@ -256,10 +262,24 @@ export default function PlanningScreen() {
         setShowAiChat(false)
         setTimeout(() => router.push({ pathname: '/paywall', params: { source: 'free_limit' } }), 400)
       } else {
-        setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: aiErrorMessage(error, 'AI planlama başarısız. Pro aboneliğini ve bağlantını kontrol et.') }])
+        setAiChatMsgs((messages) => [...messages, { role: 'assistant', content: aiErrorMessage(error, t.plan_ai_failed) }])
       }
     }
     finally { setAiLoading(false) }
+  }
+
+  /** Onay düğmesi: hata olursa düğme "uygulandı"ya geçmez, kullanıcı tekrar deneyebilir. */
+  async function applyAiPlan(actions: AiPlanAction[], requestedDate: string) {
+    if (!userId) return
+    try {
+      const affectedDate = await applyAiActions(userId, actions, requestedDate)
+      setSelectedDate(affectedDate)
+      await load(userId, affectedDate)
+    } catch (error) {
+      Alert.alert(t.error, t.plan_ai_apply_error)
+      void load(userId, requestedDate)
+      throw error
+    }
   }
 
   /**
@@ -270,7 +290,7 @@ export default function PlanningScreen() {
     try {
       await setBlockDone(supabase, blockId, done)
     } catch {
-      Alert.alert('Hata', 'Blok güncellenemedi')
+      Alert.alert(t.error, t.plan_block_update_error)
     }
   }
 
@@ -320,6 +340,9 @@ export default function PlanningScreen() {
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
+        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
+        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
@@ -347,7 +370,7 @@ export default function PlanningScreen() {
           selectedDate={selectedDate}
           today={todayStr}
           hasBlocks={(date) => timeBlocks.some((b) => b.date === date)}
-          onSelect={setSelectedDate}
+          onSelect={selectDay}
           onShiftWeek={(weeks) => setWeekAnchor((a) => { const d = new Date(a); d.setDate(d.getDate() + weeks * 7); return d })}
         />
 
@@ -406,10 +429,10 @@ export default function PlanningScreen() {
       {/* Add block modal */}
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.plan_new_block} scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Başlık" value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="Odak çalışması" autoFocus />
+          <Input label={t.field_title} value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t.plan_block_placeholder} autoFocus />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Başlangıç" value={draft.start_time} onChangeText={(v) => setDraft((d) => ({ ...d, start_time: v }))} placeholder="09:00" containerStyle={{ flex: 1 }} />
-            <Input label="Bitiş" value={draft.end_time} onChangeText={(v) => setDraft((d) => ({ ...d, end_time: v }))} placeholder="10:00" containerStyle={{ flex: 1 }} />
+            <Input label={t.field_start} value={draft.start_time} onChangeText={(v) => setDraft((d) => ({ ...d, start_time: v }))} placeholder="09:00" containerStyle={{ flex: 1 }} />
+            <Input label={t.field_end} value={draft.end_time} onChangeText={(v) => setDraft((d) => ({ ...d, end_time: v }))} placeholder="10:00" containerStyle={{ flex: 1 }} />
           </View>
           <View>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Tür</Text>
@@ -421,7 +444,7 @@ export default function PlanningScreen() {
               ))}
             </View>
           </View>
-          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
+          <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
         </View>
       </BottomSheet>
 
@@ -441,9 +464,9 @@ export default function PlanningScreen() {
         input={aiInput}
         onChangeInput={setAiInput}
         onSend={() => { void handleAiReplan() }}
-        placeholder="Bugünü yeniden planla..."
-        emptyHint="Bloklarını ve görevlerini görüyorum; takvimi senin adına düzenleyebilirim. Sohbeti sürdürebilirsin, önceki mesajları hatırlıyorum."
-        suggestions={PLAN_SUGGESTIONS}
+        placeholder={t.plan_ai_placeholder}
+        emptyHint={t.plan_ai_hint}
+        suggestions={[t.plan_ai_suggest_1, t.plan_ai_suggest_2, t.plan_ai_suggest_3, t.plan_ai_suggest_4]}
         onSuggestionPress={(text) => { void handleAiReplan(text) }}
       />
     </ScreenBackground>

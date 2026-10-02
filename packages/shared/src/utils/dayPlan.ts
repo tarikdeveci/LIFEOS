@@ -161,16 +161,19 @@ export function shiftRemaining(
 /**
  * Google dolu/boş aralıklarını (timestamptz) verilen yerel günün dakikalarına indirger.
  * Güne taşan kısım kırpılır. Cihaz saat dilimi kullanıcınınkiyle aynı varsayılır.
+ * Dakikalar duvar saatinden okunur: yaz saati geçişi olan günde gece yarısından geçen gerçek
+ * süre saatle bir saat kayıyor, 09:00 toplantısı 10:00'da görünüyordu.
  */
 export function busyToIntervals(rows: readonly { starts_at: string; ends_at: string }[], date: string): Interval[] {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number]
   const dayStart = new Date(y, m - 1, d).getTime()
   const dayEnd = new Date(y, m - 1, d + 1).getTime()
+  const wall = (ms: number) => { const t = new Date(ms); return t.getHours() * 60 + t.getMinutes() }
   const out: Interval[] = []
   for (const r of rows) {
     const s = Math.max(new Date(r.starts_at).getTime(), dayStart)
     const e = Math.min(new Date(r.ends_at).getTime(), dayEnd)
-    if (e > s) out.push({ start: Math.round((s - dayStart) / 60000), end: Math.round((e - dayStart) / 60000) })
+    if (e > s) out.push({ start: s === dayStart ? 0 : wall(s), end: e === dayEnd ? 1440 : wall(e) })
   }
-  return mergeIntervals(out)
+  return mergeIntervals(out.filter((i) => i.end > i.start))
 }

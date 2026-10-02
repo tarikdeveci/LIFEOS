@@ -1,10 +1,13 @@
 // calendar-sync: 5 dakikalık cron (057). Her aktif Google Calendar bağlantısı için
 //   1) calendar_sync_outbox'ı işler: LifeOS takviminde etkinlik aç/güncelle/sil,
 //   2) 14 günlük freebusy çeker, calendar_busy penceresini baştan yazar.
-// Yalnızca kuyruktaki işi yapar; kim tetiklerse tetiklesin sonuç aynıdır.
+// Yalnızca service_role çağırabilir: kuyruk işleri sahiplenilmeden okunur, eşzamanlı iki
+// tur aynı blok için iki etkinlik açar. Aynı nedenle tur RUN_BUDGET_MS içinde biter: kalan
+// iş kuyrukta bekler, bir sonraki cron turu öncekiyle çakışmaz.
 // Google'dan başlık okunmaz; LifeOS takvimi freebusy sorgusuna dahil edilmez (yankı olmasın).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isServiceRole } from '../_shared/serviceAuth.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -16,6 +19,11 @@ const CAL_API = 'https://www.googleapis.com/calendar/v3'
 const OUTBOX_BATCH = 50
 const MAX_ATTEMPTS = 5
 const BUSY_DAYS = 14
+// Bütçe dolunca yeni işe başlanmaz; eldeki iş en çok birkaç Google çağrısı (her biri
+// FETCH_TIMEOUT_MS) sürer. Toplam, platformun 150 saniyelik süre sınırının ve 5 dakikalık
+// cron aralığının altında kalmalı: sınırda öldürülen tur, etkinliği açıp kimliğini yazamaz.
+const RUN_BUDGET_MS = 90_000
+const FETCH_TIMEOUT_MS = 15_000
 
 interface IntegrationRow {
   id: string
@@ -43,6 +51,13 @@ interface BlockRow {
 }
 
 class RevokedError extends Error {}
+/** Google'ın geçici yanıtı (429, 5xx): iş kuyrukta kalır, deneme hakkı harcanmaz. */
+class TransientError extends Error {}
+
+function ensureOk(res: Response, label: string): void {
+  if (res.status === 429 || res.status >= 500) throw new TransientError(`${label} ${res.status}`)
+  if (!res.ok) throw new Error(`${label} ${res.status}`)
+}
 
 async function accessToken(integrationId: string): Promise<string> {
   const { data: secret, error } = await supabase.rpc('integration_get_secret', { p_integration: integrationId })
@@ -53,6 +68,7 @@ async function accessToken(integrationId: string): Promise<string> {
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     body: new URLSearchParams({
       client_id: Deno.env.get('GOOGLE_CLIENT_ID')!,
       client_secret: Deno.env.get('GOOGLE_CLIENT_SECRET')!,
@@ -88,14 +104,38 @@ function eventBody(block: BlockRow, timeZone: string) {
 }
 
 async function gcal(token: string, method: string, path: string, body?: unknown): Promise<Response> {
-  return await fetch(`${CAL_API}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  })
+  try {
+    return await fetch(`${CAL_API}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  } catch (err) {
+    // Zaman aşımı ve ağ hatası da geçicidir: iş kuyrukta kalır, deneme hakkı harcanmaz.
+    throw new TransientError(`${method} ${err instanceof Error ? `${err.name}: ${err.message}` : 'ağ hatası'}`)
+  }
 }
 
-async function processOutbox(integration: IntegrationRow, token: string, timeZone: string): Promise<number> {
+/**
+ * Blok için Google'da zaten açılmış etkinliğin kimliği. Yanıtı alınamayan bir POST
+ * (zaman aşımı, yarıda kesilen tur) etkinliği açmış ama kimliği yazamamış olabilir;
+ * aranmadan yeniden POST edilirse her turda bir kopya daha oluşur.
+ */
+async function findEventId(token: string, cal: string, blockId: string): Promise<string | null> {
+  const query = new URLSearchParams({
+    privateExtendedProperty: `lifeos_block_id=${blockId}`,
+    maxResults: '1',
+    fields: 'items(id)',
+  })
+  const res = await gcal(token, 'GET', `/calendars/${cal}/events?${query}`)
+  ensureOk(res, 'lookup')
+  const body = (await res.json()) as { items?: { id: string }[] }
+  return body.items?.[0]?.id ?? null
+}
+
+/** Kuyruğu işler. Dönüş: başarısız olan son işin hata mesajı (yoksa null). */
+async function processOutbox(integration: IntegrationRow, token: string, timeZone: string, deadline: number): Promise<string | null> {
   const calendarId = integration.settings?.calendar_id
   if (!calendarId) throw new Error('LifeOS takvimi yok')
   const cal = encodeURIComponent(calendarId)
@@ -107,13 +147,14 @@ async function processOutbox(integration: IntegrationRow, token: string, timeZon
     .order('id')
     .limit(OUTBOX_BATCH)
 
-  let done = 0
+  let lastError: string | null = null
   for (const row of (rows ?? []) as OutboxRow[]) {
+    if (Date.now() > deadline) break
     try {
       if (row.op === 'delete') {
         if (row.google_event_id) {
           const res = await gcal(token, 'DELETE', `/calendars/${cal}/events/${encodeURIComponent(row.google_event_id)}`)
-          if (!res.ok && res.status !== 404 && res.status !== 410) throw new Error(`delete ${res.status}`)
+          if (res.status !== 404 && res.status !== 410) ensureOk(res, 'delete')
         }
       } else {
         const { data: block } = await supabase
@@ -129,19 +170,34 @@ async function processOutbox(integration: IntegrationRow, token: string, timeZon
             ? await gcal(token, 'PATCH', `/calendars/${cal}/events/${encodeURIComponent(eventId)}`, eventBody(b, timeZone))
             : null
           if (!res || res.status === 404 || res.status === 410) {
-            res = await gcal(token, 'POST', `/calendars/${cal}/events`, eventBody(b, timeZone))
+            const existing = await findEventId(token, cal, b.id)
+            res = existing && existing !== eventId
+              ? await gcal(token, 'PATCH', `/calendars/${cal}/events/${encodeURIComponent(existing)}`, eventBody(b, timeZone))
+              : await gcal(token, 'POST', `/calendars/${cal}/events`, eventBody(b, timeZone))
           }
-          if (!res.ok) throw new Error(`upsert ${res.status}`)
+          ensureOk(res, 'upsert')
           const created = (await res.json()) as { id: string }
           if (created.id !== eventId) {
-            await supabase.rpc('set_block_google_event', { p_block: b.id, p_event: created.id })
+            const { error: saveError } = await supabase.rpc('set_block_google_event', { p_block: b.id, p_event: created.id })
+            // Kimlik yazılamadıysa ya da blok bu arada silindiyse (RPC sıfır satır günceller,
+            // tetikleyici kimliksiz bloğa silme işi yazmaz) etkinlik Google'da sahipsiz kalır.
+            const kept = saveError ? null : await supabase.from('time_blocks').select('id').eq('id', b.id).maybeSingle()
+            if (kept?.error) throw new Error(`blok okunamadı: ${kept.error.message}`)
+            if (!kept?.data) {
+              await gcal(token, 'DELETE', `/calendars/${cal}/events/${encodeURIComponent(created.id)}`)
+              if (saveError) throw new Error(`etkinlik kimliği yazılamadı: ${saveError.message}`)
+            }
           }
         }
       }
       await supabase.from('calendar_sync_outbox').delete().eq('id', row.id)
-      done++
     } catch (err) {
+      // Google geçici olarak yanıt vermiyor: kalan işler de aynı sonucu alır. Tur burada
+      // biter, işler kuyrukta bekler; bağlantının last_error'ı çağıranda yazılır.
+      if (err instanceof TransientError) throw err
       const message = err instanceof Error ? err.message : 'unknown'
+      // Deneme hakkı bitince iş düşer; bağlantı o turda yine de hatasız görünmesin.
+      lastError = message
       if (row.attempts + 1 >= MAX_ATTEMPTS) {
         await supabase.from('calendar_sync_outbox').delete().eq('id', row.id)
       } else {
@@ -149,7 +205,7 @@ async function processOutbox(integration: IntegrationRow, token: string, timeZon
       }
     }
   }
-  return done
+  return lastError
 }
 
 async function refreshBusy(integration: IntegrationRow, token: string, timeZone: string): Promise<void> {
@@ -165,45 +221,68 @@ async function refreshBusy(integration: IntegrationRow, token: string, timeZone:
     items: [{ id: 'primary' }],
   })
   if (!res.ok) throw new Error(`freebusy ${res.status}`)
-  const body = (await res.json()) as { calendars?: Record<string, { busy?: { start: string; end: string }[] }> }
-  const busy = body.calendars?.['primary']?.busy ?? []
+  const body = (await res.json()) as {
+    calendars?: Record<string, { busy?: { start: string; end: string }[]; errors?: { reason?: string }[] }>
+  }
+  const primary = body.calendars?.['primary']
+  // Takvim bazlı hata HTTP 200 ile gelir; boş takvim sanılırsa mevcut meşgul saatler silinir.
+  if (primary?.errors?.length) throw new Error(`freebusy ${primary.errors[0]?.reason ?? 'hata'}`)
+  const busy = primary?.busy ?? []
 
-  await supabase.from('calendar_busy').delete().eq('user_id', integration.user_id)
+  const { error: clearError } = await supabase.from('calendar_busy').delete().eq('user_id', integration.user_id)
+  if (clearError) throw new Error(`calendar_busy silinemedi: ${clearError.message}`)
   if (busy.length > 0) {
-    await supabase.from('calendar_busy').insert(
+    const { error } = await supabase.from('calendar_busy').insert(
       busy.map((b) => ({ user_id: integration.user_id, starts_at: b.start, ends_at: b.end })),
     )
+    if (error) throw new Error(`calendar_busy yazılamadı: ${error.message}`)
   }
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  if (!isServiceRole(req)) return new Response('forbidden', { status: 403 })
+
   const { data: integrations, error } = await supabase
     .from('integrations')
     .select('id, user_id, settings')
     .eq('provider', 'google_calendar')
     .eq('status', 'active')
+    // En uzun süredir sırası gelmeyen önce: bütçe dolunca atlananlar bir sonraki turda başa geçer.
+    .order('last_synced_at', { ascending: true, nullsFirst: true })
 
   if (error) return new Response(`DB error: ${error.message}`, { status: 500 })
 
+  const rows = (integrations ?? []) as IntegrationRow[]
+  const deadline = Date.now() + RUN_BUDGET_MS
   let synced = 0
   let failed = 0
-  for (const integration of (integrations ?? []) as IntegrationRow[]) {
+  for (const integration of rows) {
+    if (Date.now() > deadline) {
+      console.warn('calendar-sync: bütçe doldu, atlanan bağlantı sayısı', rows.length - synced - failed)
+      break
+    }
     try {
       const token = await accessToken(integration.id)
       const timeZone = await userTimeZone(integration.user_id)
-      await processOutbox(integration, token, timeZone)
+      const outboxError = await processOutbox(integration, token, timeZone, deadline)
       await refreshBusy(integration, token, timeZone)
       await supabase.from('integrations')
-        .update({ last_synced_at: new Date().toISOString(), last_error: null })
+        .update({ last_synced_at: new Date().toISOString(), last_error: outboxError })
         .eq('id', integration.id)
       synced++
     } catch (err) {
       failed++
       // Sadece iptal edilmiş izin bağlantıyı düşürür; geçici hatada aktif kalır, sonraki
       // turda yeniden denenir (status 'error' olsaydı cron bir daha hiç seçmezdi).
+      // last_synced_at burada da ilerler (integrations-sync ile aynı): sürekli hata veren
+      // bağlantı her turda sıranın başını tutup diğerlerini bütçenin dışına itmesin.
       const revoked = err instanceof RevokedError
       await supabase.from('integrations')
-        .update({ ...(revoked ? { status: 'revoked' } : {}), last_error: err instanceof Error ? err.message.slice(0, 500) : 'unknown' })
+        .update({
+          ...(revoked ? { status: 'revoked' } : {}),
+          last_synced_at: new Date().toISOString(),
+          last_error: err instanceof Error ? err.message.slice(0, 500) : 'unknown',
+        })
         .eq('id', integration.id)
     }
   }

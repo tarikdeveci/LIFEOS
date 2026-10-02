@@ -15,15 +15,34 @@ test('senkron planı: yeni, güncel, kapanan; LifeOS\'ta bitmişe dokunulmaz', (
   const plan = planSync(
     [task('a'), task('b', 'yeni başlık'), task('d')],
     [
-      { id: '1', external_id: 'b', status: 'planned' },
-      { id: '2', external_id: 'c', status: 'backlog' },
-      { id: '3', external_id: 'd', status: 'done' },
-      { id: '4', external_id: 'e', status: 'done' },
+      { id: '1', external_id: 'b', status: 'planned', integration_id: 'i1' },
+      { id: '2', external_id: 'c', status: 'backlog', integration_id: 'i1' },
+      { id: '3', external_id: 'd', status: 'done', integration_id: 'i1' },
+      { id: '4', external_id: 'e', status: 'done', integration_id: 'i1' },
     ],
+    'i1',
   )
   assert.deepEqual(plan.toInsert.map((t) => t.external_id), ['a'])
   assert.deepEqual(plan.toUpdate.map((u) => [u.id, u.task.title]), [['1', 'yeni başlık']])
   // c kaynakta yok ve açık: kapanır. d ve e LifeOS'ta bitmiş: ne güncellenir ne kapanır.
+  assert.deepEqual(plan.toClose, ['2'])
+})
+
+test('senkron planı: yalnızca bu bağlantının getirdiği görev kapanır', () => {
+  const plan = planSync(
+    [task('a')],
+    [
+      { id: '1', external_id: 'a', status: 'backlog', integration_id: null },
+      { id: '2', external_id: 'kendi', status: 'backlog', integration_id: 'i1' },
+      { id: '3', external_id: 'diger-hesap', status: 'backlog', integration_id: 'i2' },
+      { id: '4', external_id: 'birakilmis-kaynak', status: 'planned', integration_id: null },
+    ],
+    'i1',
+  )
+  // Sahipsiz ama listede olan görev çift kayıt açmaz, güncellenir (çağıran sahiplenir).
+  assert.deepEqual(plan.toInsert, [])
+  assert.deepEqual(plan.toUpdate.map((u) => u.id), ['1'])
+  // İkinci hesabın ve değiştirilen Notion veritabanının görevi bu listede yok diye bitmez.
   assert.deepEqual(plan.toClose, ['2'])
 })
 

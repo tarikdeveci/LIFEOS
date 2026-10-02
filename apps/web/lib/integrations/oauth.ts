@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { authenticateRequest } from '@/lib/api/auth'
 
-/** OAuth akışlarının ortak parçaları: PKCE ve sağlayıcıda kayıtlı dönüş adresi. */
+/** OAuth akışlarının ortak parçaları: PKCE, sağlayıcıda kayıtlı dönüş adresi, dönüş denetimi. */
 
 export function newPkce(): { state: string; verifier: string; challenge: string } {
   const verifier = randomBytes(48).toString('base64url')
@@ -20,4 +21,13 @@ export function callbackUri(req: Request, slug: string): string {
 /** OAuth bitince dönülecek yerler; başka adrese yönlendirme kabul edilmez. */
 export function returnTarget(platform: 'web' | 'mobile', slug: string): string {
   return platform === 'mobile' ? `lifeos://integrations/${slug}` : '/settings'
+}
+
+/**
+ * Web akışında yetki dönüşü, bağlantıyı başlatan kullanıcının oturumunu taşıyan tarayıcıda
+ * bitmeli: state tek başına tarayıcıya bağlı değil, başkasına gönderilen yetki adresi onun
+ * dış hesabını başlatanın LifeOS hesabına bağlar. Mobil akış bunu handoff.ts ile çözer.
+ */
+export async function returnsToStarter(req: Request, userId: string): Promise<boolean> {
+  return (await authenticateRequest(req))?.userId === userId
 }

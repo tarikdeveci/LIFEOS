@@ -2,7 +2,10 @@
 // bağlantıları için kaynaktaki açık görev listesini çeker ve LifeOS'a yansıtır:
 // yeni gelen backlog'a düşer, değişen güncellenir, kaynakta kapanan LifeOS'ta tamamlanır.
 // Kaynağa geri yazma yok. Liste eksiksiz çekilemezse (sayfa sınırı, hata) hiçbir görev
-// kapatılmaz: yarım listeyle kapatmak açık işi yanlışlıkla bitirir.
+// kapatılmaz: yarım listeyle kapatmak açık işi yanlışlıkla bitirir. Bir bağlantı yalnızca
+// kendi getirdiği görevi kapatır (tasks.integration_id, 063).
+// Yalnızca service_role çağırabilir: herkese açık anon anahtarıyla tetiklenirse eşzamanlı
+// turlar dönüşümlü refresh token'ları birbirinin elinden alır.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
@@ -10,6 +13,7 @@ import {
   type SyncProvider, type SyncedTask,
   jiraToTask, msTodoToTask, notionFilter, notionToTask, planSync,
 } from '../_shared/integrations/mappers.ts'
+import { isServiceRole } from '../_shared/serviceAuth.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -27,12 +31,16 @@ interface IntegrationRow {
   user_id: string
   provider: SyncProvider
   settings: Record<string, unknown> | null
+  /** Son senkronun kaynağı (Fetched.scope); kaynak değişimini fark etmek için. */
+  sync_cursor: string | null
 }
 
 interface Fetched {
   tasks: SyncedTask[]
   /** Listenin tamamı geldi mi (kapatma kararı buna bağlı). */
   complete: boolean
+  /** Listenin geldiği kaynak (Notion veri kaynağı); tek kaynaklı sağlayıcılarda null. */
+  scope: string | null
 }
 
 class RevokedError extends Error {}
@@ -108,7 +116,7 @@ async function fetchJira(integration: IntegrationRow): Promise<Fetched> {
     } while (next && pages < MAX_PAGES)
     if (next) complete = false
   }
-  return { tasks, complete }
+  return { tasks, complete, scope: null }
 }
 
 // ------------------------------------------------------------------ Microsoft To Do
@@ -129,12 +137,19 @@ async function fetchMsTodo(integration: IntegrationRow): Promise<Fetched> {
   })
   const auth = { Authorization: `Bearer ${token}` }
 
-  const listsRes = await fetch('https://graph.microsoft.com/v1.0/me/todo/lists', { headers: auth })
-  if (!listsRes.ok) throw new Error(`todo listeleri ${listsRes.status}`)
-  const lists = ((await listsRes.json()) as { value?: { id: string; displayName?: string }[] }).value ?? []
+  // Liste koleksiyonu da sayfalıdır: sonraki sayfadaki listenin görevleri gelmezse kapanmış sayılırdı.
+  const lists: { id: string; displayName?: string }[] = []
+  let listsUrl: string | undefined = 'https://graph.microsoft.com/v1.0/me/todo/lists'
+  for (let pages = 0; listsUrl && pages < MAX_PAGES; pages++) {
+    const res = await fetch(listsUrl, { headers: auth })
+    if (!res.ok) throw new Error(`todo listeleri ${res.status}`)
+    const body = (await res.json()) as { value?: { id: string; displayName?: string }[]; '@odata.nextLink'?: string }
+    lists.push(...(body.value ?? []))
+    listsUrl = body['@odata.nextLink']
+  }
 
   const tasks: SyncedTask[] = []
-  let complete = true
+  let complete = !listsUrl
   for (const list of lists) {
     let next: string | undefined =
       `https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(list.id)}/tasks?$filter=${encodeURIComponent("status ne 'completed'")}&$top=100`
@@ -152,7 +167,7 @@ async function fetchMsTodo(integration: IntegrationRow): Promise<Fetched> {
     }
     if (next) complete = false
   }
-  return { tasks, complete }
+  return { tasks, complete, scope: null }
 }
 
 // ------------------------------------------------------------------ Notion
@@ -205,7 +220,7 @@ async function fetchNotion(integration: IntegrationRow): Promise<Fetched | null>
     cursor = body.has_more ? body.next_cursor ?? undefined : undefined
     pages++
   } while (cursor && pages < MAX_PAGES)
-  return { tasks, complete: !cursor }
+  return { tasks, complete: !cursor, scope: dataSource }
 }
 
 // ------------------------------------------------------------------ Uygulama
@@ -216,7 +231,7 @@ async function apply(integration: IntegrationRow, fetched: Fetched): Promise<{ c
   for (;;) {
     const { data, error } = await supabase
       .from('tasks')
-      .select('id, external_id, status')
+      .select('id, external_id, status, integration_id')
       .eq('user_id', integration.user_id)
       .eq('source', integration.provider)
       .not('external_id', 'is', null)
@@ -227,7 +242,7 @@ async function apply(integration: IntegrationRow, fetched: Fetched): Promise<{ c
     from += 1000
   }
 
-  const plan = planSync(fetched.tasks, existing)
+  const plan = planSync(fetched.tasks, existing, integration.id)
 
   for (let i = 0; i < plan.toInsert.length; i += CHUNK) {
     const rows = plan.toInsert.slice(i, i + CHUNK).map((t) => ({
@@ -239,6 +254,7 @@ async function apply(integration: IntegrationRow, fetched: Fetched): Promise<{ c
       tags: t.tags,
       status: 'backlog',
       source: integration.provider,
+      integration_id: integration.id,
       external_id: t.external_id,
       external_url: t.external_url,
       external_updated_at: t.external_updated_at,
@@ -256,21 +272,27 @@ async function apply(integration: IntegrationRow, fetched: Fetched): Promise<{ c
       due_date: task.due_date,
       external_url: task.external_url,
       external_updated_at: task.external_updated_at,
+      integration_id: integration.id,
       ...(task.description ? { description: task.description } : {}),
     }).eq('id', id)
     if (error) throw new Error(error.message)
   }
 
+  // Kaynak değişti (Notion'da başka veritabanı seçildi): eski kaynağın görevleri yeni listede
+  // yok diye kapatılmaz, sahipsiz bırakılır; eski kaynağa dönülürse yeniden sahiplenilir.
+  const sourceChanged = integration.sync_cursor !== fetched.scope
   let closed = 0
-  if (fetched.complete && plan.toClose.length > 0) {
-    const now = new Date().toISOString()
+  if (plan.toClose.length > 0 && (sourceChanged || fetched.complete)) {
+    const patch = sourceChanged ? { integration_id: null } : { status: 'done', completed_at: new Date().toISOString() }
     for (let i = 0; i < plan.toClose.length; i += CHUNK) {
-      const { error } = await supabase.from('tasks')
-        .update({ status: 'done', completed_at: now })
-        .in('id', plan.toClose.slice(i, i + CHUNK))
+      const { error } = await supabase.from('tasks').update(patch).in('id', plan.toClose.slice(i, i + CHUNK))
       if (error) throw new Error(error.message)
     }
-    closed = plan.toClose.length
+    if (!sourceChanged) closed = plan.toClose.length
+  }
+  if (sourceChanged) {
+    const { error } = await supabase.from('integrations').update({ sync_cursor: fetched.scope }).eq('id', integration.id)
+    if (error) throw new Error(error.message)
   }
   return { created: plan.toInsert.length, updated: plan.toUpdate.length, closed }
 }
@@ -283,10 +305,12 @@ async function syncOne(integration: IntegrationRow) {
   return await apply(integration, fetched)
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  if (!isServiceRole(req)) return Response.json({ error: 'forbidden' }, { status: 403 })
+
   const { data, error } = await supabase
     .from('integrations')
-    .select('id, user_id, provider, settings')
+    .select('id, user_id, provider, settings, sync_cursor')
     .in('provider', PROVIDERS)
     .eq('status', 'active')
     .order('last_synced_at', { ascending: true, nullsFirst: true })

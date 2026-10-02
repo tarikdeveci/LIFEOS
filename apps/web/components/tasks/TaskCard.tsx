@@ -1,7 +1,8 @@
 'use client'
 
 import type { Task, TaskStatus } from '@lifeos/shared'
-import { TASK_STATUS_COLORS, TASK_STATUS_LABELS, todayDate, wsjfToPriorityLabel } from '@lifeos/shared'
+import { TASK_STATUS_COLORS, todayDate, wsjfToPriorityLabel } from '@lifeos/shared'
+import { useLang } from '@/lib/contexts/LangContext'
 import { Badge } from '@/components/ui/Badge'
 
 interface TaskCardProps {
@@ -12,16 +13,17 @@ interface TaskCardProps {
 }
 
 function PriorityIndicator({ score }: { score: number }) {
+  const { t } = useLang()
   const label = wsjfToPriorityLabel(score)
   const config = {
-    critical: { color: 'bg-danger', label: 'Kritik' },
-    high: { color: 'bg-warning', label: 'Yuksek' },
-    medium: { color: 'bg-accent', label: 'Orta' },
-    low: { color: 'bg-gray-300', label: 'Dusuk' },
+    critical: { color: 'bg-danger', label: t.tcard_priority_critical },
+    high: { color: 'bg-warning', label: t.tcard_priority_high },
+    medium: { color: 'bg-accent', label: t.tcard_priority_medium },
+    low: { color: 'bg-gray-300', label: t.tcard_priority_low },
   }[label]
 
   return (
-    <span title={`Öncelik: ${score.toFixed(2)}`} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${config.color}`}>
+    <span title={t.tcard_priority.replace('{score}', score.toFixed(2))} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${config.color}`}>
       {config.label}
     </span>
   )
@@ -41,6 +43,7 @@ function EffortBar({ effort }: { effort: number }) {
 }
 
 export function TaskCard({ task, onClick, onStatusChange, compact = false }: TaskCardProps) {
+  const { t } = useLang()
   const statusColors = TASK_STATUS_COLORS[task.status]
   // todayDate() yerel takvim günü. toISOString() UTC verdiği için UTC+3'te gece
   // 00:00–03:00 arasında dünü döndürüyordu: dün vadesi dolan görev o saatlerde
@@ -94,7 +97,7 @@ export function TaskCard({ task, onClick, onStatusChange, compact = false }: Tas
 
           {/* Meta row */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge color={statusColors}>{TASK_STATUS_LABELS[task.status]}</Badge>
+            <Badge color={statusColors}>{t[`tasks_status_${task.status}`]}</Badge>
 
             <EffortBar effort={task.effort_score} />
 

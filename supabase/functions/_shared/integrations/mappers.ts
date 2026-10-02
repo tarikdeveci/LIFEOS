@@ -20,6 +20,8 @@ export interface ExistingSynced {
   id: string
   external_id: string
   status: string
+  /** Görevi en son getiren bağlantı (063). NULL: bırakılmış kaynak ya da Inbox API. */
+  integration_id: string | null
 }
 
 export interface SyncPlan {
@@ -43,8 +45,12 @@ function day(value: string | null | undefined): string | null {
 /**
  * Senkron planı. `incoming` kaynağın o anki açık listesinin TAMAMI olmalı: listede
  * olmayan açık görev kapatılır. LifeOS'ta tamamlanmış göreve dokunulmaz, yeniden de açılmaz.
+ * Yalnızca bu bağlantının getirdiği görev kapatılır: `existing` aynı sağlayıcının başka
+ * bağlantılarını da içerir ve onların görevi bu listede doğal olarak yoktur.
  */
-export function planSync(incoming: readonly SyncedTask[], existing: readonly ExistingSynced[]): SyncPlan {
+export function planSync(
+  incoming: readonly SyncedTask[], existing: readonly ExistingSynced[], integrationId: string,
+): SyncPlan {
   const latest = new Map<string, SyncedTask>()
   for (const item of incoming) latest.set(item.external_id, item)
   const byExternal = new Map(existing.map((e) => [e.external_id, e]))
@@ -56,7 +62,7 @@ export function planSync(incoming: readonly SyncedTask[], existing: readonly Exi
     else if (found.status !== 'done') plan.toUpdate.push({ id: found.id, task: item })
   }
   for (const e of existing) {
-    if (e.status !== 'done' && !latest.has(e.external_id)) plan.toClose.push(e.id)
+    if (e.status !== 'done' && e.integration_id === integrationId && !latest.has(e.external_id)) plan.toClose.push(e.id)
   }
   return plan
 }

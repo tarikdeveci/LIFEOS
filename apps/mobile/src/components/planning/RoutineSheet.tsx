@@ -51,24 +51,31 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
   }
 }
 
-/** Formu doğrular; hata varsa mesaj, yoksa kayda hazır girdi döner. */
-function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRoutineInput | string {
+type FormError =
+  | 'plan_err_name_required' | 'plan_err_pick_day' | 'plan_err_time_required'
+  | 'plan_err_time_invalid' | 'plan_err_end_after_start' | 'routines_err_per_week' | 'routines_err_per_day'
+
+/** Formu doğrular; hata varsa çeviri anahtarı, yoksa kayda hazır girdi döner. */
+function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRoutineInput | FormError {
   const title = f.title.trim()
-  if (!title) return 'Ad gerekli'
+  if (!title) return 'plan_err_name_required'
   if (f.kind === 'habit') {
+    // Aralık dışı sayı sessizce kırpılmaz: 9 yazıp 7'ye düşen hedef rutini "her gün" moduna da geçiriyordu.
     if (f.habitMode === 'weekly') {
-      const n = Math.min(7, Math.max(1, Number(f.timesPerWeek) || 1))
+      const n = Number(f.timesPerWeek)
+      if (!Number.isInteger(n) || n < 1 || n > 7) return 'routines_err_per_week'
       return { title, kind: 'habit', days_of_week: [], times_per_week: n, times_per_day: null }
     }
     // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
-    const n = Math.min(20, Math.max(1, Number(f.timesPerDay) || 1))
+    const n = Number(f.timesPerDay)
+    if (!Number.isInteger(n) || n < 1 || n > 20) return 'routines_err_per_day'
     return { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: n > 1 ? n : null }
   }
-  if (f.days.length === 0) return 'En az bir gün seç'
+  if (f.days.length === 0) return 'plan_err_pick_day'
   const hasTime = f.start !== '' || f.end !== ''
-  if (f.kind === 'block' && !hasTime) return 'Saat gerekli'
-  if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'Saat SS:DD biçiminde olmalı'
-  if (hasTime && f.end <= f.start) return 'Bitiş saati başlangıçtan sonra olmalı'
+  if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
+  if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'plan_err_time_invalid'
+  if (hasTime && f.end <= f.start) return 'plan_err_end_after_start'
   return {
     title,
     kind: f.kind,
@@ -94,7 +101,7 @@ export function RoutineSheet({ visible, routine, onClose, onSave, onDelete, defa
 
   const handleSave = async () => {
     const input = toInput(form, routine === null, routine?.block_type ?? 'routine')
-    if (typeof input === 'string') { Alert.alert(input); return }
+    if (typeof input === 'string') { Alert.alert(t[input]); return }
     setSaving(true)
     try { await onSave(input); onClose() }
     catch { Alert.alert(t.routines_error) }

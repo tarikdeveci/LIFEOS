@@ -1,4 +1,5 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
+import { formsEn, formsTr } from './i18nForms'
 
 export type Language = 'en' | 'tr'
 export const LANG_STORAGE_KEY = 'lifeos_lang'
@@ -251,6 +252,7 @@ const translations = {
     integ_last_sync: 'Last sync {date}',
     integ_never_synced: 'Not synced yet',
     integ_status_error: 'Needs attention',
+    integ_sync_failing: 'Last sync failed, retrying',
     integ_disconnect: 'Disconnect',
     integ_disconnect_confirm: 'Disconnect this account? Imported tasks stay.',
     integ_import_title: 'Import tasks',
@@ -680,6 +682,7 @@ const translations = {
     integ_last_sync: 'Son senkron {date}',
     integ_never_synced: 'Henüz senkron olmadı',
     integ_status_error: 'İlgilenmen gerekiyor',
+    integ_sync_failing: 'Son senkron başarısız, yeniden denenecek',
     integ_disconnect: 'Bağlantıyı kes',
     integ_disconnect_confirm: 'Bu hesabın bağlantısı kesilsin mi? İçe aktarılan görevler kalır.',
     integ_import_title: 'Görevleri içe aktar',
@@ -863,11 +866,11 @@ const translations = {
   },
 } as const
 
-export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn]: string }
 
 const merged = {
-  en: { ...translations.en, ...workoutEn },
-  tr: { ...translations.tr, ...workoutTr },
+  en: { ...translations.en, ...workoutEn, ...formsEn },
+  tr: { ...translations.tr, ...workoutTr, ...formsTr },
 }
 
 export function getTranslations(lang: Language): Translations {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
@@ -33,12 +33,12 @@ interface Draft {
   effort_score: number
 }
 
-// Sabit değil fonksiyon: modül seviyesinde bir kez hesaplansaydı, uygulama gece
-// yarısını açık geçtiğinde yeni görev formu hâlâ dünün tarihini önerirdi.
+// Tarih ve süre boş başlar (bugün ve 30 dk yalnızca ipucu): dolu gelseydi metindeki
+// "yarın 15:00 ... 45dk" her zaman bu varsayılanlara yenilirdi.
 function emptyDraft(): Draft {
   return {
-    title: '', scheduled_date: todayDate(),
-    estimated_minutes: '30', value_score: 3, urgency_score: 3, effort_score: 3,
+    title: '', scheduled_date: '',
+    estimated_minutes: '', value_score: 3, urgency_score: 3, effort_score: 3,
   }
 }
 
@@ -52,6 +52,8 @@ export default function TasksScreen() {
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [adding, setAdding] = useState(false)
+  // Durum bir sonraki çizimde güncellenir: hızlı ikinci dokunuş onu görmeden görevi ikinci kez ekliyordu.
+  const addingRef = useRef(false)
   const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
   const [showBrain, setShowBrain] = useState(false)
@@ -125,7 +127,7 @@ export default function TasksScreen() {
     try {
       await setStatus(supabase, task.id, task.status === 'done' ? 'planned' : 'done')
     } catch {
-      Alert.alert('Kaydedilemedi', 'Görev durumu güncellenemedi. Bağlantını kontrol et.')
+      Alert.alert(t.task_save_failed, t.task_status_error)
     }
   }, [setStatus])
 
@@ -133,8 +135,8 @@ export default function TasksScreen() {
     if (!draft.title.trim()) return null
     const p = parseQuickTask(draft.title, todayDate())
     const parts = [
-      p.scheduled_date && `${relativeDateLabel(p.scheduled_date)}${p.start_time ? ` ${p.start_time}` : ''}`,
-      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date)}`,
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date, lang)}`,
       p.estimated_minutes && `${p.estimated_minutes} dk`,
       ...p.tags.map((tag) => `#${tag}`),
     ].filter(Boolean)
@@ -142,12 +144,13 @@ export default function TasksScreen() {
   }, [draft.title, t.qtask_due_short])
 
   async function handleAdd() {
-    if (!userId || !draft.title.trim()) return
+    if (!userId || !draft.title.trim() || addingRef.current) return
+    addingRef.current = true
     setAdding(true)
     try {
       // Türkçe doğal dil: "yarın 15:00 rapor 30dk"; elle doldurulan alanlar önce gelir.
       const parsed = parseQuickTask(draft.title, todayDate())
-      const day = draft.scheduled_date || parsed.scheduled_date
+      const day = draft.scheduled_date.trim() || parsed.scheduled_date || todayDate()
       const minutes = parseInt(draft.estimated_minutes) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
       const task = await addTask(supabase, userId, {
         title: parsed.title,
@@ -169,8 +172,9 @@ export default function TasksScreen() {
       setDraft(emptyDraft())
       setShowAdd(false)
     } catch {
-      Alert.alert('Hata', 'Görev eklenemedi')
+      Alert.alert(t.error, t.task_add_error)
     } finally {
+      addingRef.current = false
       setAdding(false)
     }
   }
@@ -269,23 +273,23 @@ export default function TasksScreen() {
 
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
+          <Input label={t.task_field_title} value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
           {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" containerStyle={{ flex: 1 }} returnKeyType="next" />
-            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+            <Input label={t.task_field_date} value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label={t.task_field_minutes} value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 
           {/* Primary action — visible before WSJF so keyboard never hides it */}
-          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth />
+          <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth />
 
           {/* WSJF — optional, collapsible feel via section header */}
           <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', marginTop: spacing[1] }}>
-            WSJF skorları (opsiyonel — varsayılan 3)
+            {t.task_scores_hint}
           </Text>
-          <ScoreRow label="Değer" value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
-          <ScoreRow label="Aciliyet" value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
-          <ScoreRow label="Çaba" value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+          <ScoreRow label={t.task_score_value} value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
+          <ScoreRow label={t.task_score_urgency} value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
+          <ScoreRow label={t.task_score_effort} value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
         </View>
       </BottomSheet>
     </ScreenBackground>

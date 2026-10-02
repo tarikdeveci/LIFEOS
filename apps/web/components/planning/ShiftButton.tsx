@@ -25,7 +25,7 @@ export function ShiftButton() {
       if (result.pastDayEnd) notes.push(t.shift_past_end.replace('{end}', DEFAULT_WORKDAY.end))
       if (result.overflow.length > 0) notes.push(t.shift_overflow.replace('{n}', String(result.overflow.length)))
       showToast(notes.join(' '), 'success')
-    } catch { showToast('Bloklar kaydırılamadı', 'error') }
+    } catch { showToast(t.plan_shift_error, 'error') }
   }
 
   return (
@@ -38,7 +38,7 @@ export function ShiftButton() {
         <div className="absolute right-0 z-20 mt-1 flex gap-1 rounded-xl border border-border bg-surface p-1 shadow-lg">
           {DELAYS.map((d) => (
             <button key={d} onClick={() => void shift(d)}
-              className="rounded-lg px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent/10">+{d} dk</button>
+              className="rounded-lg px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent/10">+{d} {t.unit_min_short}</button>
           ))}
         </div>
       )}

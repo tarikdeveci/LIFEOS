@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
-import { BLOCK_TYPE_COLORS, BLOCK_TYPE_LABELS, todayDate, shiftIsoDate } from '@lifeos/shared'
+import type { BlockType } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, todayDate, shiftIsoDate } from '@lifeos/shared'
+import { useLang } from '@/lib/contexts/LangContext'
 import { getBlocksForDateRange, getPlansForDateRange } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 
@@ -13,7 +15,9 @@ const TOTAL_HOURS = HOUR_END - HOUR_START  // 17 saat
 const PX_PER_HOUR = 64        // Her saat kaç px
 
 const ENERGY_EMOJI: Record<number, string> = { 1: '😴', 2: '😐', 3: '🙂', 4: '😊', 5: '🔥' }
-const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+/** Pazartesiden başlayan kısa gün adları; 1 Ocak 2024 pazartesi. */
+const weekdayLabels = (locale: string) =>
+  Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' }))
 
 function localDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -46,6 +50,10 @@ interface WeekViewProps {
 }
 
 export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
+  const { t, lang } = useLang()
+  const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
+  const typeLabel = (type: BlockType) => t[`review_type_${type}`]
+  const dayLabels = weekdayLabels(locale)
   const [weekStart, setWeekStart] = useState(() => getWeekStart(initialDate ?? todayDate()))
   const [blocks, setBlocks] = useState<TimeBlock[]>([])
   const [plans, setPlans] = useState<DailyPlan[]>([])
@@ -94,9 +102,9 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
     const end = new Date(weekEnd)
     const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' }
     if (start.getMonth() === end.getMonth()) {
-      return `${start.getDate()}–${end.toLocaleDateString('tr-TR', opts)}`
+      return `${start.getDate()}-${end.toLocaleDateString(locale, opts)}`
     }
-    return `${start.toLocaleDateString('tr-TR', opts)} – ${end.toLocaleDateString('tr-TR', opts)}`
+    return `${start.toLocaleDateString(locale, opts)} - ${end.toLocaleDateString(locale, opts)}`
   })()
 
   return (
@@ -109,7 +117,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
           <div>
             <h2 className="text-sm font-bold text-primary">{weekLabel}</h2>
             <p className="text-[10px] text-muted">
-              {blocks.length} blok · {Math.round(totalBlockedMinutes.reduce((a, b) => a + b, 0) / 60)} saat planlandı
+              {t.cal_week_summary.replace('{blocks}', String(blocks.length)).replace('{hours}', String(Math.round(totalBlockedMinutes.reduce((a, b) => a + b, 0) / 60)))}
             </p>
           </div>
           <button onClick={nextWeek} className="rounded-lg p-1.5 text-muted hover:bg-gray-100 text-lg">›</button>
@@ -118,7 +126,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
           onClick={goToday}
           className="rounded-lg bg-accent/10 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/20"
         >
-          Bu Hafta
+          {t.dash_this_week}
         </button>
       </div>
 
@@ -138,7 +146,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
               className={`flex-1 border-l border-gray-50 py-2 text-center transition-colors hover:bg-gray-50 ${isToday ? 'bg-accent/5' : ''}`}
             >
               <p className={`text-[10px] font-medium uppercase tracking-wide ${isToday ? 'text-accent' : 'text-muted'}`}>
-                {DAY_LABELS[i]}
+                {dayLabels[i]}
               </p>
               <p className={`text-lg font-bold leading-tight ${isToday ? 'text-accent' : 'text-primary'}`}>
                 {dayDate.getDate()}
@@ -257,7 +265,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
                           className="text-[9px] font-semibold leading-tight truncate"
                           style={{ color }}
                         >
-                          {block.label ?? BLOCK_TYPE_LABELS[block.block_type]}
+                          {block.label ?? typeLabel(block.block_type)}
                         </p>
                         {heightPx > 28 && (
                           <p className="text-[8px] text-muted/80 leading-tight">
@@ -280,9 +288,9 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
           className="fixed z-50 rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-lg text-xs pointer-events-none"
           style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 200), top: tooltip.y - 10 }}
         >
-          <p className="font-semibold text-primary">{tooltip.block.label ?? BLOCK_TYPE_LABELS[tooltip.block.block_type]}</p>
+          <p className="font-semibold text-primary">{tooltip.block.label ?? typeLabel(tooltip.block.block_type)}</p>
           <p className="text-muted">{tooltip.block.start_time.slice(0,5)} – {tooltip.block.end_time.slice(0,5)}</p>
-          <p className="text-muted">{BLOCK_TYPE_LABELS[tooltip.block.block_type]}</p>
+          <p className="text-muted">{typeLabel(tooltip.block.block_type)}</p>
         </div>
       )}
 
@@ -295,17 +303,17 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
           return (
             <div key={day} className="flex-1 border-l border-gray-50 py-1.5 px-1">
               <div className="flex flex-wrap gap-0.5 justify-center">
-                {types.map((t) => (
+                {types.map((type) => (
                   <div
-                    key={t}
+                    key={type}
                     className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: BLOCK_TYPE_COLORS[t] }}
-                    title={BLOCK_TYPE_LABELS[t]}
+                    style={{ backgroundColor: BLOCK_TYPE_COLORS[type] }}
+                    title={typeLabel(type)}
                   />
                 ))}
               </div>
               <p className="text-center text-[9px] text-muted mt-0.5">
-                {dayBlocks.length > 0 ? `${dayBlocks.length} blok` : '—'}
+                {dayBlocks.length > 0 ? t.cal_day_blocks.replace('{n}', String(dayBlocks.length)) : '-'}
               </p>
             </div>
           )

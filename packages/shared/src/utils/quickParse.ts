@@ -131,6 +131,13 @@ function findDate(folded: string, today: string): Match | null {
   return candidates[0]!
 }
 
+const SHORTCUTS: Record<string, string> = { today: 'bugün', tomorrow: 'yarın' }
+
+/** "akşam 7" → 19, "öğlen 1" → 13, "sabah 9" → 9, "gece 11" → 23, "gece 1" → 1 */
+function toPartOfDay(part: string, h: number): number {
+  return PART_OF_DAY[part]! >= 12 && h < 12 && !(part === 'gece' && h < 5) ? h + 12 : h
+}
+
 function cut(text: string, folded: string, start: number, end: number): [string, string] {
   return [text.slice(0, start) + ' ' + text.slice(end), folded.slice(0, start) + ' ' + folded.slice(end)]
 }
@@ -146,7 +153,8 @@ export function parseQuickTask(input: string, today: string): QuickParseResult {
     if (iso(+d.slice(0, 4), +d.slice(5, 7), +d.slice(8, 10))) result.due_date = d
     return ' '
   })
-  text = text.replace(/(?:^|\s)@(\S+)/, (_, v: string) => ` ${v} `)
+  // "@tomorrow" ve "@today" eski İngilizce kısayollar; tarih ayrıştırıcısı Türkçe karşılığını tanır.
+  text = text.replace(/(?:^|\s)@(\S+)/, (_, v: string) => ` ${SHORTCUTS[v.toLowerCase()] ?? v} `)
 
   // Kesme işareti ince boşluğa çevrilir ("cuma'ya", "15'te"); fold uzunluğu korur, indeksler iki metinde aynı.
   text = text.replace(/['’]/g, '\u2009')
@@ -181,22 +189,20 @@ export function parseQuickTask(input: string, today: string): QuickParseResult {
   {
     let hour: number | undefined
     let minute = 0
-    const clock = new RegExp(`${W}(?:saat\\s*)?([01]?\\d|2[0-3]):([0-5]\\d)(?:\\s*(?:da|de|ta|te))?${E}`, 'u').exec(folded)
+    // Önündeki gün bölümü saate dahil: "akşam 7:30" 07:30 değil 19:30, "akşam" da başlıkta kalmaz.
+    const clock = new RegExp(`${W}(?:(ogleden sonra|sabah|oglen|ogle|aksam|gece)\\s+)?(?:saat\\s*)?([01]?\\d|2[0-3]):([0-5]\\d)(?:\\s*(?:da|de|ta|te))?${E}`, 'u').exec(folded)
     const part = new RegExp(`${W}(ogleden sonra|sabah|oglen|ogle|aksam|gece)(?:\\s+(?:saat\\s*)?(\\d{1,2})(?:\\s*(?:da|de|ta|te))?)?${E}`, 'u').exec(folded)
     const saat = new RegExp(`${W}saat\\s*(\\d{1,2})(?:\\s*(?:da|de|ta|te))?${E}`, 'u').exec(folded)
     const suffixed = new RegExp(`${W}(\\d{1,2})\\s*(?:da|de|ta|te)${E}`, 'u').exec(folded)
 
     let span: RegExpExecArray | null = null
     if (clock) {
-      hour = +clock[1]!; minute = +clock[2]!; span = clock
+      hour = +clock[2]!; minute = +clock[3]!; span = clock
+      if (clock[1]) hour = toPartOfDay(clock[1], hour)
     } else if (part && (part[2] || date)) {
       // Tek başına "akşam" sadece bir günle birlikte saat sayılır ("akşam yemeği" başlıktır).
       const base = PART_OF_DAY[part[1]!]!
-      if (part[2]) {
-        const h = +part[2]
-        // "akşam 7" → 19, "öğlen 1" → 13, "sabah 9" → 9, "gece 11" → 23, "gece 1" → 1
-        hour = base >= 12 && h < 12 && !(part[1] === 'gece' && h < 5) ? h + 12 : h
-      } else hour = base
+      hour = part[2] ? toPartOfDay(part[1]!, +part[2]) : base
       span = part
     } else if (saat || suffixed) {
       const m = (saat ?? suffixed)!

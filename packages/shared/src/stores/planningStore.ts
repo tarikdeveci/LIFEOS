@@ -51,6 +51,9 @@ interface PlanningState {
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
 }
 
+/** Son fetchDayData isteği; eski yanıtlar yok sayılır. */
+let dayRequest = 0
+
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   date: todayDate(),
   timeBlocks: [],
@@ -62,23 +65,23 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   error: null,
 
   fetchDayData: async (supabase, userId, date = todayDate()) => {
-    set({ loading: true, error: null, date })
+    const request = ++dayRequest
+    // Başka güne geçerken önceki günün meşgul aralıkları kalmasın: yerleşim onlarla hesaplanıyordu.
+    set((state) => ({ loading: true, error: null, date, busy: state.date === date ? state.busy : [] }))
     try {
-      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks] = await Promise.all([
+      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy] = await Promise.all([
         getTimeBlocks(supabase, userId, date),
         getDailyPlan(supabase, userId, date),
         getFlexTasks(supabase, userId, date),
         getCarryoverTasks(supabase, userId),
+        // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
+        getCalendarBusy(supabase, userId, date).then((rows) => busyToIntervals(rows, date), () => []),
       ])
-      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading: false })
-      // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
-      try {
-        set({ busy: busyToIntervals(await getCalendarBusy(supabase, userId, date), date) })
-      } catch {
-        set({ busy: [] })
-      }
+      // Geciken eski gün yanıtı yeni seçili günün verisini ezmesin.
+      if (request !== dayRequest) return
+      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy, loading: false })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
+      if (request === dayRequest) set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
   },
 
@@ -191,12 +194,22 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
         })
         .sort((a, b) => a.start_time.localeCompare(b.start_time)),
     })
-    try {
-      await Promise.all(updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })))
-    } catch (err) {
-      set({ timeBlocks: previous })
-      throw err
-    }
+    const results = await Promise.allSettled(
+      updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })),
+    )
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (!failed) return
+    // Kaydırma tek işlem değil: yalnız ekranı geri almak, veritabanında başarılı olan blokları
+    // yeni saatte bırakıyordu. Onlar da eski saatine döner; bu da olmazsa gün yeniden yüklenince düzelir.
+    const before = new Map(previous.map((b) => [b.id, b]))
+    await Promise.allSettled(updates.flatMap((u, i) => {
+      const old = before.get(u.id)
+      return results[i]?.status === 'fulfilled' && old
+        ? [updateTimeBlock(supabase, u.id, { start_time: old.start_time, end_time: old.end_time })]
+        : []
+    }))
+    set({ timeBlocks: previous })
+    throw failed.reason
   },
 
   handleRealtimeEvent: (event) => {

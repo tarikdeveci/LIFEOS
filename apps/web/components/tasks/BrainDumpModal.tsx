@@ -26,11 +26,12 @@ interface BrainDumpModalProps {
   onCreateTask: (input: CreateTaskInput) => Promise<Task | void>
 }
 
-interface Candidate extends QuickParseResult { keep: boolean }
+/** `created`: görev yazıldı ama zaman bloğu düştüyse görev burada kalır, tekrar denemede yalnız blok yazılır. */
+interface Candidate extends QuickParseResult { keep: boolean; created?: Task }
 
 /** Aklındakileri dök: konuş ya da yaz, görevlere bölünsün, onayla ve ekle. */
 export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalProps) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { isPro } = useSubscription()
   const [text, setText] = useState('')
   const [items, setItems] = useState<Candidate[] | null>(null)
@@ -55,7 +56,7 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
       if (fnError) throw fnError
       setItems(sanitizeBrainDumpItems((data as { tasks?: unknown }).tasks).map((r) => ({ ...r, keep: true })))
     } catch (err) {
-      setError((await describeAiError(err)).message)
+      setError((await describeAiError(err, lang)).message)
     } finally {
       setBusy(null)
     }
@@ -70,7 +71,7 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
     let remaining = items
     try {
       for (const item of items.filter((i) => i.keep && i.title.trim())) {
-        const created = await onCreateTask({
+        const created = item.created ?? await onCreateTask({
           title: item.title.trim(),
           ...(item.tags.length > 0 && { tags: item.tags }),
           ...(item.scheduled_date && { scheduled_date: item.scheduled_date, status: 'planned' as const }),
@@ -78,8 +79,10 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
           ...(item.estimated_minutes && { estimated_minutes: item.estimated_minutes }),
           ...(item.effort_score !== undefined && { effort_score: item.effort_score }),
         })
-        // Görev yazıldı: blok yazımı başarısız olsa da tekrar denemede yeniden eklenmesin.
-        remaining = remaining.filter((x) => x !== item)
+        // Görev yazıldı: yeniden eklenmesin. Blok yazımı düşerse satır görevle birlikte listede
+        // kalır ve tekrar denemede yalnız blok yazılır.
+        const written = created ? { ...item, created } : item
+        remaining = remaining.map((x) => (x === item ? written : x))
         if (created && item.start_time && item.scheduled_date) {
           await createTimeBlocks(supabase, created.user_id, [{
             date: item.scheduled_date,
@@ -88,6 +91,7 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
             block_type: 'task', label: created.title, task_id: created.id,
           }])
         }
+        remaining = remaining.filter((x) => x !== written)
       }
       reset()
     } catch {
@@ -145,8 +149,8 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
                   className="min-w-0 flex-1 bg-transparent text-sm text-primary outline-none"
                 />
                 <span className="shrink-0 text-[10px] text-muted">
-                  {[item.scheduled_date && `${relativeDateLabel(item.scheduled_date)}${item.start_time ? ` ${item.start_time}` : ''}`,
-                    item.estimated_minutes && `${item.estimated_minutes} dk`,
+                  {[item.scheduled_date && `${relativeDateLabel(item.scheduled_date, lang)}${item.start_time ? ` ${item.start_time}` : ''}`,
+                    item.estimated_minutes && `${item.estimated_minutes} ${t.unit_min_short}`,
                     ...item.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ')}
                 </span>
               </li>

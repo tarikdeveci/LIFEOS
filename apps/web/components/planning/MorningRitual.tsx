@@ -70,7 +70,11 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
       await updateTask(supabase, task.id, keep
         ? { status: 'planned', scheduled_date: today, carry_count: 0 }
         : { status: 'backlog', scheduled_date: null })
-    } catch { showToast('Görev güncellenemedi', 'error') }
+    } catch {
+      // Yazılamadıysa satır geri gelsin: yoksa görev listeden kaybolur ve yeniden denenemez.
+      setHandled((prev) => { const next = new Set(prev); next.delete(task.id); return next })
+      showToast(t.plan_task_update_error, 'error')
+    }
   }
 
   const goToPlace = async () => {
@@ -79,7 +83,7 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
       await Promise.all([...s.picked].map((id) => assignTaskToDate(supabase, id, today)))
       await fetchDayData(supabase, userId, today)
       s.setStep(2)
-    } catch { showToast('Görevler eklenemedi', 'error') }
+    } catch { showToast(t.plan_tasks_add_error, 'error') }
     finally { s.setBusy(false) }
   }
 
@@ -88,7 +92,7 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
     try {
       await Promise.all(pendingCarried.filter((task) => task.scheduled_date !== today)
         .map((task) => updateTask(supabase, task.id, { status: 'planned', scheduled_date: today })))
-    } catch { showToast('Görev güncellenemedi', 'error') }
+    } catch { showToast(t.plan_task_update_error, 'error') }
     s.setStep(1)
   }
 
@@ -101,7 +105,7 @@ export function MorningRitual({ userId, open, onClose, carried }: MorningRitualP
       const msg = [t.ritual_placed.replace('{n}', String(n))]
       if (unplaced.length > 0) msg.push(t.ritual_unplaced.replace('{n}', String(unplaced.length)))
       showToast(msg.join(' · '), 'success')
-    } catch { showToast('Görevler yerleştirilemedi', 'error') }
+    } catch { showToast(t.plan_tasks_place_error, 'error') }
     finally { s.setBusy(false) }
   }
 

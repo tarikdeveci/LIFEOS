@@ -69,10 +69,16 @@ test('haftalık sayım: etiket veya goal_id, sadece tamamlanmış ve periyot iç
   assert.deepEqual(computeGoalProgress(goal(), tasks), { current: 2, total: 3, pct: 67 })
 })
 
-test('saat modu tahmini dakikayı saate yuvarlar, tahmin yoksa 60 dk', () => {
+test('saat modu dakikayı kesirli saate çevirir, tahmin yoksa 60 dk', () => {
   const g = goal({ count_mode: 'hours', target: 2 })
   const tasks = [task({ tags: ['spor'], estimated_minutes: 90 }), task({ tags: ['spor'] })]
-  assert.deepEqual(computeGoalProgress(g, tasks), { current: 3, total: 2, pct: 100 })
+  assert.deepEqual(computeGoalProgress(g, tasks), { current: 2.5, total: 2, pct: 100 })
+})
+
+test('saat modu: yüzde yuvarlanmış saatten değil gerçek süreden hesaplanır', () => {
+  const g = goal({ count_mode: 'hours', target: 1 })
+  assert.deepEqual(computeGoalProgress(g, [task({ tags: ['spor'], estimated_minutes: 30 })]), { current: 0.5, total: 1, pct: 50 })
+  assert.equal(computeGoalProgress(g, [task({ tags: ['spor'], estimated_minutes: 25 })]).pct, 42)
 })
 
 test('planlanmamış görev tamamlandığı güne sayılır', () => {
@@ -135,4 +141,37 @@ test('eski localStorage hedefleri taşınır, bozuk kayıt atlanır', () => {
     target: 4, unit: 'gün', count_mode: 'tasks', tag_filter: ['spor'],
   })
   assert.deepEqual(legacyWeeklyGoalsToInputs(null, '2026-09-28'), [])
+})
+
+test('hedef taşıma yarıda kalıp tekrar denenince ikinci yeni hedef açılmaz', async () => {
+  const { useGoalStore } = await import('../../packages/shared/src/stores/goalStore.ts')
+  const inserts: unknown[] = []
+  let updateFails = true
+  const client = {
+    from: () => ({
+      insert: (rows: Record<string, unknown>[]) => {
+        inserts.push(rows)
+        return { select: async () => ({ data: rows.map((r, i) => ({ ...r, id: `new-${inserts.length}-${i}` })), error: null }) }
+      },
+      update: (patch: Record<string, unknown>) => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => (updateFails
+              ? { data: null, error: { message: 'ağ' } }
+              : { data: { id: 'old', ...patch }, error: null }),
+          }),
+        }),
+      }),
+    }),
+  } as unknown as Parameters<ReturnType<typeof useGoalStore.getState>['reviewGoal']>[0]
+  const old = {
+    id: 'old', horizon: 'month', title: 'Koş', icon: null, period_start: '2026-09-01', parent_id: null,
+    target: 4, unit: null, count_mode: 'tasks', tag_filter: [], status: 'active',
+  } as unknown as Parameters<ReturnType<typeof useGoalStore.getState>['reviewGoal']>[2]
+  useGoalStore.setState({ goals: [old], tasks: [] })
+
+  await assert.rejects(useGoalStore.getState().reviewGoal(client, 'u', old, 'carry', '', '2026-10-05'))
+  updateFails = false
+  await useGoalStore.getState().reviewGoal(client, 'u', old, 'carry', '', '2026-10-05')
+  assert.equal(inserts.length, 1)
 })

@@ -47,3 +47,13 @@ test('AI yanıtı temizlenir: geçersiz alanlar düşer, saatsiz güne saat veri
   ])
   assert.deepEqual(sanitizeBrainDumpItems({ tasks: [] }), [])
 })
+
+test('takvimde olmayan AI tarihleri düşer', () => {
+  const [r] = sanitizeBrainDumpItems([
+    { title: 'a', scheduled_date: '2026-02-31', due_date: '2026-99-99', start_time: '10:00' },
+  ])
+  assert.equal(r?.scheduled_date, undefined)
+  assert.equal(r?.due_date, undefined)
+  assert.equal(r?.start_time, undefined)
+  assert.equal(sanitizeBrainDumpItems([{ title: 'b', scheduled_date: '2028-02-29' }])[0]?.scheduled_date, '2028-02-29')
+})

@@ -3,9 +3,10 @@ import { Platform } from 'react-native'
 import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
-import { emptyWidgetSnapshot, useFocusStore, useGoalStore } from '@lifeos/shared'
+import { emptyWidgetSnapshot, persistFocus, useFocusStore, useGoalStore } from '@lifeos/shared'
 import { configureEvents } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
@@ -31,6 +32,7 @@ function AppNavigator() {
   const [initialized, setInitialized] = useState(false)
   const notifRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null)
   const passwordRecoveryRef = useRef(false)
+  const focusPersist = useRef<{ userId: string; stop?: () => void } | null>(null)
 
   async function handleAuthUrl(url: string | null) {
     if (!url || !url.includes('reset-password')) return
@@ -51,12 +53,25 @@ function AppNavigator() {
       if (s?.user) {
         void registerForPushNotificationsAsync()
         void initRevenueCat(s.user.id)
+        // Süren odak uygulama kapanınca kaybolmasın: kullanıcı başına bir kez bağlanır.
+        if (focusPersist.current?.userId !== s.user.id) {
+          const userId = s.user.id
+          focusPersist.current?.stop?.()
+          const entry: { userId: string; stop?: () => void } = { userId }
+          focusPersist.current = entry
+          void persistFocus(AsyncStorage, userId).then((stop) => {
+            if (focusPersist.current === entry) entry.stop = stop
+            else stop()
+          })
+        }
       }
       // Çıkışta başka kullanıcının sağlık verisi ve widget'ı cihazda kalmasın
       if (event === 'SIGNED_OUT') {
         useHealthStore.getState().reset()
         useGoalStore.getState().reset()
         useFocusStore.getState().reset()
+        focusPersist.current?.stop?.()
+        focusPersist.current = null
         void cancelFocusNotifications()
         void persistWidgetSnapshot(emptyWidgetSnapshot())
       }

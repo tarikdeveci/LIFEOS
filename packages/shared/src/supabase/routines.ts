@@ -44,8 +44,26 @@ export async function createRoutine(
     .single()
 
   if (error) throw error
+  // Rutin yazıldı: örnek üretimi başarısız diye hata fırlatılırsa kullanıcı tekrar dener ve
+  // ikinci seri oluşur. Bir kez daha denenir; yine olmazsa gece cron'u (00:10) üretir.
   await materializeMyRoutines(supabase)
+    .catch(() => materializeMyRoutines(supabase))
+    .catch(() => undefined)
   return data as unknown as Routine
+}
+
+/**
+ * Şablon güncellendi ama örnekler yeniden üretilemedi. Ekran yeni şablonu göstermeli (eskiye
+ * dönerse veritabanıyla ayrışır); aynı güncellemeyi tekrar denemek güvenli.
+ */
+export class RoutineRegenerateError extends Error {
+  readonly routine: Routine
+  readonly reason: unknown
+  constructor(routine: Routine, reason: unknown) {
+    super('regenerate_routine')
+    this.routine = routine
+    this.reason = reason
+  }
 }
 
 /**
@@ -71,7 +89,7 @@ export async function updateRoutineSeries(
     p_routine: routineId,
     p_from: fromDate ?? null,
   })
-  if (rpcError) throw rpcError
+  if (rpcError) throw new RoutineRegenerateError(data as unknown as Routine, rpcError)
   return data as unknown as Routine
 }
 

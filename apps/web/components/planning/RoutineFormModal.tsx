@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { BlockType, CreateRoutineInput, Routine, RoutineKind, Weekday } from '@lifeos/shared'
-import { BLOCK_TYPE_LABELS, todayDate } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, todayDate } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -51,20 +51,22 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
   }
 }
 
-/** Formu doğrular; hata varsa mesaj, yoksa kayda hazır girdi döner. */
-function toInput(f: FormState, isNew: boolean): CreateRoutineInput | string {
+type FormError = 'plan_err_name_required' | 'plan_err_pick_day' | 'plan_err_time_required' | 'plan_err_end_after_start'
+
+/** Formu doğrular; hata varsa çeviri anahtarı, yoksa kayda hazır girdi döner. */
+function toInput(f: FormState, isNew: boolean): CreateRoutineInput | FormError {
   const title = f.title.trim()
-  if (!title) return 'Ad gerekli'
+  if (!title) return 'plan_err_name_required'
   if (f.kind === 'habit') {
     // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
     return f.habitMode === 'weekly'
       ? { title, kind: 'habit', days_of_week: [], times_per_week: f.timesPerWeek, times_per_day: null, ends_on: f.endsOn || null }
       : { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: f.timesPerDay > 1 ? f.timesPerDay : null, ends_on: f.endsOn || null }
   }
-  if (f.days.length === 0) return 'En az bir gün seç'
+  if (f.days.length === 0) return 'plan_err_pick_day'
   const hasTime = f.start !== '' && f.end !== ''
-  if (f.kind === 'block' && !hasTime) return 'Saat gerekli'
-  if (hasTime && f.end <= f.start) return 'Bitiş saati başlangıçtan sonra olmalı'
+  if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
+  if (hasTime && f.end <= f.start) return 'plan_err_end_after_start'
   return {
     title,
     kind: f.kind,
@@ -93,7 +95,7 @@ export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, def
 
   const handleSave = async () => {
     const input = toInput(form, routine === null)
-    if (typeof input === 'string') { setError(input); return }
+    if (typeof input === 'string') { setError(t[input]); return }
     setSaving(true)
     try { await onSave(input); onClose() }
     catch { setError(t.plan_routine_error) }
@@ -163,10 +165,10 @@ export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, def
             {form.kind === 'task' && <p className="-mt-2 text-[10px] text-muted">{t.routines_time_optional}</p>}
             {form.kind === 'block' && (
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).filter((b) => b !== 'task').map((b) => (
+                {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).filter((b) => b !== 'task').map((b) => (
                   <button key={b} type="button" onClick={() => patch({ blockType: b })}
                     className={`rounded-lg px-3 py-1 text-xs font-medium ${form.blockType === b ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                    {BLOCK_TYPE_LABELS[b]}
+                    {t[`review_type_${b}`]}
                   </button>
                 ))}
               </div>
