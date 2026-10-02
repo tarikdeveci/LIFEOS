@@ -149,7 +149,7 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
                   className="min-w-0 flex-1 bg-transparent text-sm text-primary outline-none"
                 />
                 <span className="shrink-0 text-[10px] text-muted">
-                  {[item.scheduled_date && `${relativeDateLabel(item.scheduled_date)}${item.start_time ? ` ${item.start_time}` : ''}`,
+                  {[item.scheduled_date && `${relativeDateLabel(item.scheduled_date, lang)}${item.start_time ? ` ${item.start_time}` : ''}`,
                     item.estimated_minutes && `${item.estimated_minutes} ${t.unit_min_short}`,
                     ...item.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ')}
                 </span>

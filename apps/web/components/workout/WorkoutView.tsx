@@ -503,7 +503,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     return true
   })
 
-  const todayLabel = relativeDateLabel(todayDate())
+  const todayLabel = relativeDateLabel(todayDate(), lang)
   const completedSets = todayWorkout?.workout_sets?.filter((s) => s.completed).length ?? 0
   const totalSets = todayWorkout?.workout_sets?.length ?? 0
 

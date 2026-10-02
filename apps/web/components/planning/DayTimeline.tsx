@@ -100,7 +100,7 @@ function DraggableBlock({ block, top, height, isDragging, onClick }: DraggableBl
       </p>
       {height > 36 && (
         <p className="text-[10px] text-muted">
-          {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)} ({duration}dk)
+          {block.start_time.slice(0, 5)}-{block.end_time.slice(0, 5)} ({duration} {t.unit_min_short})
         </p>
       )}
     </div>

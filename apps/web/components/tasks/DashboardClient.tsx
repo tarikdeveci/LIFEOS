@@ -49,7 +49,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
   const days = WEEKDAY_LABELS[lang]
 
   const today = todayDate()
-  const todayLabel = relativeDateLabel(today)
+  const todayLabel = relativeDateLabel(today, lang)
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)

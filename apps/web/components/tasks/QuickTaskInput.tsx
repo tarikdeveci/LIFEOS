@@ -36,7 +36,7 @@ interface QuickTaskInputProps {
 }
 
 export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<TaskDraft>(EMPTY_DRAFT)
@@ -128,13 +128,13 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
     if (!draft.title.trim()) return null
     const p = parseQuickTask(draft.title, todayDate())
     const parts = [
-      p.scheduled_date && `${relativeDateLabel(p.scheduled_date)}${p.start_time ? ` ${p.start_time}` : ''}`,
-      p.due_date && `${t.qtask_due_label}: ${relativeDateLabel(p.due_date)}`,
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_label}: ${relativeDateLabel(p.due_date, lang)}`,
       p.estimated_minutes && `${p.estimated_minutes} ${t.unit_min_short}`,
       ...p.tags.map((tag) => `#${tag}`),
     ].filter(Boolean)
     return parts.length > 0 ? parts.join(' · ') : null
-  }, [draft.title, t.qtask_due_label, t.unit_min_short])
+  }, [draft.title, lang, t.qtask_due_label, t.unit_min_short])
 
   return (
     <>

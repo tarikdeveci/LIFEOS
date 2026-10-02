@@ -87,7 +87,7 @@ export function PlanningAiChat({ chat, isPro, freePlansLeft, freePlansUsedUp }: 
                   {msg.actions.map((a, ai) => (
                     <p key={ai} className="text-[10px] opacity-80">
                       {a.action === 'remove' ? '🗑 ' : a.action === 'move' ? '↕ ' : '+ '}
-                      {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}–${a.block.end_time} ` : ''}
+                      {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}-${a.block.end_time} ` : ''}
                       {a.block?.label ?? a.block?.block_type ?? ''}
                     </p>
                   ))}
@@ -127,7 +127,7 @@ export function PlanningAiChat({ chat, isPro, freePlansLeft, freePlansUsedUp }: 
               {pendingActions.slice(0, 3).map((a, i) => (
                 <p key={i} className="text-[11px] text-indigo-600">
                   {a.action === 'remove' ? '🗑' : a.action === 'move' ? '↕' : '+'}{' '}
-                  {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}–${a.block.end_time}` : ''}{' '}
+                  {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}-${a.block.end_time}` : ''}{' '}
                   {a.block?.label ?? a.block?.block_type ?? ''}
                 </p>
               ))}

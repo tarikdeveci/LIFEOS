@@ -68,7 +68,7 @@ export function BlockDetailModal({ userId, editor }: BlockDetailModalProps) {
                 <p className="text-lg font-semibold" style={{ color: selectedBlock.color ?? BLOCK_TYPE_COLORS[selectedBlock.block_type] }}>
                   {selectedBlock.label ?? t[`review_type_${selectedBlock.block_type}`]}
                 </p>
-                <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} – {selectedBlock.end_time.slice(0, 5)}</p>
+                <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} - {selectedBlock.end_time.slice(0, 5)}</p>
                 <p className="mt-1 text-xs text-muted">{t.plan_block_type}: {t[`review_type_${selectedBlock.block_type}`]}</p>
                 {selectedBlock.routine_id ? (
                   <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_routine_badge}</p>

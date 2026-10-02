@@ -56,6 +56,12 @@ export function usePlanningAiChat({ userId, isPro, freePlansUsedUp, refreshFreeP
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, chatLoading])
 
+  // Öneriler üretildiği günün bloklarına göredir: gün değişince bekleyen değişiklikler
+  // düşer, yoksa "Uygula" eklemeleri yeni güne, silmeleri eski günün bloklarına yapardı.
+  useEffect(() => {
+    setPendingActions(null)
+  }, [date])
+
   const handleSendChat = useCallback(async () => {
     if (!chatInput.trim() || chatLoading || freePlansUsedUp) return
     const userMsg = chatInput.trim()
