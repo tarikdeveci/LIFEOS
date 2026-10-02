@@ -168,8 +168,9 @@ export default function IntegrationsScreen() {
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>
                   {PROVIDER_LABELS[item.provider]}{item.account_label ? ` · ${item.account_label}` : ''}
                 </Text>
-                <Text style={{ fontSize: fontSize.xs, color: item.status === 'active' ? colors.textSubtle : palette.warning }}>
+                <Text style={{ fontSize: fontSize.xs, color: item.status === 'active' && !item.last_error ? colors.textSubtle : palette.warning }}>
                   {item.status !== 'active' ? t.integ_status_error
+                    : item.last_error ? t.integ_sync_failing
                     : item.last_synced_at ? t.integ_last_sync.replace('{date}', new Date(item.last_synced_at).toLocaleString(locale))
                       : t.integ_never_synced}
                 </Text>

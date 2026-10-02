@@ -2,7 +2,8 @@
 //   1) calendar_sync_outbox'ı işler: LifeOS takviminde etkinlik aç/güncelle/sil,
 //   2) 14 günlük freebusy çeker, calendar_busy penceresini baştan yazar.
 // Yalnızca service_role çağırabilir: kuyruk işleri sahiplenilmeden okunur, eşzamanlı iki
-// tur aynı blok için iki etkinlik açar.
+// tur aynı blok için iki etkinlik açar. Aynı nedenle tur RUN_BUDGET_MS içinde biter: kalan
+// iş kuyrukta bekler, bir sonraki cron turu öncekiyle çakışmaz.
 // Google'dan başlık okunmaz; LifeOS takvimi freebusy sorgusuna dahil edilmez (yankı olmasın).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -18,6 +19,10 @@ const CAL_API = 'https://www.googleapis.com/calendar/v3'
 const OUTBOX_BATCH = 50
 const MAX_ATTEMPTS = 5
 const BUSY_DAYS = 14
+// Cron aralığı 5 dk. Bütçe dolunca yeni işe başlanmaz; eldeki iş en çok birkaç Google
+// çağrısı (her biri FETCH_TIMEOUT_MS) sürer, toplam 5 dakikanın altında kalır.
+const RUN_BUDGET_MS = 200_000
+const FETCH_TIMEOUT_MS = 15_000
 
 interface IntegrationRow {
   id: string
@@ -62,6 +67,7 @@ async function accessToken(integrationId: string): Promise<string> {
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     body: new URLSearchParams({
       client_id: Deno.env.get('GOOGLE_CLIENT_ID')!,
       client_secret: Deno.env.get('GOOGLE_CLIENT_SECRET')!,
@@ -97,15 +103,21 @@ function eventBody(block: BlockRow, timeZone: string) {
 }
 
 async function gcal(token: string, method: string, path: string, body?: unknown): Promise<Response> {
-  return await fetch(`${CAL_API}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  })
+  try {
+    return await fetch(`${CAL_API}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  } catch (err) {
+    // Zaman aşımı ve ağ hatası da geçicidir: iş kuyrukta kalır, deneme hakkı harcanmaz.
+    throw new TransientError(`${method} ${err instanceof Error ? err.name : 'ağ hatası'}`)
+  }
 }
 
 /** Kuyruğu işler. Dönüş: başarısız olan son işin hata mesajı (yoksa null). */
-async function processOutbox(integration: IntegrationRow, token: string, timeZone: string): Promise<string | null> {
+async function processOutbox(integration: IntegrationRow, token: string, timeZone: string, deadline: number): Promise<string | null> {
   const calendarId = integration.settings?.calendar_id
   if (!calendarId) throw new Error('LifeOS takvimi yok')
   const cal = encodeURIComponent(calendarId)
@@ -119,6 +131,7 @@ async function processOutbox(integration: IntegrationRow, token: string, timeZon
 
   let lastError: string | null = null
   for (const row of (rows ?? []) as OutboxRow[]) {
+    if (Date.now() > deadline) break
     try {
       if (row.op === 'delete') {
         if (row.google_event_id) {
@@ -216,13 +229,15 @@ Deno.serve(async (req: Request) => {
 
   if (error) return new Response(`DB error: ${error.message}`, { status: 500 })
 
+  const deadline = Date.now() + RUN_BUDGET_MS
   let synced = 0
   let failed = 0
   for (const integration of (integrations ?? []) as IntegrationRow[]) {
+    if (Date.now() > deadline) break
     try {
       const token = await accessToken(integration.id)
       const timeZone = await userTimeZone(integration.user_id)
-      const outboxError = await processOutbox(integration, token, timeZone)
+      const outboxError = await processOutbox(integration, token, timeZone, deadline)
       await refreshBusy(integration, token, timeZone)
       await supabase.from('integrations')
         .update({ last_synced_at: new Date().toISOString(), last_error: outboxError })

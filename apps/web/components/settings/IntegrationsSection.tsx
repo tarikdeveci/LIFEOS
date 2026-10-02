@@ -140,9 +140,11 @@ export function IntegrationsSection() {
                 <p className="truncate text-sm font-medium text-primary">
                   {providerLabel(item.provider)}{item.account_label ? ` · ${item.account_label}` : ''}
                 </p>
-                <p className={`text-xs ${item.status === 'active' ? 'text-muted' : 'text-warning'}`}>
+                <p className={`text-xs ${item.status === 'active' && !item.last_error ? 'text-muted' : 'text-warning'}`}>
                   {item.status !== 'active'
                     ? t.integ_status_error
+                    : item.last_error
+                      ? t.integ_sync_failing
                     : item.last_synced_at
                       ? t.integ_last_sync.replace('{date}', new Date(item.last_synced_at).toLocaleString(locale))
                       : t.integ_never_synced}
