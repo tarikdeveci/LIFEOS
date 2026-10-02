@@ -1,27 +1,30 @@
 #!/usr/bin/env node
-// Global egzersizlere free-exercise-db görsellerini bağlar.
+// Global egzersizlere RepDB çizimlerini bağlar.
 //
 //   node scripts/import-exercise-images.mjs --dry-run  # eşleşmeleri listeler, yazmaz
-//   node scripts/import-exercise-images.mjs            # KİLİTLİ, aşağıdaki lisans uyarısına bak
+//   node scripts/import-exercise-images.mjs            # kovaya yükler, image_url yazar
 //
 // Gerekli ortam değişkenleri (yoksa .env / .env.production okunur):
 //   SUPABASE_URL veya NEXT_PUBLIC_SUPABASE_URL
 //   SUPABASE_SERVICE_ROLE_KEY
 //
-// LİSANS UYARISI: free-exercise-db kodu ve metni Unlicense, ama fotoğraflar
-// wrkout/exercises.json'dan geliyor ve orada internetten toplandıkları, telif
-// hakkının kendilerine ait olmadığı, ticari projede kullanılmaması gerektiği
-// yazıyor (CONTRIBUTING.md). Bu yüzden 2026-10-01'de tüm image_url'ler NULL
-// yapıldı ve kova boşaltıldı; yazma modu lisanslı bir kaynak gelene kadar
-// kilitli, eşleştirme tablosu yeni kaynağa taşınırken işe yarasın diye duruyor.
-// wger (CC-BY-SA), exercises-dataset medyası ve openGym (AGPL) bilerek
-// kullanılmadı.
+// LİSANS: RepDB Free Tier License v1.0 (depodaki LICENSE-DATA.md, aşağıdaki
+// commit). Uygulama içinde ticari kullanım serbest, şartları:
+//   1. Görünür atıf: "Exercise data by RepDB (repdb.co)". Mobilde profildeki
+//      Veri Kaynakları kartında (DataSourcesCard.tsx); kaldırma.
+//   2. Veri seti olarak yeniden yayın yasak. Bu repo public: exercises.json ve
+//      görseller repoya COMMIT EDİLMEZ, script çalışırken indirir ve yalnızca
+//      kovaya yükler.
+//   3. Görseller üretken yapay zekâya girdi yapılamaz.
+//   4. premium-samples/ yalnızca değerlendirme içindir, kullanılmaz.
+// Eski kaynak free-exercise-db'nin fotoğraflarının ticari kullanım hakkı yoktu,
+// 2026-10-01'de hepsi kaldırıldı; geri getirme.
 //
 // Eşleşme exercises.name_en ile: önce ALIASES, yoksa noktalama ve büyük harf
 // farkı yok sayılarak birebir ad. Bulanık eşleşme yok; yanlış hareketin
-// görselini göstermek hiç göstermemekten kötü. Yüzme, yoga ve spor dalları
-// (Swimming, Zumba, Warrior I) kaynakta olmadığı için görselsiz kalır; bunlarda
-// detay sayfası kategori ikonunu gösterir.
+// görselini göstermek hiç göstermemekten kötü. Adı aynı ama aleti farklı olan
+// hareketler SKIP'te. Yüzme, yoga akışları ve spor dalları kaynakta yok,
+// görselsiz kalır; detay sayfası o zaman kategori ikonunu gösterir.
 //
 // Idempotent: aynı görsel üzerine yazılır (x-upsert), image_url yeniden yazılır.
 // Eşleşmeyen satırın mevcut image_url'ine dokunulmaz.
@@ -30,144 +33,128 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const FEDB_COMMIT = 'f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5'
-const FEDB_RAW = `https://raw.githubusercontent.com/yuhonas/free-exercise-db/${FEDB_COMMIT}`
+const REPDB_COMMIT = '9ed9357f09c7566ea0256c57ebd6374ebb8b575e'
+const REPDB_RAW = `https://raw.githubusercontent.com/RepDB/exercise-dataset/${REPDB_COMMIT}`
 const BUCKET = 'exercise-images'
 
 /**
- * Bizim name_en → free-exercise-db adı. Sadece aynı hareket ve aynı aletse
- * eklenir: "Dumbbell Hip Thrust" için barbell görseli yok sayıldı.
+ * Bizim name_en → RepDB name_en. Sadece aynı hareket ve aynı aletse eklenir:
+ * "Dumbbell Goblet Squat" için kettlebell görseli yok sayıldı.
  */
 export const ALIASES = {
-  'Ab Wheel Rollout': 'Ab Roller',
-  'Alternating Dumbbell Curl': 'Dumbbell Alternate Bicep Curl',
-  'Arnold Press': 'Arnold Dumbbell Press',
-  'Barbell Row': 'Bent Over Barbell Row',
-  'Bench Press': 'Barbell Bench Press - Medium Grip',
+  'Ab Crunch Machine': 'Machine Seated Crunch',
+  'Alternating Dumbbell Curl': 'Dumbbell Bicep Curl',
+  'Assisted Dip Machine': 'Machine Assisted Dips',
+  'Assisted Pull-Up Machine': 'Assisted Pull Ups',
+  'Barbell Row': 'Bent-Over Barbell Row',
+  'Bench Press': 'Barbell Bench Press',
   'Bicep Curl Machine': 'Machine Bicep Curl',
-  'Box Jump': 'Front Box Jump',
-  'Cable EZ Curl': 'Standing Biceps Cable Curl',
-  'Cable Face Pull': 'Face Pull',
-  'Cable Fly': 'Cable Crossover',
-  'Cable Lateral Raise': 'Cable Seated Lateral Raise',
-  'Cable Overhead Tricep Extension': 'Cable Rope Overhead Triceps Extension',
-  'Cable Rope Pushdown': 'Triceps Pushdown - Rope Attachment',
-  'Cable Row': 'Seated Cable Rows',
-  'Cable Wood Chop': 'Standing Cable Wood Chop',
-  'Calf Raise': 'Standing Calf Raises',
-  'Calf Stretch': 'Calf Stretch Hands Against Wall',
-  'Cat-Cow': 'Cat Stretch',
-  'Cat-Cow Stretch': 'Cat Stretch',
-  'Chest Press Machine': 'Leverage Chest Press',
-  'Chest Supported Dumbbell Row': 'Dumbbell Incline Row',
+  'Brisk Walking': 'Walking',
+  'Burpee': 'Burpees',
+  'Cable Crossover': 'Cable Fly',
+  'Cable EZ Curl': 'Cable Curl',
+  'Cable Row': 'Seated Cable Row',
+  'Calf Raise': 'Machine Calf Raise',
+  'Calf Stretch': 'Standing Calf Stretch',
+  'Cat-Cow Stretch': 'Cat-Cow',
+  'Chest Press Machine': 'Machine Chest Press',
+  'Chest Stretch': 'Doorway Chest Stretch',
+  'Chest Supported Row': 'Chest-Supported Dumbbell Row',
   'Childs Pose': "Child's Pose",
-  'Close Grip Bench': 'Close-Grip Barbell Bench Press',
-  'Close Grip Lat Pulldown': 'Close-Grip Front Lat Pulldown',
-  'Concentration Curl': 'Concentration Curls',
+  'Chin-Up': 'Chin-Ups',
+  'Close Grip Bench': 'Close-Grip Bench Press',
+  'Cobra Pose': 'Cobra Stretch',
   'Crunch': 'Crunches',
   'Deadlift': 'Barbell Deadlift',
-  'Diamond Push-Up': 'Push-Ups - Close Triceps Position',
-  'Dips': 'Dips - Triceps Version',
-  'Donkey Calf Raise': 'Donkey Calf Raises',
-  'Dumbbell Arnold Press': 'Arnold Dumbbell Press',
-  'Dumbbell Bulgarian Split Squat': 'Split Squat with Dumbbells',
-  'Dumbbell Calf Raise': 'Standing Dumbbell Calf Raise',
+  'Dips': 'Chest Dips',
+  'Downward Dog': 'Downward-Facing Dog',
+  'Dumbbell Arnold Press': 'Arnold Press',
+  'Dumbbell Bulgarian Split Squat': 'Bulgarian Split Squat',
   'Dumbbell Curl': 'Dumbbell Bicep Curl',
-  'Dumbbell Decline Bench Press': 'Decline Dumbbell Bench Press',
+  'Dumbbell Decline Bench Press': 'Decline Bench Press',
   'Dumbbell Flat Bench Press': 'Dumbbell Bench Press',
-  'Dumbbell Fly': 'Dumbbell Flyes',
-  'Dumbbell Front Raise': 'Front Dumbbell Raise',
-  'Dumbbell Goblet Squat': 'Goblet Squat',
   'Dumbbell Incline Bench Press': 'Incline Dumbbell Press',
-  'Dumbbell Lateral Raise': 'Side Lateral Raise',
-  'Dumbbell Overhead Tricep Extension': 'Standing Dumbbell Triceps Extension',
-  'Dumbbell Pullover': 'Bent-Arm Dumbbell Pullover',
-  'Dumbbell Rear Delt Fly': 'Seated Bent-Over Rear Delt Raise',
-  'Dumbbell Reverse Lunge': 'Dumbbell Rear Lunge',
-  'Dumbbell Romanian Deadlift': 'Stiff-Legged Dumbbell Deadlift',
-  'Dumbbell Row': 'One-Arm Dumbbell Row',
-  'Dumbbell Step-Up': 'Dumbbell Step Ups',
-  'Dumbbell Sumo Squat': 'Plie Dumbbell Squat',
-  'Dumbbell Tate Press': 'Tate Press',
-  'Dumbbell Tricep Kickback': 'Tricep Dumbbell Kickback',
-  'Dumbbell Upright Row': 'Standing Dumbbell Upright Row',
-  'Dumbbell Walking Lunge': 'Dumbbell Lunges',
+  'Dumbbell Overhead Tricep Extension': 'Overhead Tricep Extension',
+  'Dumbbell Rear Delt Fly': 'Rear Delt Fly',
+  'Dumbbell Reverse Lunge': 'Reverse Lunge',
+  'Dumbbell Row': 'Single-Arm Dumbbell Row',
+  'Dumbbell Walking Lunge': 'Dumbbell Lunge',
   'Elevated Push-Up': 'Incline Push-Up',
   'Elliptical': 'Elliptical Trainer',
-  'Front Raise': 'Front Dumbbell Raise',
-  'Glute Bridge': 'Butt Lift (Bridge)',
-  'Hammer Curl': 'Hammer Curls',
-  'Handstand Push-Up': 'Handstand Push-Ups',
-  'High to Low Cable Fly': 'Cable Crossover',
-  'Hip Abduction Machine': 'Thigh Abductor',
-  'Hip Adduction Machine': 'Thigh Adductor',
-  'Hip Flexor Stretch': 'Kneeling Hip Flexor',
+  'Face Pull': 'Cable Face Pull',
+  'Front Raise': 'Dumbbell Front Raise',
+  'Hammer Curl': 'Dumbbell Hammer Curl',
+  'Hip Abduction Machine': 'Machine Hip Abduction',
+  'Hip Adduction Machine': 'Hip Adduction',
+  'Hip Flexor Stretch': 'Kneeling Hip Flexor Stretch',
   'Hip Thrust': 'Barbell Hip Thrust',
-  'Hyperextension': 'Hyperextensions (Back Extensions)',
-  'Incline Bench Press': 'Barbell Incline Bench Press - Medium Grip',
-  'Incline Chest Press Machine': 'Leverage Incline Chest Press',
-  'Iso Lateral Row Machine': 'Leverage Iso Row',
-  'IT Band Stretch': 'IT Band and Glute Stretch',
-  'Jump Rope': 'Rope Jumping',
-  'Jump Squat': 'Freehand Jump Squat',
-  'Lat Pulldown': 'Wide-Grip Lat Pulldown',
-  'Lateral Raise': 'Side Lateral Raise',
-  'Leg Curl': 'Lying Leg Curls',
-  'Leg Extension': 'Leg Extensions',
-  'Leg Raise': 'Flat Bench Lying Leg Raise',
-  'Low to High Cable Fly': 'Low Cable Crossover',
-  'Lunges': 'Bodyweight Walking Lunge',
-  'Lying Leg Curl Machine': 'Lying Leg Curls',
+  'Hyperextension': 'Back Extension',
+  'Incline Bench Press': 'Incline Barbell Bench Press',
+  'Lateral Raise': 'Dumbbell Lateral Raise',
+  'Lateral Raise Machine': 'Plate-Loaded Lateral Raise',
+  'Leg Curl': 'Lying Leg Curl',
+  'Leg Raise': 'Lying Leg Raise',
+  'Lizard Pose': 'Lizard Stretch',
+  'Lunges': 'Lunge',
+  'Lying Leg Curl Machine': 'Lying Leg Curl',
   'Mountain Climber': 'Mountain Climbers',
-  'Neck Stretch': 'Side Neck Stretch',
-  'Nordic Hamstring Curl': 'Natural Glute Ham Raise',
-  'One-Arm Push-Up': 'Single-Arm Push-Up',
-  'Overhead Press': 'Standing Military Press',
-  'Overhead Tricep Ext': 'Standing Dumbbell Triceps Extension',
-  'Pec Deck': 'Butterfly',
-  'Pull-Up': 'Pullups',
-  'Push-Up': 'Pushups',
-  'Rear Delt Fly': 'Reverse Flyes',
-  'Rear Delt Machine': 'Reverse Machine Flyes',
-  'Reverse Grip Lat Pulldown': 'Underhand Cable Pulldowns',
-  'Rowing Machine': 'Rowing, Stationary',
-  'Running': 'Trail Running/Walking',
-  'Seated Dumbbell Shoulder Press': 'Seated Dumbbell Press',
+  'Muscle-Up': 'Muscle Ups',
+  'Neck Stretch': 'Neck Side Stretch',
+  'Overhead Press': 'Barbell Overhead Press',
+  'Overhead Tricep Ext': 'Overhead Tricep Extension',
+  'Pallof Press': 'Cable Pallof Press',
+  'Pigeon Pose': 'Pigeon Stretch',
+  'Pike Push-Up': 'Pike Push Ups',
+  'Preacher Curl': 'Barbell Preacher Curl',
+  'Quad Stretch': 'Standing Quad Stretch',
+  'Reverse Lunge': 'Bodyweight Reverse Lunge',
   'Seated Leg Curl Machine': 'Seated Leg Curl',
-  'Shoulder Press Machine': 'Machine Shoulder (Military) Press',
-  'Shrug': 'Barbell Shrug',
-  'Side Plank': 'Side Bridge',
-  'Single Arm Dumbbell Overhead Extension': 'Dumbbell One-Arm Triceps Extension',
-  'Single Arm Dumbbell Row': 'One-Arm Dumbbell Row',
-  'Skull Crusher': 'EZ-Bar Skullcrusher',
+  'Shoulder Press Machine': 'Machine Shoulder Press',
+  'Shoulder Stretch': 'Cross-Body Shoulder Stretch',
+  'Shrug': 'Dumbbell Shrug',
+  'Single Arm Dumbbell Overhead Extension': 'Single-Arm Dumbbell Overhead Tricep Extension',
   'Smith Machine Incline Press': 'Smith Machine Incline Bench Press',
-  'Smith Machine Romanian Deadlift': 'Smith Machine Stiff-Legged Deadlift',
-  'Smith Machine Shoulder Press': 'Smith Machine Overhead Shoulder Press',
-  'Spin / Indoor Cycling': 'Bicycling, Stationary',
-  'Squat': 'Barbell Squat',
-  'Stair Climbing': 'Stairmaster',
-  'Standing Calf Raise Machine': 'Standing Calf Raises',
-  'T-Bar Row': 'T-Bar Row with Handle',
-  'Treadmill': 'Running, Treadmill',
+  'Spin / Indoor Cycling': 'Stationary Bike',
+  'Squat': 'Barbell Back Squat',
+  'Squat Hold (Wall Sit)': 'Wall Sit',
+  'Standing Calf Raise Machine': 'Standing Calf Raise',
+  'Standing Dumbbell Press': 'Dumbbell Shoulder Press',
+  'Step-Up': 'Step Ups',
+  'Trap Bar Deadlift': 'Hex Bar Deadlift',
+  'Treadmill': 'Treadmill Running',
   'Tricep Extension Machine': 'Machine Triceps Extension',
-  'Tricep Pushdown': 'Triceps Pushdown',
-  'Turkish Get-Up': 'Kettlebell Turkish Get-Up (Squat style)',
-  'Upright Row': 'Upright Barbell Row',
-  'Wide Push-Up': 'Push-Up Wide',
-  'World Greatest Stretch': "World's Greatest Stretch",
+  'Tricep Pushdown': 'Cable Tricep Pushdown',
+  'Turkish Get-Up': 'Kettlebell Turkish Get Ups',
+  'Upright Row': 'Barbell Upright Row',
 }
 
 /**
- * Kaynakta her hareketin başlangıç (0) ve bitiş (1) karesi var; varsayılan 0.
- * Başlangıç karesi hareketi anlatmıyorsa (düz duran biri) burada 1 seçilir.
+ * Adı RepDB'dekiyle aynı ama aleti farklı: bizde vücut ağırlığı ya da başka
+ * alet, RepDB çiziminde dambıl, kettlebell, GHD veya dip istasyonu var.
  */
-export const FRAMES = {
-  'Bodyweight Walking Lunge': 1,
+export const SKIP = [
+  'Bulgarian Split Squat',
+  'Goblet Squat',
+  'Inverted Row',
+  'L-Sit',
+  'Nordic Hamstring Curl',
+]
+
+/**
+ * RepDB'de hareketlerin çoğunda başlangıç (start) ve tepe (peak) pozu, tek
+ * pozlu olanlarda (kardiyo, esneme) main var. image_url tepe pozu: hareketi
+ * en iyi anlatan an, küçük liste ikonu bunu gösterir. Tepe yoksa main, o da
+ * yoksa start.
+ */
+export function imagePathFor(entry) {
+  const flat = entry.images?.flat ?? {}
+  return flat.peak ?? flat.main ?? flat.start
 }
 
-/** Seçilen kare kaynakta yoksa ilk kareye düşer. */
-export function imagePathFor(entry, frames = FRAMES) {
-  return entry.images[frames[entry.name] ?? 0] ?? entry.images[0]
+/** image_start_url: yalnızca iki pozlu harekette başlangıç pozu, yoksa null. */
+export function startPathFor(entry) {
+  const flat = entry.images?.flat ?? {}
+  return flat.peak && flat.start ? flat.start : null
 }
 
 /** "Push-Up", "push up" ve "PUSH UP" aynı anahtara düşer. */
@@ -176,15 +163,16 @@ export function normalizeName(name) {
 }
 
 /**
- * exercises: { id, name_en }[], catalog: free-exercise-db kayıtları.
- * Görseli olmayan katalog kaydı yok sayılır. brokenAliases: kataloğun bu
- * sürümünde karşılığı olmayan takma adlar (kaynak ad değiştirdiyse).
+ * exercises: { id, name_en }[], catalog: RepDB kayıtları. Görseli olmayan
+ * katalog kaydı yok sayılır. brokenAliases: kataloğun bu sürümünde karşılığı
+ * olmayan takma adlar (kaynak ad değiştirdiyse). SKIP'teki adlar hiç eşleşmez.
  */
-export function matchExercises(exercises, catalog, aliases = ALIASES) {
+export function matchExercises(exercises, catalog, aliases = ALIASES, skip = SKIP) {
   const byName = new Map()
   for (const entry of catalog) {
-    if (Array.isArray(entry.images) && entry.images.length > 0) byName.set(normalizeName(entry.name), entry)
+    if (entry.name_en && imagePathFor(entry)) byName.set(normalizeName(entry.name_en), entry)
   }
+  const skipped = new Set(skip.map(normalizeName))
   const aliasMap = new Map(Object.entries(aliases).map(([ours, theirs]) => [normalizeName(ours), normalizeName(theirs)]))
   const brokenAliases = Object.keys(aliases).filter((ours) => !byName.has(aliasMap.get(normalizeName(ours))))
 
@@ -192,16 +180,20 @@ export function matchExercises(exercises, catalog, aliases = ALIASES) {
   const unmatched = []
   for (const exercise of exercises) {
     const key = exercise.name_en ? normalizeName(exercise.name_en) : ''
-    const entry = key ? byName.get(aliasMap.get(key) ?? key) : undefined
+    const entry = key && !skipped.has(key) ? byName.get(aliasMap.get(key) ?? key) : undefined
     if (entry) matched.push({ exercise, entry })
     else unmatched.push(exercise)
   }
   return { matched, unmatched, brokenAliases }
 }
 
-/** Kovadaki yol kaynaktakiyle aynı: "Pushups/0.jpg". */
+/** Kovada klasörsüz dosya adı: "images/flat/push-up-peak.webp" → "push-up-peak.webp". */
+export function bucketPath(imagePath) {
+  return imagePath.split('/').pop()
+}
+
 export function publicImageUrl(supabaseUrl, imagePath) {
-  return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${BUCKET}/${imagePath}`
+  return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${BUCKET}/${bucketPath(imagePath)}`
 }
 
 // ============================
@@ -228,10 +220,6 @@ async function fetchOk(url, init) {
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run')
-  if (!dryRun) {
-    console.error('Yazma kilitli: free-exercise-db fotoğraflarının ticari kullanım hakkı yok. Yalnızca --dry-run.')
-    process.exit(1)
-  }
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const env = { ...loadEnvFile(root, '.env.production'), ...loadEnvFile(root, '.env'), ...process.env }
   const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL
@@ -242,42 +230,52 @@ async function main() {
   }
   const auth = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }
 
-  const catalog = await (await fetchOk(`${FEDB_RAW}/dist/exercises.json`)).json()
+  const catalog = (await (await fetchOk(`${REPDB_RAW}/exercises.json`)).json()).exercises
   const exercises = await (await fetchOk(`${supabaseUrl}/rest/v1/exercises?select=id,name_en&user_id=is.null&order=name_en`, { headers: auth })).json()
   const { matched, unmatched, brokenAliases } = matchExercises(exercises, catalog)
-  const images = new Set(matched.map((m) => imagePathFor(m.entry)))
+  const images = new Set(matched.flatMap((m) => [imagePathFor(m.entry), startPathFor(m.entry)]).filter(Boolean))
 
-  console.log(`Katalog: ${catalog.length} kayıt (free-exercise-db @ ${FEDB_COMMIT.slice(0, 7)})`)
-  console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length}, eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
+  console.log(`Katalog: ${catalog.length} kayıt (RepDB @ ${REPDB_COMMIT.slice(0, 7)})`)
+  const twoPose = matched.filter((m) => startPathFor(m.entry)).length
+  console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length} (iki pozlu: ${twoPose}), eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
   // Kaynak sabit bir commit; kırık takma ad tablodaki yazım hatasıdır, sessizce görselsiz bırakma.
   if (brokenAliases.length) {
     console.error(`Kaynakta bulunamayan takma adlar: ${brokenAliases.join(', ')}`)
     process.exit(1)
   }
   if (dryRun) {
-    for (const { exercise, entry } of matched) console.log(`  ✓ ${exercise.name_en} → ${entry.name}`)
+    for (const { exercise, entry } of matched) {
+      const start = startPathFor(entry)
+      console.log(`  ✓ ${exercise.name_en} → ${entry.name_en} (${start ? `${bucketPath(start)} + ` : ''}${bucketPath(imagePathFor(entry))})`)
+    }
     console.log(`Görselsiz kalacaklar: ${unmatched.map((e) => e.name_en ?? `(name_en yok: ${e.id})`).join(', ')}`)
     return
   }
 
   const urls = new Map()
+  async function upload(path) {
+    if (!path) return null
+    if (!urls.has(path)) {
+      const body = await (await fetchOk(`${REPDB_RAW}/${path}`)).arrayBuffer()
+      await fetchOk(`${supabaseUrl}/storage/v1/object/${BUCKET}/${bucketPath(path)}`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'image/webp', 'x-upsert': 'true' },
+        body,
+      })
+      urls.set(path, publicImageUrl(supabaseUrl, path))
+    }
+    return urls.get(path)
+  }
+
   let failed = 0
   for (const { exercise, entry } of matched) {
-    const path = imagePathFor(entry)
     try {
-      if (!urls.has(path)) {
-        const body = await (await fetchOk(`${FEDB_RAW}/exercises/${path}`)).arrayBuffer()
-        await fetchOk(`${supabaseUrl}/storage/v1/object/${BUCKET}/${path}`, {
-          method: 'POST',
-          headers: { ...auth, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
-          body,
-        })
-        urls.set(path, publicImageUrl(supabaseUrl, path))
-      }
+      // Tek pozluda image_start_url null yazılır: eski bir eşleşmeden kalan başlangıç pozu temizlenir.
+      const row = { image_url: await upload(imagePathFor(entry)), image_start_url: await upload(startPathFor(entry)) }
       await fetchOk(`${supabaseUrl}/rest/v1/exercises?id=eq.${exercise.id}`, {
         method: 'PATCH',
         headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ image_url: urls.get(path) }),
+        body: JSON.stringify(row),
       })
     } catch (err) {
       failed++
