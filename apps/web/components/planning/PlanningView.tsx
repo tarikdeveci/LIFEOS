@@ -1,22 +1,20 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/contexts/LangContext'
-import type { TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput, Task } from '@lifeos/shared'
+import type { Task } from '@lifeos/shared'
 import {
-  todayDate, relativeDateLabel, shiftIsoDate, nextSlotTime, addMinutesToClock,
-  fromDateString,
+  todayDate, relativeDateLabel, shiftIsoDate,
   usePlanningStore,
   useTaskStore,
   useRoutineStore,
-  BLOCK_TYPE_COLORS, APP_DEFAULTS,
-  type BlockType, describeAiError } from '@lifeos/shared'
+  APP_DEFAULTS } from '@lifeos/shared'
 import { updateTaskDetails, assignTaskToDate, track } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useFreeAiPlans } from '@/lib/hooks/useFreeAiPlans'
-import { useCommandParam } from '@/lib/hooks/useCommandParam'
+import { usePlanningAiChat } from '@/lib/hooks/usePlanningAiChat'
+import { usePlanningBlockEditor } from '@/lib/hooks/usePlanningBlockEditor'
 import { useToast } from '@/components/ui/Toast'
 import { DayTimeline } from '@/components/planning/DayTimeline'
 import { WeekView } from '@/components/planning/WeekView'
@@ -30,27 +28,22 @@ import { CarryoverList } from '@/components/planning/CarryoverList'
 import { CapacityBar } from '@/components/planning/CapacityBar'
 import { ShiftButton } from '@/components/planning/ShiftButton'
 import { MorningRitual } from '@/components/planning/MorningRitual'
-import { FocusBlockAction } from '@/components/planning/FocusTimer'
-import {
-  RecurrencePicker, ScopeChoice, initialRecurrence, recurrenceToRoutineInput,
-  type RecurrenceValue, type EditScope,
-} from '@/components/planning/RecurrencePicker'
+import { PlanningAiChat } from '@/components/planning/PlanningAiChat'
+import { AddBlockModal } from '@/components/planning/AddBlockModal'
+import { BlockDetailModal } from '@/components/planning/BlockDetailModal'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
-import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 
 interface PlanningViewProps { userId: string }
 
 export function PlanningView({ userId }: PlanningViewProps) {
-  const AI_BUFFER_MINUTES = 15
   const {
     date, timeBlocks, flexTasks, carryoverTasks, busy, loading,
-    fetchDayData, addTimeBlock, updateTimeBlock, removeTimeBlock, setBlockDone,
+    fetchDayData, addTimeBlock, updateTimeBlock,
   } = usePlanningStore()
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
-  const { routines, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
+  const { fetchRoutines } = useRoutineStore()
   const [ritualOpen, setRitualOpen] = useState(false)
   // Rutin değişince hafta görünümü kendi verisini yeniden okusun diye anahtar.
   const [routinesVersion, setRoutinesVersion] = useState(0)
@@ -70,58 +63,15 @@ export function PlanningView({ userId }: PlanningViewProps) {
   // View mode
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day')
 
-  // Agentic chat
-  interface ReplanAction {
-    action: 'add' | 'remove' | 'move'
-    block_id?: string
-    block?: { start_time?: string; end_time?: string; block_type?: BlockType; label?: string; task_id?: string }
-  }
-  interface ChatMessage { role: 'user' | 'assistant'; text: string; actions?: ReplanAction[] }
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput]       = useState('')
-  const chatInputRef = useRef<HTMLInputElement>(null)
-
-  // Komut paletinden "AI'a sor" (?ask=): sohbet gün görünümünde, kutu doldurulur
-  // ama gönderilmez; ücretsiz planlardan biri kullanıcı onaylamadan harcanmasın.
-  useCommandParam('ask', (text) => {
-    setViewMode('day')
-    setChatInput(text)
-    setTimeout(() => chatInputRef.current?.focus(), 0)
+  // Agentic chat: durum burada yaşar, hafta/ay görünümüne geçilince sohbet silinmez.
+  const chat = usePlanningAiChat({
+    userId, isPro, freePlansUsedUp, refreshFreePlans,
+    onAsk: () => setViewMode('day'),
   })
-  const [chatLoading, setChatLoading]   = useState(false)
-  const [pendingActions, setPendingActions] = useState<ReplanAction[] | null>(null)
-  const [applyingActions, setApplyingActions] = useState(false)
-  const chatEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages, chatLoading])
-
-  // Task / block modals
+  // Task drawer
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [drawerOpen, setDrawerOpen]     = useState(false)
-  const [showAddBlock, setShowAddBlock] = useState(false)
-  // Sabit '09:00' değil: o anki yerel saatin bir sonraki yarım saati. Modal her
-  // açıldığında `openAddBlock` yeniden hesaplıyor — uygulama saatlerce açık kalabilir.
-  const [newBlockTime, setNewBlockTime] = useState(() => nextSlotTime())
-  const [newBlockEnd, setNewBlockEnd]   = useState(() => addMinutesToClock(nextSlotTime(), 60))
-  const [newBlockLabel, setNewBlockLabel] = useState('')
-  const [newBlockType, setNewBlockType] = useState<BlockType>('focus')
-
-  // Tekrar (ekleme penceresi): sunucu tarafı rutin şablonu olarak kaydedilir.
-  const [recurrence, setRecurrence] = useState<RecurrenceValue>(() => initialRecurrence())
-
-  // Selected block detail / edit
-  const [selectedBlock, setSelectedBlock] = useState<TimeBlock | null>(null)
-  const [editingBlock, setEditingBlock]   = useState(false)
-  const [editBlockStart, setEditBlockStart] = useState('')
-  const [editBlockEnd, setEditBlockEnd]     = useState('')
-  const [editBlockType, setEditBlockType]   = useState<BlockType>('focus')
-  const [editBlockLabel, setEditBlockLabel] = useState('')
-  const [editRecurrence, setEditRecurrence] = useState<RecurrenceValue>(() => initialRecurrence())
-  // Rutin örneğinde düzenleme/silme kapsamı.
-  const [editScope, setEditScope] = useState<EditScope>('this')
-  const [savingBlock, setSavingBlock] = useState(false)
 
   // Quick-add task
   const [quickAddTask, setQuickAddTask]     = useState('')
@@ -141,150 +91,11 @@ export function PlanningView({ userId }: PlanningViewProps) {
     void fetchDayData(supabase, userId, shiftIsoDate(date, offset))
   }, [date, fetchDayData, userId])
 
-  // ── Add block ───────────────────────────────────────────────────────────────
-  const handleAddBlock = useCallback(async () => {
-    if (savingBlock) return
-    setSavingBlock(true)
-    try {
-      if (recurrence.enabled) {
-        if (recurrence.every !== 'daily' && recurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
-        await addRoutine(supabase, userId, recurrenceToRoutineInput(recurrence,
-          { label: newBlockLabel, block_type: newBlockType, start_time: newBlockTime, end_time: newBlockEnd, date },
-          t[`review_type_${newBlockType}`]))
-        refreshAfterRoutineChange()
-        showToast(t.plan_routine_added, 'success')
-      } else {
-        const input: CreateTimeBlockInput = {
-          date, start_time: newBlockTime, end_time: newBlockEnd, block_type: newBlockType,
-          ...(newBlockLabel && { label: newBlockLabel }),
-        }
-        await addTimeBlock(supabase, userId, input)
-      }
-      setShowAddBlock(false); setNewBlockLabel(''); setRecurrence(initialRecurrence(fromDateString(date)))
-    } catch { showToast(recurrence.enabled ? t.plan_routine_error : t.plan_block_add_error, 'error') }
-    finally { setSavingBlock(false) }
-  }, [addTimeBlock, addRoutine, userId, date, newBlockTime, newBlockEnd, newBlockType, newBlockLabel,
-      recurrence, refreshAfterRoutineChange, savingBlock, showToast, t])
-
-  /**
-   * Blok tamamlama. Açık olan detay penceresindeki kopya da güncelleniyor:
-   * `selectedBlock` store'dan bağımsız bir state, aksi halde "geri al"
-   * düğmesine basıldığında pencere hâlâ tamamlanmış görünüyor.
-   */
-  const handleToggleBlockDone = useCallback(async (blockId: string, done: boolean) => {
-    try {
-      await setBlockDone(supabase, blockId, done)
-      setSelectedBlock((current) =>
-        current && current.id === blockId
-          ? { ...current, completed_at: done ? new Date().toISOString() : null }
-          : current,
-      )
-      showToast(done ? t.plan_block_done_toast : t.plan_block_undone_toast, 'success')
-    } catch {
-      showToast(t.plan_block_update_error, 'error')
-    }
-  }, [setBlockDone, showToast, t])
-
-  const handleSlotClick = useCallback((time: string) => {
-    setNewBlockTime(time)
-    // Eskiden saat+1 elle kuruluyordu; 23:00 dilimine tıklayınca '24:00' üretiyordu.
-    setNewBlockEnd(addMinutesToClock(time, 60))
-    setShowAddBlock(true)
-  }, [])
-
-  /** Zaman çizelgesindeki bir dilime değil, düğmeye basılarak açılan hâli. */
-  const openAddBlock = useCallback(() => {
-    const start = nextSlotTime()
-    setNewBlockTime(start)
-    setNewBlockEnd(addMinutesToClock(start, 60))
-    setShowAddBlock(true)
-  }, [])
-
-  const openBlockDetail = useCallback((block: TimeBlock) => {
-    setSelectedBlock(block); setEditingBlock(false)
-    setEditBlockStart(block.start_time.slice(0, 5))
-    setEditBlockEnd(block.end_time.slice(0, 5))
-    setEditBlockType(block.block_type)
-    setEditBlockLabel(block.label ?? '')
-    setEditRecurrence(initialRecurrence(fromDateString(block.date)))
-    setEditScope('this')
-  }, [])
-
-  // ── Save block edit ─────────────────────────────────────────────────────────
-  // Rutin örneği: "sadece bu" sıradan güncelleme (tetikleyici routine_modified yapar),
-  // "bu ve sonrakiler" şablonu değiştirip bu örnekten itibaren yeniden üretir.
-  // Sıradan blok tekrara çevrilirse blok silinir, aynı günden başlayan rutin kurulur.
-  const handleSaveBlockEdit = useCallback(async () => {
-    if (!selectedBlock) return
-    if (editBlockEnd <= editBlockStart) { showToast(t.plan_err_end_after_start, 'error'); return }
-    setSavingBlock(true)
-    try {
-      if (selectedBlock.routine_id && editScope === 'following') {
-        await updateSeries(supabase, selectedBlock.routine_id, {
-          title: editBlockLabel.trim() || t[`review_type_${editBlockType}`],
-          block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd,
-        }, selectedBlock.occurrence_date ?? selectedBlock.date)
-        refreshAfterRoutineChange()
-        showToast(t.plan_routine_updated, 'success')
-        setSelectedBlock(null)
-        return
-      }
-      if (!selectedBlock.routine_id && !selectedBlock.task_id && editRecurrence.enabled) {
-        if (editRecurrence.every !== 'daily' && editRecurrence.days.length === 0) { showToast(t.plan_err_pick_day, 'error'); return }
-        const block = { label: editBlockLabel, block_type: editBlockType, start_time: editBlockStart, end_time: editBlockEnd, date: selectedBlock.date }
-        await removeTimeBlock(supabase, selectedBlock.id)
-        await addRoutine(supabase, userId, recurrenceToRoutineInput(editRecurrence, block, t[`review_type_${editBlockType}`]))
-        refreshAfterRoutineChange()
-        showToast(t.plan_routine_added, 'success')
-        setSelectedBlock(null)
-        return
-      }
-      const updates: UpdateTimeBlockInput = {
-        start_time: editBlockStart, end_time: editBlockEnd,
-        block_type: editBlockType, label: editBlockLabel || undefined,
-      }
-      await updateTimeBlock(supabase, selectedBlock.id, updates)
-      showToast(t.plan_block_updated, 'success')
-      setEditingBlock(false)
-      setSelectedBlock((prev) => prev ? { ...prev, ...updates } : null)
-    } catch { showToast(t.plan_block_update_error, 'error') }
-    finally { setSavingBlock(false) }
-  }, [selectedBlock, editBlockStart, editBlockEnd, editBlockType, editBlockLabel, editRecurrence, editScope,
-      updateTimeBlock, removeTimeBlock, updateSeries, addRoutine, userId, refreshAfterRoutineChange, showToast, t])
-
-  /**
-   * Blok silme. Rutin örneğinde "sadece bu" sıradan silmedir (sunucu o günü istisna
-   * yazar); "bu ve sonrakiler" seriyi bu örnekten önce bitirir, ilk örnekse siler.
-   */
-  const handleDeleteBlock = useCallback(async () => {
-    if (!selectedBlock) return
-    const block = selectedBlock
-    setSelectedBlock(null)
-    try {
-      if (block.routine_id && editScope === 'following') {
-        const occ = block.occurrence_date ?? block.date
-        const routine = routines.find((r) => r.id === block.routine_id)
-        const endsOn = shiftIsoDate(occ, -1)
-        if (occ <= todayDate() || !routine || endsOn < routine.starts_on) {
-          await removeRoutine(supabase, block.routine_id)
-        } else {
-          await updateSeries(supabase, block.routine_id, { ends_on: endsOn }, occ)
-        }
-        refreshAfterRoutineChange()
-        showToast(t.plan_routine_deleted, 'success')
-      } else {
-        await removeTimeBlock(supabase, block.id)
-      }
-    } catch { showToast(t.plan_block_delete_error, 'error') }
-  }, [selectedBlock, editScope, routines, removeRoutine, updateSeries, removeTimeBlock, refreshAfterRoutineChange, showToast, t])
+  // Blok ekleme ve detay/düzenleme pencerelerinin durumu ile kaydet/sil işlemleri.
+  const blockEditor = usePlanningBlockEditor({ userId, refreshAfterRoutineChange })
+  const { handleSlotClick, openAddBlock, openBlockDetail } = blockEditor
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
-  const hasOverlap = useCallback((start: string, end: string): boolean => {
-    return timeBlocks.some(
-      (b) => b.start_time.slice(0, 5) < end && b.end_time.slice(0, 5) > start,
-    )
-  }, [timeBlocks])
-
   const findNextAvailableSlot = useCallback((durationMinutes = 60): { start: string; end: string } => {
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
@@ -302,98 +113,6 @@ export function PlanningView({ userId }: PlanningViewProps) {
     }
     return { start: '20:00', end: '21:00' }
   }, [timeBlocks])
-
-  // ── Agentic chat ────────────────────────────────────────────────────────────
-  const handleSendChat = useCallback(async () => {
-    if (!chatInput.trim() || chatLoading || freePlansUsedUp) return
-    const userMsg = chatInput.trim()
-    // Sohbet gecmisi sunucuya gonderilir: aksi halde her mesaj sifirdan
-    // basliyor ve "biraz daha gec yap" gibi bir duzeltme baglamsiz kaliyor.
-    const history = chatMessages.slice(-8).map((m) => ({ role: m.role, text: m.text }))
-    setChatInput(''); setChatMessages((p) => [...p, { role: 'user', text: userMsg }]); setChatLoading(true)
-    try {
-      let { data: { session } } = await supabase.auth.getSession()
-      if (!session) { const { data: r } = await supabase.auth.refreshSession(); session = r.session }
-      if (!session) throw new Error('Oturum bulunamadı')
-      const { data, error } = await supabase.functions.invoke('ai-suggest', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: {
-          type: 'replan', language: lang, date, today: todayDate(), user_message: userMsg, buffer_minutes: AI_BUFFER_MINUTES, history,
-          current_time: new Date().toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-          existing_blocks: timeBlocks.map((b) => ({ id: b.id, start: b.start_time.slice(0, 5), end: b.end_time.slice(0, 5), label: b.label ?? b.block_type })),
-        },
-      })
-      if (error) throw error
-      // Başarılı çağrı bir ücretsiz hak yedi; sayaç sunucuda, yeniden oku
-      if (!isPro) void refreshFreePlans()
-      const result = data as { message: string; actions?: ReplanAction[] }
-      const actions = result.actions?.filter((a) =>
-        (a.action === 'add' && a.block?.start_time && a.block?.end_time) ||
-        (a.action === 'remove' && a.block_id) ||
-        (a.action === 'move' && a.block_id && a.block?.start_time && a.block?.end_time)
-      ) ?? []
-      setChatMessages((p) => [...p, { role: 'assistant', text: result.message, actions }])
-      if (actions.length > 0) setPendingActions(actions)
-    } catch (err) {
-      const info = await describeAiError(err, lang)
-      if (info.detail) console.error('ai-suggest replan:', info.status, info.detail)
-      setChatMessages((p) => [...p, { role: 'assistant', text: info.message }])
-      // Hak başka bir cihazda bitmiş olabilir: sayacı yenile, Pro çağrısı çıksın
-      if (info.kind === 'subscription' && !isPro) void refreshFreePlans()
-    } finally { setChatLoading(false) }
-  }, [chatInput, chatLoading, chatMessages, date, lang, timeBlocks, freePlansUsedUp, isPro, refreshFreePlans])
-
-  const handleApplyPendingActions = useCallback(async () => {
-    if (!pendingActions || applyingActions) return
-    setApplyingActions(true)
-    let added = 0; let removed = 0; let moved = 0
-    const removedIds = new Set<string>()
-    try {
-      // 1. Önce AI'nın explicit remove/move aksiyonlarını uygula
-      for (const a of pendingActions) {
-        if (a.action === 'remove' && a.block_id && !removedIds.has(a.block_id)) {
-          await removeTimeBlock(supabase, a.block_id)
-          removedIds.add(a.block_id)
-          removed++
-        } else if (a.action === 'move' && a.block_id && a.block?.start_time && a.block?.end_time) {
-          await updateTimeBlock(supabase, a.block_id, { start_time: a.block.start_time, end_time: a.block.end_time })
-          moved++
-        }
-      }
-      // 2. Add aksiyonları: çakışan blokları zorla sil, sonra ekle
-      for (const a of pendingActions) {
-        if (a.action === 'add' && a.block?.start_time && a.block?.end_time) {
-          const latestBlocks = usePlanningStore.getState().timeBlocks
-          const conflicts = latestBlocks.filter(
-            (b) => !removedIds.has(b.id) && b.start_time.slice(0, 5) < a.block!.end_time! && b.end_time.slice(0, 5) > a.block!.start_time!,
-          )
-          for (const c of conflicts) {
-            await removeTimeBlock(supabase, c.id)
-            removedIds.add(c.id)
-            removed++
-          }
-          await addTimeBlock(supabase, userId, {
-            date, start_time: a.block.start_time, end_time: a.block.end_time,
-            block_type: a.block.block_type ?? 'task', label: a.block.label,
-            ...(a.block.task_id && { task_id: a.block.task_id }),
-          })
-          added++
-        }
-      }
-      const parts = [
-        added > 0 && t.plan_applied_added.replace('{n}', String(added)),
-        removed > 0 && t.plan_applied_replaced.replace('{n}', String(removed)),
-        moved > 0 && t.plan_applied_moved.replace('{n}', String(moved)),
-      ].filter(Boolean)
-      showToast(parts.join(', '), 'success')
-      setPendingActions(null)
-      void fetchDayData(supabase, userId, date)
-    } catch {
-      showToast(t.plan_apply_error, 'error')
-      // Partial failures: always refetch to show consistent state
-      void fetchDayData(supabase, userId, date)
-    } finally { setApplyingActions(false) }
-  }, [pendingActions, applyingActions, userId, date, addTimeBlock, removeTimeBlock, updateTimeBlock, fetchDayData, showToast, t])
 
   // ── Assign to timeline / quick-add task ────────────────────────────────────
   const handleAssignToTimeline = useCallback(async (task: Task) => {
@@ -431,7 +150,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
   const todayStr = todayDate()
   const isToday = date === todayStr
-  const dateLabel = relativeDateLabel(date)
+  const dateLabel = relativeDateLabel(date, lang)
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -509,7 +228,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         )}
       </div>
 
-      {/* Right panel — only in day mode */}
+      {/* Right panel: only in day mode */}
       {viewMode === 'day' && (
         <div className="col-span-4 space-y-4">
           <DayStartCard isToday={isToday} onStartRitual={() => setRitualOpen(true)} />
@@ -550,165 +269,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
           <GoalsPanel userId={userId} />
 
           {/* Agentic AI Chat */}
-          <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-lg shadow-indigo-900/10">
-            {/* Header */}
-            <div className="flex items-center gap-3 bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-lg backdrop-blur-sm">
-                📅
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">{t.plan_ai_assistant}</p>
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-300 shadow-[0_0_4px_rgba(165,180,252,0.8)]" />
-                  <span className="text-[10px] text-white/80">{t.plan_ai_online}</span>
-                </div>
-              </div>
-              {!isPro && freePlansLeft !== null && freePlansLeft > 0 && (
-                <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-semibold text-white">
-                  {t.plan_ai_free_left.replace('{n}', String(freePlansLeft))}
-                </span>
-              )}
-            </div>
-
-            {/* Mesaj alanı */}
-            <div className="flex max-h-64 flex-col gap-3 overflow-y-auto bg-gray-50/50 p-4">
-              {/* Karşılama balonu — her zaman görünür */}
-              <div className="flex items-end gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm">
-                  📅
-                </div>
-                <div className="max-w-[90%] space-y-2">
-                  <div className="rounded-2xl rounded-bl-sm bg-white px-3.5 py-2.5 text-xs leading-relaxed text-gray-800 shadow-sm ring-1 ring-black/5">
-                    {t.plan_ai_welcome}
-                  </div>
-                  {chatMessages.length === 0 && !freePlansUsedUp && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[t.plan_ai_chip_replan, t.plan_ai_chip_focus, t.plan_ai_chip_break].map((q) => (
-                        <button key={q}
-                          onClick={() => { setChatInput(q); setTimeout(() => void handleSendChat(), 0) }}
-                          className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-100">
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Konuşma balonları */}
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                  {msg.role === 'assistant' && (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm">
-                      📅
-                    </div>
-                  )}
-                  <div className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'rounded-br-sm bg-accent text-white'
-                      : 'rounded-bl-sm bg-white text-gray-800 shadow-sm ring-1 ring-black/5'
-                  }`}>
-                    <p>{msg.text}</p>
-                    {msg.actions && msg.actions.length > 0 && (
-                      <div className="mt-2 space-y-0.5 border-t border-white/20 pt-1.5">
-                        {msg.actions.map((a, ai) => (
-                          <p key={ai} className="text-[10px] opacity-80">
-                            {a.action === 'remove' ? '🗑 ' : a.action === 'move' ? '↕ ' : '+ '}
-                            {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}–${a.block.end_time} ` : ''}
-                            {a.block?.label ?? a.block?.block_type ?? ''}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {/* Yazıyor animasyonu */}
-              {chatLoading && (
-                <div className="flex items-end gap-2">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm">
-                    📅
-                  </div>
-                  <div className="rounded-2xl rounded-bl-sm bg-white px-4 py-3 shadow-sm ring-1 ring-black/5">
-                    <div className="flex items-center gap-1">
-                      {[0, 150, 300].map((delay) => (
-                        <span key={delay} className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-bounce"
-                          style={{ animationDelay: `${delay}ms` }} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Pending actions karar kartı */}
-            {pendingActions && pendingActions.length > 0 && (
-              <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50">
-                <div className="px-3 py-2">
-                  <p className="text-xs font-semibold text-indigo-800">
-                    🤖 {t.plan_ai_changes.replace('{n}', String(pendingActions.length))}
-                  </p>
-                  <div className="mt-1.5 space-y-0.5">
-                    {pendingActions.slice(0, 3).map((a, i) => (
-                      <p key={i} className="text-[11px] text-indigo-600">
-                        {a.action === 'remove' ? '🗑' : a.action === 'move' ? '↕' : '+'}{' '}
-                        {a.block?.start_time && a.block?.end_time ? `${a.block.start_time}–${a.block.end_time}` : ''}{' '}
-                        {a.block?.label ?? a.block?.block_type ?? ''}
-                      </p>
-                    ))}
-                    {pendingActions.length > 3 && (
-                      <p className="text-[11px] text-indigo-400">{t.plan_ai_more.replace('{n}', String(pendingActions.length - 3))}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex border-t border-indigo-200">
-                  <button onClick={() => void handleApplyPendingActions()} disabled={applyingActions}
-                    className="flex-1 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-40">
-                    ✓ {t.plan_apply_yes}
-                  </button>
-                  <div className="w-px bg-indigo-200" />
-                  <button onClick={() => setPendingActions(null)}
-                    className="flex-1 py-2 text-xs font-medium text-gray-500 transition hover:bg-gray-50">
-                    {t.plan_cancel}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Input: ücretsiz haklar bittiyse yerine Pro çağrısı */}
-            {freePlansUsedUp ? (
-              <div className="border-t border-gray-100 p-3">
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5">
-                  <p className="text-xs font-semibold text-indigo-800">{t.plan_ai_free_used_title}</p>
-                  <p className="mt-0.5 text-[11px] text-indigo-600">{t.plan_ai_free_used_body}</p>
-                  <Link href="/billing?source=free_limit"
-                    className="mt-2 inline-block rounded-lg bg-indigo-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-600">
-                    {t.plan_ai_go_pro}
-                  </Link>
-                </div>
-              </div>
-            ) : (
-            <div className="border-t border-gray-100 p-3">
-              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
-                <input ref={chatInputRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat() } }}
-                  placeholder={t.plan_replan_placeholder}
-                  className="flex-1 bg-transparent text-xs text-gray-800 outline-none placeholder:text-gray-400"
-                  disabled={chatLoading} />
-                <button onClick={() => void handleSendChat()}
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white transition hover:bg-indigo-600 disabled:opacity-40">
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              </div>
-              <p className="mt-1.5 text-[10px] text-gray-400">{t.plan_replan_hint}</p>
-            </div>
-            )}
-          </div>
+          <PlanningAiChat chat={chat} isPro={isPro} freePlansLeft={freePlansLeft} freePlansUsedUp={freePlansUsedUp} />
         </div>
       )}
 
@@ -716,33 +277,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         carried={[...carryoverTasks, ...carriedToday]} />
 
       {/* ── Add Block Modal ── */}
-      <Modal open={showAddBlock} onClose={() => setShowAddBlock(false)} title={t.plan_add_block_title} size="sm">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label={t.plan_start} type="time" value={newBlockTime} onChange={(e) => setNewBlockTime(e.target.value)} />
-            <Input label={t.plan_end} type="time" value={newBlockEnd} onChange={(e) => setNewBlockEnd(e.target.value)} />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-primary">{t.plan_block_type}</label>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).map((type) => (
-                <button key={type} onClick={() => setNewBlockType(type)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${newBlockType === type ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                  {t[`review_type_${type}`]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Input label={t.plan_label} value={newBlockLabel} onChange={(e) => setNewBlockLabel(e.target.value)} placeholder={t.plan_label_placeholder} />
-
-          <RecurrencePicker value={recurrence} onChange={setRecurrence} />
-
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowAddBlock(false)}>{t.plan_cancel}</Button>
-            <Button size="sm" onClick={() => void handleAddBlock()} disabled={savingBlock}>{recurrence.enabled ? t.plan_add_repeat : t.plan_add}</Button>
-          </div>
-        </div>
-      </Modal>
+      <AddBlockModal editor={blockEditor} />
 
       {/* ── Task Detail Drawer ── */}
       <TaskDetailDrawer task={selectedTask} open={drawerOpen}
@@ -758,98 +293,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
         }} />
 
       {/* ── Block Detail / Edit Modal ── */}
-      <Modal open={!!selectedBlock} onClose={() => { setSelectedBlock(null); setEditingBlock(false) }}
-        title={editingBlock ? t.plan_edit_block_title : t.plan_block_detail} size="sm">
-        {selectedBlock && (
-          <div className="space-y-4">
-            {editingBlock ? (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label={t.plan_start} type="time" value={editBlockStart} onChange={(e) => setEditBlockStart(e.target.value)} />
-                  <Input label={t.plan_end} type="time" value={editBlockEnd} onChange={(e) => setEditBlockEnd(e.target.value)} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-primary">{t.plan_block_type}</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(BLOCK_TYPE_COLORS) as BlockType[]).map((type) => (
-                      <button key={type} onClick={() => setEditBlockType(type)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${editBlockType === type ? 'bg-accent text-white' : 'bg-border/40 text-muted hover:bg-border/60'}`}>
-                        {t[`review_type_${type}`]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Input label={t.plan_label} value={editBlockLabel} onChange={(e) => setEditBlockLabel(e.target.value)} />
-
-                {selectedBlock.routine_id ? (
-                  <ScopeChoice value={editScope} onChange={setEditScope} />
-                ) : !selectedBlock.task_id && (
-                  <RecurrencePicker value={editRecurrence} onChange={setEditRecurrence} />
-                )}
-
-                <div className="flex justify-between gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setEditingBlock(false)} disabled={savingBlock}>{t.plan_cancel}</Button>
-                  <Button size="sm" onClick={() => void handleSaveBlockEdit()} disabled={savingBlock}>{savingBlock ? t.plan_saving : t.plan_save}</Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="rounded-xl p-4" style={{ backgroundColor: `${selectedBlock.color ?? BLOCK_TYPE_COLORS[selectedBlock.block_type]}15` }}>
-                  <p className="text-lg font-semibold" style={{ color: selectedBlock.color ?? BLOCK_TYPE_COLORS[selectedBlock.block_type] }}>
-                    {selectedBlock.label ?? t[`review_type_${selectedBlock.block_type}`]}
-                  </p>
-                  <p className="mt-1 text-sm text-muted">{selectedBlock.start_time.slice(0, 5)} – {selectedBlock.end_time.slice(0, 5)}</p>
-                  <p className="mt-1 text-xs text-muted">{t.plan_block_type}: {t[`review_type_${selectedBlock.block_type}`]}</p>
-                  {selectedBlock.routine_id ? (
-                    <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_routine_badge}</p>
-                  ) : selectedBlock.is_recurring && (
-                    <p className="mt-1 text-xs font-medium text-accent">🔄 {t.plan_recurring}</p>
-                  )}
-                </div>
-                {selectedBlock.block_type === 'workout' && (
-                  <Link href="/workout" className="flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-medium text-pink-700 hover:bg-pink-100">
-                    <span>{t.plan_go_workout}</span>
-                  </Link>
-                )}
-                {selectedBlock.block_type === 'meal' && (
-                  <Link href="/nutrition" className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
-                    <span>{t.plan_go_nutrition}</span>
-                  </Link>
-                )}
-                <FocusBlockAction block={selectedBlock} userId={userId} onStarted={() => setSelectedBlock(null)} />
-                {/* Tamamlama sunucuya yazılıyor: bağlı görev varsa store onu da kapatır. */}
-                {selectedBlock.completed_at ? (
-                  <div className="flex items-center justify-center gap-2 rounded-xl bg-success/10 py-2.5">
-                    <span className="text-sm font-semibold text-success">{t.plan_done}</span>
-                    <button
-                      onClick={() => void handleToggleBlockDone(selectedBlock.id, false)}
-                      className="text-[10px] text-muted hover:text-primary"
-                    >{t.plan_undo}</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      void handleToggleBlockDone(selectedBlock.id, true)
-                      setSelectedBlock(null)
-                    }}
-                    className="w-full rounded-xl bg-success/10 py-2.5 text-sm font-medium text-success hover:bg-success/20"
-                  >
-                    {t.plan_mark_done}
-                  </button>
-                )}
-                {selectedBlock.routine_id && <ScopeChoice value={editScope} onChange={setEditScope} />}
-                <div className="flex justify-between gap-2">
-                  <Button variant="danger" size="sm" onClick={() => void handleDeleteBlock()}>{t.plan_delete}</Button>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditingBlock(true)}>{t.plan_edit}</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedBlock(null)}>{t.plan_close}</Button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </Modal>
+      <BlockDetailModal userId={userId} editor={blockEditor} />
     </div>
   )
 }
