@@ -46,7 +46,7 @@ export default function WorkoutScreen() {
   /** Canlı ekrandaki hareketin ana kası; kas haritası onu seçili gösterir. */
   const [liveMuscleId, setLiveMuscleId] = useState<number | null>(null)
 
-  // Add set — selectedExercise stores the exercise object from DB
+  // Add set: selectedExercise stores the exercise object from DB
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
 
   // Library search + filter
@@ -60,7 +60,7 @@ export default function WorkoutScreen() {
   // Ekipman seçimi
   const [showEquipment, setShowEquipment] = useState(false)
 
-  // toISOString() UTC verir; UTC+3'te gece yarısı–03:00 arası bir önceki günü
+  // toISOString() UTC verir; UTC+3'te gece yarısı ile 03:00 arası bir önceki günü
   // gösteriyordu. todayDate() yerel takvim günü.
   const todayStr = todayDate()
 

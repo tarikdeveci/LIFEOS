@@ -340,6 +340,9 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
+        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
+        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
