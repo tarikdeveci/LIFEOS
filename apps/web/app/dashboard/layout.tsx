@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/ui/Sidebar'
 import { CommandPalette } from '@/components/command/CommandPalette'
+import { FocusTimer } from '@/components/planning/FocusTimer'
 import RealtimeProvider from '@/components/providers/RealtimeProvider'
 import { LangProvider } from '@/lib/contexts/LangContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
@@ -29,6 +30,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </main>
         </div>
         <CommandPalette userId={session.user.id} />
+        <FocusTimer userId={session.user.id} />
       </LangProvider>
     </ThemeProvider>
   )

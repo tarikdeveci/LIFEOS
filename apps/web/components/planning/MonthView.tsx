@@ -9,10 +9,12 @@ import {
   getTaskCountsForDateRange,
 } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
+import { useLang } from '@/lib/contexts/LangContext'
 
 const ENERGY_EMOJI: Record<number, string> = { 1: '😴', 2: '😐', 3: '🙂', 4: '😊', 5: '🔥' }
-const MONTH_NAMES = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık']
-const DAY_LABELS = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']
+/** Pazartesiden başlayan kısa gün adları; 1 Ocak 2024 pazartesi. */
+const weekdayLabels = (locale: string) =>
+  Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' }))
 
 function localDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -55,6 +57,8 @@ interface MonthViewProps {
 }
 
 export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
+  const { t, lang } = useLang()
+  const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
   const initial = new Date(initialDate ?? todayDate())
   const [year, setYear] = useState(initial.getFullYear())
   const [month, setMonth] = useState(initial.getMonth())
@@ -115,9 +119,9 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
         <div className="flex items-center gap-3">
           <button onClick={prevMonth} className="rounded-lg p-1.5 text-muted hover:bg-gray-100 text-lg">‹</button>
           <div>
-            <h2 className="text-sm font-bold text-primary">{MONTH_NAMES[month]} {year}</h2>
+            <h2 className="text-sm font-bold text-primary">{new Date(year, month, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}</h2>
             <p className="text-[10px] text-muted">
-              {totalBlocksMonth} blok · {totalDaysWithBlocks} aktif gün
+              {t.cal_month_summary.replace('{blocks}', String(totalBlocksMonth)).replace('{days}', String(totalDaysWithBlocks))}
             </p>
           </div>
           <button onClick={nextMonth} className="rounded-lg p-1.5 text-muted hover:bg-gray-100 text-lg">›</button>
@@ -126,21 +130,21 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
           {/* Özet stat */}
           <div className="hidden sm:flex gap-3 text-xs text-muted">
             <span>
-              Görev: <strong className="text-primary">{doneTasksMonth}/{totalTasksMonth}</strong>
+              {t.cal_tasks}: <strong className="text-primary">{doneTasksMonth}/{totalTasksMonth}</strong>
             </span>
           </div>
           <button
             onClick={goToday}
             className="rounded-lg bg-accent/10 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/20"
           >
-            Bu Ay
+            {t.cal_this_month}
           </button>
         </div>
       </div>
 
       {/* ── Gün başlıkları ── */}
       <div className="grid grid-cols-7 border-b border-gray-100">
-        {DAY_LABELS.map((d) => (
+        {weekdayLabels(locale).map((d) => (
           <div key={d} className="py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted">
             {d}
           </div>
@@ -229,7 +233,7 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
                       />
                     ))}
                     {blockTypeDots.length < new Set(dayBlocks.map((b) => b.block_type)).size && (
-                      <div className="h-2 w-2 rounded-full bg-gray-300" title="Daha fazla" />
+                      <div className="h-2 w-2 rounded-full bg-gray-300" title={t.cal_more} />
                     )}
                   </div>
                 )}
@@ -271,12 +275,12 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
       {/* ── Legend ── */}
       <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-4 py-2">
         {[
-          { type: 'focus',   label: 'Odak' },
-          { type: 'routine', label: 'Rutin' },
-          { type: 'meal',    label: 'Öğün' },
-          { type: 'workout', label: 'Spor' },
-          { type: 'break',   label: 'Mola' },
-          { type: 'task',    label: 'Görev' },
+          { type: 'focus',   label: t.review_type_focus },
+          { type: 'routine', label: t.review_type_routine },
+          { type: 'meal',    label: t.review_type_meal },
+          { type: 'workout', label: t.review_type_workout },
+          { type: 'break',   label: t.review_type_break },
+          { type: 'task',    label: t.review_type_task },
         ].map(({ type, label }) => (
           <div key={type} className="flex items-center gap-1">
             <div
@@ -288,7 +292,7 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
         ))}
         <div className="ml-auto flex items-center gap-1">
           <div className="h-1 w-8 rounded bg-success" />
-          <span className="text-[10px] text-muted">Görev tamamlama</span>
+          <span className="text-[10px] text-muted">{t.cal_task_completion}</span>
         </div>
       </div>
     </div>

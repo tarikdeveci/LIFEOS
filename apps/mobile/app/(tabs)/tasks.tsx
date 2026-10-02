@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { fromDateString, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
+import { addMinutesToClock, DEFAULT_TASK_MINUTES, fromDateString, parseQuickTask, relativeDateLabel, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
+import { createTimeBlocks } from '@lifeos/shared/supabase'
 import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
+import { BrainDumpSheet } from '@/src/components/tasks/BrainDumpSheet'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
 import { StatusBadge } from '@/src/components/ui/Badge'
@@ -16,6 +19,7 @@ import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 type Tab = 'today' | 'week' | 'all'
@@ -29,12 +33,12 @@ interface Draft {
   effort_score: number
 }
 
-// Sabit değil fonksiyon: modül seviyesinde bir kez hesaplansaydı, uygulama gece
-// yarısını açık geçtiğinde yeni görev formu hâlâ dünün tarihini önerirdi.
+// Tarih ve süre boş başlar (bugün ve 30 dk yalnızca ipucu): dolu gelseydi metindeki
+// "yarın 15:00 ... 45dk" her zaman bu varsayılanlara yenilirdi.
 function emptyDraft(): Draft {
   return {
-    title: '', scheduled_date: todayDate(),
-    estimated_minutes: '30', value_score: 3, urgency_score: 3, effort_score: 3,
+    title: '', scheduled_date: '',
+    estimated_minutes: '', value_score: 3, urgency_score: 3, effort_score: 3,
   }
 }
 
@@ -48,8 +52,12 @@ export default function TasksScreen() {
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [adding, setAdding] = useState(false)
+  // Durum bir sonraki çizimde güncellenir: hızlı ikinci dokunuş onu görmeden görevi ikinci kez ekliyordu.
+  const addingRef = useRef(false)
   const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
+  const [showBrain, setShowBrain] = useState(false)
+  const { isPro, requirePro } = useProGate(userId)
 
   // toISOString() UTC verir: UTC+3'te gece yarısı ile 03:00 arasında bir önceki
   // günü gösteriyordu. todayDate() yerel takvim gününü döndürür.
@@ -119,28 +127,54 @@ export default function TasksScreen() {
     try {
       await setStatus(supabase, task.id, task.status === 'done' ? 'planned' : 'done')
     } catch {
-      Alert.alert('Kaydedilemedi', 'Görev durumu güncellenemedi. Bağlantını kontrol et.')
+      Alert.alert(t.task_save_failed, t.task_status_error)
     }
   }, [setStatus])
 
+  const quickPreview = useMemo(() => {
+    if (!draft.title.trim()) return null
+    const p = parseQuickTask(draft.title, todayDate())
+    const parts = [
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date, lang)}`,
+      p.estimated_minutes && `${p.estimated_minutes} dk`,
+      ...p.tags.map((tag) => `#${tag}`),
+    ].filter(Boolean)
+    return parts.length > 0 ? parts.join(' · ') : null
+  }, [draft.title, t.qtask_due_short])
+
   async function handleAdd() {
-    if (!userId || !draft.title.trim()) return
+    if (!userId || !draft.title.trim() || addingRef.current) return
+    addingRef.current = true
     setAdding(true)
     try {
-      await addTask(supabase, userId, {
-        title: draft.title.trim(),
-        scheduled_date: draft.scheduled_date || undefined,
-        estimated_minutes: parseInt(draft.estimated_minutes) || 30,
+      // Türkçe doğal dil: "yarın 15:00 rapor 30dk"; elle doldurulan alanlar önce gelir.
+      const parsed = parseQuickTask(draft.title, todayDate())
+      const day = draft.scheduled_date.trim() || parsed.scheduled_date || todayDate()
+      const minutes = parseInt(draft.estimated_minutes) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
+      const task = await addTask(supabase, userId, {
+        title: parsed.title,
+        scheduled_date: day || undefined,
+        ...(parsed.due_date ? { due_date: parsed.due_date } : {}),
+        ...(parsed.tags.length > 0 ? { tags: parsed.tags } : {}),
+        estimated_minutes: minutes,
         value_score: draft.value_score,
         urgency_score: draft.urgency_score,
-        effort_score: draft.effort_score,
+        effort_score: parsed.effort_score ?? draft.effort_score,
         status: 'planned',
       })
+      if (parsed.start_time && day) {
+        await createTimeBlocks(supabase, userId, [{
+          date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+          block_type: 'task', label: task.title, task_id: task.id,
+        }])
+      }
       setDraft(emptyDraft())
       setShowAdd(false)
     } catch {
-      Alert.alert('Hata', 'Görev eklenemedi')
+      Alert.alert(t.error, t.task_add_error)
     } finally {
+      addingRef.current = false
       setAdding(false)
     }
   }
@@ -151,9 +185,18 @@ export default function TasksScreen() {
         <View style={{ paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
             <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.tasks_title}</Text>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+              <TouchableOpacity
+                onPress={() => setShowBrain(true)}
+                accessibilityLabel={t.brain_button}
+                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="bulb-outline" size={20} color={palette.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="add" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
@@ -198,6 +241,7 @@ export default function TasksScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
           showsVerticalScrollIndicator={false}
         >
+          {tab === 'today' && <CarryPrompt tasks={tasks} />}
           {displayed.length === 0 ? (
             <View style={{ paddingTop: spacing[10], alignItems: 'center', gap: spacing[3] }}>
               <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textSubtle} />
@@ -225,24 +269,27 @@ export default function TasksScreen() {
         </ScrollView>
       </View>
 
+      <BrainDumpSheet visible={showBrain} onClose={() => setShowBrain(false)} userId={userId} isPro={isPro} requirePro={requirePro} />
+
       <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
-          <Input label="Görev" value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder="Ne yapılacak?" autoFocus returnKeyType="next" />
+          <Input label={t.task_field_title} value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
+          {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label="Tarih" value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder="2026-05-14" containerStyle={{ flex: 1 }} returnKeyType="next" />
-            <Input label="Süre (dk)" value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+            <Input label={t.task_field_date} value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <Input label={t.task_field_minutes} value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 
           {/* Primary action — visible before WSJF so keyboard never hides it */}
-          <Button label={adding ? 'Ekleniyor...' : 'Ekle'} onPress={handleAdd} loading={adding} fullWidth />
+          <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth />
 
           {/* WSJF — optional, collapsible feel via section header */}
           <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', marginTop: spacing[1] }}>
-            WSJF skorları (opsiyonel — varsayılan 3)
+            {t.task_scores_hint}
           </Text>
-          <ScoreRow label="Değer" value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
-          <ScoreRow label="Aciliyet" value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
-          <ScoreRow label="Çaba" value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+          <ScoreRow label={t.task_score_value} value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
+          <ScoreRow label={t.task_score_urgency} value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
+          <ScoreRow label={t.task_score_effort} value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
         </View>
       </BottomSheet>
     </ScreenBackground>

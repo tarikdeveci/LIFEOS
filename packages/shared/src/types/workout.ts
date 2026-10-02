@@ -42,6 +42,8 @@ export interface Exercise {
    * gerekmez. Opsiyonel: 047 uygulanmamış bir veritabanında alan hiç gelmez.
    */
   equipment?: EquipmentKey[] | null
+  /** Hareketin fotoğrafı (062). null = görsel yok; 062 uygulanmamışsa alan gelmez. */
+  image_url?: string | null
   created_at: string
 }
 
@@ -103,6 +105,8 @@ export interface CreateWorkoutSetInput {
   notes?: string
   /** Varsayılan false; geçmiş kayıtlar tamamlanmış olarak yazılır. */
   completed?: boolean
+  /** Toplu eklemede sırayı korumak için; verilmezse veritabanı now() yazar. */
+  created_at?: string
 }
 
 export interface UpdateWorkoutSetInput {

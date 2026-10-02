@@ -17,10 +17,17 @@ export interface TimeBlock {
   label: string | null
   color: string | null
 
+  /** Eskimiş (054 öncesi istemci tekrarı). Yeni seriler routines tablosunda. */
   is_recurring: boolean
   recurrence_type: RecurrenceType | null
   recurrence_days: number[] | null  // 0=Pzr..6=Cmt
   recurrence_end: string | null     // 'YYYY-MM-DD'
+
+  /** Rutin örneği ise şablonu; NULL = sıradan blok. */
+  routine_id: string | null
+  occurrence_date: string | null
+  /** "Sadece bu" ile elle düzenlendi; seri değişince korunur. */
+  routine_modified: boolean
 
   /** Kullanıcı bloğu bitirdiğini işaretlediği an; NULL = tamamlanmadı. */
   completed_at: string | null
@@ -36,6 +43,8 @@ export interface DailyPlan {
   energy_level: 1 | 2 | 3 | 4 | 5 | null
   notes: string | null
   ai_suggestions: AiSuggestion[]
+  /** Sabah ritüeli bitti (055); doluysa o gün tekrar açılmaz. */
+  ritual_completed_at: string | null
   created_at: string
   updated_at: string
 }

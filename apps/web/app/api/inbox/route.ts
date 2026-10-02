@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
+import type { ExternalTaskInput, TaskSource } from '@lifeos/shared/types'
+import { importExternalTasks } from '@lifeos/shared/supabase'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // Node runtime — node:crypto ve service-role client gerektirir.
@@ -11,6 +13,9 @@ const MAX_DESC = 5000
 const MAX_TAGS = 20
 const MAX_TAG_LEN = 50
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const MAX_EXTERNAL_ID = 200
+const MAX_URL = 2000
+const SOURCES: readonly TaskSource[] = ['api', 'jira', 'slack', 'notion', 'todoist', 'ticktick', 'microsoft_todo', 'apple_reminders']
 
 interface TaskPayload {
   user_id: string
@@ -68,6 +73,11 @@ function jsonError(message: string, status: number) {
  *        (tek görev için { "title": "..." } veya doğrudan dizi de kabul edilir)
  *
  * Görevler kullanıcının backlog'una 'inbox' etiketiyle düşer.
+ *
+ * Tekrarsız gönderim: görevde "external_id" varsa (user, source, external_id) ile
+ * upsert edilir; aynı görev ikinci kez gelirse yeni kayıt açılmaz, başlık/açıklama/
+ * tarih güncellenir (LifeOS'ta tamamlanmışsa dokunulmaz). "source" gövdenin
+ * kökünde verilir, varsayılan "api". Yanıtta created/updated/skipped sayıları var.
  */
 export async function POST(req: Request) {
   const token = bearerToken(req)
@@ -109,8 +119,17 @@ export async function POST(req: Request) {
     return jsonError(`Tek istekte en fazla ${MAX_BATCH} görev gönderilebilir`, 400)
   }
 
+  const rawSource = body && typeof body === 'object' && !Array.isArray(body)
+    ? (body as Record<string, unknown>)['source']
+    : undefined
+  if (rawSource != null && (typeof rawSource !== 'string' || !SOURCES.includes(rawSource as TaskSource))) {
+    return jsonError(`'source' şunlardan biri olmalı: ${SOURCES.join(', ')}`, 400)
+  }
+  const source = (rawSource as TaskSource | undefined) ?? 'api'
+
   // 3) Doğrula + payload üret
   const payloads: TaskPayload[] = []
+  const external: ExternalTaskInput[] = []
   for (let i = 0; i < incoming.length; i++) {
     const raw = incoming[i]
     if (!raw || typeof raw !== 'object') {
@@ -165,10 +184,44 @@ export async function POST(req: Request) {
       if (s != null) payload[field] = s
     }
 
+    const externalId = t['external_id']
+    if (externalId != null) {
+      if (typeof externalId !== 'string' && typeof externalId !== 'number') {
+        return jsonError(`Görev #${i + 1}: 'external_id' metin olmalı`, 400)
+      }
+      const id = String(externalId).trim()
+      if (!id || id.length > MAX_EXTERNAL_ID) {
+        return jsonError(`Görev #${i + 1}: 'external_id' 1-${MAX_EXTERNAL_ID} karakter olmalı`, 400)
+      }
+      const url = typeof t['external_url'] === 'string' ? t['external_url'].trim() : ''
+      if (url && (!/^https?:\/\//i.test(url) || url.length > MAX_URL)) {
+        return jsonError(`Görev #${i + 1}: 'external_url' http(s) adresi olmalı`, 400)
+      }
+      const { user_id: _uid, ...input } = payload
+      external.push({ ...input, external_id: id, ...(url ? { external_url: url } : {}) })
+      continue
+    }
+
     payloads.push(payload)
   }
 
-  // 4) Görevleri toplu ekle
+  // 4a) Kimlikli görevler: upsert
+  let upserted = { created: 0, updated: 0, skipped: 0 }
+  if (external.length > 0) {
+    try {
+      upserted = await importExternalTasks(admin, keyRow.user_id as string, source, external)
+    } catch (err) {
+      console.error('inbox: upsert hatası', err)
+      return jsonError('Görevler eklenemedi', 500)
+    }
+  }
+
+  if (payloads.length === 0) {
+    await admin.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', keyRow.id)
+    return NextResponse.json({ ok: true, ...upserted, tasks: [] })
+  }
+
+  // 4b) Kimliksiz görevler: her gönderim yeni kayıt
   const { data: inserted, error: insErr } = await admin
     .from('tasks')
     .insert(payloads)
@@ -190,5 +243,11 @@ export async function POST(req: Request) {
   // 6) Anahtar son kullanım zamanı
   await admin.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', keyRow.id)
 
-  return NextResponse.json({ ok: true, created: inserted.length, tasks: inserted })
+  return NextResponse.json({
+    ok: true,
+    created: inserted.length + upserted.created,
+    updated: upserted.updated,
+    skipped: upserted.skipped,
+    tasks: inserted,
+  })
 }

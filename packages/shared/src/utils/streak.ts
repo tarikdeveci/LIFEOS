@@ -110,21 +110,24 @@ export function computeWorkoutStreak(dates: string[], today: string = todayDate(
  * yalanlamasın. `null` dönerse söylenecek bir şey yok — 1 haftalık "seri"
  * seri değildir, onu kutlamak sayıyı değersizleştirir.
  */
-export function streakMessage(streak: WorkoutStreak): { title: string; body: string } | null {
+export function streakMessage(streak: WorkoutStreak, lang: 'tr' | 'en' = 'tr'): { title: string; body: string } | null {
   if (streak.weeks < 2) return null
+  const en = lang === 'en'
 
   if (streak.atRisk) {
     return {
-      title: `${streak.weeks} haftalık serin tehlikede`,
-      body: 'Bu hafta henüz antrenman yok. Kısa bir seans bile seriyi ayakta tutar.',
+      title: en ? `Your ${streak.weeks}-week streak is at risk` : `${streak.weeks} haftalık serin tehlikede`,
+      body: en
+        ? 'No workout yet this week. Even a short session keeps the streak alive.'
+        : 'Bu hafta henüz antrenman yok. Kısa bir seans bile seriyi ayakta tutar.',
     }
   }
 
+  const best = streak.weeks >= streak.bestWeeks
   return {
-    title: `${streak.weeks} haftadır aralıksız`,
-    body:
-      streak.weeks >= streak.bestWeeks
-        ? 'Bu senin en uzun serin. Bozma.'
-        : `En uzun serin ${streak.bestWeeks} hafta. Serini bozma.`,
+    title: en ? `${streak.weeks} weeks in a row` : `${streak.weeks} haftadır aralıksız`,
+    body: en
+      ? (best ? 'This is your longest streak. Keep it going.' : `Your longest streak is ${streak.bestWeeks} weeks. Keep it going.`)
+      : (best ? 'Bu senin en uzun serin. Bozma.' : `En uzun serin ${streak.bestWeeks} hafta. Serini bozma.`),
   }
 }

@@ -19,6 +19,7 @@ import { useSubscription } from '@/lib/hooks/useSubscription'
 import Link from 'next/link'
 import ApiKeysSection from './ApiKeysSection'
 import { CalendarFeedSection } from './CalendarFeedSection'
+import { IntegrationsSection } from './IntegrationsSection'
 import { DeleteAccountSection } from './DeleteAccountSection'
 import { NotificationSettings } from './NotificationSettings'
 
@@ -960,6 +961,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
       {/* API anahtarları */}
       {activeSection === 'api' && (
         <div className="space-y-4">
+          <IntegrationsSection />
           <CalendarFeedSection />
           <ApiKeysSection />
         </div>

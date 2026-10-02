@@ -72,6 +72,81 @@ export type Database = {
         }
         Relationships: []
       }
+      calendar_busy: {
+        Row: {
+          ends_at: string
+          id: number
+          starts_at: string
+          user_id: string
+        }
+        Insert: {
+          ends_at: string
+          id?: number
+          starts_at: string
+          user_id: string
+        }
+        Update: {
+          ends_at?: string
+          id?: number
+          starts_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      calendar_feeds: {
+        Row: {
+          created_at: string
+          last_fetched_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_fetched_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_fetched_at?: string | null
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      calendar_sync_outbox: {
+        Row: {
+          attempts: number
+          block_id: string | null
+          created_at: string
+          google_event_id: string | null
+          id: number
+          last_error: string | null
+          op: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          block_id?: string | null
+          created_at?: string
+          google_event_id?: string | null
+          id?: number
+          last_error?: string | null
+          op: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          block_id?: string | null
+          created_at?: string
+          google_event_id?: string | null
+          id?: number
+          last_error?: string | null
+          op?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_plans: {
         Row: {
           ai_suggestions: Json | null
@@ -80,6 +155,7 @@ export type Database = {
           energy_level: number | null
           id: string
           notes: string | null
+          ritual_completed_at: string | null
           updated_at: string | null
           user_id: string
         }
@@ -90,6 +166,7 @@ export type Database = {
           energy_level?: number | null
           id?: string
           notes?: string | null
+          ritual_completed_at?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -100,6 +177,7 @@ export type Database = {
           energy_level?: number | null
           id?: string
           notes?: string | null
+          ritual_completed_at?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -138,6 +216,7 @@ export type Database = {
           created_at: string | null
           equipment: string[] | null
           id: string
+          image_url: string | null
           instructions: string | null
           is_bodyweight: boolean | null
           met_value: number | null
@@ -152,6 +231,7 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
+          image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null
@@ -166,6 +246,7 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
+          image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null
@@ -181,6 +262,54 @@ export type Database = {
             columns: ["muscle_group_id"]
             isOneToOne: false
             referencedRelation: "muscle_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_sessions: {
+        Row: {
+          block_id: string | null
+          created_at: string
+          ended_at: string
+          id: string
+          minutes: number
+          started_at: string
+          task_id: string | null
+          user_id: string
+        }
+        Insert: {
+          block_id?: string | null
+          created_at?: string
+          ended_at: string
+          id?: string
+          minutes: number
+          started_at: string
+          task_id?: string | null
+          user_id: string
+        }
+        Update: {
+          block_id?: string | null
+          created_at?: string
+          ended_at?: string
+          id?: string
+          minutes?: number
+          started_at?: string
+          task_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_sessions_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "time_blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_sessions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -392,6 +521,71 @@ export type Database = {
         }
         Relationships: []
       }
+      goals: {
+        Row: {
+          count_mode: string | null
+          created_at: string
+          horizon: string
+          icon: string | null
+          id: string
+          parent_id: string | null
+          period_start: string
+          review_note: string | null
+          reviewed_at: string | null
+          status: string
+          tag_filter: string[]
+          target: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          count_mode?: string | null
+          created_at?: string
+          horizon: string
+          icon?: string | null
+          id?: string
+          parent_id?: string | null
+          period_start: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tag_filter?: string[]
+          target?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          count_mode?: string | null
+          created_at?: string
+          horizon?: string
+          icon?: string | null
+          id?: string
+          parent_id?: string | null
+          period_start?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tag_filter?: string[]
+          target?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       health_daily: {
         Row: {
           active_energy_kcal: number | null
@@ -477,6 +671,51 @@ export type Database = {
           last_synced_at?: string | null
           sleep_goal_minutes?: number
           step_goal?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      integrations: {
+        Row: {
+          account_label: string
+          created_at: string
+          id: string
+          last_error: string | null
+          last_synced_at: string | null
+          provider: string
+          secret_id: string | null
+          settings: Json
+          status: string
+          sync_cursor: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_label?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          provider: string
+          secret_id?: string | null
+          settings?: Json
+          status?: string
+          sync_cursor?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_label?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          provider?: string
+          secret_id?: string | null
+          settings?: Json
+          status?: string
+          sync_cursor?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -595,6 +834,8 @@ export type Database = {
           timezone: string
           updated_at: string | null
           user_id: string
+          weight_enabled: boolean | null
+          weight_hour: number | null
         }
         Insert: {
           block_reminder_enabled?: boolean | null
@@ -609,6 +850,8 @@ export type Database = {
           timezone?: string
           updated_at?: string | null
           user_id: string
+          weight_enabled?: boolean | null
+          weight_hour?: number | null
         }
         Update: {
           block_reminder_enabled?: boolean | null
@@ -623,6 +866,8 @@ export type Database = {
           timezone?: string
           updated_at?: string | null
           user_id?: string
+          weight_enabled?: boolean | null
+          weight_hour?: number | null
         }
         Relationships: []
       }
@@ -739,6 +984,33 @@ export type Database = {
           user_id?: string
           workout_day_calories?: number | null
           workout_day_protein_g?: number | null
+        }
+        Relationships: []
+      }
+      oauth_states: {
+        Row: {
+          code_verifier: string
+          created_at: string
+          provider: string
+          redirect_to: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          code_verifier: string
+          created_at?: string
+          provider: string
+          redirect_to: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          code_verifier?: string
+          created_at?: string
+          provider?: string
+          redirect_to?: string
+          state?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -929,6 +1201,142 @@ export type Database = {
         }
         Relationships: []
       }
+      routine_completions: {
+        Row: {
+          completed_on: string
+          count: number
+          created_at: string
+          routine_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_on: string
+          count?: number
+          created_at?: string
+          routine_id: string
+          user_id: string
+        }
+        Update: {
+          completed_on?: string
+          count?: number
+          created_at?: string
+          routine_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routine_completions_routine_id_fkey"
+            columns: ["routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      routine_exceptions: {
+        Row: {
+          created_at: string
+          occurrence_date: string
+          routine_id: string
+        }
+        Insert: {
+          created_at?: string
+          occurrence_date: string
+          routine_id: string
+        }
+        Update: {
+          created_at?: string
+          occurrence_date?: string
+          routine_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routine_exceptions_routine_id_fkey"
+            columns: ["routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      routines: {
+        Row: {
+          block_type: Database["public"]["Enums"]["block_type"]
+          color: string | null
+          created_at: string
+          days_of_week: number[]
+          effort_score: number
+          end_time: string | null
+          ends_on: string | null
+          estimated_minutes: number | null
+          every_n_weeks: number
+          friction_score: number
+          id: string
+          is_active: boolean
+          kind: string
+          risk_score: number
+          start_time: string | null
+          starts_on: string
+          times_per_day: number | null
+          times_per_week: number | null
+          title: string
+          updated_at: string
+          urgency_score: number
+          user_id: string
+          value_score: number
+        }
+        Insert: {
+          block_type?: Database["public"]["Enums"]["block_type"]
+          color?: string | null
+          created_at?: string
+          days_of_week?: number[]
+          effort_score?: number
+          end_time?: string | null
+          ends_on?: string | null
+          estimated_minutes?: number | null
+          every_n_weeks?: number
+          friction_score?: number
+          id?: string
+          is_active?: boolean
+          kind: string
+          risk_score?: number
+          start_time?: string | null
+          starts_on?: string
+          times_per_day?: number | null
+          times_per_week?: number | null
+          title: string
+          updated_at?: string
+          urgency_score?: number
+          user_id: string
+          value_score?: number
+        }
+        Update: {
+          block_type?: Database["public"]["Enums"]["block_type"]
+          color?: string | null
+          created_at?: string
+          days_of_week?: number[]
+          effort_score?: number
+          end_time?: string | null
+          ends_on?: string | null
+          estimated_minutes?: number | null
+          every_n_weeks?: number
+          friction_score?: number
+          id?: string
+          is_active?: boolean
+          kind?: string
+          risk_score?: number
+          start_time?: string | null
+          starts_on?: string
+          times_per_day?: number | null
+          times_per_week?: number | null
+          title?: string
+          updated_at?: string
+          urgency_score?: number
+          user_id?: string
+          value_score?: number
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean | null
@@ -942,10 +1350,13 @@ export type Database = {
           iyzico_subscription_reference_code: string | null
           iyzico_token: string | null
           paytr_merchant_oid: string | null
+          period_type: string | null
           plan: string
           price_usd: number | null
           status: Database["public"]["Enums"]["subscription_status"]
+          trial_converted_at: string | null
           trial_ends_at: string | null
+          trial_started_at: string | null
           updated_at: string | null
           user_id: string
         }
@@ -961,10 +1372,13 @@ export type Database = {
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
           paytr_merchant_oid?: string | null
+          period_type?: string | null
           plan?: string
           price_usd?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]
+          trial_converted_at?: string | null
           trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -980,10 +1394,13 @@ export type Database = {
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
           paytr_merchant_oid?: string | null
+          period_type?: string | null
           plan?: string
           price_usd?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]
+          trial_converted_at?: string | null
           trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -1029,22 +1446,32 @@ export type Database = {
       }
       tasks: {
         Row: {
+          carry_count: number
           completed_at: string | null
           created_at: string | null
           description: string | null
           due_date: string | null
           effort_score: number | null
           estimated_minutes: number | null
+          external_id: string | null
+          external_updated_at: string | null
+          external_url: string | null
           friction_score: number | null
+          goal_id: string | null
           id: string
+          integration_id: string | null
           is_recurring: boolean | null
           is_time_blocked: boolean | null
+          occurrence_date: string | null
           parent_task_id: string | null
           priority_score: number | null
           recurrence_rule: string | null
           risk_score: number | null
+          routine_id: string | null
+          routine_modified: boolean
           scheduled_date: string | null
           sort_order: number | null
+          source: string | null
           status: Database["public"]["Enums"]["task_status"] | null
           tags: string[] | null
           title: string
@@ -1054,22 +1481,32 @@ export type Database = {
           value_score: number | null
         }
         Insert: {
+          carry_count?: number
           completed_at?: string | null
           created_at?: string | null
           description?: string | null
           due_date?: string | null
           effort_score?: number | null
           estimated_minutes?: number | null
+          external_id?: string | null
+          external_updated_at?: string | null
+          external_url?: string | null
           friction_score?: number | null
+          goal_id?: string | null
           id?: string
+          integration_id?: string | null
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
+          occurrence_date?: string | null
           parent_task_id?: string | null
           priority_score?: number | null
           recurrence_rule?: string | null
           risk_score?: number | null
+          routine_id?: string | null
+          routine_modified?: boolean
           scheduled_date?: string | null
           sort_order?: number | null
+          source?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           tags?: string[] | null
           title: string
@@ -1079,22 +1516,32 @@ export type Database = {
           value_score?: number | null
         }
         Update: {
+          carry_count?: number
           completed_at?: string | null
           created_at?: string | null
           description?: string | null
           due_date?: string | null
           effort_score?: number | null
           estimated_minutes?: number | null
+          external_id?: string | null
+          external_updated_at?: string | null
+          external_url?: string | null
           friction_score?: number | null
+          goal_id?: string | null
           id?: string
+          integration_id?: string | null
           is_recurring?: boolean | null
           is_time_blocked?: boolean | null
+          occurrence_date?: string | null
           parent_task_id?: string | null
           priority_score?: number | null
           recurrence_rule?: string | null
           risk_score?: number | null
+          routine_id?: string | null
+          routine_modified?: boolean
           scheduled_date?: string | null
           sort_order?: number | null
+          source?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           tags?: string[] | null
           title?: string
@@ -1105,10 +1552,31 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integrations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tasks_parent_task_id_fkey"
             columns: ["parent_task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_routine_id_fkey"
+            columns: ["routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
             referencedColumns: ["id"]
           },
         ]
@@ -1121,13 +1589,17 @@ export type Database = {
           created_at: string | null
           date: string
           end_time: string
+          google_event_id: string | null
           id: string
           is_recurring: boolean | null
           label: string | null
           notification_sent_at: string | null
+          occurrence_date: string | null
           recurrence_days: number[] | null
           recurrence_end: string | null
           recurrence_type: string | null
+          routine_id: string | null
+          routine_modified: boolean
           start_time: string
           task_id: string | null
           updated_at: string | null
@@ -1140,13 +1612,17 @@ export type Database = {
           created_at?: string | null
           date: string
           end_time: string
+          google_event_id?: string | null
           id?: string
           is_recurring?: boolean | null
           label?: string | null
           notification_sent_at?: string | null
+          occurrence_date?: string | null
           recurrence_days?: number[] | null
           recurrence_end?: string | null
           recurrence_type?: string | null
+          routine_id?: string | null
+          routine_modified?: boolean
           start_time: string
           task_id?: string | null
           updated_at?: string | null
@@ -1159,19 +1635,30 @@ export type Database = {
           created_at?: string | null
           date?: string
           end_time?: string
+          google_event_id?: string | null
           id?: string
           is_recurring?: boolean | null
           label?: string | null
           notification_sent_at?: string | null
+          occurrence_date?: string | null
           recurrence_days?: number[] | null
           recurrence_end?: string | null
           recurrence_type?: string | null
+          routine_id?: string | null
+          routine_modified?: boolean
           start_time?: string
           task_id?: string | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "time_blocks_routine_id_fkey"
+            columns: ["routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "time_blocks_task_id_fkey"
             columns: ["task_id"]
@@ -1386,11 +1873,42 @@ export type Database = {
         Args: { p_food_id: string }
         Returns: undefined
       }
+      delete_future_routine_occurrences: {
+        Args: { p_from: string; p_routine: string }
+        Returns: number
+      }
+      delete_routine: { Args: { p_routine: string }; Returns: undefined }
+      enqueue_initial_calendar_sync: {
+        Args: { p_user: string }
+        Returns: number
+      }
+      integration_get_secret: {
+        Args: { p_integration: string }
+        Returns: string
+      }
+      integration_set_secret: {
+        Args: { p_integration: string; p_secret: string }
+        Returns: string
+      }
       is_pro_user: { Args: { check_user_id: string }; Returns: boolean }
       is_valid_timezone: { Args: { tz: string }; Returns: boolean }
+      materialize_my_routines: { Args: never; Returns: number }
+      materialize_routines: { Args: { p_user?: string }; Returns: number }
       record_food_gap: {
         Args: { p_phrase: string; p_reason: string; p_user: string }
         Returns: undefined
+      }
+      regenerate_routine: {
+        Args: { p_from?: string; p_routine: string }
+        Returns: number
+      }
+      roll_over_tasks: { Args: never; Returns: number }
+      routine_occurrence_days: {
+        Args: { p_user: string }
+        Returns: {
+          occurrence_date: string
+          routine_id: string
+        }[]
       }
       save_estimated_food: {
         Args: {
@@ -1456,8 +1974,13 @@ export type Database = {
           source: string
         }[]
       }
+      set_block_google_event: {
+        Args: { p_block: string; p_event: string }
+        Returns: undefined
+      }
       set_food_corpus_embeddings: { Args: { p_rows: Json }; Returns: number }
       set_food_item_embeddings: { Args: { p_rows: Json }; Returns: number }
+      user_timezone: { Args: { p_user: string }; Returns: string }
     }
     Enums: {
       block_type: "task" | "routine" | "break" | "focus" | "meal" | "workout"

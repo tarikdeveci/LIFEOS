@@ -52,7 +52,25 @@ export interface Task extends WsjfScores {
   is_time_blocked: boolean
 
   is_recurring: boolean
-  recurrence_rule: string | null // RRULE format
+  recurrence_rule: string | null // RRULE format, kullanılmıyor (054: routines)
+
+  /** Rutin örneği ise şablonu; NULL = sıradan görev. */
+  routine_id: string | null
+  /** Rutinin hangi günü için üretildi; tarih taşınsa da değişmez. */
+  occurrence_date: string | null
+  /** "Sadece bu" ile elle düzenlendi; seri değişince korunur. */
+  routine_modified: boolean
+  /** Bağlı hedef (059); bağlanınca value_score en az 4. */
+  goal_id: string | null
+  /** Gün sonu devrinde kaç kez yarına taşındı. */
+  carry_count: number
+
+  /** Dış kaynak (056): 'api', 'todoist', 'ticktick', 'apple_reminders', 'jira'... NULL = LifeOS'ta oluşturuldu. */
+  source: string | null
+  /** Kaynaktaki kimlik; (user_id, source, external_id) tekil. */
+  external_id: string | null
+  external_url: string | null
+  external_updated_at: string | null
 
   tags: string[]
   sort_order: number
@@ -89,10 +107,16 @@ export interface CreateTaskInput {
   friction_score?: number
 }
 
-export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title'> & {
+export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title' | 'scheduled_date'> & {
   title: string
+  /** null: günden çıkar (backlog'a atarken). */
+  scheduled_date: string | null
+  /** "Hâlâ önemli" onayında sıfırlanır. */
+  carry_count: number
   status: TaskStatus
   is_time_blocked: boolean
   sort_order: number
   completed_at: string | null
+  /** 059: hedef bağı; value_score valueScoreForGoal ile birlikte gönderilir. */
+  goal_id: string | null
 }>

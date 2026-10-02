@@ -125,8 +125,17 @@ export async function getTaskById(supabase: Supabase, taskId: string): Promise<T
   return data as unknown as Task
 }
 
-function toTaskInsert(userId: string, input: CreateTaskInput): TaskInsert {
+/** Dış kaynaktan gelen görevin kimliği (056); toplu eklemede aynı satırda yazılır. */
+interface ExternalFields { source: string; external_id: string | null; external_url?: string; external_updated_at?: string }
+
+function toTaskInsert(userId: string, input: CreateTaskInput, external?: ExternalFields): TaskInsert {
   return {
+    ...(external && {
+      source: external.source,
+      external_id: external.external_id,
+      external_url: external.external_url ?? null,
+      external_updated_at: external.external_updated_at ?? null,
+    }),
     user_id: userId,
     title: input.title,
     description: input.description ?? null,
@@ -175,12 +184,14 @@ export async function createTasks(
   supabase: Supabase,
   userId: string,
   inputs: CreateTaskInput[],
+  /** Verilirse her girdinin dış kimliği (aynı sırayla). */
+  external?: ExternalFields[],
 ): Promise<Task[]> {
   if (inputs.length === 0) return []
 
   const { data, error: taskError } = await supabase
     .from('tasks')
-    .insert(inputs.map((input) => toTaskInsert(userId, input)))
+    .insert(inputs.map((input, i) => toTaskInsert(userId, input, external?.[i])))
     .select()
 
   if (taskError) throw taskError

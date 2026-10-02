@@ -197,10 +197,13 @@ export async function completeWorkout(
   durationMinutes: number,
   totalCaloriesBurned?: number,
 ): Promise<Workout> {
-  await supabase
+  // Setler yazılamadıysa antrenman da bitmiş sayılmasın: yoksa kas haritası
+  // bitmiş bir seansın setlerini hiç görmezdi.
+  const { error } = await supabase
     .from('workout_sets')
     .update({ completed: true })
     .eq('workout_id', workoutId)
+  if (error) throw error
 
   return updateWorkout(supabase, workoutId, {
     status: 'completed' as WorkoutStatus,

@@ -15,6 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "typecheck:functions": "deno check supabase/functions/**/*.ts",
+    "test": "node --test --experimental-strip-types --disable-warning=ExperimentalWarning --import ./tests/support/register.mjs \"tests/**/*.test.ts\"",
     "clean": "turbo run clean && rimraf node_modules",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",

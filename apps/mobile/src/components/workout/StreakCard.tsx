@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { streakMessage, type WorkoutStreak } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '../../theme/tokens'
 
 /**
@@ -18,7 +19,8 @@ import { palette, fontSize, fontWeight, spacing } from '../../theme/tokens'
  */
 export function StreakCard({ streak }: { streak: WorkoutStreak }) {
   const { colors } = useTheme()
-  const message = streakMessage(streak)
+  const { t, lang } = useLang()
+  const message = streakMessage(streak, lang)
   if (!message) return null
 
   const tint = streak.atRisk ? palette.warning : palette.workout
@@ -52,7 +54,7 @@ export function StreakCard({ streak }: { streak: WorkoutStreak }) {
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.extrabold, color: tint, fontVariant: ['tabular-nums'] }}>
             {streak.weeks}
           </Text>
-          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>hafta</Text>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.wk_weeks_label}</Text>
         </View>
       </View>
     </GlassCard>

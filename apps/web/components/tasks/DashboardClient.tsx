@@ -14,7 +14,6 @@ import {
   useNutritionStore,
   useWorkoutStore,
   BLOCK_TYPE_COLORS,
-  BLOCK_TYPE_LABELS,
   WORKOUT_STATUS_LABELS,
   APP_DEFAULTS,
 } from '@lifeos/shared'
@@ -28,6 +27,8 @@ import { supabase } from '@/lib/supabase/client'
 import { TaskCard } from '@/components/tasks/TaskCard'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { QuickTaskInput } from '@/components/tasks/QuickTaskInput'
+import { BrainDumpModal } from '@/components/tasks/BrainDumpModal'
+import { Button } from '@/components/ui/Button'
 import { WeeklyStatsChart } from '@/components/WeeklyStatsChart'
 import { CalendarDays, CheckSquare, BarChart2, Dumbbell, Salad, TrendingUp } from 'lucide-react'
 import { useLang } from '@/lib/contexts/LangContext'
@@ -48,11 +49,12 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
   const days = WEEKDAY_LABELS[lang]
 
   const today = todayDate()
-  const todayLabel = relativeDateLabel(today)
+  const todayLabel = relativeDateLabel(today, lang)
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [weekStats, setWeekStats] = useState<WeeklyDayStat[]>([])
+  const [brainOpen, setBrainOpen] = useState(false)
 
   const { tasks, loading, fetchTasks, addTask, updateTask, deleteTask, setStatus } = useTaskStore()
   const { timeBlocks, dailyPlan, fetchDayData } = usePlanningStore()
@@ -121,9 +123,9 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
     caloriePercent > 80  ? '#34A853' : '#4A90D9'
 
   const handleCreate = useCallback(
-    async (input: CreateTaskInput) => {
-      await addTask(supabase, userId, { ...input, scheduled_date: today })
-    },
+    async (input: CreateTaskInput) =>
+      // Metinde gün verilmediyse panodan eklenen görev bugüne düşer.
+      await addTask(supabase, userId, { ...input, scheduled_date: input.scheduled_date ?? today }),
     [addTask, today, userId],
   )
 
@@ -150,8 +152,12 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
             {dailyPlan?.energy_level ? ` · ${ENERGY_LABELS[dailyPlan.energy_level]}` : ''}
           </p>
         </div>
-        <QuickTaskInput onCreateTask={handleCreate} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setBrainOpen(true)} title={t.brain_title}>🧠 {t.brain_button}</Button>
+          <QuickTaskInput onCreateTask={handleCreate} />
+        </div>
       </div>
+      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreate} />
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-12 gap-6">
@@ -178,7 +184,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
             <div className="space-y-2">
               {todayBlocks.map((block) => {
                 const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-                const label = block.label ?? BLOCK_TYPE_LABELS[block.block_type]
+                const label = block.label ?? t[`review_type_${block.block_type}`]
                 return (
                   <div
                     key={block.id}

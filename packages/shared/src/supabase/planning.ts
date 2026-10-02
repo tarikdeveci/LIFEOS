@@ -181,7 +181,7 @@ export async function getDailyPlan(
 export async function updateDailyPlan(
   supabase: Supabase,
   planId: string,
-  updates: { energy_level?: number; notes?: string; ai_suggestions?: AiSuggestion[] },
+  updates: { energy_level?: number; notes?: string; ai_suggestions?: AiSuggestion[]; ritual_completed_at?: string | null },
 ): Promise<DailyPlan> {
   const { data, error } = await supabase
     .from('daily_plans')
@@ -286,7 +286,8 @@ export async function getTaskCountsForDateRange(
   return Object.entries(map).map(([date, counts]) => ({ date, ...counts }))
 }
 
-// Dünden kalan tamamlanmamış görevler
+// Dünden kalan tamamlanmamış görevler. Rutin örnekleri devretmez: kaçırılan
+// rutin günü sessizce geride kalır (054, roll_over_tasks ile aynı kural).
 export async function getCarryoverTasks(supabase: Supabase, userId: string): Promise<Task[]> {
   const today = todayDate()
 
@@ -296,8 +297,26 @@ export async function getCarryoverTasks(supabase: Supabase, userId: string): Pro
     .eq('user_id', userId)
     .lt('scheduled_date', today)
     .not('status', 'in', '(done,deferred)')
+    .is('routine_id', null)
     .order('scheduled_date')
 
   if (error) throw error
   return data as unknown as Task[]
+}
+
+/** Google dolu/boş penceresinden o günle kesişen kayıtlar (057). Bağlantı yoksa boş. */
+export async function getCalendarBusy(
+  supabase: Supabase,
+  userId: string,
+  date: string,
+): Promise<{ starts_at: string; ends_at: string }[]> {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+  const { data, error } = await supabase
+    .from('calendar_busy')
+    .select('starts_at, ends_at')
+    .eq('user_id', userId)
+    .lt('starts_at', new Date(y, m - 1, d + 1).toISOString())
+    .gt('ends_at', new Date(y, m - 1, d).toISOString())
+  if (error) throw error
+  return data as unknown as { starts_at: string; ends_at: string }[]
 }

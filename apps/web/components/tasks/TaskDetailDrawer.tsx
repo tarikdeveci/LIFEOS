@@ -2,13 +2,15 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import type { Task, TaskStatus, WsjfScores, UpdateTaskInput, ChecklistItem } from '@lifeos/shared'
-import { TASK_STATUS_LABELS, describeAiError } from '@lifeos/shared'
+import { describeAiError, valueScoreForGoal } from '@lifeos/shared'
 import { Sheet } from '@/components/ui/Sheet'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { TaskStatusSelect } from './TaskStatusSelect'
 import { WsjfSliders } from './WsjfSliders'
+import { TaskGoalSelect } from './TaskGoalSelect'
 import { supabase } from '@/lib/supabase/client'
+import { useLang } from '@/lib/contexts/LangContext'
 
 interface TaskDetailDrawerProps {
   task: Task | null
@@ -29,6 +31,8 @@ export function TaskDetailDrawer({
   onStatusChange,
   onUpdateChecklist,
 }: TaskDetailDrawerProps) {
+  const { t, lang } = useLang()
+  const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
   const [editingTitle, setEditingTitle] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -91,11 +95,11 @@ export function TaskDetailDrawer({
 
   const handleDelete = useCallback(async () => {
     if (!task) return
-    if (window.confirm(`"${task.title}" görevini silmek istediğine emin misin?`)) {
+    if (window.confirm(t.tdetail_delete_confirm.replace('{title}', task.title))) {
       await onDelete(task.id)
       onClose()
     }
-  }, [task, onDelete, onClose])
+  }, [task, onDelete, onClose, t])
 
   const handleAiPriority = useCallback(async () => {
     if (!task) return
@@ -107,7 +111,7 @@ export function TaskDetailDrawer({
         const { data: refreshData } = await supabase.auth.refreshSession()
         session = refreshData.session
       }
-      if (!session) throw new Error('Oturum bulunamadı. Lütfen tekrar giriş yapın.')
+      if (!session) throw new Error(t.tdetail_no_session)
       const { data, error } = await supabase.functions.invoke('ai-suggest', {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: { type: 'task_priority', task_id: task.id },
@@ -145,12 +149,12 @@ export function TaskDetailDrawer({
     } finally {
       setAiLoading(false)
     }
-  }, [task, onUpdate])
+  }, [task, onUpdate, t])
 
   if (!task) return null
 
   return (
-    <Sheet open={open} onClose={onClose} title="Görev Detayı">
+    <Sheet open={open} onClose={onClose} title={t.tdetail_title}>
       <div className="space-y-6">
         {/* Başlık */}
         <div>
@@ -167,7 +171,7 @@ export function TaskDetailDrawer({
                 }}
               />
               <Button size="sm" onClick={() => void handleSaveTitle()} loading={saving}>
-                Kaydet
+                {t.tdetail_save}
               </Button>
             </div>
           ) : (
@@ -182,7 +186,7 @@ export function TaskDetailDrawer({
 
         {/* Status */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted">Durum:</span>
+          <span className="text-sm text-muted">{t.tdetail_status}</span>
           <TaskStatusSelect
             value={task.status}
             onChange={(status) => void onStatusChange(task.id, status)}
@@ -192,25 +196,25 @@ export function TaskDetailDrawer({
         {/* Açıklama */}
         <div>
           <Textarea
-            label="Açıklama"
+            label={t.qtask_desc_label}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => void handleSaveDescription()}
             rows={3}
-            placeholder="Görev hakkında notlar..."
+            placeholder={t.tdetail_desc_placeholder}
           />
         </div>
 
         {/* WSJF Sliders */}
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-primary">Onceliklendirme (WSJF)</h3>
+            <h3 className="text-sm font-semibold text-primary">{t.tdetail_wsjf}</h3>
             <button
               onClick={() => void handleAiPriority()}
               disabled={aiLoading}
               className="flex items-center gap-1.5 rounded-lg bg-purple-50 px-2.5 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-40"
             >
-              {aiLoading ? 'Yukleniyor' : 'AI Oner'}
+              {aiLoading ? t.tdetail_ai_loading : t.tdetail_ai_suggest}
             </button>
           </div>
           {aiReasoning && (
@@ -233,19 +237,19 @@ export function TaskDetailDrawer({
         {/* Planlama */}
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Son Tarih"
+            label={t.qtask_due_label}
             type="date"
             value={task.due_date ?? ''}
             onChange={(e) => void onUpdate(task.id, { ...(e.target.value && { due_date: e.target.value }) })}
           />
           <Input
-            label="Planlanan Gün"
+            label={t.qtask_scheduled_label}
             type="date"
             value={task.scheduled_date ?? ''}
             onChange={(e) => void onUpdate(task.id, { ...(e.target.value && { scheduled_date: e.target.value }) })}
           />
           <Input
-            label="Tahmini Süre (dk)"
+            label={t.tdetail_minutes}
             type="number"
             value={task.estimated_minutes ?? ''}
             onChange={(e) =>
@@ -256,11 +260,18 @@ export function TaskDetailDrawer({
             min={0}
             step={5}
           />
+          <TaskGoalSelect
+            userId={task.user_id}
+            goalId={task.goal_id ?? null}
+            onChange={(goalId) =>
+              void onUpdate(task.id, { goal_id: goalId, value_score: valueScoreForGoal(task.value_score, goalId) })
+            }
+          />
         </div>
 
         {/* Etiketler */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-primary">Etiketler</h3>
+          <h3 className="mb-2 text-sm font-semibold text-primary">{t.tdetail_tags}</h3>
           <div className="flex flex-wrap gap-2">
             {task.tags.map((tag) => (
               <span
@@ -286,7 +297,7 @@ export function TaskDetailDrawer({
               <input
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                placeholder="Etiket ekle..."
+                placeholder={t.tdetail_tag_add}
                 className="w-24 rounded-full bg-gray-50 px-2.5 py-1 text-xs outline-none focus:bg-gray-100"
               />
             </form>
@@ -296,7 +307,7 @@ export function TaskDetailDrawer({
         {/* Checklist — task_details'ten */}
         {task.task_details && (
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-primary">Kontrol Listesi</h3>
+            <h3 className="mb-2 text-sm font-semibold text-primary">{t.tdetail_checklist}</h3>
             <div className="space-y-1">
               {(task.task_details.checklist ?? []).map((item) => (
                 <div key={item.id} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
@@ -324,7 +335,7 @@ export function TaskDetailDrawer({
                       void onUpdateChecklist(task.id, updated)
                     }}
                     className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
-                    title="Sil"
+                    title={t.tdetail_delete_item}
                   >
                     ×
                   </button>
@@ -349,7 +360,7 @@ export function TaskDetailDrawer({
               <input
                 value={checklistText}
                 onChange={(e) => setChecklistText(e.target.value)}
-                placeholder="Yeni madde ekle..."
+                placeholder={t.tdetail_item_add}
                 className="w-full rounded-lg bg-gray-50 px-3 py-2 text-sm outline-none focus:bg-gray-100"
               />
             </form>
@@ -358,17 +369,17 @@ export function TaskDetailDrawer({
 
         {/* Meta bilgi */}
         <div className="border-t border-gray-100 pt-4 text-xs text-muted">
-          <p>Oluşturulma: {new Date(task.created_at).toLocaleDateString('tr-TR')}</p>
-          <p>Güncelleme: {new Date(task.updated_at).toLocaleDateString('tr-TR')}</p>
+          <p>{t.tdetail_created.replace('{date}', new Date(task.created_at).toLocaleDateString(locale))}</p>
+          <p>{t.tdetail_updated.replace('{date}', new Date(task.updated_at).toLocaleDateString(locale))}</p>
           {task.completed_at && (
-            <p>Tamamlanma: {new Date(task.completed_at).toLocaleDateString('tr-TR')}</p>
+            <p>{t.tdetail_completed.replace('{date}', new Date(task.completed_at).toLocaleDateString(locale))}</p>
           )}
         </div>
 
         {/* Sil */}
         <div className="border-t border-gray-100 pt-4">
           <Button variant="danger" size="sm" onClick={() => void handleDelete()}>
-            Gorevi Sil
+            {t.tdetail_delete}
           </Button>
         </div>
       </div>

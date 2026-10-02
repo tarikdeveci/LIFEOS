@@ -90,19 +90,20 @@ export function isPast(dateStr: string): boolean {
   return dateStr < todayDate()
 }
 
-/**
- * Tarih için Türkçe kısa etiket döndürür
- */
-export function relativeDateLabel(dateStr: string): string {
+const RELATIVE_WORDS = {
+  tr: { today: 'Bugün', tomorrow: 'Yarın', yesterday: 'Dün', locale: 'tr-TR' },
+  en: { today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', locale: 'en-US' },
+} as const
+
+/** Tarih için kısa etiket: bugün/yarın/dün ya da "Pzt 12 Ekim". Dil verilmezse Türkçe. */
+export function relativeDateLabel(dateStr: string, lang: 'tr' | 'en' = 'tr'): string {
+  const words = RELATIVE_WORDS[lang]
   const today = todayDate()
-  const tomorrow = shiftIsoDate(today, 1)
-  const yesterday = shiftIsoDate(today, -1)
+  if (dateStr === today) return words.today
+  if (dateStr === shiftIsoDate(today, 1)) return words.tomorrow
+  if (dateStr === shiftIsoDate(today, -1)) return words.yesterday
 
-  if (dateStr === today) return 'Bugün'
-  if (dateStr === tomorrow) return 'Yarın'
-  if (dateStr === yesterday) return 'Dün'
-
-  return new Intl.DateTimeFormat('tr-TR', {
+  return new Intl.DateTimeFormat(words.locale, {
     day: 'numeric',
     month: 'long',
     weekday: 'short',

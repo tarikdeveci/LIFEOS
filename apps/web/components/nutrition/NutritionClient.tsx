@@ -110,7 +110,7 @@ export default function NutritionClient({ userId }: NutritionClientProps) {
   }, [chatMessages, chatLoading, chatOpen])
 
   const today = todayDate()
-  const dateLabel = relativeDateLabel(date)
+  const dateLabel = relativeDateLabel(date, lang)
   const isToday = date === today
 
   useEffect(() => {

@@ -1,8 +1,13 @@
 export * from './task'
 export * from './planning'
+export * from './routine'
+export * from './goal'
 export * from './nutrition'
 export * from './user'
 export * from './workout'
 export * from './health'
 export * from './notifications'
 export type { Database } from './database'
+export * from './integration'
+
+export * from './focus'

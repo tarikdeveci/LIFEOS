@@ -19,6 +19,8 @@ export interface ImportedTask {
   due_date?: string
   /** Kaynakta tamamlanmış görünüyor; arayüz bunları varsayılan olarak seçmez. */
   done: boolean
+  /** Kaynağın kendi kimliği varsa (TickTick taskId): tekrar aktarmada çift kayıt olmaz. */
+  external_id?: string
 }
 
 /** Tek içe aktarmada en fazla bu kadar görev. */
@@ -137,6 +139,44 @@ function parseCsvTasks(text: string, delimiter: string, headers: string[]): Impo
   })
 }
 
+/**
+ * TickTick yedek CSV'si: başında "Date:", "Version:" ve çok satırlı "Status:" açıklaması
+ * olan birkaç satır, sonra asıl başlık. Başlıkta hem Title hem taskId varsa TickTick sayılır.
+ * Content açıklamadır (Todoist'te başlıktı), Status 0 açık, 1 ve 2 tamamlanmış/arşiv.
+ * Alt görevler (parentId dolu) ayrı görev olarak alınır.
+ */
+function parseTickTickBackup(text: string): ImportedTask[] | null {
+  if (!text.includes('taskId')) return null
+  const rows = parseCsv(stripBom(text), ',')
+  const headerAt = rows.findIndex((cells) => {
+    const h = cells.map(normalizeHeader)
+    return h.includes('title') && h.includes('taskid')
+  })
+  if (headerAt === -1) return null
+  const headers = rows[headerAt]!.map(normalizeHeader)
+  const col = (name: string) => headers.indexOf(name)
+  const [titleAt, contentAt, dueAt, statusAt, idAt, kindAt] =
+    [col('title'), col('content'), col('due date'), col('status'), col('taskid'), col('kind')]
+
+  return rows.slice(headerAt + 1).flatMap((cells) => {
+    const title = cleanTitle(cells[titleAt] ?? '')
+    if (!title) return []
+    // Not (NOTE) türündeki kayıtlar görev değil.
+    if (kindAt !== -1 && (cells[kindAt] ?? '').trim().toUpperCase() === 'NOTE') return []
+    const description = contentAt === -1 ? '' : (cells[contentAt] ?? '').trim()
+    const dueDate = dueAt === -1 ? undefined : parseImportDate(cells[dueAt] ?? '')
+    const status = (cells[statusAt] ?? '0').trim()
+    const externalId = (cells[idAt] ?? '').trim()
+    return [{
+      title,
+      ...(description ? { description } : {}),
+      ...(dueDate ? { due_date: dueDate } : {}),
+      done: status !== '' && status !== '0',
+      ...(externalId ? { external_id: externalId } : {}),
+    }]
+  })
+}
+
 const LIST_PREFIX = /^(?:[-*+•▪◦‣]\s+|\d+[.)]\s+)?(?:\[( |x|X)\]\s*|([☐☑✓✔])\s*)?/
 
 function parsePlainTasks(text: string): ImportedTask[] {
@@ -152,6 +192,8 @@ function parsePlainTasks(text: string): ImportedTask[] {
 }
 
 export interface TaskImportResult {
+  /** Tanınan araç; external_id'lerin hangi kaynağa ait olduğu. */
+  source?: 'ticktick'
   tasks: ImportedTask[]
   /** TASK_IMPORT_LIMIT yüzünden alınmayan görev sayısı. */
   overLimit: number
@@ -163,16 +205,19 @@ export interface TaskImportResult {
  * TASK_IMPORT_LIMIT'te kesilir.
  */
 export function parseTaskImport(text: string): TaskImportResult {
-  const csv = detectCsv(text)
-  const parsed = csv ? parseCsvTasks(text, csv.delimiter, csv.headers) : parsePlainTasks(text)
+  const ticktick = parseTickTickBackup(text)
+  const csv = ticktick ? null : detectCsv(text)
+  const parsed = ticktick ?? (csv ? parseCsvTasks(text, csv.delimiter, csv.headers) : parsePlainTasks(text))
   const seen = new Set<string>()
   const unique = parsed.filter((task) => {
-    const key = task.title.toLocaleLowerCase('tr-TR')
+    // Kimliği olan kaynakta aynı başlıklı iki ayrı görev olabilir ("Haftalık rapor").
+    const key = task.external_id ? `id:${task.external_id}` : task.title.toLocaleLowerCase('tr-TR')
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
   return {
+    ...(ticktick ? { source: 'ticktick' as const } : {}),
     tasks: unique.slice(0, TASK_IMPORT_LIMIT),
     overLimit: Math.max(0, unique.length - TASK_IMPORT_LIMIT),
   }

@@ -127,7 +127,9 @@ export function sanitizeMessages(messages: AnthropicMessage[]): AnthropicMessage
 
 const LANG_LINE: Record<Lang, string> = {
   tr: 'Türkçe yanıt ver.',
-  en: 'Respond in English.',
+  // Talimatlar Türkçe olduğu için model JSON alanlarını ve ekran adlarını
+  // oradan kopyalıyordu; İngilizcede bunları tek tek söylemek gerekiyor.
+  en: 'Respond in English. Every user-facing text must be English, including program name, description, day_name and notes. Keep exercise_name exactly as in the catalog. Call app screens by their English names: the Workout screen and the My Equipment card.',
 }
 
 export function langLine(lang: Lang | undefined): string {

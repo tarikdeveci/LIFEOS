@@ -1,9 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import type { CreateTaskInput } from '@lifeos/shared'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import type { CreateTaskInput, Task } from '@lifeos/shared'
+import { addMinutesToClock, DEFAULT_TASK_MINUTES, parseQuickTask, relativeDateLabel, todayDate } from '@lifeos/shared/utils'
+import { createTimeBlocks } from '@lifeos/shared/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
 
 interface TaskDraft {
@@ -27,28 +31,27 @@ const EMPTY_DRAFT: TaskDraft = {
 }
 
 interface QuickTaskInputProps {
-  onCreateTask: (input: CreateTaskInput) => Promise<void>
+  /** Oluşan görevi döndürürse ve metinde saat varsa o güne görev bloğu da açılır. */
+  onCreateTask: (input: CreateTaskInput) => Promise<Task | void>
 }
 
 export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<TaskDraft>(EMPTY_DRAFT)
   const [loading, setLoading] = useState(false)
-  const [isMac, setIsMac] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    setIsMac(navigator.platform.toUpperCase().includes('MAC') || /Mac/.test(navigator.userAgent))
-  }, [])
-
-  // Cmd+K / Ctrl+K global shortcut
+  // "N" ile yeni görev. Ctrl+K komut paletinin (arama, komut, görev oluşturma);
+  // ikisi aynı tuşu dinleyince palet ve bu pencere birlikte açılıyordu.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setOpen(true)
-      }
+      if (e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      e.preventDefault()
+      setOpen(true)
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -67,49 +70,17 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
-      if (!draft.title.trim()) return
+      if (loading || !draft.title.trim()) return
 
       setLoading(true)
 
-      let parsedTitle = draft.title.trim()
-      const tags: string[] = []
-      let effortScore: number | undefined
-      let scheduledDate: string | undefined
-      let dueDate: string | undefined
-
-      const tagRegex = /#(\w+)/g
-      let tagMatch
-      while ((tagMatch = tagRegex.exec(parsedTitle))) {
-        tags.push(tagMatch[1]!)
-      }
-      parsedTitle = parsedTitle.replace(/#\w+/g, '').trim()
-
-      const effortMatch = parsedTitle.match(/!([1-5])/)
-      if (effortMatch) {
-        effortScore = parseInt(effortMatch[1]!)
-        parsedTitle = parsedTitle.replace(/![1-5]/, '').trim()
-      }
-
-      const dateMatch = parsedTitle.match(/@(\S+)/)
-      if (dateMatch) {
-        const dateValue = dateMatch[1]!.toLowerCase()
-        if (dateValue === 'bugün' || dateValue === 'bugun' || dateValue === 'today') {
-          const { todayDate } = await import('@lifeos/shared')
-          scheduledDate = todayDate()
-        } else if (dateValue === 'yarın' || dateValue === 'yarin' || dateValue === 'tomorrow') {
-          const { todayDate, shiftIsoDate } = await import('@lifeos/shared')
-          scheduledDate = shiftIsoDate(todayDate(), 1)
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-          scheduledDate = dateValue
-        }
-        parsedTitle = parsedTitle.replace(/@\S+/, '').trim()
-      }
-
-      const dueMatch = parsedTitle.match(/>(\d{4}-\d{2}-\d{2})/)
-      if (dueMatch) {
-        dueDate = dueMatch[1]!
-        parsedTitle = parsedTitle.replace(/>\d{4}-\d{2}-\d{2}/, '').trim()
-      }
+      // Türkçe doğal dil: "yarın 15:00 rapor 30dk", "cumaya kadar teklif #iş !4"
+      const parsed = parseQuickTask(draft.title, todayDate())
+      const parsedTitle = parsed.title
+      const tags = parsed.tags
+      const effortScore = parsed.effort_score
+      const scheduledDate = parsed.scheduled_date
+      const dueDate = parsed.due_date
 
       try {
         const explicitTags = draft.tags
@@ -117,7 +88,7 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
           .map((tag) => tag.trim())
           .filter(Boolean)
 
-        await onCreateTask({
+        const created = await onCreateTask({
           title: parsedTitle,
           ...(draft.description.trim() && { description: draft.description.trim() }),
           ...((tags.length > 0 || explicitTags.length > 0) && { tags: Array.from(new Set([...explicitTags, ...tags])) }),
@@ -128,18 +99,42 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
             status: 'planned' as const,
           }),
           ...((draft.dueDate || dueDate) && { due_date: draft.dueDate || dueDate }),
+          ...(parsed.estimated_minutes && { estimated_minutes: parsed.estimated_minutes }),
           ...(draft.estimatedMinutes && { estimated_minutes: parseInt(draft.estimatedMinutes, 10) }),
         })
+        const day = draft.scheduledDate || scheduledDate
+        if (created && parsed.start_time && day) {
+          const minutes = (draft.estimatedMinutes && parseInt(draft.estimatedMinutes, 10)) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
+          // Görev yazıldı: blok düşerse taslak yine temizlenir, yoksa tekrar denemek aynı görevi ikinci kez ekler.
+          try {
+            await createTimeBlocks(supabase, created.user_id, [{
+              date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+              block_type: 'task', label: created.title, task_id: created.id,
+            }])
+          } catch { showToast(t.qtask_block_error, 'error') }
+        }
         setDraft(EMPTY_DRAFT)
         setOpen(false)
+      } catch {
+        showToast(t.plan_task_add_error, 'error')
       } finally {
         setLoading(false)
       }
     },
-    [draft, onCreateTask],
+    [draft, loading, onCreateTask, showToast, t],
   )
 
-  const shortcutLabel = isMac ? '⌘K' : 'Ctrl K'
+  const preview = useMemo(() => {
+    if (!draft.title.trim()) return null
+    const p = parseQuickTask(draft.title, todayDate())
+    const parts = [
+      p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
+      p.due_date && `${t.qtask_due_label}: ${relativeDateLabel(p.due_date, lang)}`,
+      p.estimated_minutes && `${p.estimated_minutes} ${t.unit_min_short}`,
+      ...p.tags.map((tag) => `#${tag}`),
+    ].filter(Boolean)
+    return parts.length > 0 ? parts.join(' · ') : null
+  }, [draft.title, lang, t.qtask_due_label, t.unit_min_short])
 
   return (
     <>
@@ -152,7 +147,7 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
         </svg>
         {t.tasks_new}
         <kbd className="ml-2 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-muted">
-          {shortcutLabel}
+          N
         </kbd>
       </button>
 
@@ -169,6 +164,7 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-base text-primary outline-none placeholder:text-muted/50 focus:border-accent focus:bg-white"
                 autoComplete="off"
               />
+              {preview && <p className="mt-1.5 text-xs font-medium text-accent">{preview}</p>}
             </div>
 
             <div>

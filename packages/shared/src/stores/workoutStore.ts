@@ -247,8 +247,13 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   finishWorkout: async (supabase, workoutId, durationMinutes, caloriesBurned) => {
     const updated = await completeWorkout(supabase, workoutId, durationMinutes, caloriesBurned)
+    // Dönen satırda setler yok: ekrandakiler korunur, hepsi tamamlanmış sayılır
+    // (completeWorkout onları veritabanında da işaretledi). Eskiden kart
+    // "0 set" gösteriyordu.
     set((state) => ({
-      todayWorkout: state.todayWorkout?.id === workoutId ? updated : state.todayWorkout,
+      todayWorkout: state.todayWorkout?.id === workoutId
+        ? { ...updated, workout_sets: state.todayWorkout.workout_sets?.map((s) => ({ ...s, completed: true })) }
+        : state.todayWorkout,
     }))
     // Antrenman biterken kas analitiğini tazele: bitmiş seansın setleri
     // denge/toparlanma/güç kartına hemen yansısın. fetchAnalytics kendi
@@ -259,16 +264,21 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   skipWorkout: async (supabase, workoutId) => {
     const updated = await updateWorkout(supabase, workoutId, { status: 'skipped' })
     set((state) => ({
-      todayWorkout: state.todayWorkout?.id === workoutId ? updated : state.todayWorkout,
+      todayWorkout: state.todayWorkout?.id === workoutId
+        ? { ...updated, workout_sets: state.todayWorkout.workout_sets }
+        : state.todayWorkout,
     }))
   },
 
   removeWorkout: async (supabase, workoutId) => {
+    const userId = get().todayWorkout?.user_id
     await deleteWorkout(supabase, workoutId)
     set((state) => ({
       todayWorkout: state.todayWorkout?.id === workoutId ? null : state.todayWorkout,
       workoutHistory: state.workoutHistory.filter((w) => w.id !== workoutId),
     }))
+    // Silinen antrenmanın işaretli setleri haritada kalmasın.
+    if (userId) void get().fetchAnalytics(supabase, userId)
   },
 
   addSet: async (supabase, input) => {
@@ -315,6 +325,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         },
       }
     })
+    // Kas haritası yalnızca tamamlanan setleri sayıyor: işaretlenen set
+    // antrenman bitmeden haritaya yansısın.
+    const userId = get().todayWorkout?.user_id
+    if (updates.completed !== undefined && userId) void get().fetchAnalytics(supabase, userId)
   },
 
   removeSet: async (supabase, setId) => {

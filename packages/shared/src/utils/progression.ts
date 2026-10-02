@@ -34,6 +34,11 @@ export const MAX_PROGRESSION_SETS = 6
 
 export const FIRST_TIME_REASON = 'İlk kez: rahat bir ağırlıkla başla, tekniği otur.'
 export const FIRST_TIME_BODYWEIGHT_REASON = 'İlk kez: tekniği otur, her seti rahat bitir.'
+const FIRST_TIME_REASON_EN = 'First time: start with a comfortable weight and settle the technique.'
+const FIRST_TIME_BODYWEIGHT_REASON_EN = 'First time: settle the technique and finish every set comfortably.'
+
+/** Açıklama cümlesinin dili; sayılar iki dilde aynı. */
+export type ProgressionLang = 'tr' | 'en'
 
 export interface SessionSet {
   reps: number | null
@@ -181,7 +186,8 @@ function countAtLeast(reps: number[], target: number): number {
 // Kurallar
 // -------------------------------------------------------
 
-function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloor: number | null): ProgressionTarget {
+function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloor: number | null, lang: ProgressionLang): ProgressionTarget {
+  const en = lang === 'en'
   const done = last.reps.length
   const minReps = Math.min(...last.reps)
   const sets = Math.max(planSets ?? 1, done)
@@ -190,8 +196,8 @@ function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloo
 
   if (!reached) {
     const reason = done < (planSets ?? 1)
-      ? `Geçen sefer ${done} set yapıldı, ${sets}x${target} hedefini tamamla.`
-      : `Geçen sefer en düşük set ${minReps} tekrarda kaldı, ${sets}x${target} hedefinde devam et.`
+      ? (en ? `Last time you did ${done} sets, complete the ${sets}x${target} target.` : `Geçen sefer ${done} set yapıldı, ${sets}x${target} hedefini tamamla.`)
+      : (en ? `Last time your lowest set was ${minReps} reps, keep going with the ${sets}x${target} target.` : `Geçen sefer en düşük set ${minReps} tekrarda kaldı, ${sets}x${target} hedefinde devam et.`)
     return { sets, reps: target, weightKg: null, rule: 'bodyweight', reason }
   }
 
@@ -202,7 +208,9 @@ function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloo
         reps: BODYWEIGHT_REP_CEILING,
         weightKg: null,
         rule: 'bodyweight',
-        reason: `Geçen sefer ${done}x${minReps} tamamlandı, daha zor bir varyasyona geç ya da ağırlık ekle.`,
+        reason: en
+          ? `Last time you completed ${done}x${minReps}, move to a harder variation or add weight.`
+          : `Geçen sefer ${done}x${minReps} tamamlandı, daha zor bir varyasyona geç ya da ağırlık ekle.`,
       }
     }
     return {
@@ -210,7 +218,9 @@ function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloo
       reps: BODYWEIGHT_REP_CEILING,
       weightKg: null,
       rule: 'bodyweight',
-      reason: `Geçen sefer ${done}x${minReps} tamamlandı, bir set ekle: ${sets + 1}x${BODYWEIGHT_REP_CEILING}.`,
+      reason: en
+        ? `Last time you completed ${done}x${minReps}, add a set: ${sets + 1}x${BODYWEIGHT_REP_CEILING}.`
+        : `Geçen sefer ${done}x${minReps} tamamlandı, bir set ekle: ${sets + 1}x${BODYWEIGHT_REP_CEILING}.`,
     }
   }
 
@@ -220,11 +230,14 @@ function bodyweightTarget(last: SessionSummary, planSets: number | null, repFloo
     reps,
     weightKg: null,
     rule: 'bodyweight',
-    reason: `Geçen sefer ${done}x${minReps} tamamlandı, ${reps} tekrara çık.`,
+    reason: en
+      ? `Last time you completed ${done}x${minReps}, go up to ${reps} reps.`
+      : `Geçen sefer ${done}x${minReps} tamamlandı, ${reps} tekrara çık.`,
   }
 }
 
-function linearTarget(sessions: SessionSummary[], last: SessionSummary, sets: number, reps: number, incrementKg: number): ProgressionTarget {
+function linearTarget(sessions: SessionSummary[], last: SessionSummary, sets: number, reps: number, incrementKg: number, lang: ProgressionLang): ProgressionTarget {
+  const en = lang === 'en'
   const weight = last.weight
   const hit = (summary: SessionSummary) => countAtLeast(summary.reps, reps) >= sets
 
@@ -235,7 +248,9 @@ function linearTarget(sessions: SessionSummary[], last: SessionSummary, sets: nu
       reps,
       weightKg: next,
       rule: 'linear',
-      reason: `Geçen sefer ${sets}x${reps} ${kg(weight)} kg tamamlandı, ${kg(next)} kg'a çık.`,
+      reason: en
+        ? `Last time you completed ${sets}x${reps} at ${kg(weight)} kg, go up to ${kg(next)} kg.`
+        : `Geçen sefer ${sets}x${reps} ${kg(weight)} kg tamamlandı, ${kg(next)} kg'a çık.`,
     }
   }
 
@@ -255,7 +270,9 @@ function linearTarget(sessions: SessionSummary[], last: SessionSummary, sets: nu
         reps,
         weightKg: lighter,
         rule: 'deload',
-        reason: `${kg(weight)} kg ile ${misses} seanstır ${sets}x${reps} tutmadı, ${kg(lighter)} kg'a inip yeniden yüklen.`,
+        reason: en
+          ? `${sets}x${reps} at ${kg(weight)} kg missed for ${misses} sessions, drop to ${kg(lighter)} kg and build back up.`
+          : `${kg(weight)} kg ile ${misses} seanstır ${sets}x${reps} tutmadı, ${kg(lighter)} kg'a inip yeniden yüklen.`,
       }
     }
   }
@@ -266,11 +283,14 @@ function linearTarget(sessions: SessionSummary[], last: SessionSummary, sets: nu
     reps,
     weightKg: weight,
     rule: 'linear',
-    reason: `Geçen sefer ${kg(weight)} kg ile ${sets}x${reps} hedefinde ${made}/${sets} set tuttu, aynı ağırlıkta tekrar dene.`,
+    reason: en
+      ? `Last time at ${kg(weight)} kg you hit ${made}/${sets} sets of the ${sets}x${reps} target, try the same weight again.`
+      : `Geçen sefer ${kg(weight)} kg ile ${sets}x${reps} hedefinde ${made}/${sets} set tuttu, aynı ağırlıkta tekrar dene.`,
   }
 }
 
-function doubleTarget(last: SessionSummary, planSets: number | null, lo: number, hi: number, incrementKg: number): ProgressionTarget {
+function doubleTarget(last: SessionSummary, planSets: number | null, lo: number, hi: number, incrementKg: number, lang: ProgressionLang): ProgressionTarget {
+  const en = lang === 'en'
   const weight = last.weight
   const sets = planSets ?? Math.min(MAX_PROGRESSION_SETS, last.reps.length)
 
@@ -281,7 +301,9 @@ function doubleTarget(last: SessionSummary, planSets: number | null, lo: number,
       reps: lo,
       weightKg: next,
       rule: 'double',
-      reason: `Geçen sefer ${sets}x${hi} ${kg(weight)} kg tamamlandı, ${kg(next)} kg'a çık ve ${lo} tekrardan başla.`,
+      reason: en
+        ? `Last time you completed ${sets}x${hi} at ${kg(weight)} kg, go up to ${kg(next)} kg and restart at ${lo} reps.`
+        : `Geçen sefer ${sets}x${hi} ${kg(weight)} kg tamamlandı, ${kg(next)} kg'a çık ve ${lo} tekrardan başla.`,
     }
   }
 
@@ -298,15 +320,23 @@ function doubleTarget(last: SessionSummary, planSets: number | null, lo: number,
       weightKg: next,
       rule: 'double',
       reason: next < weight
-        ? `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${lo}-${hi} aralığının altında. ${kg(next)} kg ile ${lo} tekrarı hedefle.`
-        : `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, bu sefer ${lo} tekrarı hedefle.`,
+        ? (en
+          ? `Last time at ${kg(weight)} kg your lowest set was ${minReps} reps, below the ${lo}-${hi} range. Aim for ${lo} reps at ${kg(next)} kg.`
+          : `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${lo}-${hi} aralığının altında. ${kg(next)} kg ile ${lo} tekrarı hedefle.`)
+        : (en
+          ? `Last time at ${kg(weight)} kg your lowest set was ${minReps} reps, aim for ${lo} reps this time.`
+          : `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, bu sefer ${lo} tekrarı hedefle.`),
     }
   }
 
   const reps = Math.min(hi, minReps + 1)
   const reason = reps > minReps
-    ? `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${reps} tekrarı hedefle.`
-    : `Geçen sefer ${kg(weight)} kg ile ${last.reps.length} set yapıldı, ${sets}x${hi} hedefini tamamla.`
+    ? (en
+      ? `Last time at ${kg(weight)} kg your lowest set was ${minReps} reps, aim for ${reps} reps.`
+      : `Geçen sefer ${kg(weight)} kg ile en düşük set ${minReps} tekrardı, ${reps} tekrarı hedefle.`)
+    : (en
+      ? `Last time you did ${last.reps.length} sets at ${kg(weight)} kg, complete the ${sets}x${hi} target.`
+      : `Geçen sefer ${kg(weight)} kg ile ${last.reps.length} set yapıldı, ${sets}x${hi} hedefini tamamla.`)
   return { sets, reps, weightKg: weight, rule: 'double', reason }
 }
 
@@ -319,6 +349,7 @@ export function nextTarget(
   ex: MuscleExercise,
   history: ExerciseSession[],
   plan: ProgressionPlan | null = null,
+  lang: ProgressionLang = 'tr',
 ): ProgressionTarget | null {
   const planSets = positiveInt(plan?.sets)
   const planReps = positiveInt(plan?.reps)
@@ -335,22 +366,24 @@ export function nextTarget(
       reps,
       weightKg: null,
       rule: 'first_time',
-      reason: ex.is_bodyweight ? FIRST_TIME_BODYWEIGHT_REASON : FIRST_TIME_REASON,
+      reason: lang === 'en'
+        ? (ex.is_bodyweight ? FIRST_TIME_BODYWEIGHT_REASON_EN : FIRST_TIME_REASON_EN)
+        : (ex.is_bodyweight ? FIRST_TIME_BODYWEIGHT_REASON : FIRST_TIME_REASON),
     }
   }
 
   // Ağırlık girilmemiş yüklü hareket de (lastik, unutulan ağırlık) tekrarla
   // ilerler: olmayan bir ağırlığa basamak eklemek anlamsız.
-  if (last.weight <= 0) return bodyweightTarget(last, planSets, planRepMin ?? planReps)
+  if (last.weight <= 0) return bodyweightTarget(last, planSets, planRepMin ?? planReps, lang)
 
   const incrementKg = loadIncrementKg(ex)
   if (planReps !== null && planRepMin === null) {
-    return linearTarget(sessions, last, planSets ?? DEFAULT_TARGET_SETS, planReps, incrementKg)
+    return linearTarget(sessions, last, planSets ?? DEFAULT_TARGET_SETS, planReps, incrementKg, lang)
   }
 
   const a = planRepMin ?? DEFAULT_REP_RANGE_MIN
   const b = planReps ?? DEFAULT_REP_RANGE_MAX
-  return doubleTarget(last, planSets, Math.min(a, b), Math.max(a, b), incrementKg)
+  return doubleTarget(last, planSets, Math.min(a, b), Math.max(a, b), incrementKg, lang)
 }
 
 /**

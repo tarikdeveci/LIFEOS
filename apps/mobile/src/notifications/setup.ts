@@ -186,7 +186,10 @@ export function addNotificationResponseListener(
       navigate('/(tabs)/today')
     } else if (data['type'] === 'evening_nutrition') {
       navigate('/(tabs)/nutrition')
-    } else if (data['type'] === 'daily_digest_morning' || data['type'] === 'daily_digest_midday') {
+    } else if (data['type'] === 'daily_digest_morning') {
+      // Sabah bildirimi planlama ritüelini açar (ritüel o gün bittiyse sadece sekme açılır).
+      navigate('/(tabs)/planning?ritual=1')
+    } else if (data['type'] === 'daily_digest_midday') {
       navigate('/(tabs)/today')
     } else if (data['type'] === 'daily_digest_evening') {
       navigate('/(tabs)/nutrition')

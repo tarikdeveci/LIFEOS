@@ -6,14 +6,18 @@ import type { Task } from '../types/task'
 import {
   getTimeBlocks,
   createTimeBlock,
+  createTimeBlocks,
   updateTimeBlock,
   deleteTimeBlock,
   getDailyPlan,
   updateDailyPlan,
   getFlexTasks,
   getCarryoverTasks,
+  getCalendarBusy,
 } from '../supabase/planning'
 import { todayDate } from '../utils/date'
+import type { Interval, Placement, ShiftResult } from '../utils/dayPlan'
+import { busyToIntervals } from '../utils/dayPlan'
 import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +29,8 @@ interface PlanningState {
   dailyPlan: DailyPlan | null
   flexTasks: Task[]
   carryoverTasks: Task[]
+  /** Google takvimindeki dolu aralıklar (gün içi dakika); bağlantı yoksa boş. */
+  busy: Interval[]
   loading: boolean
   error: string | null
 
@@ -35,10 +41,18 @@ interface PlanningState {
   removeTimeBlock: (supabase: Supabase, blockId: string) => Promise<void>
   setBlockDone: (supabase: Supabase, blockId: string, done: boolean) => Promise<void>
   setEnergyLevel: (supabase: Supabase, level: 1 | 2 | 3 | 4 | 5) => Promise<void>
+  completeRitual: (supabase: Supabase) => Promise<void>
+  /** autoPlace sonucunu o güne görev blokları olarak yazar, sonra günü yeniden okur. */
+  placeTasks: (supabase: Supabase, userId: string, placements: Placement[], titles: Record<string, string>) => Promise<number>
+  /** shiftRemaining sonucunu uygular; yazma hatasında tüm bloklar geri sarılır. */
+  applyShift: (supabase: Supabase, updates: ShiftResult['updates']) => Promise<void>
 
   // Realtime handler
   handleRealtimeEvent: (event: { eventType: string; new: unknown; old: unknown }) => void
 }
+
+/** Son fetchDayData isteği; eski yanıtlar yok sayılır. */
+let dayRequest = 0
 
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   date: todayDate(),
@@ -46,21 +60,28 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   dailyPlan: null,
   flexTasks: [],
   carryoverTasks: [],
+  busy: [],
   loading: false,
   error: null,
 
   fetchDayData: async (supabase, userId, date = todayDate()) => {
-    set({ loading: true, error: null, date })
+    const request = ++dayRequest
+    // Başka güne geçerken önceki günün meşgul aralıkları kalmasın: yerleşim onlarla hesaplanıyordu.
+    set((state) => ({ loading: true, error: null, date, busy: state.date === date ? state.busy : [] }))
     try {
-      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks] = await Promise.all([
+      const [timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy] = await Promise.all([
         getTimeBlocks(supabase, userId, date),
         getDailyPlan(supabase, userId, date),
         getFlexTasks(supabase, userId, date),
         getCarryoverTasks(supabase, userId),
+        // Meşgul penceresi yardımcı bilgi: okunamazsa (tablo yok, bağlantı yok) plan yine açılır.
+        getCalendarBusy(supabase, userId, date).then((rows) => busyToIntervals(rows, date), () => []),
       ])
-      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, loading: false })
+      // Geciken eski gün yanıtı yeni seçili günün verisini ezmesin.
+      if (request !== dayRequest) return
+      set({ timeBlocks, dailyPlan, flexTasks, carryoverTasks, busy, loading: false })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
+      if (request === dayRequest) set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
   },
 
@@ -132,6 +153,63 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
       dailyPlan: state.dailyPlan ? { ...state.dailyPlan, energy_level: level } : null,
     }))
     await updateDailyPlan(supabase, dailyPlan.id, { energy_level: level })
+  },
+
+  completeRitual: async (supabase) => {
+    const { dailyPlan } = get()
+    if (!dailyPlan) return
+    const at = new Date().toISOString()
+    set({ dailyPlan: { ...dailyPlan, ritual_completed_at: at } })
+    try {
+      await updateDailyPlan(supabase, dailyPlan.id, { ritual_completed_at: at })
+    } catch (err) {
+      set({ dailyPlan })
+      throw err
+    }
+  },
+
+  placeTasks: async (supabase, userId, placements, titles) => {
+    const { date } = get()
+    const { inserted } = await createTimeBlocks(supabase, userId, placements.map((p) => ({
+      date,
+      start_time: p.start_time,
+      end_time: p.end_time,
+      block_type: 'task' as const,
+      label: titles[p.task_id],
+      task_id: p.task_id,
+    })))
+    await get().fetchDayData(supabase, userId, date)
+    return inserted
+  },
+
+  applyShift: async (supabase, updates) => {
+    if (updates.length === 0) return
+    const previous = get().timeBlocks
+    const byId = new Map(updates.map((u) => [u.id, u]))
+    set({
+      timeBlocks: previous
+        .map((b) => {
+          const u = byId.get(b.id)
+          return u ? { ...b, start_time: u.start_time, end_time: u.end_time } : b
+        })
+        .sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    })
+    const results = await Promise.allSettled(
+      updates.map((u) => updateTimeBlock(supabase, u.id, { start_time: u.start_time, end_time: u.end_time })),
+    )
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (!failed) return
+    // Kaydırma tek işlem değil: yalnız ekranı geri almak, veritabanında başarılı olan blokları
+    // yeni saatte bırakıyordu. Onlar da eski saatine döner; bu da olmazsa gün yeniden yüklenince düzelir.
+    const before = new Map(previous.map((b) => [b.id, b]))
+    await Promise.allSettled(updates.flatMap((u, i) => {
+      const old = before.get(u.id)
+      return results[i]?.status === 'fulfilled' && old
+        ? [updateTimeBlock(supabase, u.id, { start_time: old.start_time, end_time: old.end_time })]
+        : []
+    }))
+    set({ timeBlocks: previous })
+    throw failed.reason
   },
 
   handleRealtimeEvent: (event) => {
