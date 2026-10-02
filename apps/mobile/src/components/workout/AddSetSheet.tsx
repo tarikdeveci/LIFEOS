@@ -64,7 +64,7 @@ export function AddSetSheet({ exercise, workout, onClose }: Props) {
       <View style={{ gap: spacing[4] }}>
         {exercise && (
           <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.workout}10`, borderWidth: 1, borderColor: `${palette.workout}25` }}>
-            <ExerciseImage uri={exercise.image_url} style={{ width: '100%', height: 160, borderRadius: radius.md, marginBottom: spacing[2] }} />
+            <ExerciseImage uri={exercise.image_url} startUri={exercise.image_start_url} style={{ width: '100%', height: 160, borderRadius: radius.md, marginBottom: spacing[2] }} />
             <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{exerciseName(exercise, lang, t)}</Text>
             <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
               {muscleGroupName(exercise.muscle_group, lang)} · {categoryLabel(exercise.category, t)}

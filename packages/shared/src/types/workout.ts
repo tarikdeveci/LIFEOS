@@ -42,8 +42,10 @@ export interface Exercise {
    * gerekmez. Opsiyonel: 047 uygulanmamış bir veritabanında alan hiç gelmez.
    */
   equipment?: EquipmentKey[] | null
-  /** Hareketin fotoğrafı (062). null = görsel yok; 062 uygulanmamışsa alan gelmez. */
+  /** Hareketin çizimi, bitiş pozu (062). null = görsel yok; 062 uygulanmamışsa alan gelmez. */
   image_url?: string | null
+  /** Başlangıç pozu (064). null = tek pozlu hareket; büyük görünümler ikisini yan yana çizer. */
+  image_start_url?: string | null
   created_at: string
 }
 

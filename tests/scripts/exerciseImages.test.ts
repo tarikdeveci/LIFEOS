@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ALIASES, SKIP, bucketPath, imagePathFor, matchExercises, normalizeName, publicImageUrl } from '../../scripts/import-exercise-images.mjs'
+import { ALIASES, SKIP, bucketPath, imagePathFor, matchExercises, normalizeName, publicImageUrl, startPathFor } from '../../scripts/import-exercise-images.mjs'
 
 const slug = (name: string) => name.toLowerCase().replace(/\W+/g, '-')
 const entry = (name_en: string) => ({
@@ -83,13 +83,18 @@ test('tablolar: anahtarlar normalleştirildikten sonra tekil, SKIP ile takma ad 
   for (const name of SKIP) assert.ok(!keys.includes(normalizeName(name)), name)
 })
 
-test('poz seçimi: varsayılan peak, tablodaki poz, tek pozluda main, eksikte start', () => {
-  const two = entry('Lunge')
-  assert.equal(imagePathFor(two, {}), 'images/flat/lunge-peak.webp')
-  assert.equal(imagePathFor(two, { Lunge: 'start' }), 'images/flat/lunge-start.webp')
-  assert.equal(imagePathFor({ name_en: 'Walking', images: { flat: { main: 'images/flat/walking-main.webp' } } }, {}), 'images/flat/walking-main.webp')
-  assert.equal(imagePathFor({ name_en: 'X', images: { flat: { start: 'images/flat/x-start.webp' } } }, {}), 'images/flat/x-start.webp')
-  assert.equal(imagePathFor({ name_en: 'X' }, {}), undefined)
+test('poz seçimi: image_url tepe, tek pozluda main, yalnız start varsa start', () => {
+  assert.equal(imagePathFor(entry('Lunge')), 'images/flat/lunge-peak.webp')
+  assert.equal(imagePathFor({ name_en: 'Walking', images: { flat: { main: 'images/flat/walking-main.webp' } } }), 'images/flat/walking-main.webp')
+  assert.equal(imagePathFor({ name_en: 'X', images: { flat: { start: 'images/flat/x-start.webp' } } }), 'images/flat/x-start.webp')
+  assert.equal(imagePathFor({ name_en: 'X' }), undefined)
+})
+
+test('başlangıç pozu: yalnızca iki pozlu harekette, tek görsel ikinci kez kullanılmaz', () => {
+  assert.equal(startPathFor(entry('Lunge')), 'images/flat/lunge-start.webp')
+  assert.equal(startPathFor({ name_en: 'Walking', images: { flat: { main: 'images/flat/walking-main.webp' } } }), null)
+  assert.equal(startPathFor({ name_en: 'X', images: { flat: { start: 'images/flat/x-start.webp' } } }), null)
+  assert.equal(startPathFor({ name_en: 'X' }), null)
 })
 
 test('kova yolu ve public URL: klasör atılır, sondaki eğik çizgi tekrarlanmaz', () => {

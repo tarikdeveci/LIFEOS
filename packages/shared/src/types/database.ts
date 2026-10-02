@@ -217,6 +217,7 @@ export type Database = {
           equipment: string[] | null
           id: string
           image_url: string | null
+          image_start_url: string | null
           instructions: string | null
           is_bodyweight: boolean | null
           met_value: number | null
@@ -232,6 +233,7 @@ export type Database = {
           equipment?: string[] | null
           id?: string
           image_url?: string | null
+          image_start_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null
@@ -247,6 +249,7 @@ export type Database = {
           equipment?: string[] | null
           id?: string
           image_url?: string | null
+          image_start_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
           met_value?: number | null

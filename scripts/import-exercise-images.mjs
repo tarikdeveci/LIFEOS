@@ -142,15 +142,19 @@ export const SKIP = [
 
 /**
  * RepDB'de hareketlerin çoğunda başlangıç (start) ve tepe (peak) pozu, tek
- * pozlu olanlarda (kardiyo, esneme) main var. Varsayılan peak: hareketi en iyi
- * anlatan an. Peak hareketi anlatmıyorsa burada RepDB adıyla start seçilir.
+ * pozlu olanlarda (kardiyo, esneme) main var. image_url tepe pozu: hareketi
+ * en iyi anlatan an, küçük liste ikonu bunu gösterir. Tepe yoksa main, o da
+ * yoksa start.
  */
-export const POSES = {}
-
-/** Seçilen poz yoksa main'e, o da yoksa start'a düşer. */
-export function imagePathFor(entry, poses = POSES) {
+export function imagePathFor(entry) {
   const flat = entry.images?.flat ?? {}
-  return flat[poses[entry.name_en] ?? 'peak'] ?? flat.main ?? flat.start
+  return flat.peak ?? flat.main ?? flat.start
+}
+
+/** image_start_url: yalnızca iki pozlu harekette başlangıç pozu, yoksa null. */
+export function startPathFor(entry) {
+  const flat = entry.images?.flat ?? {}
+  return flat.peak && flat.start ? flat.start : null
 }
 
 /** "Push-Up", "push up" ve "PUSH UP" aynı anahtara düşer. */
@@ -166,7 +170,7 @@ export function normalizeName(name) {
 export function matchExercises(exercises, catalog, aliases = ALIASES, skip = SKIP) {
   const byName = new Map()
   for (const entry of catalog) {
-    if (entry.name_en && imagePathFor(entry, {})) byName.set(normalizeName(entry.name_en), entry)
+    if (entry.name_en && imagePathFor(entry)) byName.set(normalizeName(entry.name_en), entry)
   }
   const skipped = new Set(skip.map(normalizeName))
   const aliasMap = new Map(Object.entries(aliases).map(([ours, theirs]) => [normalizeName(ours), normalizeName(theirs)]))
@@ -229,39 +233,49 @@ async function main() {
   const catalog = (await (await fetchOk(`${REPDB_RAW}/exercises.json`)).json()).exercises
   const exercises = await (await fetchOk(`${supabaseUrl}/rest/v1/exercises?select=id,name_en&user_id=is.null&order=name_en`, { headers: auth })).json()
   const { matched, unmatched, brokenAliases } = matchExercises(exercises, catalog)
-  const images = new Set(matched.map((m) => imagePathFor(m.entry)))
+  const images = new Set(matched.flatMap((m) => [imagePathFor(m.entry), startPathFor(m.entry)]).filter(Boolean))
 
   console.log(`Katalog: ${catalog.length} kayıt (RepDB @ ${REPDB_COMMIT.slice(0, 7)})`)
-  console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length}, eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
+  const twoPose = matched.filter((m) => startPathFor(m.entry)).length
+  console.log(`Global egzersiz: ${exercises.length}, eşleşen: ${matched.length} (iki pozlu: ${twoPose}), eşleşmeyen: ${unmatched.length}, yüklenecek görsel: ${images.size}`)
   // Kaynak sabit bir commit; kırık takma ad tablodaki yazım hatasıdır, sessizce görselsiz bırakma.
   if (brokenAliases.length) {
     console.error(`Kaynakta bulunamayan takma adlar: ${brokenAliases.join(', ')}`)
     process.exit(1)
   }
   if (dryRun) {
-    for (const { exercise, entry } of matched) console.log(`  ✓ ${exercise.name_en} → ${entry.name_en} (${bucketPath(imagePathFor(entry))})`)
+    for (const { exercise, entry } of matched) {
+      const start = startPathFor(entry)
+      console.log(`  ✓ ${exercise.name_en} → ${entry.name_en} (${start ? `${bucketPath(start)} + ` : ''}${bucketPath(imagePathFor(entry))})`)
+    }
     console.log(`Görselsiz kalacaklar: ${unmatched.map((e) => e.name_en ?? `(name_en yok: ${e.id})`).join(', ')}`)
     return
   }
 
   const urls = new Map()
+  async function upload(path) {
+    if (!path) return null
+    if (!urls.has(path)) {
+      const body = await (await fetchOk(`${REPDB_RAW}/${path}`)).arrayBuffer()
+      await fetchOk(`${supabaseUrl}/storage/v1/object/${BUCKET}/${bucketPath(path)}`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'image/webp', 'x-upsert': 'true' },
+        body,
+      })
+      urls.set(path, publicImageUrl(supabaseUrl, path))
+    }
+    return urls.get(path)
+  }
+
   let failed = 0
   for (const { exercise, entry } of matched) {
-    const path = imagePathFor(entry)
     try {
-      if (!urls.has(path)) {
-        const body = await (await fetchOk(`${REPDB_RAW}/${path}`)).arrayBuffer()
-        await fetchOk(`${supabaseUrl}/storage/v1/object/${BUCKET}/${bucketPath(path)}`, {
-          method: 'POST',
-          headers: { ...auth, 'Content-Type': 'image/webp', 'x-upsert': 'true' },
-          body,
-        })
-        urls.set(path, publicImageUrl(supabaseUrl, path))
-      }
+      // Tek pozluda image_start_url null yazılır: eski bir eşleşmeden kalan başlangıç pozu temizlenir.
+      const row = { image_url: await upload(imagePathFor(entry)), image_start_url: await upload(startPathFor(entry)) }
       await fetchOk(`${supabaseUrl}/rest/v1/exercises?id=eq.${exercise.id}`, {
         method: 'PATCH',
         headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ image_url: urls.get(path) }),
+        body: JSON.stringify(row),
       })
     } catch (err) {
       failed++
