@@ -19,9 +19,10 @@ const CAL_API = 'https://www.googleapis.com/calendar/v3'
 const OUTBOX_BATCH = 50
 const MAX_ATTEMPTS = 5
 const BUSY_DAYS = 14
-// Cron aralığı 5 dk. Bütçe dolunca yeni işe başlanmaz; eldeki iş en çok birkaç Google
-// çağrısı (her biri FETCH_TIMEOUT_MS) sürer, toplam 5 dakikanın altında kalır.
-const RUN_BUDGET_MS = 200_000
+// Bütçe dolunca yeni işe başlanmaz; eldeki iş en çok birkaç Google çağrısı (her biri
+// FETCH_TIMEOUT_MS) sürer. Toplam, platformun 150 saniyelik süre sınırının ve 5 dakikalık
+// cron aralığının altında kalmalı: sınırda öldürülen tur, etkinliği açıp kimliğini yazamaz.
+const RUN_BUDGET_MS = 90_000
 const FETCH_TIMEOUT_MS = 15_000
 
 interface IntegrationRow {
@@ -112,8 +113,25 @@ async function gcal(token: string, method: string, path: string, body?: unknown)
     })
   } catch (err) {
     // Zaman aşımı ve ağ hatası da geçicidir: iş kuyrukta kalır, deneme hakkı harcanmaz.
-    throw new TransientError(`${method} ${err instanceof Error ? err.name : 'ağ hatası'}`)
+    throw new TransientError(`${method} ${err instanceof Error ? `${err.name}: ${err.message}` : 'ağ hatası'}`)
   }
+}
+
+/**
+ * Blok için Google'da zaten açılmış etkinliğin kimliği. Yanıtı alınamayan bir POST
+ * (zaman aşımı, yarıda kesilen tur) etkinliği açmış ama kimliği yazamamış olabilir;
+ * aranmadan yeniden POST edilirse her turda bir kopya daha oluşur.
+ */
+async function findEventId(token: string, cal: string, blockId: string): Promise<string | null> {
+  const query = new URLSearchParams({
+    privateExtendedProperty: `lifeos_block_id=${blockId}`,
+    maxResults: '1',
+    fields: 'items(id)',
+  })
+  const res = await gcal(token, 'GET', `/calendars/${cal}/events?${query}`)
+  ensureOk(res, 'lookup')
+  const body = (await res.json()) as { items?: { id: string }[] }
+  return body.items?.[0]?.id ?? null
 }
 
 /** Kuyruğu işler. Dönüş: başarısız olan son işin hata mesajı (yoksa null). */
@@ -152,7 +170,10 @@ async function processOutbox(integration: IntegrationRow, token: string, timeZon
             ? await gcal(token, 'PATCH', `/calendars/${cal}/events/${encodeURIComponent(eventId)}`, eventBody(b, timeZone))
             : null
           if (!res || res.status === 404 || res.status === 410) {
-            res = await gcal(token, 'POST', `/calendars/${cal}/events`, eventBody(b, timeZone))
+            const existing = await findEventId(token, cal, b.id)
+            res = existing && existing !== eventId
+              ? await gcal(token, 'PATCH', `/calendars/${cal}/events/${encodeURIComponent(existing)}`, eventBody(b, timeZone))
+              : await gcal(token, 'POST', `/calendars/${cal}/events`, eventBody(b, timeZone))
           }
           ensureOk(res, 'upsert')
           const created = (await res.json()) as { id: string }
@@ -226,14 +247,20 @@ Deno.serve(async (req: Request) => {
     .select('id, user_id, settings')
     .eq('provider', 'google_calendar')
     .eq('status', 'active')
+    // En uzun süredir sırası gelmeyen önce: bütçe dolunca atlananlar bir sonraki turda başa geçer.
+    .order('last_synced_at', { ascending: true, nullsFirst: true })
 
   if (error) return new Response(`DB error: ${error.message}`, { status: 500 })
 
+  const rows = (integrations ?? []) as IntegrationRow[]
   const deadline = Date.now() + RUN_BUDGET_MS
   let synced = 0
   let failed = 0
-  for (const integration of (integrations ?? []) as IntegrationRow[]) {
-    if (Date.now() > deadline) break
+  for (const integration of rows) {
+    if (Date.now() > deadline) {
+      console.warn('calendar-sync: bütçe doldu, atlanan bağlantı sayısı', rows.length - synced - failed)
+      break
+    }
     try {
       const token = await accessToken(integration.id)
       const timeZone = await userTimeZone(integration.user_id)
@@ -247,9 +274,15 @@ Deno.serve(async (req: Request) => {
       failed++
       // Sadece iptal edilmiş izin bağlantıyı düşürür; geçici hatada aktif kalır, sonraki
       // turda yeniden denenir (status 'error' olsaydı cron bir daha hiç seçmezdi).
+      // last_synced_at burada da ilerler (integrations-sync ile aynı): sürekli hata veren
+      // bağlantı her turda sıranın başını tutup diğerlerini bütçenin dışına itmesin.
       const revoked = err instanceof RevokedError
       await supabase.from('integrations')
-        .update({ ...(revoked ? { status: 'revoked' } : {}), last_error: err instanceof Error ? err.message.slice(0, 500) : 'unknown' })
+        .update({
+          ...(revoked ? { status: 'revoked' } : {}),
+          last_synced_at: new Date().toISOString(),
+          last_error: err instanceof Error ? err.message.slice(0, 500) : 'unknown',
+        })
         .eq('id', integration.id)
     }
   }
