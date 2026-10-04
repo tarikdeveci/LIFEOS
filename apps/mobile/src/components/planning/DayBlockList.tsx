@@ -7,8 +7,10 @@ import {
   formatDuration,
   minutesOfDay,
   minutesToClock,
+  subtractIntervals,
   useFocusStore,
   type BlockTiming,
+  type Interval,
 } from '@lifeos/shared'
 import { GlassCard } from '../ui/GlassCard'
 import { TaskCheckbox } from '../ui/TaskCheckbox'
@@ -20,6 +22,8 @@ import type { LocalCalendarEvent } from '../../utils/calendarSync'
 interface Props {
   blocks: TimeBlock[]
   events: LocalCalendarEvent[]
+  /** Google takviminden dolu aralıklar (gün içi dakika); başlık okunmaz. */
+  busy: Interval[]
   /** Görüntülenen gün bugün mü — değilse hiçbir "şu an" işareti çizilmez */
   isToday: boolean
   now: Date
@@ -51,6 +55,7 @@ const spanPx = (minutes: number) => Math.min(minutes * PX_PER_MIN, MAX_SPAN_PX)
 type Item =
   | { kind: 'block'; start: number; end: number; block: TimeBlock; timing: BlockTiming; index: number }
   | { kind: 'event'; start: number; end: number; event: LocalCalendarEvent }
+  | { kind: 'busy'; start: number; end: number }
 
 const clockMinute = (iso: string) => {
   const d = new Date(iso)
@@ -63,7 +68,7 @@ const clockMinute = (iso: string) => {
  * araya "şu an" çizgisi girer.
  */
 export function DayBlockList({
-  blocks, events, isToday, now, blockColors, blockLabels, onDelete, onToggleDone, onNowAnchorLayout, header, emptyContent,
+  blocks, events, busy, isToday, now, blockColors, blockLabels, onDelete, onToggleDone, onNowAnchorLayout, header, emptyContent,
 }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
@@ -92,16 +97,20 @@ export function DayBlockList({
   const nextIndex = isToday ? timings.findIndex((timing) => timing.phase === 'upcoming') : -1
 
   const allDay = events.filter((e) => e.isAllDay)
+  const timedEvents = events.filter((e) => !e.isAllDay)
+    .map((event): Item => ({ kind: 'event', start: clockMinute(event.startsAt), end: clockMinute(event.endsAt), event }))
   const items: Item[] = [
     ...blocks.flatMap((block, index): Item[] => {
       const timing = timings[index]
       return timing ? [{ kind: 'block', start: timing.startMinute, end: timing.endMinute, block, timing, index }] : []
     }),
-    ...events.filter((e) => !e.isAllDay)
-      .map((event): Item => ({ kind: 'event', start: clockMinute(event.startsAt), end: clockMinute(event.endsAt), event })),
+    ...timedEvents,
+    // Cihaz takvimi aynı etkinliği başlığıyla gösteriyorsa "Meşgul" satırı ikinci kez çizilmez.
+    ...subtractIntervals(busy, timedEvents).map((b): Item => ({ kind: 'busy', ...b })),
   ].sort((a, b) => a.start - b.start)
 
-  const rows: ReactNode[] = allDay.map((event) => <EventRow key={event.id} event={event} />)
+  const eventTime = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const rows: ReactNode[] = allDay.map((event) => <ExternalRow key={event.id} start="Tüm gün" title={event.title} source="Takvim" />)
   // Boşluktaysak (aktif blok yok) çizgi şu andan sonra başlayan ilk satırın önüne,
   // hepsi geçtiyse en sona düşer.
   let nowLineDrawn = !isToday || activeIndex !== -1 || blocks.length === 0
@@ -122,7 +131,15 @@ export function DayBlockList({
     }
     pushGap(cursor, item.start, `gap-${i}`)
     cursor = Math.max(cursor ?? item.end, item.end)
-    if (item.kind === 'event') { rows.push(<EventRow key={item.event.id} event={item.event} minHeight={spanPx(item.end - item.start)} />); return }
+    if (item.kind === 'event') {
+      const { event } = item
+      rows.push(<ExternalRow key={event.id} start={eventTime(event.startsAt)} end={eventTime(event.endsAt)} title={event.title} source="Takvim" minHeight={spanPx(item.end - item.start)} />)
+      return
+    }
+    if (item.kind === 'busy') {
+      rows.push(<ExternalRow key={`busy-${item.start}`} start={minutesToClock(item.start)} end={minutesToClock(item.end)} title={t.plan_busy} source={t.plan_busy_source} minHeight={spanPx(item.end - item.start)} />)
+      return
+    }
     const { block, timing, index } = item
     rows.push(
       <BlockRow
@@ -272,24 +289,22 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
   )
 }
 
-function EventRow({ event, minHeight = 0 }: { event: LocalCalendarEvent; minHeight?: number }) {
+/** LifeOS dışından gelen satır: cihaz takvimi etkinliği ya da Google'dan başlıksız dolu aralık. */
+function ExternalRow({ start, end, title, source, minHeight = 0 }: { start: string; end?: string; title: string; source: string; minHeight?: number }) {
   const { colors } = useTheme()
-  const time = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[3], minHeight }}>
       <View style={{ width: TIME_COL }}>
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>
-          {event.isAllDay ? 'Tüm gün' : time(event.startsAt)}
-        </Text>
-        {!event.isAllDay && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontVariant: ['tabular-nums'] }}>{time(event.endsAt)}</Text>}
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>{start}</Text>
+        {end && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontVariant: ['tabular-nums'] }}>{end}</Text>}
       </View>
       <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: colors.border }} />
       <View style={{ flex: 1, paddingLeft: spacing[1] }}>
-        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>{event.title}</Text>
+        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textSecondary }} numberOfLines={1}>{title}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
           <Ionicons name="calendar-outline" size={11} color={colors.textSubtle} />
-          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Takvim</Text>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{source}</Text>
         </View>
       </View>
     </View>
