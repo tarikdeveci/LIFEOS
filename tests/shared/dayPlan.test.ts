@@ -2,8 +2,16 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  autoPlace, dayCapacity, freeIntervals, mergeIntervals, shiftRemaining, taskMinutes,
+  autoPlace, dayCapacity, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes,
 } from '../../packages/shared/src/utils/dayPlan.ts'
+
+test('subtractIntervals: kesişen kısım çıkar, kalan parçalar sıralı döner', () => {
+  const busy = [{ start: 600, end: 720 }]
+  assert.deepEqual(subtractIntervals(busy, [{ start: 630, end: 660 }]), [{ start: 600, end: 630 }, { start: 660, end: 720 }])
+  assert.deepEqual(subtractIntervals(busy, [{ start: 590, end: 620 }, { start: 610, end: 730 }]), [])
+  assert.deepEqual(subtractIntervals(busy, []), busy)
+  assert.deepEqual(subtractIntervals([], busy), [])
+})
 
 const block = (id: string, start: string, end: string, done = false) =>
   ({ id, start_time: start, end_time: end, completed_at: done ? '2026-09-29T08:00:00Z' : null })

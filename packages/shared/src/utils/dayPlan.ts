@@ -43,6 +43,23 @@ export function mergeIntervals(intervals: readonly Interval[]): Interval[] {
   return out
 }
 
+/** `from` aralıklarından `cut` ile kesişen kısımları çıkarır; kalan parçalar sıralı döner. */
+export function subtractIntervals(from: readonly Interval[], cut: readonly Interval[]): Interval[] {
+  const cuts = mergeIntervals(cut)
+  const out: Interval[] = []
+  for (const f of mergeIntervals(from)) {
+    let cursor = f.start
+    for (const c of cuts) {
+      if (c.end <= cursor) continue
+      if (c.start >= f.end) break
+      if (c.start > cursor) out.push({ start: cursor, end: c.start })
+      cursor = Math.max(cursor, c.end)
+    }
+    if (cursor < f.end) out.push({ start: cursor, end: f.end })
+  }
+  return out
+}
+
 /**
  * [dayStart, dayEnd] içinde bloklar ve dış meşgul aralıklar (ör. Google takvimi)
  * dışında kalan boşluklar. `from` verilirse ondan önceki kısım kesilir (şu an).

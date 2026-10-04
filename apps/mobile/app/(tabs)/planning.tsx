@@ -77,7 +77,7 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { timeBlocks, dailyPlan, busy, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
   const BLOCK_LABELS: Record<BlockType, string> = {
     task: t.block_task, routine: t.block_routine, break: t.block_break,
     focus: t.block_focus, meal: t.block_meal, workout: t.block_workout,
@@ -387,6 +387,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         <DayBlockList
           blocks={dayBlocks}
           events={localEventsForDate}
+          busy={busy}
           isToday={isViewingToday}
           now={now}
           blockColors={BLOCK_COLORS}
