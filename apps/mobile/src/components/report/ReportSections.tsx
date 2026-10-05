@@ -23,9 +23,11 @@ const NARROW_WIDTH = 360
 
 export function SectionTitle({ label }: SectionTitleProps) {
   const { colors } = useTheme()
+  const { lang } = useLang()
+  // textTransform cihaz diline bakar: İngilizce telefonda "İyi" "İYI" olur. Uygulama diliyle büyüt.
   return (
-    <Text accessibilityRole="header" style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-      {label}
+    <Text accessibilityRole="header" style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.textSubtle, letterSpacing: 0.6 }}>
+      {label.toLocaleUpperCase(lang)}
     </Text>
   )
 }
