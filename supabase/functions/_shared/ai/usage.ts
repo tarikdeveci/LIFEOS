@@ -4,8 +4,9 @@
 // buradan karar verir; kural tek yerde durur.
 //
 // Kurallar:
-//   • Free   : yalnızca FREE_KINDS rotaları, ömür boyu 3 kez. Sayaç
-//              migration 052'deki ai_allowance() içinde.
+//   • Free   : yalnızca FREE_KINDS rotaları (freeKinds.ts, erişim kararının
+//              tek noktası), ömür boyu 3 kez. Sayaç migration 052'deki
+//              ai_allowance() içinde.
 //   • Deneme : Pro gibi, bütçesi AI_TRIAL_BUDGET_USD.
 //   • Pro    : aylık bütçe kullanıcının ödediği fiyatla ölçeklenir. Bütçe
 //              aşılınca sohbetler ucuz modele, öğün ayrıştırma kural katmanına
@@ -13,6 +14,8 @@
 //
 // Maliyet her model yanıtının `usage` alanından hesaplanıp `events.ai_used`
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
+
+import { FREE_KINDS } from './freeKinds.ts'
 
 interface QueryError {
   message: string
@@ -36,7 +39,7 @@ interface SupabaseLike {
     }
     insert(values: Record<string, unknown>): PromiseLike<QueryResult>
   }
-  rpc(name: string): PromiseLike<QueryResult>
+  rpc(name: string, args?: Record<string, unknown>): PromiseLike<QueryResult>
 }
 
 /** ai_used satırı yazılamazsa kaç kez denensin (kota + maliyet kaydı buna bağlı). */
@@ -58,10 +61,6 @@ function envNumber(name: string, fallback: number): number {
   const value = Number(Deno.env.get(name))
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
-
-// Ücretsiz kullanıcıya açık rotalar: ürünün vaadi olan gün planı. Sohbet ve
-// antrenman koçu açılmıyor, çünkü onlar "bir kez görüp anlama" özelliği değil.
-const FREE_KINDS = new Set(['replan'])
 
 // Kullanıcının ödediği AYLIK fiyatın (USD) bu oranı AI'a gidebilir. Fiyat
 // bilinmiyorsa (web/PayTR, fiyatı henüz yazılmamış eski abonelik) taban bütçe.
@@ -156,6 +155,8 @@ export interface MeteredMessage {
     cache_creation_input_tokens?: number | null
     cache_read_input_tokens?: number | null
   }
+  /** 'max_tokens': çıktı yarım kaldı. Ücretsiz hak bu yanıt için yanmaz. */
+  stop_reason?: string | null
 }
 
 // USD / 1M token. Önbellek yazımı (5 dk) girdi fiyatının 1,25 katı, okuması
@@ -182,12 +183,27 @@ export function costUsd(message: MeteredMessage): number {
   ) / 1_000_000
 }
 
+/** Ücretsiz katmanda başarısız çağrının `kind`'ı: FREE_KINDS dışında, hak saymaz. */
+export function failedKind(kind: string): string {
+  return `${kind}_failed`
+}
+
 /**
  * Bir isteğin model çağrılarını toplar ve tek `ai_used` satırı olarak yazar.
  *
- * Satır ÇAĞRIDAN SONRA yazılır: model yanıt vermediyse ne maliyet oluşmuştur
- * ne de free kullanıcının hakkı harcanmalıdır. Yazım await edilir; yanıt
- * dönünce bekleyen iş iptal edilebiliyor.
+ * Pro/deneme: satır ÇAĞRIDAN SONRA yazılır; model yanıt vermediyse ne maliyet
+ * oluşmuştur ne de bir şey sayılmalıdır. Yazım await edilir; yanıt dönünce
+ * bekleyen iş iptal edilebiliyor.
+ *
+ * Ücretsiz: hak kontrolü ile çağrı arasında yarış vardı (aynı anda N istek
+ * hepsi geçiyordu). Bu yüzden `begin()` model çağrısından ÖNCE, reserve_ai_use
+ * (065) ile kullanıcı başına kilitli ve atomik bir rezervasyon satırı yazar;
+ * ai_allowance() o satırı hemen sayar. Yanıt gelince maliyet aynı satıra
+ * işlenir (settle_ai_use, yalnızca service_role). Çağrı başarısızsa
+ * (`markFailed`, `abandon`, max_tokens) satırın kind'ı FREE_KINDS dışına
+ * çevrilir: maliyet yazılır, hak yanmaz. İstek yarıda ölürse (zaman aşımı)
+ * rezervasyon açık kalır ve hak yanar: bilinmezlikte fazla saymak, bedava
+ * hak vermekten iyidir.
  */
 export class AiLedger {
   private calls = 0
@@ -197,13 +213,68 @@ export class AiLedger {
   private cacheWriteTokens = 0
   private cost = 0
   private readonly models = new Set<string>()
+  private reservationId: number | null = null
+  private failed = false
 
+  private readonly supabase: SupabaseLike
+  private readonly userId: string
+  private readonly kind: string
+  private readonly tier: AiTier
+  private readonly settleClient: SupabaseLike | null
+
+  /**
+   * `settleClient`: service role istemcisi. Yalnızca ücretsiz katmanda gerekir;
+   * kullanıcının kendi JWT'siyle satır güncellenemez (events yalnızca INSERT).
+   * (Alanlar açık tanımlı: Node'un strip-only modu parametre özelliği desteklemiyor.)
+   */
   constructor(
-    private readonly supabase: SupabaseLike,
-    private readonly userId: string,
-    private readonly kind: string,
-    private readonly tier: AiTier,
-  ) {}
+    supabase: SupabaseLike,
+    userId: string,
+    kind: string,
+    tier: AiTier,
+    settleClient: SupabaseLike | null = null,
+  ) {
+    this.supabase = supabase
+    this.userId = userId
+    this.kind = kind
+    this.tier = tier
+    this.settleClient = settleClient
+  }
+
+  /**
+   * Model çağrısından önce çağrılır. Ücretsiz katmanda hakkı atomik olarak
+   * ayırır; hak yoksa ya da ayrılamadıysa false (rota 402 döner). Diğer
+   * katmanlarda bir şey yapmaz.
+   */
+  async begin(): Promise<boolean> {
+    if (this.tier !== 'free' || this.reservationId !== null) return true
+    try {
+      const { data, error } = await this.supabase.rpc('reserve_ai_use', { p_kind: this.kind })
+      if (error) {
+        console.error('reserve_ai_use basarisiz:', error.message)
+        return false
+      }
+      const id = typeof data === 'number' || typeof data === 'string' ? Number(data) : NaN
+      if (!Number.isFinite(id)) return false
+      this.reservationId = id
+      return true
+    } catch (err) {
+      console.error('reserve_ai_use basarisiz:', err instanceof Error ? err.message : err)
+      return false
+    }
+  }
+
+  /** Bu isteğin çağrısı kullanılamaz sonuç verdi (ayrıştırılamadı): hak yanmasın. */
+  markFailed(): void {
+    this.failed = true
+  }
+
+  /** Model hiç yanıt vermediyse (fırlattı): rezervasyonu hak saymayacak şekilde kapat. */
+  async abandon(): Promise<void> {
+    if (this.reservationId === null) return
+    this.failed = true
+    await this.settle(this.buildProps(true))
+  }
 
   add(message: MeteredMessage): void {
     this.calls += 1
@@ -213,12 +284,12 @@ export class AiLedger {
     this.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0
     this.cost += costUsd(message)
     this.models.add(message.model)
+    if (message.stop_reason === 'max_tokens') this.failed = true
   }
 
-  async flush(): Promise<void> {
-    if (this.calls === 0) return
+  private buildProps(reset: boolean): Record<string, unknown> {
     const props = {
-      kind: this.kind,
+      kind: this.failed && this.reservationId !== null ? failedKind(this.kind) : this.kind,
       tier: this.tier,
       model: [...this.models].join(','),
       calls: this.calls,
@@ -229,13 +300,25 @@ export class AiLedger {
       // 6 hane: 1e-6 altı değerler JSON'a üslü yazılır, ondalık kalsın.
       cost_usd: Math.round(this.cost * 1_000_000) / 1_000_000,
     }
-    this.calls = 0
-    this.inputTokens = 0
-    this.outputTokens = 0
-    this.cacheReadTokens = 0
-    this.cacheWriteTokens = 0
-    this.cost = 0
-    this.models.clear()
+    if (reset) {
+      this.calls = 0
+      this.inputTokens = 0
+      this.outputTokens = 0
+      this.cacheReadTokens = 0
+      this.cacheWriteTokens = 0
+      this.cost = 0
+      this.models.clear()
+    }
+    return props
+  }
+
+  async flush(): Promise<void> {
+    if (this.calls === 0) return
+    const props = this.buildProps(true)
+    if (this.reservationId !== null) {
+      await this.settle(props)
+      return
+    }
     if (await this.insertEvent(props)) return
 
     // Buraya düşmek iki şey demek: bu çağrının maliyeti hiçbir yerde yok ve
@@ -243,6 +326,36 @@ export class AiLedger {
     // Satırı logda tam hâliyle bırak: gerekirse elle geri yazılabilsin.
     console.error(
       `KRITIK: ai_used yazilamadi, kota ve maliyet kaydi kayip (user ${this.userId}):`,
+      JSON.stringify(props),
+    )
+  }
+
+  /**
+   * Rezervasyon satırına son props'u yazar. settle_ai_use idempotent (yalnızca
+   * hâlâ `reserved` olan satırı günceller), bu yüzden yanıtsız kalan istekte de
+   * güvenle tekrar denenir.
+   */
+  private async settle(props: Record<string, unknown>): Promise<void> {
+    const id = this.reservationId
+    const client = this.settleClient
+    if (id === null) return
+    this.reservationId = null
+    for (let attempt = 1; client && attempt <= LEDGER_WRITE_ATTEMPTS; attempt++) {
+      try {
+        const { error } = await client.rpc('settle_ai_use', { p_user_id: this.userId, p_id: id, p_props: props })
+        if (!error) return
+        console.error(`settle_ai_use basarisiz (${attempt}/${LEDGER_WRITE_ATTEMPTS}):`, error.message)
+      } catch (err) {
+        console.error(
+          `settle_ai_use basarisiz (${attempt}/${LEDGER_WRITE_ATTEMPTS}):`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+      if (attempt < LEDGER_WRITE_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, 200 * attempt))
+    }
+    // Satır `reserved` kaldı: hak yanmış sayılır, maliyet 0. Elle düzeltilebilsin.
+    console.error(
+      `KRITIK: rezervasyon kapatilamadi (user ${this.userId}, satir ${id}):`,
       JSON.stringify(props),
     )
   }

@@ -20,6 +20,8 @@ export interface Goal {
   unit: string | null
   count_mode: GoalCountMode | null
   tag_filter: string[]
+  /** 065: bu hedefe bağlı işlerden bir günde en çok kaçı öncelik olabilir. NULL = sınırsız. */
+  daily_cap: number | null
   status: GoalStatus
   review_note: string | null
   reviewed_at: string | null
@@ -37,6 +39,7 @@ export interface CreateGoalInput {
   unit?: string | null
   count_mode?: GoalCountMode | null
   tag_filter?: string[]
+  daily_cap?: number | null
 }
 
 export type UpdateGoalInput = Partial<Omit<CreateGoalInput, 'horizon'>> & {

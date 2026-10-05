@@ -1,8 +1,10 @@
 // supabase/functions/ai-suggest/planning.ts
 // Gün planı rotaları: daily_plan (öneri listesi) ve replan (planlama koçu sohbeti).
 
-import { buildPlannerPrompt, parsePlannerResult, type PlannerTask } from '../_shared/ai/coach.ts'
+import { buildPlannerPrompt, parsePlannerResult, type PlannerTask } from '../_shared/ai/planner.ts'
+import { DEFAULT_PLANNING_RULES } from '../_shared/ai/planningRules.ts'
 import { CHAT_EFFORT, LEGACY_MODEL, firstText } from './model.ts'
+import { loadPlanningRules, loadRoutineContext } from './planningContext.ts'
 import { normalizeHistory, type RouteContext } from './request.ts'
 import { busyBlocks } from './time.ts'
 
@@ -154,6 +156,14 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     .maybeSingle()
 
   const blocks = [...(existing_blocks ?? []), ...(await busyBlocks(supabase, userId, targetDate))]
+
+  // Kullanıcının kalıcı kuralları ve korumalı rutin blokları (065). Kaydettiği
+  // tampon, istemcinin gönderdiği sabit değerin önüne geçer.
+  const [rules, routineContext] = await Promise.all([
+    loadPlanningRules(supabase, userId),
+    loadRoutineContext(supabase, userId, targetDate, planningCutoff),
+  ])
+
   const { system, messages } = buildPlannerPrompt({
     lang,
     targetDate,
@@ -161,7 +171,12 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     now,
     planningCutoff,
     energyLevel: (planRow?.energy_level as number | null) ?? energy_level ?? null,
-    bufferMinutes: buffer_minutes ?? 15,
+    bufferMinutes: rules.buffer_minutes ?? buffer_minutes ?? DEFAULT_PLANNING_RULES.buffer_minutes,
+    maxDeepTasks: rules.max_deep_tasks ?? DEFAULT_PLANNING_RULES.max_deep_tasks,
+    rollover: rules.rollover ?? DEFAULT_PLANNING_RULES.rollover,
+    about: rules.about ?? DEFAULT_PLANNING_RULES.about,
+    protectedBlocks: routineContext.protectedBlocks,
+    minVersions: routineContext.minVersions,
     pastBlocks: blocks.filter((b) => b.end <= planningCutoff),
     futureBlocks: blocks.filter((b) => b.end > planningCutoff),
     scheduledTasks: (scheduledRows ?? []).map(toPlannerTask),
@@ -169,6 +184,9 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     history: normalizeHistory(body.history),
     userMessage: user_message?.trim() || 'Günümü planla',
   })
+
+  // Ücretsiz katmanda hak model çağrısından ÖNCE atomik ayrılır (usage.ts).
+  if (!await ledger.begin()) return json({ error: 'AI access requires Pro', code: 'pro_required' }, 402)
 
   const response = await client.messages.create({
     model: chatModel,
@@ -182,5 +200,8 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
   await ledger.record(response)
 
   const knownIds = new Set(blocks.flatMap((b) => (b.id ? [b.id] : [])))
-  return json(parsePlannerResult(firstText(response), knownIds))
+  return json(parsePlannerResult(firstText(response), knownIds, {
+    protectedBlocks: routineContext.protectedBlocks,
+    lang,
+  }))
 }

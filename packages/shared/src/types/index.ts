@@ -11,3 +11,5 @@ export type { Database } from './database'
 export * from './integration'
 
 export * from './focus'
+export * from './report'
+export * from './lifeSetup'

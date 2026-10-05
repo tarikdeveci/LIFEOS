@@ -150,6 +150,7 @@ function toTaskInsert(userId: string, input: CreateTaskInput, external?: Externa
     risk_score: input.risk_score ?? 3,
     effort_score: input.effort_score ?? 3,
     friction_score: input.friction_score ?? 3,
+    ...(input.area !== undefined && { area: input.area }),
   }
 }
 

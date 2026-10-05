@@ -12,6 +12,7 @@ import {
   updateRoutineSeries,
   deleteRoutine,
   getRoutineCompletions,
+  getRoutineProgress,
   setHabitCount as writeHabitCount,
   RoutineRegenerateError,
 } from '../supabase/routines'
@@ -29,6 +30,8 @@ interface RoutineState {
   routines: Routine[]
   /** İçinde bulunulan haftanın alışkanlık tamamlamaları. */
   completions: RoutineCompletion[]
+  /** Sayaçlı (target_count) rutinlerin biten oturum sayısı, rutin id'siyle. RPC yoksa boş. */
+  progress: Record<string, number>
   loading: boolean
   error: string | null
 
@@ -42,6 +45,8 @@ interface RoutineState {
     fromDate?: string,
   ) => Promise<void>
   removeRoutine: (supabase: Supabase, routineId: string) => Promise<void>
+  /** Program sayaçlarını yeniden okur; RPC hata verirse mevcut değer kalır. */
+  refreshProgress: (supabase: Supabase) => Promise<void>
   /** O günkü sayacı yazar (0 = işaret yok). İyimser: önce ekran, hata olursa geri alınır. */
   setHabitCount: (
     supabase: Supabase,
@@ -61,6 +66,7 @@ const byStartTime = (a: Routine, b: Routine) =>
 export const useRoutineStore = create<RoutineState>((set, get) => ({
   routines: [],
   completions: [],
+  progress: {},
   loading: false,
   error: null,
 
@@ -68,11 +74,15 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
     set({ loading: true, error: null })
     try {
       const from = mondayOf(today)
-      const [routines, completions] = await Promise.all([
+      const [routines, completions, progress] = await Promise.all([
         getRoutines(supabase, userId),
         getRoutineCompletions(supabase, userId, from, shiftIsoDate(from, 6)),
+        // 065 canlıda değilse RPC hata verir: ilerleme sessizce boş, kart kırılmaz.
+        getRoutineProgress(supabase)
+          .then((rows) => Object.fromEntries(rows.map((r) => [r.routine_id, r.done_count])))
+          .catch((): Record<string, number> => ({})),
       ])
-      set({ routines, completions, loading: false })
+      set({ routines, completions, progress, loading: false })
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
     }
@@ -118,6 +128,15 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
     } catch (err) {
       set({ routines: previous })
       throw err
+    }
+  },
+
+  refreshProgress: async (supabase) => {
+    try {
+      const rows = await getRoutineProgress(supabase)
+      set({ progress: Object.fromEntries(rows.map((r) => [r.routine_id, r.done_count])) })
+    } catch {
+      // 065 canlıda değilse ya da ağ yoksa ilerleme olduğu gibi kalır.
     }
   },
 

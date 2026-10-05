@@ -5,7 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
-import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
+import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore, useTaskStore } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -14,6 +14,7 @@ import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet
 import { NowCard } from '@/src/components/planning/NowCard'
 import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
+import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
@@ -303,6 +304,9 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   )
 
   const isViewingToday = selectedDate === todayStr
+  // Bugüne ait blok ya da görev yoksa "Günü kapat" kartı çıkmaz: verisi olmayan kullanıcıda ekran değişmez.
+  const hasTodayTasks = useTaskStore((s) => s.tasks.some((task) => task.scheduled_date === todayStr))
+  const hasTodayItems = hasTodayTasks || timeBlocks.some((b) => b.date === todayStr)
   const dayTitle = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })
   // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
   const dayPosition = useMemo(
@@ -382,6 +386,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         ) : (
           <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
         ))}
+        {isViewingToday && userId && hasTodayItems && <DayCloseCard userId={userId} now={now} date={todayStr} />}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
         <DayBlockList

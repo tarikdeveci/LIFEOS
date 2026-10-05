@@ -5,7 +5,7 @@ import {
   buildWorkoutCoachPrompt,
   parseWorkoutCoachResult,
   type WorkoutCatalogEntry,
-} from '../_shared/ai/coach.ts'
+} from '../_shared/ai/workoutCoach.ts'
 import { isDoableWith, parseEquipmentPreference } from '../_shared/ai/equipment.ts'
 import {
   flattenWorkoutRows,
