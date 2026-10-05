@@ -67,11 +67,9 @@ export async function enableReportOnce(userId: string, accountCreatedAt: string)
       await AsyncStorage.setItem(flagKey, '1')
       return
     }
-    // Üretilmiş veritabanı tiplerinde report_enabled henüz yok (065): satır gevşek tiplenir.
-    const row: Record<string, unknown> = { user_id: userId, report_enabled: true }
     const { error } = await supabase
       .from('notification_preferences')
-      .upsert(row as never, { onConflict: 'user_id' })
+      .upsert({ user_id: userId, report_enabled: true }, { onConflict: 'user_id' })
     if (error) return
     await AsyncStorage.setItem(flagKey, '1')
   } catch {

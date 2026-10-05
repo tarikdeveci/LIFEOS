@@ -10,8 +10,7 @@ interface Props { userId: string }
 
 /**
  * "Gün raporu" anahtarı (notification_preferences.report_enabled, 065). Kolon yoksa
- * okuma hata verir ve anahtar hiç görünmez. Üretilmiş veritabanı tiplerinde kolon henüz
- * olmadığından satırlar gevşek tiplenir. Yazma hatasında anahtar geri alınır.
+ * okuma hata verir ve anahtar hiç görünmez. Yazma hatasında anahtar geri alınır.
  */
 export function ReportNotifToggle({ userId }: Props) {
   const { colors } = useTheme()
@@ -28,8 +27,7 @@ export function ReportNotifToggle({ userId }: Props) {
           .eq('user_id', userId)
           .maybeSingle()
         if (!alive || error) return
-        const value = (data as { report_enabled?: unknown } | null)?.report_enabled
-        setEnabled(typeof value === 'boolean' ? value : false)
+        setEnabled(data?.report_enabled ?? false)
       } catch {
         // Okunamadı: anahtar gösterilmez.
       }
@@ -42,10 +40,9 @@ export function ReportNotifToggle({ userId }: Props) {
   const change = async (next: boolean) => {
     const previous = enabled
     setEnabled(next)
-    const row: Record<string, unknown> = { user_id: userId, report_enabled: next }
     const { error } = await supabase
       .from('notification_preferences')
-      .upsert(row as never, { onConflict: 'user_id' })
+      .upsert({ user_id: userId, report_enabled: next }, { onConflict: 'user_id' })
     if (error) {
       setEnabled(previous)
       Alert.alert(t.report_notif_save_failed_title, t.report_notif_save_failed)
