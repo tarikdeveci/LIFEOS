@@ -44,16 +44,13 @@ const MAX_SEGMENTS = 24
  */
 export function viewItems(report: DailyReport): ViewItem[] {
   const marks = report.checkin.items ?? {}
-  const counted = new Set(report.facts.habits_week.map((h) => h.routine_id))
   return report.facts.items.map((item) => {
     const mark = item.outcome === 'open' ? marks[item.key] : undefined
-    // Sayaçsız alışkanlık yalnız yapıldıysa gelir: beklenmez ve haftalık sayımda yer almaz.
-    const untracked = item.kind === 'habit' && !item.expected && !counted.has(item.key.slice('habit:'.length))
     return {
       ...item,
       outcome: mark ? mark.outcome : item.outcome,
       reason: mark ? mark.reason ?? null : item.reason,
-      quiet: item.area === 'spiritual' || untracked,
+      quiet: item.area === 'spiritual' || item.untracked,
     }
   })
 }
@@ -103,15 +100,9 @@ export function programRows(items: readonly ViewItem[]): ProgramRow[] {
   return [...rows.values()]
 }
 
-/**
- * Haftalık sayım satırları. habits_week alan taşımaz; manevi alışkanlık öğe listesinden
- * bulunup düşülür (manevi iş sayıyla gösterilmez).
- */
+/** Haftalık sayım satırları; manevi alandaki alışkanlık sayıyla gösterilmez. */
 export function habitRows(report: DailyReport): HabitWeek[] {
-  const spiritual = new Set(
-    report.facts.items.filter((i) => i.kind === 'habit' && i.area === 'spiritual').map((i) => i.key),
-  )
-  return report.facts.habits_week.filter((h) => h.target > 0 && !spiritual.has(`habit:${h.routine_id}`))
+  return report.facts.habits_week.filter((h) => h.target > 0 && h.area !== 'spiritual')
 }
 
 /** Anlatı yoksa (beklenmez) iyi gidenler tamamlanan işlerin adlarından kurulur. */

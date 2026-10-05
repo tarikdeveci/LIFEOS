@@ -85,6 +85,12 @@ export const reportEn = {
   report_ai_loading: 'Reading your day',
   report_ai_ready: 'This report was written with AI commentary.',
   report_ai_pro: 'Pro',
+  report_close_title: 'Close the day',
+  report_close_sub_plain: 'See how your day went',
+  report_notif_title: 'Day report',
+  report_notif_sub: 'A short evening notice that opens your report',
+  report_notif_save_failed_title: 'Not saved',
+  report_notif_save_failed: 'The setting could not be saved and was reverted.',
 } as const
 
 export const reportTr: Record<keyof typeof reportEn, string> = {
@@ -170,4 +176,10 @@ export const reportTr: Record<keyof typeof reportEn, string> = {
   report_ai_loading: 'Günün okunuyor',
   report_ai_ready: 'Bu rapor AI yorumuyla yazıldı.',
   report_ai_pro: 'Pro',
+  report_close_title: 'Günü kapat',
+  report_close_sub_plain: 'Gününün nasıl geçtiğine bak',
+  report_notif_title: 'Gün raporu',
+  report_notif_sub: 'Akşam raporunu açan kısa bir bildirim',
+  report_notif_save_failed_title: 'Kaydedilemedi',
+  report_notif_save_failed: 'Ayar kaydedilemedi, eski değerine döndü.',
 }

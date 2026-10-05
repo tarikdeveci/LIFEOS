@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildDailyReportPrompt,
   isCalendarDate,
+  isUnmeasured,
   parseDailyReportNarrative,
   readReportContext,
   readStoredAiNarrative,
@@ -12,7 +13,7 @@ import {
 
 const item = (over: Record<string, unknown>) => ({
   key: 'task:1', kind: 'task', title: 'Görev', area: null, minutes: null,
-  start_time: null, expected: true, outcome: 'open', reason: null, program: null, ...over,
+  start_time: null, expected: true, outcome: 'open', reason: null, program: null, untracked: false, goal: null, ...over,
 })
 
 const FACTS = {
@@ -29,7 +30,7 @@ const FACTS = {
   focus_minutes: 95,
   movement: { exercise_minutes: null, steps: 4200, workout_done: false },
   nutrition: { calories: 1800, calorie_target: 2200, protein_g: 110, meals: 3 },
-  habits_week: [{ routine_id: 'r1', title: 'Spor', done: 2, target: 3 }],
+  habits_week: [{ routine_id: 'r1', title: 'Spor', area: 'health', done: 2, target: 3 }],
 }
 
 const CHECKIN = {
@@ -232,4 +233,17 @@ test('tarih: takvimde olmayan gün reddedilir', () => {
   assert.equal(isCalendarDate('05.10.2026'), false)
   assert.equal(isCalendarDate(undefined), false)
   assert.equal(isCalendarDate(20261005), false)
+})
+
+test('isUnmeasured: manevi alan ya da untracked bayrağı yeter, eski kayıtta bayrak yoksa ölçülür', () => {
+  const read = (over: Record<string, unknown>) => readReportContext({ items: [item({ title: 'Is', ...over })] }, {})?.items[0]
+  const quiet = read({ untracked: true })
+  const dini = read({ area: 'spiritual' })
+  const plain = read({})
+  const legacy = readReportContext({ items: [{ key: 'task:1', title: 'Eski', outcome: 'done' }] }, {})?.items[0]
+  assert.ok(quiet && dini && plain && legacy)
+  assert.equal(isUnmeasured(quiet), true)
+  assert.equal(isUnmeasured(dini), true)
+  assert.equal(isUnmeasured(plain), false)
+  assert.equal(isUnmeasured(legacy), false)
 })

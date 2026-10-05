@@ -16,6 +16,7 @@ import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { LifeSetupSheet } from './LifeSetupSheet'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -116,6 +117,7 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bd = useBrainDump(userId, t.brain_error, onClose)
+  const [showSetup, setShowSetup] = useState(false)
   const kept = bd.items?.filter((i) => i.keep && i.title.trim()).length ?? 0
 
   function close() { bd.reset(); onClose() }
@@ -126,7 +128,8 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
   }
 
   return (
-    <BottomSheet visible={visible} onClose={close} title={t.brain_title} scrollable>
+    <>
+    <BottomSheet visible={visible && !showSetup} onClose={close} title={t.brain_title} scrollable>
       {bd.items === null ? (
         <View style={{ gap: spacing[3] }}>
           <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18 }}>{t.brain_hint}</Text>
@@ -150,6 +153,9 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
               style={{ flex: 1 }}
             />
           </View>
+          <TouchableOpacity onPress={() => setShowSetup(true)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: spacing[2], paddingHorizontal: spacing[3] }}>
+            <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.medium }}>{t.setup_link}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={{ gap: spacing[3] }}>
@@ -190,5 +196,13 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
       )}
       {bd.error && <Text style={{ fontSize: fontSize.xs, color: palette.danger, marginTop: spacing[2] }}>{bd.error}</Text>}
     </BottomSheet>
+    <LifeSetupSheet
+      visible={visible && showSetup}
+      onClose={() => setShowSetup(false)}
+      onDone={() => { setShowSetup(false); close() }}
+      userId={userId}
+      requirePro={requirePro}
+    />
+    </>
   )
 }

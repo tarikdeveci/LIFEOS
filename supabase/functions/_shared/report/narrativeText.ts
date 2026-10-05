@@ -42,7 +42,7 @@ export interface NarrativeText {
     steady: string[]
     empty: string[]
   }
-  futureSelf: { program: string[]; work: string[]; care: string[]; focus: string[]; generic: string[] }
+  futureSelf: { program: string[]; goal: string[]; work: string[]; care: string[]; focus: string[]; generic: string[] }
 }
 
 const TR: NarrativeText = {
@@ -128,6 +128,10 @@ const TR: NarrativeText = {
       '{title}: {program}. Gelecekteki sen bu adımın üstüne basacak.',
       'Bugünkü oturum bitti, {title} artık {program}. Bu, gelecekteki sana bırakılan bir birikim.',
       '{title} ilerledi: {program}. Gelecekteki sen için sağlam bir adım.',
+    ],
+    goal: [
+      '{title} bitti, "{goal}" hedefine bir adım yaklaştın. Gelecekteki sen bunu görecek.',
+      '"{goal}" için bugün {title} tamamlandı. Gelecekteki sen bu emeğin üstüne basacak.',
     ],
     work: [
       '{title} bitti, yarınki sen için bir iş eksildi.',
@@ -231,6 +235,10 @@ const EN: NarrativeText = {
       '{title}: {program}. Your future self will build on this step.',
       "Today's session is done, {title} now stands at {program}. A reserve left for your future self.",
       '{title} moved forward: {program}. A solid step for your future self.',
+    ],
+    goal: [
+      '{title} is done, one step closer to "{goal}". Your future self will see it.',
+      'For "{goal}", {title} was completed today. Your future self will build on that effort.',
     ],
     work: [
       '{title} is done, one less thing for tomorrow you.',

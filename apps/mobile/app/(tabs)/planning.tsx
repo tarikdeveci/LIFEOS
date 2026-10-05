@@ -14,6 +14,7 @@ import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet
 import { NowCard } from '@/src/components/planning/NowCard'
 import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
+import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
@@ -382,6 +383,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         ) : (
           <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
         ))}
+        {isViewingToday && userId && <DayCloseCard userId={userId} now={now} date={todayStr} />}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
         <DayBlockList

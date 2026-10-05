@@ -24,6 +24,10 @@ export interface DayItem {
   reason: SkipReason | null
   /** Sayaçlı rutin örneğinde program ilerlemesi (ör. 7/42). */
   program: { done: number; target: number } | null
+  /** Rutini routines.is_untracked olan iş: ölçülmez, sayı ve seri gösterilmez. */
+  untracked: boolean
+  /** Görevin bağlı olduğu hedef (tasks.goal_id); bağlantı yoksa null. */
+  goal: { id: string; title: string } | null
 }
 
 export interface DayMovement {
@@ -42,6 +46,8 @@ export interface DayNutrition {
 export interface HabitWeek {
   routine_id: string
   title: string
+  /** Rutinin alanı (routines.area). */
+  area: LifeArea | null
   done: number
   target: number
 }

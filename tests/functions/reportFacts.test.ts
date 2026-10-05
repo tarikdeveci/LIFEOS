@@ -8,6 +8,7 @@ import {
   type FactsInput,
   type FactsRoutine,
   type FactsTask,
+  toGoal,
 } from '../../supabase/functions/_shared/report/facts.ts'
 
 const DATE = '2026-10-07' // Çarşamba, haftanın Pazartesi'si 2026-10-05
@@ -18,6 +19,7 @@ const task = (over: Partial<FactsTask> & { id: string }): FactsTask => ({
   area: null,
   routine_id: null,
   estimated_minutes: null,
+  goal: null,
   ...over,
 })
 
@@ -220,7 +222,7 @@ test('haftalık esnek alışkanlık: bugün beklenmez, hafta ilerlemesi bugüne 
   }))
   assert.equal(facts.items[0]?.expected, false)
   assert.equal(facts.items[0]?.outcome, 'done')
-  assert.deepEqual(facts.habits_week, [{ routine_id: 'spor', title: 'Spor', done: 2, target: 3 }])
+  assert.deepEqual(facts.habits_week, [{ routine_id: 'spor', title: 'Spor', area: 'health', done: 2, target: 3 }])
 })
 
 test('günde N kez alışkanlık: bugün beklenir, sayaç N olmadan tamamlanmış sayılmaz', () => {
@@ -317,4 +319,37 @@ test('yerel tarih: UTC günü değişmemişken İstanbul günü ilerlemiş olabi
   const at = new Date('2026-10-06T22:30:00Z')
   assert.equal(localDateIn('Europe/Istanbul', at), '2026-10-07')
   assert.equal(localDateIn('America/New_York', at), '2026-10-06')
+})
+
+test('untracked ve goal: rutinden ve görevin hedefinden gelir, habits_week alan taşır', () => {
+  const goal = { id: 'g1', title: 'Sertifika' }
+  const facts = buildDayFacts(input({
+    tasks: [
+      task({ id: 'dua', routine_id: 'r-dini', goal }),
+      task({ id: 'rapor', goal }),
+      task({ id: 'duz' }),
+    ],
+    blocks: [block({ id: 'b-dini', block_type: 'routine', routine_id: 'r-dini', start_time: '13:00:00', end_time: '13:30:00' })],
+    routines: [
+      routine({ id: 'r-dini', kind: 'task', area: 'spiritual', is_untracked: true }),
+      routine({ id: 'spor', title: 'Spor', area: 'health', times_per_week: 3 }),
+    ],
+  }))
+  const by = (key: string) => facts.items.find((i) => i.key === key)
+  assert.equal(by('task:dua')?.untracked, true)
+  assert.equal(by('block:b-dini')?.untracked, true)
+  assert.equal(by('task:rapor')?.untracked, false)
+  assert.deepEqual(by('task:rapor')?.goal, goal)
+  assert.equal(by('task:duz')?.goal, null)
+  assert.equal(by('block:b-dini')?.goal, null)
+  assert.equal(by('habit:spor')?.untracked, false)
+  assert.deepEqual(facts.habits_week.map((h) => [h.routine_id, h.area]), [['spor', 'health']])
+})
+
+test('toGoal: nesne ya da tek elemanlı dizi okunur, eksik ve bozuk veri null', () => {
+  assert.deepEqual(toGoal({ id: 'g', title: 'T' }), { id: 'g', title: 'T' })
+  assert.deepEqual(toGoal([{ id: 'g', title: 'T' }]), { id: 'g', title: 'T' })
+  assert.equal(toGoal(null), null)
+  assert.equal(toGoal([]), null)
+  assert.equal(toGoal({ id: 'g' }), null)
 })

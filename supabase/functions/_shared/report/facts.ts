@@ -25,6 +25,8 @@ export interface FactsTask {
   area: LifeArea | null
   routine_id: string | null
   estimated_minutes: number | null
+  /** tasks.goal_id ile bağlı hedef (id ve başlık); bağlantı yoksa null. */
+  goal: { id: string; title: string } | null
 }
 
 export interface FactsBlock {
@@ -97,6 +99,14 @@ const AREAS: readonly string[] = ['career', 'health', 'personal', 'spiritual', '
 /** Veritabanından gelen serbest metni alana çevirir; tanımsızsa null. */
 export function toArea(value: unknown): LifeArea | null {
   return typeof value === 'string' && AREAS.includes(value) ? (value as LifeArea) : null
+}
+
+/** Gömülü hedef satırını okur (nesne ya da tek elemanlı dizi gelebilir); eksikse null. */
+export function toGoal(value: unknown): FactsTask['goal'] {
+  const row = Array.isArray(value) ? value[0] : value
+  if (typeof row !== 'object' || row === null) return null
+  const { id, title } = row as { id?: unknown; title?: unknown }
+  return typeof id === 'string' && typeof title === 'string' ? { id, title } : null
 }
 
 // Rutin ve alışkanlık kuralları
@@ -184,6 +194,8 @@ function taskItem(t: FactsTask, blocks: readonly FactsBlock[], input: FactsInput
     outcome: t.status === 'done' ? 'done' : 'open',
     reason: null,
     program: programOf(routine, input.progress),
+    untracked: routine?.is_untracked ?? false,
+    goal: t.goal,
   }
 }
 
@@ -199,6 +211,8 @@ function blockItem(b: FactsBlock, input: FactsInput, routine: FactsRoutine | und
     outcome: b.completed_at !== null ? 'done' : 'open',
     reason: null,
     program: programOf(routine, input.progress),
+    untracked: routine?.is_untracked ?? false,
+    goal: null,
   }
 }
 
@@ -214,7 +228,7 @@ function habitItems(input: FactsInput): { items: DayItem[]; week: HabitWeek[] } 
       continue
     }
     if (r.times_per_week !== null) {
-      week.push({ routine_id: r.id, title: r.title, done: habitWeekDone(input.completions, r, input.date), target: r.times_per_week })
+      week.push({ routine_id: r.id, title: r.title, area: r.area, done: habitWeekDone(input.completions, r, input.date), target: r.times_per_week })
     }
     // Günlük alışkanlık bugün beklenir; haftalık esnek olanın bugün yapılması beklenmez.
     items.push(habitItem(r, done, r.times_per_day !== null || r.times_per_week === 7, input))
@@ -234,6 +248,8 @@ function habitItem(r: FactsRoutine, done: boolean, expected: boolean, input: Fac
     outcome: done ? 'done' : 'open',
     reason: null,
     program: programOf(r, input.progress),
+    untracked: r.is_untracked,
+    goal: null,
   }
 }
 
@@ -321,7 +337,7 @@ export async function loadDayFacts(db: Db, p: LoadFactsParams): Promise<DayFacts
 
   const [tasks, blocks, routines, completions, plan, focus, health, workouts, meals, targets] = await Promise.all([
     db.from('tasks')
-      .select('id, title, status, area, routine_id, estimated_minutes')
+      .select('id, title, status, area, routine_id, estimated_minutes, goal:goals(id, title)')
       .eq('user_id', userId).eq('scheduled_date', date),
     db.from('time_blocks')
       .select('id, task_id, label, block_type, start_time, end_time, routine_id, completed_at')
@@ -342,12 +358,12 @@ export async function loadDayFacts(db: Db, p: LoadFactsParams): Promise<DayFacts
     db.from('nutrition_targets').select('calories').eq('user_id', userId).eq('is_active', true),
   ])
 
-  const taskRows = rowsOf<Omit<FactsTask, 'area'> & { area: unknown }>(tasks, 'tasks')
+  const taskRows = rowsOf<Omit<FactsTask, 'area' | 'goal'> & { area: unknown; goal: unknown }>(tasks, 'tasks')
   const routineRows = rowsOf<Omit<FactsRoutine, 'area'> & { area: unknown }>(routines, 'routines')
 
   return buildDayFacts({
     date,
-    tasks: taskRows.map((t) => ({ ...t, area: toArea(t.area) })),
+    tasks: taskRows.map((t) => ({ ...t, area: toArea(t.area), goal: toGoal(t.goal) })),
     blocks: rowsOf<FactsBlock>(blocks, 'time_blocks'),
     routines: routineRows.map((r) => ({ ...r, area: toArea(r.area) })),
     completions: rowsOf<FactsCompletion>(completions, 'routine_completions'),

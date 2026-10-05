@@ -41,8 +41,8 @@ export interface DaySummary {
 }
 
 export function summarizeDay(facts: DayFacts): DaySummary {
-  // Manevi iş metrik değildir: mobildeki halka (reportModel.summarize) da saymaz.
-  const expected = facts.items.filter((i) => i.expected && i.area !== 'spiritual')
+  // Manevi ve ölçülmeyen iş metrik değildir: mobildeki halka (reportModel.summarize) da saymaz.
+  const expected = facts.items.filter((i) => i.expected && i.area !== 'spiritual' && !i.untracked)
   const count = (outcome: DayItem['outcome']) => expected.filter((i) => i.outcome === outcome).length
   return { total: expected.length, done: count('done'), partial: count('partial'), skipped: count('skipped'), open: count('open') }
 }
@@ -128,6 +128,10 @@ function futureSelfOf(day: DayFacts, t: NarrativeText, seed: number): string {
   if (program?.program) {
     const vars = { title: clip(program.title, 40), program: `${program.program.done}/${program.program.target}` }
     return fill(pick(t.futureSelf.program, seed + 8), vars)
+  }
+  const goal = done.find((i) => i.goal !== null && !i.untracked && i.area !== 'spiritual')
+  if (goal?.goal) {
+    return fill(pick(t.futureSelf.goal, seed + 8), { title: clip(goal.title, 40), goal: clip(goal.goal.title, 40) })
   }
   const work = done.find((i) => i.kind !== 'habit' && (i.area === null || i.area === 'career'))
   if (work) return fill(pick(t.futureSelf.work, seed + 8), { title: clip(work.title, 40) })

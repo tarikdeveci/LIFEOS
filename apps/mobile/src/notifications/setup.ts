@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../lib/supabase'
 
 // Foreground notification handler
@@ -44,6 +45,28 @@ export async function syncTimezone(userId: string): Promise<void> {
     .from('notification_preferences')
     .update({ timezone: tz })
     .eq('user_id', userId)
+}
+
+/**
+ * Gün raporu bildirimi (report_enabled) kolonda varsayılan FALSE gelir; bu sürümle ilk
+ * açılışta kullanıcı başına BİR kez true yapılır. Bayrak yazma başarılı olunca konur:
+ * kullanıcı sonra kapatırsa tekrar açılmaz. Kolon yoksa (42703, migration canlıda değil)
+ * sessizce geçilir ve bayrak konmaz, kolon gelince bir sonraki açılışta denenir.
+ */
+export async function enableReportOnce(userId: string): Promise<void> {
+  const flagKey = `report_enabled_default_v1:${userId}`
+  try {
+    if (await AsyncStorage.getItem(flagKey)) return
+    // Üretilmiş veritabanı tiplerinde report_enabled henüz yok (065): satır gevşek tiplenir.
+    const row: Record<string, unknown> = { user_id: userId, report_enabled: true }
+    const { error } = await supabase
+      .from('notification_preferences')
+      .upsert(row as never, { onConflict: 'user_id' })
+    if (error) return
+    await AsyncStorage.setItem(flagKey, '1')
+  } catch {
+    // Bildirim varsayılanı ürünü bloklamaz; sonraki açılışta tekrar denenir.
+  }
 }
 
 /**
@@ -119,6 +142,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     if (cleanupError) console.warn('Eski push token silinemedi:', cleanupError.message)
 
     await syncTimezone(user.id)
+    await enableReportOnce(user.id)
   }
 
   // Android kanal ayarla

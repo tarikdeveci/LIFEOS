@@ -16,6 +16,8 @@ const item = (key: string, over: Partial<DayItem> = {}): DayItem => ({
   outcome: 'open',
   reason: null,
   program: { done: 7, target: 42 },
+  untracked: false,
+  goal: null,
   ...over,
 })
 

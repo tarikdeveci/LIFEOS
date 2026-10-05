@@ -15,6 +15,8 @@ const item = (over: Partial<DayItem> & { key: string }): DayItem => ({
   outcome: 'open',
   reason: null,
   program: null,
+  untracked: false,
+  goal: null,
   ...over,
 })
 
@@ -150,7 +152,7 @@ test('iyi giden: hareket, odak ve haftalık alışkanlık somut yazılır, saya�
     {
       focus_minutes: 50,
       movement: { exercise_minutes: 40, steps: 12000, workout_done: false },
-      habits_week: [{ routine_id: 'spor', title: 'Spor', done: 2, target: 3 }],
+      habits_week: [{ routine_id: 'spor', title: 'Spor', area: 'health', done: 2, target: 3 }],
     },
   )
   const wentWell = buildTemplateNarrative(day, none, 'tr').went_well.join('\n')
@@ -211,4 +213,24 @@ test('metin havuzları: uzun ve orta tire yok, sayıdan ya da yer tutucudan sonr
     assert.ok(!/[\u2013\u2014]/.test(text), `tire var: ${text}`)
     assert.ok(!/[\d}]'[\p{L}]/u.test(text), `sayıdan sonra ek var: ${text}`)
   }
+})
+
+test('future_self: hedefe bağlı biten iş hedefi anar (TR ve EN), ölçülmeyen iş saymaz', () => {
+  const goal = { id: 'g1', title: 'Sertifika' }
+  const day = facts([
+    item({ key: 'task:a', title: 'Rapor', outcome: 'done', area: 'career' }),
+    item({ key: 'task:b', title: 'Modül 3', outcome: 'done', area: 'career', goal }),
+  ])
+  assert.match(buildTemplateNarrative(day, none, 'tr').future_self, /Sertifika/)
+  assert.match(buildTemplateNarrative(day, none, 'en').future_self, /Sertifika/)
+  const quiet = facts([item({ key: 'task:c', title: 'Dua', outcome: 'done', untracked: true, goal })])
+  assert.doesNotMatch(buildTemplateNarrative(quiet, none, 'tr').future_self, /Sertifika/)
+})
+
+test('summarizeDay: ölçülmeyen (untracked) iş sayıya girmez', () => {
+  const s = summarizeDay(facts([
+    item({ key: 'task:a', outcome: 'done' }),
+    item({ key: 'task:b', outcome: 'open', untracked: true }),
+  ]))
+  assert.deepEqual(s, { total: 1, done: 1, partial: 0, skipped: 0, open: 0 })
 })

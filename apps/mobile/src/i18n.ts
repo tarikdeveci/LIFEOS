@@ -1,6 +1,7 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
 import { formsEn, formsTr } from './i18nForms'
 import { reportEn, reportTr } from './i18nReport'
+import { lifeSetupEn, lifeSetupTr } from './i18nLifeSetup'
 
 export type Language = 'en' | 'tr'
 export const LANG_STORAGE_KEY = 'lifeos_lang'
@@ -871,11 +872,11 @@ const translations = {
   },
 } as const
 
-export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof reportEn]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof reportEn | keyof typeof lifeSetupEn]: string }
 
 const merged = {
-  en: { ...translations.en, ...workoutEn, ...formsEn, ...reportEn },
-  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...reportTr },
+  en: { ...translations.en, ...workoutEn, ...formsEn, ...reportEn, ...lifeSetupEn },
+  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...reportTr, ...lifeSetupTr },
 }
 
 export function getTranslations(lang: Language): Translations {

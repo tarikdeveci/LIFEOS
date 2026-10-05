@@ -50,6 +50,8 @@ export interface ReportItem {
   outcome: DayOutcome
   reason: SkipReason | null
   program: { done: number; target: number } | null
+  /** Rutini ölçülmeyen iş (facts'te `untracked`); eski kayıtlarda false. */
+  untracked: boolean
 }
 
 export interface ReportContext {
@@ -109,6 +111,7 @@ function readItems(rawItems: unknown[], checkin: RawRecord): ReportItem[] {
       outcome,
       reason,
       program: readProgram(entry['program']),
+      untracked: entry['untracked'] === true,
     }]
   }).slice(0, MAX_ITEMS)
 }
@@ -155,12 +158,11 @@ export function readReportContext(facts: unknown, checkin: unknown): ReportConte
 }
 
 /**
- * Sayıyla, seriyle ya da performansla anılmayacak işler: manevi alan. DayItem'da
- * `is_untracked` bayrağı yok; sayaçsız ama manevi olmayan işler (ör. kendine zaman)
- * yalnızca prompt kuralıyla korunur.
+ * Sayıyla, seriyle ya da performansla anılmayacak işler: manevi alan ya da rutini
+ * ölçülmeyen (`untracked`) iş, ör. kendine zaman.
  */
 export function isUnmeasured(item: ReportItem): boolean {
-  return item.area === 'spiritual'
+  return item.area === 'spiritual' || item.untracked
 }
 
 // ============================================================
