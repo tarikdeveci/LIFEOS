@@ -61,6 +61,28 @@ export function subtractIntervals(from: readonly Interval[], cut: readonly Inter
 }
 
 /**
+ * Bir bloğun cihaz takvimindeki ikizi olan etkinlikleri eler. Antrenman programı aynı seansı hem
+ * blok hem takvim etkinliği olarak yazabiliyor; takvim geri okununca gün iki kez görünüyordu.
+ * İkiz: başlığı bloğun etiketiyle aynı ve saati blokla kesişen etkinlik. Yalnızca başlığa bakmak
+ * aynı adlı ama başka saatteki gerçek etkinliği de gizlerdi.
+ */
+export function dropBlockMirrors<E extends Interval & { title: string }>(
+  events: readonly E[],
+  blocks: readonly (BlockLike & { label: string | null })[],
+): E[] {
+  const labelled = blocks.flatMap((b) => {
+    const label = b.label?.trim()
+    return label ? [{ label, ...toInterval(b) }] : []
+  })
+  return events.filter((e) => {
+    const title = e.title.trim()
+    // Gece yarısını aşan etkinlik de blok gibi gün sonuna sabitlenir.
+    const end = e.end > e.start ? e.end : 1440
+    return !labelled.some((b) => b.label === title && b.start < end && e.start < b.end)
+  })
+}
+
+/**
  * [dayStart, dayEnd] içinde bloklar ve dış meşgul aralıklar (ör. Google takvimi)
  * dışında kalan boşluklar. `from` verilirse ondan önceki kısım kesilir (şu an).
  */

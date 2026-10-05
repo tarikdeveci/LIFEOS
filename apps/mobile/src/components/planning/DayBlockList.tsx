@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import type { TimeBlock } from '@lifeos/shared'
 import {
   blockTiming,
+  dropBlockMirrors,
   formatDuration,
   minutesOfDay,
   minutesToClock,
@@ -98,14 +99,16 @@ export function DayBlockList({
 
   const allDay = events.filter((e) => e.isAllDay)
   const timedEvents = events.filter((e) => !e.isAllDay)
-    .map((event): Item => ({ kind: 'event', start: clockMinute(event.startsAt), end: clockMinute(event.endsAt), event }))
+    .map((event) => ({ kind: 'event' as const, start: clockMinute(event.startsAt), end: clockMinute(event.endsAt), title: event.title, event }))
   const items: Item[] = [
     ...blocks.flatMap((block, index): Item[] => {
       const timing = timings[index]
       return timing ? [{ kind: 'block', start: timing.startMinute, end: timing.endMinute, block, timing, index }] : []
     }),
-    ...timedEvents,
+    // Bloğun takvime de yazılmış ikizi ikinci satır olarak çizilmez.
+    ...dropBlockMirrors(timedEvents, blocks),
     // Cihaz takvimi aynı etkinliği başlığıyla gösteriyorsa "Meşgul" satırı ikinci kez çizilmez.
+    // Gizlenen ikizler de sayılır: yoksa aynı seans bu kez "Meşgul" olarak geri gelirdi.
     ...subtractIntervals(busy, timedEvents).map((b): Item => ({ kind: 'busy', ...b })),
   ].sort((a, b) => a.start - b.start)
 
