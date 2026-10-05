@@ -2,6 +2,8 @@
 // Bu dosya Supabase şemasını yansıtır (supabase/migrations/001_core_schema.sql)
 // database.ts (generated) ham DB tiplerini içerir; burası uygulama katmanı tipleri
 
+import type { LifeArea } from './planning'
+
 export type TaskStatus = 'backlog' | 'planned' | 'in_progress' | 'blocked' | 'done' | 'deferred'
 
 export interface WsjfScores {
@@ -64,6 +66,8 @@ export interface Task extends WsjfScores {
   goal_id: string | null
   /** Gün sonu devrinde kaç kez yarına taşındı. */
   carry_count: number
+  /** 065: yaşam alanı; NULL ise rutin örneğinde şablonun alanı geçerli. */
+  area: LifeArea | null
 
   /** Dış kaynak (056): 'api', 'todoist', 'ticktick', 'apple_reminders', 'jira'... NULL = LifeOS'ta oluşturuldu. */
   source: string | null
@@ -105,6 +109,7 @@ export interface CreateTaskInput {
   risk_score?: number
   effort_score?: number
   friction_score?: number
+  area?: LifeArea | null
 }
 
 export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'title' | 'scheduled_date'> & {

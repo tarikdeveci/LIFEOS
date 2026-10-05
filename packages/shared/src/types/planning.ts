@@ -2,6 +2,8 @@
 // Şema: supabase/migrations/001_core_schema.sql → time_blocks, daily_plans
 
 export type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
+/** Yaşam alanı (065): sabah özeti ve gün raporu işleri buna göre ayırır. */
+export type LifeArea = 'career' | 'health' | 'personal' | 'spiritual' | 'social'
 export type RecurrenceType = 'daily' | 'weekly' | 'biweekly' | 'monthly'
 
 export interface TimeBlock {
