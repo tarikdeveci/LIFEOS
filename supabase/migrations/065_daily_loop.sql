@@ -141,8 +141,10 @@ BEGIN
     FROM candidates c
   )
   UPDATE tasks t
-  SET scheduled_date = CASE WHEN l.to_backlog THEN NULL ELSE l.local_now::date END,
-      status = CASE WHEN l.to_backlog THEN 'backlog' ELSE t.status END,
+  -- Backlog tercihinde yalnızca henüz başlanmamış ('planned') görev geri çekilir;
+  -- in_progress / blocked carry gibi bugüne taşınır, durumu korunur.
+  SET scheduled_date = CASE WHEN l.to_backlog AND t.status = 'planned' THEN NULL ELSE l.local_now::date END,
+      status = CASE WHEN l.to_backlog AND t.status = 'planned' THEN 'backlog' ELSE t.status END,
       carry_count = LEAST(t.carry_count + 1, 32767)
   FROM local l
   WHERE t.user_id = l.user_id
@@ -227,3 +229,68 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.ai_allowance() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ai_allowance() TO authenticated, service_role;
+
+-- ============================================================
+-- 7. Ücretsiz AI hakkı: atomik rezervasyon
+-- ============================================================
+-- Hak kontrolü model çağrısından, ai_used satırı sonradan yazılıyordu: aynı anda
+-- N istek hepsi kontrolü geçiyordu. Artık ai-suggest çağrıdan ÖNCE hakkı burada
+-- ayırır: kullanıcı başına advisory kilit altında say, hak varsa 'reserved'
+-- satırı yaz. ai_allowance() (6) satırı hemen sayar. Küme ai/freeKinds.ts ile aynı.
+CREATE OR REPLACE FUNCTION public.reserve_ai_use(p_kind TEXT)
+RETURNS BIGINT
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_uid  UUID := auth.uid();
+  v_used INT;
+  v_id   BIGINT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'reserve_ai_use: kimliksiz cagri, kullanici JWT''si gerekli'
+      USING ERRCODE = '28000';
+  END IF;
+  IF p_kind NOT IN ('replan', 'life_setup') THEN
+    RAISE EXCEPTION 'reserve_ai_use: ucretsiz rota degil: %', p_kind USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('ai_use:' || v_uid::text, 0));
+
+  SELECT count(*) INTO v_used
+  FROM events e
+  WHERE e.user_id = v_uid
+    AND e.name = 'ai_used'
+    AND e.props->>'kind' IN ('replan', 'life_setup');
+  IF v_used >= 3 THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO events (user_id, name, props)
+  VALUES (v_uid, 'ai_used', jsonb_build_object(
+    'kind', p_kind, 'tier', 'free', 'reserved', true, 'cost_usd', 0))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.reserve_ai_use(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.reserve_ai_use(TEXT) TO authenticated;
+
+-- Rezervasyonu kapatır: maliyeti işler, başarısız çağrıda kind'ı '*_failed'
+-- yapar (hak saymaz). YALNIZCA service_role: kullanıcı çağırabilseydi model
+-- yanıtını aldıktan sonra hakkını geri alabilirdi. Yalnızca hâlâ 'reserved'
+-- olan satırı günceller, yani tekrar çağrı zararsız. events'e kullanıcı için
+-- UPDATE/DELETE açılmadı.
+CREATE OR REPLACE FUNCTION public.settle_ai_use(p_user_id UUID, p_id BIGINT, p_props JSONB)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE events
+  SET props = p_props - 'reserved'
+  WHERE id = p_id
+    AND user_id = p_user_id
+    AND name = 'ai_used'
+    AND props->>'reserved' = 'true';
+  RETURN FOUND;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.settle_ai_use(UUID, BIGINT, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.settle_ai_use(UUID, BIGINT, JSONB) TO service_role;

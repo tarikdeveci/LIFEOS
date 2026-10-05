@@ -75,13 +75,21 @@ export function closureItems(items: readonly ViewItem[], touched: readonly strin
   return items.filter((i) => (i.expected && i.outcome === 'open') || touched.includes(i.key))
 }
 
+/**
+ * Ertelenenler ekrandaki öğelerden kurulur, anlatı yalnızca not verir: şu an `done` olan öğe
+ * satır olmaz (bayat AI satırı görünmez), manevi/sayaçsız (quiet) öğe gösterilmez. Notlar
+ * başlıkla eşlenir ve sırayla tüketilir: aynı başlıklı iki öğe birbirinin notunu ezmez.
+ */
 export function postponedRows(items: readonly ViewItem[], narrative: DayNarrative | null): PostponedRow[] {
-  const notes = new Map((narrative?.postponed ?? []).map((p) => [p.title, p.note]))
-  return items.flatMap((i) =>
-    i.outcome === 'partial' || i.outcome === 'skipped'
-      ? [{ key: i.key, title: i.title, outcome: i.outcome, reason: i.reason, note: notes.get(i.title) ?? null }]
-      : [],
-  )
+  const notes = new Map<string, string[]>()
+  for (const p of narrative?.postponed ?? []) notes.set(p.title, [...(notes.get(p.title) ?? []), p.note])
+  return items.flatMap((i) => {
+    if (i.outcome !== 'partial' && i.outcome !== 'skipped') return []
+    // Quiet öğe de sıradaki notu tüketir: aynı başlıklı sonraki öğe onun notunu almasın.
+    const note = notes.get(i.title)?.shift() ?? null
+    if (i.quiet) return []
+    return [{ key: i.key, title: i.title, outcome: i.outcome, reason: i.reason, note }]
+  })
 }
 
 export function programRows(items: readonly ViewItem[]): ProgramRow[] {

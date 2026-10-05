@@ -9,7 +9,7 @@ import * as WebBrowser from 'expo-web-browser'
 import { emptyWidgetSnapshot, persistFocus, useFocusStore, useGoalStore } from '@lifeos/shared'
 import { configureEvents } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
-import { registerForPushNotificationsAsync, addNotificationResponseListener } from '@/src/notifications/setup'
+import { registerForPushNotificationsAsync, addNotificationResponseListener, handleInitialNotification } from '@/src/notifications/setup'
 import { cancelFocusNotifications } from '@/src/notifications/focus'
 import { initRevenueCat } from '@/src/utils/purchases'
 import { useHealthStore } from '@/src/stores/healthStore'
@@ -107,6 +107,8 @@ function AppNavigator() {
       if (!active) return
       // /onboarding yeni bir rota; expo-router tip uretimi guncellenene kadar cast gerekiyor.
       router.replace((seen ? '/(tabs)/today' : '/onboarding') as never)
+      // Yönlendirme hazır: listener açılır, kapalıyken dokunulan bildirim varsa ana ekrandan sonra açılır.
+      void handleInitialNotification((path) => router.push(path as never))
     })
     return () => { active = false }
   }, [session, initialized])

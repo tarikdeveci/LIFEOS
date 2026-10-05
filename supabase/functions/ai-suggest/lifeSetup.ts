@@ -22,6 +22,9 @@ export async function handleLifeSetup(route: RouteContext): Promise<Response> {
     }, 400)
   }
 
+  // Ücretsiz katmanda hak model çağrısından ÖNCE atomik ayrılır (usage.ts).
+  if (!await ledger.begin()) return json({ error: 'AI access requires Pro', code: 'pro_required' }, 402)
+
   const { system, messages } = buildLifeSetupPrompt({ lang, text })
   const response = await client.messages.create({
     model: chatModel,
@@ -32,9 +35,11 @@ export async function handleLifeSetup(route: RouteContext): Promise<Response> {
     system,
     messages,
   })
+  // Ayrıştırılamayan ya da max_tokens'ta kesilen yanıt hak yakmaz; maliyet yine yazılır.
+  const proposal = response.stop_reason === 'max_tokens' ? null : parseLifeSetup(firstText(response))
+  if (!proposal) ledger.markFailed()
   await ledger.record(response)
 
-  const proposal = parseLifeSetup(firstText(response))
   if (!proposal) return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
   return json({ proposal })
 }

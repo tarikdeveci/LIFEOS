@@ -6,13 +6,14 @@
 //
 // Tarih kullanıcının saat diliminde bugünse olgular yeniden hesaplanır. Geçmiş günde
 // satır varsa öğe listesi donuktur, yalnız sonuçlar tazelenir (_shared/report/store.ts).
-// Gelecek tarih ve 30 günden eski tarih 400.
+// Bugünden önceki gün için satır yoksa 404 (report_not_found). Bir günden fazla gelecek
+// tarih ve 30 günden eski tarih 400; bir gün ilerisi (cihaz dilimi) bugüne sıkıştırılır.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { parseCheckin } from '../_shared/report/checkin.ts'
-import { isIsoDate, localDateIn, shiftDate } from '../_shared/report/dates.ts'
-import { refreshReport } from '../_shared/report/store.ts'
+import { isIsoDate, localDateIn, resolveReportDate } from '../_shared/report/dates.ts'
+import { ReportNotFoundError, refreshReport } from '../_shared/report/store.ts'
 import type { ReportLanguage } from '../_shared/report/text.ts'
 import type { DayCheckin } from '../_shared/report/types.ts'
 import { loadTimezone, myProgress } from '../_shared/report/userData.ts'
@@ -63,13 +64,16 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Geçersiz istek gövdesi' }, 400)
     }
 
-    const { date } = body
-    if (!isIsoDate(date)) return json({ error: 'date YYYY-MM-DD olmalı' }, 400)
+    if (!isIsoDate(body.date)) return json({ error: 'date YYYY-MM-DD olmalı' }, 400)
 
     const timezone = await loadTimezone(supabase, user.id)
     const today = localDateIn(timezone, new Date())
-    if (date > today) return json({ error: 'Gelecek tarih için rapor yok' }, 400)
-    if (date < shiftDate(today, -MAX_AGE_DAYS)) return json({ error: `${MAX_AGE_DAYS} günden eski rapor istenemez` }, 400)
+    // Cihaz dilimi sunucunun bildiğinden ileride olabilir: bir gün ilerisi bugüne sıkıştırılır.
+    const checked = resolveReportDate(body.date, today, MAX_AGE_DAYS)
+    if (!checked.ok) {
+      return json({ error: checked.reason === 'future' ? 'Gelecek tarih için rapor yok' : `${MAX_AGE_DAYS} günden eski rapor istenemez` }, 400)
+    }
+    const { date } = checked
 
     let checkin: DayCheckin | undefined
     if (body.checkin !== undefined && body.checkin !== null) {
@@ -91,6 +95,7 @@ Deno.serve(async (req: Request) => {
     })
     return json({ report })
   } catch (error) {
+    if (error instanceof ReportNotFoundError) return json({ error: 'Rapor bulunamadı', code: 'report_not_found' }, 404)
     console.error('daily-report error:', error instanceof Error ? error.message : error)
     return json({ error: 'Gün raporu oluşturulurken hata oluştu' }, 500)
   }

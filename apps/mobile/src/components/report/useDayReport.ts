@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AccessibilityInfo } from 'react-native'
-import { describeAiError, useReportStore, type DailyReport, type HabitWeek, type SkipReason } from '@lifeos/shared'
+import { describeAiError, REPORT_NOT_FOUND, useReportStore, type DailyReport, type HabitWeek, type SkipReason } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { useLang } from '@/src/contexts/LangContext'
 import { useProGate } from '@/src/hooks/useProGate'
@@ -26,6 +26,8 @@ export interface DayReport {
   view: DayReportView | null
   /** Ekrandaki rapor önbellekten; tazeleme tutmadı. */
   stale: boolean
+  /** Sunucu bu gün için rapor satırı bulamadı (geçmiş gün, kayıt yok). */
+  notFound: boolean
   loading: boolean
   refreshing: boolean
   saveFailed: boolean
@@ -150,6 +152,7 @@ export function useDayReport(date: string): DayReport {
     status: report ? 'ready' : failed ? 'error' : 'loading',
     report,
     view,
+    notFound: report === null && error === REPORT_NOT_FOUND && !loading,
     stale: report !== null && error !== null && !loading,
     loading,
     refreshing,

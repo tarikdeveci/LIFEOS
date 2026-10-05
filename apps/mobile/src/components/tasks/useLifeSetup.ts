@@ -58,14 +58,19 @@ function cloneWritten(w: Written): Written {
   return { routines: [...w.routines], goals: [...w.goals], tasks: [...w.tasks], rules: { ...w.rules } }
 }
 
-/** Seçili ve henüz yazılmamış satırların sıraları. Hedef 1 (satır yazıldı) tekrar gönderilmez: ikilenir. */
-function pending(selected: boolean[], done: ReadonlyArray<boolean | number>): number[] {
+/** Seçili ve henüz yazılmamış satırların sıraları. */
+function pending(selected: boolean[], done: boolean[]): number[] {
   return selected.flatMap((on, i) => (on && !done[i] ? [i] : []))
+}
+
+/** Hedef 2'ye (adımlarıyla tamam) kadar bekler; 1 olan hedefin yalnızca adımları yeniden yazılır. */
+function pendingGoals(selected: boolean[], done: Array<0 | 1 | 2>): number[] {
+  return selected.flatMap((on, i) => (on && done[i]! < 2 ? [i] : []))
 }
 
 function countPending(p: LifeSetupProposal, sel: Selection, w: Written): number {
   const rules = ruleKeysOf(p).filter((key) => sel.rules[key] && !w.rules[key]).length
-  return pending(sel.routines, w.routines).length + pending(sel.goals, w.goals).length
+  return pending(sel.routines, w.routines).length + pendingGoals(sel.goals, w.goals).length
     + pending(sel.tasks, w.tasks).length + rules
 }
 
@@ -85,14 +90,18 @@ export function useLifeSetup(userId: string | null, requirePro: (source?: string
   const [error, setError] = useState<string | null>(null)
   // State güncellemesi bir sonraki render'da görünür; çift dokunuş bu kilide takılır.
   const lock = useRef(false)
+  // Hedef satırı yazılmış, adımları yazılamamış hedeflerin kimliği (önerideki sıraya göre).
+  const goalIds = useRef<Array<string | null>>([])
 
   function reset() {
     setText(''); setProposal(null); setSelection(null); setWritten(null); setError(null); setBusy(null)
     lock.current = false
+    goalIds.current = []
   }
 
   function backToText() {
     if (lock.current) return
+    goalIds.current = []
     setProposal(null); setSelection(null); setWritten(null); setError(null)
   }
 
@@ -105,6 +114,7 @@ export function useLifeSetup(userId: string | null, requirePro: (source?: string
     setError(null)
     try {
       const result = await requestLifeSetup(supabase, trimmed, lang)
+      goalIds.current = []
       setProposal(result)
       setSelection(initialSelection(result))
       setWritten(emptyWritten(result))
@@ -148,7 +158,7 @@ export function useLifeSetup(userId: string | null, requirePro: (source?: string
     setError(null)
 
     const r = pending(selection.routines, written.routines)
-    const g = pending(selection.goals, written.goals)
+    const g = pendingGoals(selection.goals, written.goals)
     const k = pending(selection.tasks, written.tasks)
     const ruleKeys = ruleKeysOf(proposal).filter((key) => selection.rules[key] && !written.rules[key])
     const sub: LifeSetupProposal = {
@@ -165,7 +175,10 @@ export function useLifeSetup(userId: string | null, requirePro: (source?: string
     const onProgress = (event: ApplyProgress) => {
       const i = event.index ?? 0
       if (event.kind === 'routine') next.routines[r[i]!] = true
-      else if (event.kind === 'goal') next.goals[g[i]!] = 1
+      else if (event.kind === 'goal') {
+        next.goals[g[i]!] = 1
+        if (event.goal_id) goalIds.current[g[i]!] = event.goal_id
+      }
       else if (event.kind === 'goal_steps') next.goals[g[i]!] = 2
       else if (event.kind === 'tasks') k.forEach((idx) => { next.tasks[idx] = true })
       else ruleKeys.forEach((key) => { next.rules[key] = true })
@@ -174,7 +187,7 @@ export function useLifeSetup(userId: string | null, requirePro: (source?: string
 
     let failed = false
     try {
-      await applyLifeSetup(supabase, userId, sub, onProgress)
+      await applyLifeSetup(supabase, userId, sub, onProgress, { goal_ids: g.map((i) => goalIds.current[i] ?? null) })
     } catch {
       failed = true
     }

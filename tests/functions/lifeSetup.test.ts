@@ -122,7 +122,7 @@ test('doğrulama: bilinmeyen alan atılır, geçersiz enum ve aralık düşer', 
     routines: [{
       title: '  Okuma  ', kind: 'block', area: 'oyun', block_type: 'sinema',
       days_of_week: [1, 1, 9, -1, 'pzt', 3.5, 0],
-      start_time: '7:05:30', end_time: '25:00',
+      start_time: '7:05:30', end_time: '8:00',
       times_per_week: 8, times_per_day: 1, estimated_minutes: 0, min_minutes: 601,
       target_count: 1000, start_count: 5,
       is_protected: 'evet', is_untracked: 1, ekstra: 'x',
@@ -132,7 +132,21 @@ test('doğrulama: bilinmeyen alan atılır, geçersiz enum ve aralık düşer', 
     title: 'Okuma', kind: 'block', area: null,
     days_of_week: [0, 1],
     start_time: '07:05',
+    end_time: '08:00',
   }])
+})
+
+test('doğrulama: blok saatsiz ya da saat aralığı bozuksa, görev günsüzse, habit sıklıksızsa unsupported (istemciyle aynı)', () => {
+  const proposal = parseLifeSetup(json({
+    routines: [
+      { title: 'Saatsiz blok', kind: 'block', days_of_week: [1] },
+      { title: 'Ters saat', kind: 'block', days_of_week: [1], start_time: '10:00', end_time: '09:00' },
+      { title: 'Günsüz görev', kind: 'task' },
+      { title: 'Sıklıksız alışkanlık', kind: 'habit' },
+    ],
+  }))
+  assert.deepEqual(proposal?.routines, [])
+  assert.deepEqual(proposal?.unsupported, ['Saatsiz blok', 'Ters saat', 'Günsüz görev', 'Sıklıksız alışkanlık'])
 })
 
 test('doğrulama: start_count hedeften küçük olmalı, 0 yazılmaz', () => {

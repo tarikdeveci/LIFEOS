@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { getPlanningRules, updatePlanningRules } from '../../packages/shared/src/supabase/profile.ts'
+import { updatePlanningRules } from '../../packages/shared/src/supabase/profile.ts'
 import { resolvePlanningRules } from '../../packages/shared/src/utils/planningRules.ts'
 import { DEFAULT_PLANNING_RULES, PLANNING_ABOUT_MAX } from '../../packages/shared/src/types/user.ts'
 import type { PlanningRules } from '../../packages/shared/src/types/user.ts'
@@ -116,18 +116,6 @@ function profileClient(preferences: unknown, options: { row?: boolean; updateErr
   }
   return { client: client as unknown as SupabaseClient, updates }
 }
-
-test('getPlanningRules: kayıt, anahtar ya da bozuk değer varsa varsayılanlarla tamamlar', async () => {
-  assert.deepEqual(await getPlanningRules(profileClient({ theme: 'dark' }).client, 'u'), DEFAULT_PLANNING_RULES)
-  assert.deepEqual(await getPlanningRules(profileClient(null).client, 'u'), DEFAULT_PLANNING_RULES)
-  assert.deepEqual(await getPlanningRules(profileClient({}, { row: false }).client, 'u'), DEFAULT_PLANNING_RULES)
-  assert.deepEqual(await getPlanningRules(profileClient({ planning: 'bozuk' }).client, 'u'), DEFAULT_PLANNING_RULES)
-  assert.deepEqual(await getPlanningRules(profileClient({ planning: [1] }).client, 'u'), DEFAULT_PLANNING_RULES)
-  assert.deepEqual(
-    await getPlanningRules(profileClient({ planning: { rollover: 'backlog', max_deep_tasks: 99 } }).client, 'u'),
-    { ...DEFAULT_PLANNING_RULES, rollover: 'backlog', max_deep_tasks: 5 },
-  )
-})
 
 test('updatePlanningRules: diğer tercih anahtarlarını ezmez, yalnızca patch alanlarını değiştirir', async () => {
   const prefs = { theme: 'dark', email_morning_enabled: true, planning: { rollover: 'backlog', about: 'eski' } }

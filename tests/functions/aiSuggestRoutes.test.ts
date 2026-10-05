@@ -24,9 +24,14 @@ test('erişim: life_setup ücretsiz haklara dahil, daily_report yalnızca Pro', 
 
 interface ModelCall { model: string; max_tokens: number; system: unknown; messages: { role: string; content: string }[] }
 
-function harness(options: { reply?: string; row?: unknown; profile?: unknown; readError?: string; writeError?: string } = {}) {
+function harness(options: {
+  reply?: string; row?: unknown; profile?: unknown; readError?: string; writeError?: string
+  /** Ücretsiz hak ayrılamadı (begin false). */ denyBegin?: boolean
+  stopReason?: string
+} = {}) {
   const modelCalls: ModelCall[] = []
   const ledgerRecords: unknown[] = []
+  const ledgerEvents: string[] = []
   const updates: { table: string; values: unknown }[] = []
 
   const chain = (result: unknown) => {
@@ -55,7 +60,8 @@ function harness(options: { reply?: string; row?: unknown; profile?: unknown; re
     messages: {
       create: async (params: ModelCall) => {
         modelCalls.push(params)
-        return { content: [{ type: 'text', text: options.reply ?? '' }], model: 'test', usage: { input_tokens: 1, output_tokens: 1 } }
+        ledgerEvents.push('model')
+        return { content: [{ type: 'text', text: options.reply ?? '' }], model: 'test', usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: options.stopReason ?? 'end_turn' }
       },
     },
   }
@@ -64,11 +70,16 @@ function harness(options: { reply?: string; row?: unknown; profile?: unknown; re
 
   const route = (body: Partial<SuggestRequest>): RouteContext => ({
     supabase, userId: 'u1', body: { type: 'life_setup', ...body }, client,
-    chatModel: 'chat-model', ledger: { record: async (r: unknown) => { ledgerRecords.push(r) } },
+    chatModel: 'chat-model',
+    ledger: {
+      begin: async () => { ledgerEvents.push('begin'); return !options.denyBegin },
+      markFailed: () => { ledgerEvents.push('failed') },
+      record: async (r: unknown) => { ledgerRecords.push(r); ledgerEvents.push('record') },
+    },
     lang: 'tr', langInstr: '', today: '2026-10-05', json,
   } as unknown as RouteContext)
 
-  return { route, modelCalls, ledgerRecords, updates }
+  return { route, modelCalls, ledgerRecords, ledgerEvents, updates }
 }
 
 async function read(response: Response): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -120,6 +131,42 @@ test('life_setup: çözümlenemeyen yanıt 502, çağrı yine de deftere işleni
   assert.equal(status, 502)
   assert.equal(body['error'], 'AI yanıtı çözümlenemedi')
   assert.equal(h.ledgerRecords.length, 1)
+})
+
+test('life_setup: hak model çağrısından ÖNCE ayrılır, başarılı yanıt hak yakmaz işaretlenmez', async () => {
+  const h = harness({ reply: '{"summary":"tamam"}' })
+  const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
+  assert.equal(status, 200)
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'record'])
+})
+
+test('life_setup: hak ayrılamazsa 402, model çağrılmaz', async () => {
+  const h = harness({ reply: '{"summary":"tamam"}', denyBegin: true })
+  const { status, body } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
+  assert.equal(status, 402)
+  assert.equal(body['code'], 'pro_required')
+  assert.equal(h.modelCalls.length, 0)
+  assert.equal(h.ledgerRecords.length, 0)
+})
+
+test('life_setup: doğrulama hatası hak ayırmaz (begin çağrılmaz)', async () => {
+  const h = harness()
+  await handleLifeSetup(h.route({ text: '' }))
+  assert.deepEqual(h.ledgerEvents, [])
+})
+
+test('life_setup: ayrıştırılamayan yanıt hak yakmaz (markFailed), maliyet yine işlenir', async () => {
+  const h = harness({ reply: 'Bunu yapamam.' })
+  const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
+  assert.equal(status, 502)
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed', 'record'])
+})
+
+test('life_setup: max_tokens ile kesilen yanıt geçerli JSON görünse bile 502 ve hak yakmaz', async () => {
+  const h = harness({ reply: '{"summary":"yarım"}', stopReason: 'max_tokens' })
+  const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
+  assert.equal(status, 502)
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed', 'record'])
 })
 
 // ---------- daily_report ----------

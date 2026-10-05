@@ -5,7 +5,6 @@
 import type { DayCheckin, DayItem, SkipReason } from './types.ts'
 
 export const CHECKIN_MAX_ITEMS = 100
-export const CHECKIN_NOTE_MAX = 2000
 
 const REASONS: readonly string[] = ['energy', 'time', 'interrupted', 'not_needed', 'avoided']
 const OUTCOMES: readonly string[] = ['partial', 'skipped']
@@ -37,20 +36,6 @@ export function parseCheckin(raw: unknown): DayCheckin | null {
       }
     }
     out.items = items
-  }
-
-  if (raw['note'] !== undefined && raw['note'] !== null) {
-    if (typeof raw['note'] !== 'string') return null
-    const note = raw['note'].trim()
-    if (note.length > CHECKIN_NOTE_MAX) return null
-    if (note !== '') out.note = note
-  }
-
-  if (raw['closed_at'] !== undefined && raw['closed_at'] !== null) {
-    if (typeof raw['closed_at'] !== 'string') return null
-    const at = Date.parse(raw['closed_at'])
-    if (Number.isNaN(at)) return null
-    out.closed_at = new Date(at).toISOString()
   }
   return out
 }

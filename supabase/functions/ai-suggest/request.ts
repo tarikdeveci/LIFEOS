@@ -3,7 +3,8 @@
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
 import type Anthropic from 'npm:@anthropic-ai/sdk'
-import type { ChatTurn, Lang, WorkoutCatalogEntry } from '../_shared/ai/coach.ts'
+import type { ChatTurn, Lang } from '../_shared/ai/coach.ts'
+import type { WorkoutCatalogEntry } from '../_shared/ai/workoutCoach.ts'
 import type { AiLedger } from '../_shared/ai/usage.ts'
 
 export interface SuggestRequest {

@@ -22,12 +22,6 @@ async function readPreferences(supabase: Supabase, userId: string): Promise<Reco
   return data ? asRecord(data.preferences) : null
 }
 
-/** Kalıcı planlama kuralları; kayıt ya da alan yoksa varsayılanlarla tamamlanır. */
-export async function getPlanningRules(supabase: Supabase, userId: string): Promise<PlanningRules> {
-  const prefs = await readPreferences(supabase, userId)
-  return resolvePlanningRules(asRecord(prefs?.['planning']) as Partial<PlanningRules>)
-}
-
 /**
  * Kuralları günceller: yalnızca patch'teki alanlar değişir, sonuç sınırlanıp tam nesne olarak
  * yazılır. preferences JSONB'sinde tema, e-posta saatleri gibi ilgisiz anahtarlar da var:

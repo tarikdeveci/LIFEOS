@@ -13,6 +13,8 @@ export const reportEn = {
   report_error_title: 'The report could not open right now',
   report_error_body: 'Check your connection and try again. Everything you logged today is safe.',
   report_retry: 'Try again',
+  report_missing_title: 'No report for this day',
+  report_missing_today: 'Go to today',
   report_empty_title: 'Nothing recorded for this day',
   report_empty_body: 'Add a task or two to your plan and your evening report will be ready here.',
 
@@ -104,6 +106,8 @@ export const reportTr: Record<keyof typeof reportEn, string> = {
   report_error_title: 'Rapor şu an açılamadı',
   report_error_body: 'Bağlantını kontrol edip tekrar dene. Bugün kaydettiklerin yerinde duruyor.',
   report_retry: 'Tekrar dene',
+  report_missing_title: 'Bu gün için rapor yok',
+  report_missing_today: 'Bugüne geç',
   report_empty_title: 'Bu gün için kayıt yok',
   report_empty_body: 'Planına bir iki iş eklediğinde akşam raporun burada hazır olur.',
 

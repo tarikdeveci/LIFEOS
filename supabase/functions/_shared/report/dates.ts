@@ -96,3 +96,19 @@ export function dayBoundsUtc(date: string, timeZone: string): { start: string; e
     end: new Date(zonedMidnight(shiftDate(date, 1), timeZone)).toISOString(),
   }
 }
+
+export type ReportDateCheck =
+  | { ok: true; date: string }
+  | { ok: false; reason: 'future' | 'too_old' }
+
+/**
+ * İstenen rapor gününü kullanıcının bugününe göre doğrular. Cihaz saat dilimi sunucunun
+ * bildiğinden ileride olabilir: bir gün ilerisi hata değil, bugüne sıkıştırılır. Daha
+ * ilerisi 'future', `maxAgeDays`'ten eskisi 'too_old'.
+ */
+export function resolveReportDate(requested: string, today: string, maxAgeDays: number): ReportDateCheck {
+  if (requested > shiftDate(today, 1)) return { ok: false, reason: 'future' }
+  const date = requested > today ? today : requested
+  if (date < shiftDate(today, -maxAgeDays)) return { ok: false, reason: 'too_old' }
+  return { ok: true, date }
+}

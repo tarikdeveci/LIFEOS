@@ -98,6 +98,27 @@ export function ReportError({ onBack, onRetry, retrying }: ErrorProps) {
   )
 }
 
+/** Geçmiş gün için rapor satırı yok: hata değil, sakin bir boş durum ve bugüne dönüş. */
+export function ReportMissing({ onBack, onToday }: { onBack: () => void; onToday: () => void }) {
+  const { colors } = useTheme()
+  const { t } = useLang()
+
+  return (
+    <View style={{ flex: 1, paddingHorizontal: spacing[5] }}>
+      <View style={{ height: BAR_HEIGHT, justifyContent: 'center' }}>
+        <BackButton onPress={onBack} />
+      </View>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[3], paddingBottom: spacing[12] }}>
+        <Ionicons name="calendar-clear-outline" size={36} color={colors.textSubtle} />
+        <Text accessibilityRole="header" style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textPrimary, textAlign: 'center' }}>
+          {t.report_missing_title}
+        </Text>
+        <Button label={t.report_missing_today} onPress={onToday} style={{ alignSelf: 'center', marginTop: spacing[2] }} />
+      </View>
+    </View>
+  )
+}
+
 /** Günün hiçbir kaydı yok: boş ekran yerine ne olacağını söyleyen kart. */
 export function EmptyDay() {
   const { colors } = useTheme()

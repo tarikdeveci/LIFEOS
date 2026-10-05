@@ -40,9 +40,13 @@ export interface DaySummary {
   open: number
 }
 
+/** Metrikte sayılan iş: manevi ve ölçülmeyen iş metrik değildir (mobildeki halka da saymaz). */
+function isCounted(item: DayItem): boolean {
+  return item.expected && item.area !== 'spiritual' && !item.untracked
+}
+
 export function summarizeDay(facts: DayFacts): DaySummary {
-  // Manevi ve ölçülmeyen iş metrik değildir: mobildeki halka (reportModel.summarize) da saymaz.
-  const expected = facts.items.filter((i) => i.expected && i.area !== 'spiritual' && !i.untracked)
+  const expected = facts.items.filter(isCounted)
   const count = (outcome: DayItem['outcome']) => expected.filter((i) => i.outcome === outcome).length
   return { total: expected.length, done: count('done'), partial: count('partial'), skipped: count('skipped'), open: count('open') }
 }
@@ -117,7 +121,7 @@ function suggestionOf(day: DayFacts, pending: readonly DayItem[], t: NarrativeTe
     : reasons.has('interrupted') ? t.suggestion.interrupted
     : reasons.has('time') || pending.length >= 3 ? t.suggestion.time
     : pending.length > 0 ? t.suggestion.leftover
-    : day.items.some((i) => i.expected) ? t.suggestion.steady
+    : day.items.some(isCounted) ? t.suggestion.steady
     : t.suggestion.empty
   return pick(pool, seed + 7)
 }
@@ -148,7 +152,8 @@ export function buildTemplateNarrative(facts: DayFacts, checkin: DayCheckin, lan
   const day = applyCheckin(facts, checkin)
   const t = NARRATIVE_TEXT[language]
   const seed = dayIndex(day.date)
-  const pending = day.items.filter((i) => i.expected && i.outcome !== 'done')
+  // Ertelenenler ve öneri eşiği de metrikle aynı işleri sayar: manevi ve ölçülmeyen iş "ertelendi" olmaz.
+  const pending = day.items.filter((i) => isCounted(i) && i.outcome !== 'done')
 
   return {
     source: 'template',

@@ -185,6 +185,9 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     userMessage: user_message?.trim() || 'Günümü planla',
   })
 
+  // Ücretsiz katmanda hak model çağrısından ÖNCE atomik ayrılır (usage.ts).
+  if (!await ledger.begin()) return json({ error: 'AI access requires Pro', code: 'pro_required' }, 402)
+
   const response = await client.messages.create({
     model: chatModel,
     output_config: CHAT_EFFORT,

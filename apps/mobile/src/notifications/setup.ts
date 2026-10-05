@@ -195,6 +195,51 @@ export async function unregisterPushTokenAsync(): Promise<void> {
 }
 
 /**
+ * Bildirime dokunma yönlendirmesi. Soğuk açılışta (uygulama kapalıyken dokunuş) yanıt
+ * listener'a güvenilir ulaşmaz ve auth/router hazır değildir: hazır olana kadar listener
+ * yanıtları yok sayar, ilk yanıt `handleInitialNotification` ile okunur. Aynı yanıt iki
+ * kez işlenmez (kimliği saklanır).
+ */
+let navigationReady = false
+const handledResponses = new Set<string>()
+
+function responseKey(response: Notifications.NotificationResponse): string {
+  return `${response.notification.request.identifier}:${response.actionIdentifier}:${response.notification.date}`
+}
+
+function routeResponse(response: Notifications.NotificationResponse, navigate: (path: string) => void) {
+  const key = responseKey(response)
+  if (handledResponses.has(key)) return
+  handledResponses.add(key)
+
+  const data = (response.notification.request.content.data ?? {}) as Record<string, string>
+
+  if (data['type'] === 'task_reminder' && data['task_id']) {
+    navigate(`/task/${data['task_id']}`)
+  } else if (data['type'] === 'morning_briefing') {
+    navigate('/(tabs)/today')
+  } else if (data['type'] === 'evening_nutrition') {
+    navigate('/(tabs)/nutrition')
+  } else if (data['type'] === 'daily_digest_morning') {
+    // Sabah bildirimi planlama ritüelini açar (ritüel o gün bittiyse sadece sekme açılır).
+    navigate('/(tabs)/planning?ritual=1')
+  } else if (data['type'] === 'daily_digest_midday') {
+    navigate('/(tabs)/today')
+  } else if (data['type'] === 'daily_digest_evening') {
+    // Rapor bildirimi report_date taşır; eski kalori özeti taşımaz ve beslenmeye açılır.
+    const reportDate = data['report_date']
+    navigate(
+      typeof reportDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reportDate)
+        ? `/report?date=${reportDate}`
+        : '/(tabs)/nutrition',
+    )
+  } else if (data['type'] === 'daily_digest_weight') {
+    // Kilo Takibi kartı profil ekranında.
+    navigate('/(tabs)/profile')
+  }
+}
+
+/**
  * Notification tıklama listener'ı
  * Expo Router ile ilgili sayfaya navigate eder
  */
@@ -202,30 +247,21 @@ export function addNotificationResponseListener(
   navigate: (path: string) => void,
 ) {
   return Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data as Record<string, string>
-
-    if (data['type'] === 'task_reminder' && data['task_id']) {
-      navigate(`/task/${data['task_id']}`)
-    } else if (data['type'] === 'morning_briefing') {
-      navigate('/(tabs)/today')
-    } else if (data['type'] === 'evening_nutrition') {
-      navigate('/(tabs)/nutrition')
-    } else if (data['type'] === 'daily_digest_morning') {
-      // Sabah bildirimi planlama ritüelini açar (ritüel o gün bittiyse sadece sekme açılır).
-      navigate('/(tabs)/planning?ritual=1')
-    } else if (data['type'] === 'daily_digest_midday') {
-      navigate('/(tabs)/today')
-    } else if (data['type'] === 'daily_digest_evening') {
-      // Rapor bildirimi report_date taşır; eski kalori özeti taşımaz ve beslenmeye açılır.
-      const reportDate = data['report_date']
-      navigate(
-        typeof reportDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reportDate)
-          ? `/report?date=${reportDate}`
-          : '/(tabs)/nutrition',
-      )
-    } else if (data['type'] === 'daily_digest_weight') {
-      // Kilo Takibi kartı profil ekranında.
-      navigate('/(tabs)/profile')
-    }
+    if (!navigationReady) return
+    routeResponse(response, navigate)
   })
+}
+
+/**
+ * Auth ve router hazır olduktan sonra çağrılır: listener'ı açar ve uygulama kapalıyken
+ * dokunulan bildirim varsa onu yönlendirir. Tekrar çağrılması zararsızdır.
+ */
+export async function handleInitialNotification(navigate: (path: string) => void): Promise<void> {
+  navigationReady = true
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync()
+    if (response) routeResponse(response, navigate)
+  } catch (err) {
+    console.warn('Son bildirim okunamadı:', err)
+  }
 }

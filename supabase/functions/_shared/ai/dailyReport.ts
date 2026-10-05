@@ -31,7 +31,6 @@ const WENT_WELL_ITEM_MAX = 200
 const POSTPONED_MAX_ITEMS = 5
 const TITLE_MAX = 200
 const NOTE_MAX = 200
-const CHECKIN_NOTE_MAX = 500
 /** Başlık eşleştirmede bu uzunluğun altındaki başlıklar yalnızca birebir eşleşir. */
 const MIN_CONTAINED_TITLE = 3
 
@@ -64,8 +63,6 @@ export interface ReportContext {
   workoutDone: boolean
   nutrition: { calories: number; calorieTarget: number | null; proteinG: number; meals: number } | null
   habitsWeek: { title: string; done: number; target: number }[]
-  /** Kullanıcının kapanışta yazdığı gün notu. */
-  note: string
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -153,7 +150,6 @@ export function readReportContext(facts: unknown, checkin: unknown): ReportConte
       const target = finiteNumber(entry['target'])
       return title && done !== null && target !== null ? [{ title, done, target }] : []
     }),
-    note: cleanLine(mark['note'], CHECKIN_NOTE_MAX),
   }
 }
 
@@ -238,7 +234,6 @@ function dayBlock(ctx: ReportContext): string {
   if (ctx.habitsWeek.length > 0) {
     sections.push(`BU HAFTA ALIŞKANLIKLAR\n${ctx.habitsWeek.map((h) => `- ${h.title}: ${h.done}/${h.target}`).join('\n')}`)
   }
-  if (ctx.note) sections.push(`KULLANICININ GÜN NOTU\n${ctx.note}`)
   return sections.join('\n\n')
 }
 
@@ -386,11 +381,4 @@ export function readStoredAiNarrative(value: unknown): DayNarrative | null {
     suggestion,
     future_self: futureSelf,
   }
-}
-
-/** Takvim gününe uyan YYYY-MM-DD ("2026-02-31" reddedilir). */
-export function isCalendarDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const time = Date.parse(`${value}T00:00:00Z`)
-  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value
 }

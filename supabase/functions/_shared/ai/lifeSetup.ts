@@ -4,11 +4,11 @@
 // rutin, hedef, görev ve kural kayıtlarına çevrilir. Burada yalnızca saf parçalar var:
 // prompt kurucu ve model çıktısını yapısal olarak doğrulayan ayrıştırıcı.
 //
-// Doğrulama YAPISALDIR: alan tipleri, enum'lar, aralıklar ve liste tavanları.
-// "Blok saatsiz olamaz" gibi ince iş kuralları istemcide (sanitizeLifeSetup,
-// packages/shared/src/utils/lifeSetup.ts) uygulanır ve orada yinelenmez. Sınırlar
-// o dosyayla aynı tutulur; Deno tarafı paylaşılan paketi içe aktaramadığı için
-// tipler de burada yineleniyor.
+// Doğrulama istemcideki sanitizeLifeSetup (packages/shared/src/utils/lifeSetup.ts)
+// ile AYNIDIR: alan tipleri, enum'lar, aralıklar, liste tavanları ve "blok saatsiz
+// olamaz" gibi iş kuralları. Deno tarafı paylaşılan paketi içe aktaramadığı için
+// kural ve tipler burada yineleniyor; ikisinin aynı girdiyi aynı sonuca indirdiğini
+// tests/functions/lifeSetupParity.test.ts doğrular.
 
 import {
   extractJsonObject,
@@ -186,6 +186,13 @@ function timeOf(value: unknown): string | undefined {
   return `${(match[1] ?? '').padStart(2, '0')}:${match[2] ?? '00'}`
 }
 
+/** Saat çifti birlikte ve bitiş > başlangıç değilse null (HH:MM metin karşılaştırması sıralıdır). */
+function timeRange(rec: RawRecord): { start: string; end: string } | null {
+  const start = timeOf(rec['start_time'])
+  const end = timeOf(rec['end_time'])
+  return start !== undefined && end !== undefined && end > start ? { start, end } : null
+}
+
 function daysOf(value: unknown): number[] {
   if (!Array.isArray(value)) return []
   const days = new Set<number>()
@@ -196,28 +203,38 @@ function daysOf(value: unknown): number[] {
   return [...days].sort((a, b) => a - b)
 }
 
-/** Türü ya da ufku tanınmayan öğe kurtarılamaz (null); diğer geçersiz alanlar düşer. */
+/**
+ * Kurtarılamayan öğe null (başlığı unsupported'a gider). Kurallar istemcideki
+ * sanitizeLifeSetup ile birebir aynıdır (tests/functions/lifeSetupParity.test.ts):
+ * blok saat ve gün ister, görev gün ister, alışkanlık haftalık sıklık ister.
+ */
 function buildRoutine(rec: RawRecord, title: string): SetupRoutine | null {
   const kind = pick(rec['kind'], KINDS)
   if (!kind) return null
 
-  const routine: SetupRoutine = { title, kind, area: pick(rec['area'], AREAS) ?? null }
-
-  const blockType = pick(rec['block_type'], BLOCK_TYPES)
-  if (blockType && kind !== 'habit') routine.block_type = blockType
-
+  const times = timeRange(rec)
   const days = daysOf(rec['days_of_week'])
-  if (days.length > 0) routine.days_of_week = days
+  const perDay = kind === 'habit' ? intIn(rec['times_per_day'], 2, 20) : undefined
+  // 061: günde N kez alışkanlıkta times_per_week = 7 (haftalık ilerleme "hedefi tutan gün").
+  const perWeek = perDay !== undefined ? 7 : intIn(rec['times_per_week'], 1, 7)
 
-  const perWeek = intIn(rec['times_per_week'], 1, 7)
-  if (perWeek !== undefined) routine.times_per_week = perWeek
-  const perDay = intIn(rec['times_per_day'], 2, 20)
-  if (perDay !== undefined) routine.times_per_day = perDay
+  if (kind === 'block' && (times === null || days.length === 0)) return null
+  if (kind === 'task' && days.length === 0) return null
+  if (kind === 'habit' && perWeek === undefined) return null
 
-  const start = timeOf(rec['start_time'])
-  if (start !== undefined) routine.start_time = start
-  const end = timeOf(rec['end_time'])
-  if (end !== undefined) routine.end_time = end
+  const routine: SetupRoutine = { title, kind, area: pick(rec['area'], AREAS) ?? null }
+  if (kind === 'habit') {
+    if (perWeek !== undefined) routine.times_per_week = perWeek
+    if (perDay !== undefined) routine.times_per_day = perDay
+  } else {
+    routine.days_of_week = days
+    const blockType = pick(rec['block_type'], BLOCK_TYPES)
+    if (blockType) routine.block_type = blockType
+  }
+  if (times) {
+    routine.start_time = times.start
+    routine.end_time = times.end
+  }
 
   const estimated = intIn(rec['estimated_minutes'], 1, 1440)
   if (estimated !== undefined) routine.estimated_minutes = estimated

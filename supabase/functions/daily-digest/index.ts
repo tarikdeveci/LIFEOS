@@ -232,6 +232,8 @@ async function buildEveningSlot(
   if (reportEnabled) {
     try {
       const report = await buildEveningReport(supabase, uid, date, timezone, ctx)
+      // Boş gün (iş de öğün de yok): bildirim yok, eski akşam özetine de düşülmez.
+      if (!report) return { copy: null, reportDate: null }
       return { copy: report.copy, reportDate: report.reportDate }
     } catch (err) {
       console.error(`gun raporu hazirlanamadi (${uid}):`, err instanceof Error ? err.message : err)

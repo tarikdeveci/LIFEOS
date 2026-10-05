@@ -69,8 +69,6 @@ export interface DayFacts {
 /** Kullanıcının kapanış işaretleri. "Yaptım" buraya yazılmaz, gerçek tamamlama olur. */
 export interface DayCheckin {
   items?: Record<string, { outcome: 'partial' | 'skipped'; reason?: SkipReason }>
-  note?: string
-  closed_at?: string
 }
 
 export interface DayNarrative {

@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { TaskStatus } from '../types/task'
 import type { DailyReport, DayCheckin, DayItem, SkipReason } from '../types/report'
 import { fetchDailyReport, requestReportInsight, type ReportLanguage } from '../supabase/reports'
 import { updateTimeBlock } from '../supabase/planning'
 import { getRoutines, setHabitCount as writeHabitCount } from '../supabase/routines'
+import { describeAiError } from '../utils/aiError'
 import { todayDate } from '../utils/date'
 import { mondayOf } from '../utils/routine'
 import { usePlanningStore } from './planningStore'
@@ -12,6 +14,9 @@ import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
+
+/** errors[date] değeri: sunucu o gün için satır bulamadı (404 report_not_found), ağ hatası değil. */
+export const REPORT_NOT_FOUND = 'report_not_found'
 
 /** Kapanış işareti: "yaptım" burada yoktur, o gerçek tamamlamadır. */
 export interface CheckinMark {
@@ -66,6 +71,8 @@ const queues = new Map<string, Promise<unknown>>()
 const reads = new Map<string, number>()
 /** "Yaptım"dan önceki alışkanlık sayacı: geri alınca günde N kez sayacı sıfıra düşmesin. */
 const habitBefore = new Map<string, number>()
+/** "Yaptım"dan önceki görev durumu: geri alınca in_progress/blocked gibi durumlar 'planned'a düşmesin. */
+const taskBefore = new Map<string, TaskStatus>()
 
 const isLatest = (date: string, version: number) => (versions.get(date) ?? 0) === version
 
@@ -96,6 +103,21 @@ function withoutNote(report: DailyReport, title: string): DailyReport {
   return { ...report, narrative: { ...narrative, postponed: narrative.postponed.filter((p) => p.title !== title) } }
 }
 
+/** Görevi bitirir ya da geri alır; geri alma önceki durumu yazar (bilinmiyorsa takvimliyse planned, değilse backlog). */
+async function writeTaskDone(supabase: Supabase, id: string, done: boolean): Promise<void> {
+  const tasks = useTaskStore.getState()
+  const task = tasks.tasks.find((t) => t.id === id)
+  if (done) {
+    if (task && task.status !== 'done') taskBefore.set(id, task.status)
+    await tasks.setStatus(supabase, id, 'done')
+    return
+  }
+  const before = taskBefore.get(id)
+  taskBefore.delete(id)
+  const fallback: TaskStatus = !task || task.scheduled_date ? 'planned' : 'backlog'
+  await tasks.setStatus(supabase, id, before ?? fallback)
+}
+
 /** "Yaptım"ın gerçek yazımı: görev done, blok completed_at, alışkanlık işareti. */
 async function writeCompletion(
   supabase: Supabase,
@@ -107,7 +129,7 @@ async function writeCompletion(
   const id = item.key.slice(item.key.indexOf(':') + 1)
 
   if (item.kind === 'task') {
-    await useTaskStore.getState().setStatus(supabase, id, done ? 'done' : 'planned')
+    await writeTaskDone(supabase, id, done)
     return
   }
 
@@ -120,7 +142,7 @@ async function writeCompletion(
     // Blok planlama store'unda yok (başka gün ya da ekran hiç açılmadı): doğrudan yazılır,
     // bağlı görev varsa setBlockDone ile aynı kuralla o da kapanır.
     const block = await updateTimeBlock(supabase, id, { completed_at: done ? new Date().toISOString() : null })
-    if (block.task_id) await useTaskStore.getState().setStatus(supabase, block.task_id, done ? 'done' : 'planned')
+    if (block.task_id) await writeTaskDone(supabase, block.task_id, done)
     return
   }
 
@@ -179,6 +201,7 @@ export const useReportStore = create<ReportState>((set, get) => {
         versions.clear()
         reads.clear()
         habitBefore.clear()
+        taskBefore.clear()
         set({ userId, reports: {}, loading: {}, errors: {}, insightLoading: {} })
       }
       const version = versions.get(date) ?? 0
@@ -197,9 +220,12 @@ export const useReportStore = create<ReportState>((set, get) => {
         set((state) => ({ loading: { ...state.loading, [date]: false } }))
       } catch (err) {
         if (superseded()) return
+        const info = await describeAiError(err)
+        if (superseded()) return
+        const message = info.status === 404 ? REPORT_NOT_FOUND : err instanceof Error ? err.message : 'Hata'
         set((state) => ({
           loading: { ...state.loading, [date]: false },
-          errors: { ...state.errors, [date]: err instanceof Error ? err.message : 'Hata' },
+          errors: { ...state.errors, [date]: message },
         }))
       }
     },

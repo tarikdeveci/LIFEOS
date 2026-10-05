@@ -15,14 +15,17 @@ export interface EveningReport {
   reportDate: string
 }
 
-/** Hata fırlatır: çağıran eski akşam özetine düşer. */
+/**
+ * Günde beklenen iş de öğün de yoksa null: bildirim gitmez (eski davranış: boş günde
+ * push yok). Hata fırlatır: çağıran eski akşam özetine düşer.
+ */
 export async function buildEveningReport(
   db: Db,
   userId: string,
   date: string,
   timezone: string,
   ctx: DayContext,
-): Promise<EveningReport> {
+): Promise<EveningReport | null> {
   const report = await refreshReport(db, {
     userId,
     date,
@@ -34,5 +37,6 @@ export async function buildEveningReport(
     progress: await serviceProgress(db, userId),
   })
   const summary = summarizeDay(applyCheckin(report.facts, report.checkin))
+  if (summary.total === 0 && (report.facts.nutrition?.meals ?? 0) === 0) return null
   return { copy: eveningReportCopy(summary, ctx), reportDate: date }
 }

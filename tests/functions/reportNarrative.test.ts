@@ -234,3 +234,21 @@ test('summarizeDay: ölçülmeyen (untracked) iş sayıya girmez', () => {
   ]))
   assert.deepEqual(s, { total: 1, done: 1, partial: 0, skipped: 0, open: 0 })
 })
+
+test('şablon anlatı: açık manevi ve ölçülmeyen iş ertelenen sayılmaz, öneri eşiğini tetiklemez', () => {
+  const day = facts([
+    item({ key: 'task:a', outcome: 'done' }),
+    item({ key: 'task:dua', area: 'spiritual' }),
+    item({ key: 'habit:z', untracked: true }),
+    item({ key: 'task:namaz', area: 'spiritual' }),
+  ])
+  const narrative = buildTemplateNarrative(day, none, 'tr')
+  assert.deepEqual(narrative.postponed, [])
+  // Sayılan tek iş yapıldı: öneri "kalan var" ya da "zaman" havuzundan gelmemeli.
+  assert.ok(NARRATIVE_TEXT.tr.suggestion.steady.includes(narrative.suggestion))
+})
+
+test('şablon anlatı: yalnızca manevi iş olan gün sakin gün önerisi alır', () => {
+  const narrative = buildTemplateNarrative(facts([item({ key: 'task:dua', area: 'spiritual', outcome: 'done' })]), none, 'tr')
+  assert.ok(NARRATIVE_TEXT.tr.suggestion.empty.includes(narrative.suggestion))
+})

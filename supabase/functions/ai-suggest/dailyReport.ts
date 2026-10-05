@@ -6,11 +6,11 @@
 
 import {
   buildDailyReportPrompt,
-  isCalendarDate,
   parseDailyReportNarrative,
   readReportContext,
   readStoredAiNarrative,
 } from '../_shared/ai/dailyReport.ts'
+import { isIsoDate } from '../_shared/report/dates.ts'
 import { CHAT_EFFORT, firstText } from './model.ts'
 import { loadPlanningRules } from './planningContext.ts'
 import type { RouteContext } from './request.ts'
@@ -19,7 +19,7 @@ export async function handleDailyReport(route: RouteContext): Promise<Response> 
   const { supabase, userId, body, client, chatModel, ledger, lang, json } = route
 
   const date = body.date
-  if (!isCalendarDate(date)) return json({ error: 'Geçersiz tarih', code: 'invalid_date' }, 400)
+  if (!isIsoDate(date)) return json({ error: 'Geçersiz tarih', code: 'invalid_date' }, 400)
 
   const { data: row, error } = await supabase
     .from('daily_reports')

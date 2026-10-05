@@ -56,7 +56,7 @@ export function StoryProvider({ value, children }: StoryProviderProps) {
   return <StoryContext.Provider value={value}>{children}</StoryContext.Provider>
 }
 
-export function useStory(): StoryScroll {
+function useStory(): StoryScroll {
   const story = useContext(StoryContext)
   if (!story) throw new Error('useStory, StoryProvider içinde kullanılmalı')
   return story
@@ -71,7 +71,7 @@ export function clamp01(value: number): number {
  * Bölümün açılma oranı. onLayout, kaydırma içeriğinin (ya da üstteki Reveal'in) doğrudan
  * çocuğu olan görünüme bağlanmalı: y konumu ona göre okunur.
  */
-export function useReveal() {
+function useReveal() {
   const { scrollY, viewport, content, reduced } = useStory()
   const parent = useContext(OffsetContext)
   const local = useSharedValue(-1)

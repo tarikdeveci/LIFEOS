@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 
 import {
   buildDailyReportPrompt,
-  isCalendarDate,
   isUnmeasured,
   parseDailyReportNarrative,
   readReportContext,
@@ -39,7 +38,6 @@ const CHECKIN = {
     'block:c': { outcome: 'partial', reason: 'time' },
     'task:a': { outcome: 'skipped' },
   },
-  note: 'Zor bir gündü.',
 }
 
 function context(): ReportContext {
@@ -84,7 +82,7 @@ test('prompt: gerçek iş adları, sebepler ve program ilerlemesi verilir', () =
   assert.match(text, /"İş başvurusu" \(career, 90 dk\): yapılmadı, sebep: enerjisi düşüktü/)
   assert.match(text, /"Spor" \(health, 45 dk\): yarım kaldı, sebep: zaman yetmedi/)
   assert.match(text, /enerji 2\/5/)
-  assert.match(text, /KULLANICININ GÜN NOTU\nZor bir gündü\./)
+  assert.doesNotMatch(text, /NOTU/)
   assert.match(text, /BU HAFTA ALIŞKANLIKLAR\n- Spor: 2\/3/)
 })
 
@@ -221,18 +219,6 @@ test('saklanan anlatı: yalnızca sağlam ai anlatısı döner', () => {
   assert.equal(readStoredAiNarrative(null), null)
   assert.equal(readStoredAiNarrative('ai'), null)
   assert.deepEqual(readStoredAiNarrative({ ...stored, went_well: 'x', postponed: [null, { title: '' }] })?.postponed, [])
-})
-
-// ---------- isCalendarDate ----------
-
-test('tarih: takvimde olmayan gün reddedilir', () => {
-  assert.equal(isCalendarDate('2026-10-05'), true)
-  assert.equal(isCalendarDate('2024-02-29'), true)
-  assert.equal(isCalendarDate('2026-02-31'), false)
-  assert.equal(isCalendarDate('2026-13-01'), false)
-  assert.equal(isCalendarDate('05.10.2026'), false)
-  assert.equal(isCalendarDate(undefined), false)
-  assert.equal(isCalendarDate(20261005), false)
 })
 
 test('isUnmeasured: manevi alan ya da untracked bayrağı yeter, eski kayıtta bayrak yoksa ölçülür', () => {
