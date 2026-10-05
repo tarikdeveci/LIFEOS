@@ -98,9 +98,10 @@ function Row({ title, meta, checked, locked, onPress, badges = [] }: RowProps) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { colors } = useTheme()
+  const { lang } = useLang()
   return (
     <View style={{ gap: spacing[2] }}>
-      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</Text>
+      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted, letterSpacing: 0.5 }}>{title.toLocaleUpperCase(lang)}</Text>
       {children}
     </View>
   )
