@@ -47,16 +47,26 @@ export async function syncTimezone(userId: string): Promise<void> {
     .eq('user_id', userId)
 }
 
+/** Hesabı bu süreden yeni olan kullanıcı "yeni kullanıcı" sayılır. */
+const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000
+
 /**
- * Gün raporu bildirimi (report_enabled) kolonda varsayılan FALSE gelir; bu sürümle ilk
- * açılışta kullanıcı başına BİR kez true yapılır. Bayrak yazma başarılı olunca konur:
- * kullanıcı sonra kapatırsa tekrar açılmaz. Kolon yoksa (42703, migration canlıda değil)
- * sessizce geçilir ve bayrak konmaz, kolon gelince bir sonraki açılışta denenir.
+ * Gün raporu bildirimi (report_enabled) kolonda varsayılan FALSE gelir. Yalnızca YENİ
+ * kullanıcıda (hesap son 24 saatte açıldı) bu sürümle bir kez true yapılır; mevcut
+ * kullanıcının akşam bildirimi değişmez, isterse ayarlardan açar. Varsayılan DB'de TRUE
+ * yapılmadı: rapor ekranı olmayan eski sürümle kaydolan kullanıcıya da giderdi.
+ * Bayrak yazma başarılı olunca konur; kullanıcı sonra kapatırsa tekrar açılmaz. Kolon yoksa
+ * (42703, migration canlıda değil) sessizce geçilir, bir sonraki açılışta denenir.
  */
-export async function enableReportOnce(userId: string): Promise<void> {
+export async function enableReportOnce(userId: string, accountCreatedAt: string): Promise<void> {
   const flagKey = `report_enabled_default_v1:${userId}`
   try {
     if (await AsyncStorage.getItem(flagKey)) return
+    const created = Date.parse(accountCreatedAt)
+    if (Number.isNaN(created) || Date.now() - created > NEW_ACCOUNT_MS) {
+      await AsyncStorage.setItem(flagKey, '1')
+      return
+    }
     // Üretilmiş veritabanı tiplerinde report_enabled henüz yok (065): satır gevşek tiplenir.
     const row: Record<string, unknown> = { user_id: userId, report_enabled: true }
     const { error } = await supabase
@@ -142,7 +152,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     if (cleanupError) console.warn('Eski push token silinemedi:', cleanupError.message)
 
     await syncTimezone(user.id)
-    await enableReportOnce(user.id)
+    await enableReportOnce(user.id, user.created_at)
   }
 
   // Android kanal ayarla

@@ -31,8 +31,9 @@ ALTER TABLE tasks
 ALTER TABLE goals
   ADD COLUMN IF NOT EXISTS daily_cap SMALLINT CHECK (daily_cap BETWEEN 1 AND 10);
 
--- Mağazadaki eski sürümlerde rapor ekranı yok. Yeni sürüm ilk açılışta TRUE yapar;
--- sunucu ancak o zaman rapor bildirimi yollar, yoksa eski akşam özeti gider.
+-- Mağazadaki eski sürümlerde rapor ekranı yok. Yeni sürüm yalnızca yeni kullanıcıda
+-- (hesap son 24 saatte açıldı) ilk açılışta TRUE yapar; mevcut kullanıcı ayarlardan açar.
+-- Sunucu ancak TRUE ise rapor bildirimi yollar, yoksa eski akşam özeti gider.
 ALTER TABLE notification_preferences
   ADD COLUMN IF NOT EXISTS report_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
