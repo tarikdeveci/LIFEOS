@@ -7,9 +7,14 @@ import type { ChatTurn, Lang, WorkoutCatalogEntry } from '../_shared/ai/coach.ts
 import type { AiLedger } from '../_shared/ai/usage.ts'
 
 export interface SuggestRequest {
-  type: 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan' | 'nutrition_chat' | 'brain_dump'
+  type:
+    | 'daily_plan' | 'task_priority' | 'workout_plan' | 'workout_program_chat' | 'replan'
+    | 'nutrition_chat' | 'brain_dump' | 'life_setup' | 'daily_report'
   language?: Lang
+  /** replan: planlanan gün. daily_report: raporun günü (YYYY-MM-DD, zorunlu). */
   date?: string
+  /** life_setup: kullanıcının serbest metinle yazdığı hayat planı (en çok 8000 karakter). */
+  text?: string
   /**
    * İstemcinin YEREL bugün tarihi (YYYY-MM-DD). Sunucu UTC'de çalıştığı için
    * toISOString() burada yanlış gün verir: UTC+3'te gece 00:00 ile 03:00 arası

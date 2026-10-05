@@ -190,3 +190,40 @@ REVOKE ALL ON FUNCTION public.routine_progress_changed() FROM PUBLIC, anon, auth
 REVOKE ALL ON FUNCTION public.roll_over_tasks() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.my_routine_progress() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.my_routine_progress() TO authenticated;
+-- daily-digest cron'u (service_role) program satırı için sayacı okur.
+GRANT EXECUTE ON FUNCTION public.routine_done_count(UUID) TO service_role;
+
+-- ============================================================
+-- 6. Ücretsiz AI hakkı: life_setup da düşer
+-- ============================================================
+-- 053'teki tanımın aynısı; tek fark FILTER. Küme ai/freeKinds.ts ile aynı kalmalı.
+CREATE OR REPLACE FUNCTION public.ai_allowance()
+RETURNS TABLE (free_plans_left INT, month_cost_usd NUMERIC)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'ai_allowance: kimliksiz cagri, kullanici JWT''si gerekli'
+      USING ERRCODE = '28000';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    GREATEST(0, 3 - count(*) FILTER (WHERE e.props->>'kind' IN ('replan', 'life_setup')))::int,
+    COALESCE(sum(
+      CASE
+        WHEN jsonb_typeof(e.props->'cost_usd') = 'number'
+         AND e.created_at >= date_trunc('month', now())
+        THEN GREATEST((e.props->>'cost_usd')::numeric, 0)
+      END
+    ), 0)
+  FROM events e
+  WHERE e.user_id = auth.uid()
+    AND e.name = 'ai_used';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ai_allowance() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ai_allowance() TO authenticated, service_role;

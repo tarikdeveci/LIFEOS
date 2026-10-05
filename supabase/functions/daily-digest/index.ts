@@ -1,12 +1,13 @@
 // supabase/functions/daily-digest/index.ts
 // Her saat başı pg_cron tarafından çağrılır.
 // Kullanıcının yerel saatine göre üç slottan birini gönderir:
-//   sabah  (digest_hour)  → günün planı
+//   sabah  (digest_hour)  → 3 öncelik + bakım + manevi/sosyal plan; öncelik yoksa günün planı
 //   öğlen  (midday_hour)  → kalan bloklar + kalori durumu
-//   akşam  (evening_hour) → günün beslenme özeti
+//   akşam  (evening_hour) → gün raporu (report_enabled), değilse günün beslenme özeti
 // Ayrıca tartı hatırlatması (weight_hour): o gün tartı yoksa gider. Başka bir
 // slotla aynı saate düşerse o bildirime tek satır olarak eklenir.
-// Metinler copy.ts'te: her gün değişir, veriye ve haftanın gününe göre seçilir.
+// Metinler copy.ts ve reportCopy.ts'te: her gün değişir, veriye ve haftanın gününe göre
+// seçilir. Cron'da AI çağrısı yok.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { type PushMessage, type PushSupabase, sendExpoPush } from '../_shared/push.ts'
@@ -22,6 +23,9 @@ import {
   weightCopy,
   withWeightLine,
 } from './copy.ts'
+import { buildEveningReport } from './evening.ts'
+import { loadMorningBrief } from './morning.ts'
+import { morningBriefCopy } from './reportCopy.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -117,6 +121,12 @@ async function dayMeals(uid: string, date: string): Promise<Array<{ total_calori
 }
 
 async function buildMorning(uid: string, date: string, time: string, ctx: DayContext): Promise<Copy> {
+  // Önce günlük özet: 3 öncelik + bakım + manevi/sosyal. Seri cümlesi bilerek yok:
+  // sabah yalnızca bunlar söylenir. Öncelik yoksa aşağıdaki mevcut metne düşülür.
+  const brief = await loadMorningBrief(supabase, uid, date)
+  const briefCopy = brief ? morningBriefCopy(brief, ctx) : null
+  if (briefCopy) return briefCopy
+
   const { count } = await supabase
     .from('time_blocks')
     .select('*', { count: 'exact', head: true })
@@ -205,6 +215,29 @@ async function buildEvening(uid: string, date: string, ctx: DayContext): Promise
     },
     ctx,
   )
+}
+
+/**
+ * Akşam slotu. Rapor açıksa (report_enabled) olgular hesaplanıp daily_reports'a yazılır ve
+ * bildirim rapora götürür; öğün girilmemiş olsa da gider. Rapor hazırlanamazsa ya da
+ * kapalıysa eski akşam özeti (yalnızca öğün varsa) gider.
+ */
+async function buildEveningSlot(
+  uid: string,
+  date: string,
+  timezone: string,
+  reportEnabled: boolean,
+  ctx: DayContext,
+): Promise<{ copy: Copy | null; reportDate: string | null }> {
+  if (reportEnabled) {
+    try {
+      const report = await buildEveningReport(supabase, uid, date, timezone, ctx)
+      return { copy: report.copy, reportDate: report.reportDate }
+    } catch (err) {
+      console.error(`gun raporu hazirlanamadi (${uid}):`, err instanceof Error ? err.message : err)
+    }
+  }
+  return { copy: await buildEvening(uid, date, ctx), reportDate: null }
 }
 
 /**
@@ -314,13 +347,19 @@ Deno.serve(async () => {
     // Korumasız hâlde bir kişide çıkan istisna döngüyü kırıyor ve o saatte
     // kimse bildirim alamıyordu; üstelik cron 500 görüp sessizce geçiyordu.
     let content: Copy | null = null
+    let reportDate: string | null = null
     if (slot) {
       try {
-        content = slot === 'morning'
-          ? await buildMorning(uid, date, time, ctx)
-          : slot === 'midday'
-          ? await buildMidday(uid, date, time, ctx)
-          : await buildEvening(uid, date, ctx)
+        if (slot === 'morning') {
+          content = await buildMorning(uid, date, time, ctx)
+        } else if (slot === 'midday') {
+          content = await buildMidday(uid, date, time, ctx)
+        } else {
+          // '*' ile okunan satırda report_enabled 065'ten önce undefined: rapor kapalı sayılır.
+          const evening = await buildEveningSlot(uid, date, tz, pref.report_enabled === true, ctx)
+          content = evening.copy
+          reportDate = evening.reportDate
+        }
       } catch (err) {
         console.error(`digest icerigi hazirlanamadi (${uid}/${slot}):`, err instanceof Error ? err.message : err)
       }
@@ -342,14 +381,17 @@ Deno.serve(async () => {
     const weightLocked = weight !== null && (await acquireLock(uid, 'weight', date))
 
     let message: Copy
-    let type: string
+    let data: Record<string, string>
     if (mainLocked && slot && content) {
       // Aynı saatte iki push yerine tek push: tartı satırı özetin sonuna eklenir.
       message = weightLocked && weight ? withWeightLine(content, weight, ctx) : content
-      type = `daily_digest_${slot}`
+      // Tür aynı kalır (eski istemcide tıklama aynı yere düşer); yeni istemci raporu açar.
+      data = slot === 'evening' && reportDate
+        ? { type: 'daily_digest_evening', report_date: reportDate }
+        : { type: `daily_digest_${slot}` }
     } else if (weightLocked && weight) {
       message = weightCopy(weight, ctx)
-      type = 'daily_digest_weight'
+      data = { type: 'daily_digest_weight' }
     } else {
       continue
     }
@@ -359,7 +401,7 @@ Deno.serve(async () => {
         to: token,
         title: message.title,
         body: message.body,
-        data: { type },
+        data,
         sound: 'default',
       })
     }

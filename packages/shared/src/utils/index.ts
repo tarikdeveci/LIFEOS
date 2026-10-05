@@ -25,6 +25,8 @@ export * from './dailyBrief'
 export * from './externalTasks'
 export * from './notionMapping'
 export * from './quickParse'
+export * from './planningRules'
+export * from './lifeSetup'
 
 export * from './focus'
 export * from './liveWorkout'

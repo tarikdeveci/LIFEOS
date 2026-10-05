@@ -2,9 +2,9 @@
 //
 // AI koç sohbetlerinin prompt kurulumu ve yanıt ayrıştırması.
 // index.ts yalnızca HTTP + veri toplama işini yapar; "koçun ne bildiği ve nasıl
-// konuştuğu" burada durur. Üç sohbet de (beslenme, antrenman, planlama) aynı
-// sözleşmeyi paylaşır: model her zaman tek bir JSON nesnesi döndürür ve
-// `message` alanı kullanıcıya gösterilecek metindir.
+// konuştuğu" burada durur. Sohbetler (beslenme, antrenman ve planner.ts'teki
+// planlama) aynı sözleşmeyi paylaşır: model her zaman tek bir JSON nesnesi
+// döndürür ve `message` alanı kullanıcıya gösterilecek metindir.
 
 import { equipmentSummary, equipmentTag } from './equipment.ts'
 
@@ -42,7 +42,7 @@ export interface SystemBlock {
  * gordugu duzeni degistiriyor; buna karsilik sabit kisim onbellege giriyor ve
  * tekrar okundugunda normal girdi fiyatinin ~%10'una dusuyor.
  */
-function systemBlocks(stable: string, volatile: string): SystemBlock[] {
+export function systemBlocks(stable: string, volatile: string): SystemBlock[] {
   return [
     { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: volatile },
@@ -543,152 +543,4 @@ export function parseWorkoutCoachResult(
       exercises: days.flatMap((day) => day.exercises),
     },
   }
-}
-
-// ============================================================
-// Planlama koçu (replan)
-// ============================================================
-
-export interface PlannerTask {
-  id: string
-  title: string
-  estimated_minutes: number | null
-  priority_score: number | null
-  scheduled_date: string | null
-}
-
-export interface PlannerInput {
-  lang: Lang
-  targetDate: string
-  /** Bugünün tarihi — "yarın" gibi göreli ifadeleri çözmek için. */
-  today: string
-  now: string
-  /** Bu saatten öncesi planlanmaz: geçmiş gün için '00:00'. */
-  planningCutoff: string
-  energyLevel: number | null
-  bufferMinutes: number
-  pastBlocks: { id?: string; start: string; end: string; label: string }[]
-  futureBlocks: { id?: string; start: string; end: string; label: string }[]
-  scheduledTasks: PlannerTask[]
-  backlogTasks: PlannerTask[]
-  history: ChatTurn[]
-  userMessage: string
-}
-
-function taskLine(task: PlannerTask): string {
-  const minutes = task.estimated_minutes ?? 60
-  const priority = task.priority_score !== null ? ` · öncelik ${task.priority_score.toFixed(1)}` : ''
-  return `- "${task.title}" (~${minutes}dk${priority}, id: ${task.id})`
-}
-
-export function buildPlannerPrompt(input: PlannerInput): {
-  system: SystemBlock[]
-  messages: AnthropicMessage[]
-} {
-  const pastSummary = input.pastBlocks.length > 0
-    ? input.pastBlocks.map((b) => `✓ ${b.start}–${b.end}: ${b.label}`).join('\n')
-    : '(Yok)'
-
-  const futureBlocksJson = JSON.stringify(
-    input.futureBlocks.map((b) => ({ id: b.id ?? null, start: b.start, end: b.end, label: b.label })),
-    null,
-    2,
-  )
-
-  const scheduledList = input.scheduledTasks.length > 0
-    ? input.scheduledTasks.map(taskLine).join('\n')
-    : '(Bu güne atanmış görev yok)'
-
-  const backlogList = input.backlogTasks.length > 0
-    ? input.backlogTasks.map(taskLine).join('\n')
-    : '(Bekleyen görev yok)'
-
-  // ── SABİT: kimlik + kurallar + yanıt biçimi ──
-  const stable = `Sen LifeOS'un planlama koçusun. ${langLine(input.lang)}
-
-KİMLİĞİN
-Kullanıcının gününü onun adına düzenliyorsun. İki şey yapabilirsin: soruyu
-cevaplamak, ve takvimde değişiklik yapmak. İkisini karıştırma — kullanıcı
-"bugün ne yapmalıyım" diye soruyorsa yalnızca cevap ver, takvimi kendiliğinden
-değiştirme.
-
-KURALLAR
-1. Blok id'si UYDURMA. Yalnızca aşağıdaki JSON'da geçen id'leri kullan.
-   Silinecek bir blok yoksa remove action'ı üretme.
-2. Yeni blok eklerken çakışan blok varsa önce onu remove et.
-3. Enerji düşükse (1-2) ağır odak bloklarını kısalt, mola sıklığını artır.
-   Enerji yüksekse (4-5) uzun odak bloğu koyabilirsin.
-4. Bir görevi bloğa dönüştürüyorsan label'a görev başlığını yaz.
-5. Öğle yemeği için gün içinde en az 30 dakika bırak.
-6. message alanında ne yaptığını tek paragrafta özetle; aksiyon listesini
-   madde madde tekrar etme, kullanıcı zaten ekranda görecek.
-7. Gün 22:00'de biter.
-
-YANIT BİÇİMİ — yalnızca geçerli JSON döndür, başka hiçbir metin ekleme:
-{
-  "message": "kullanıcıya gösterilecek metin",
-  "actions": [
-    {"action":"add","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","block_type":"task|break|focus|routine|meal|workout","label":"isim"}},
-    {"action":"remove","block_id":"<aşağıdaki id'lerden biri>"},
-    {"action":"move","block_id":"<aşağıdaki id'lerden biri>","block":{"date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM"}}
-  ]
-}
-Takvimi değiştirmen gerekmiyorsa "actions": [] ver.`
-
-  // ── DEĞİŞKEN: zaman, bloklar, görevler ──
-  const volatile = `ZAMAN
-Şu an: ${input.now} · Bugün: ${input.today} · Planlanan gün: ${input.targetDate}
-${input.planningCutoff} saatinden ÖNCESİNE hiçbir şey koyma.
-Bloklar arasında ${input.bufferMinutes} dakika boşluk bırak.
-Enerji seviyesi: ${input.energyLevel !== null ? `${input.energyLevel}/5` : 'belirtilmemiş'}
-
-TAMAMLANMIŞ BLOKLAR (dokunma)
-${pastSummary}
-
-KALAN BLOKLAR — remove/move için id'yi buradan aynen kopyala
-${futureBlocksJson}
-
-BU GÜNE ATANMIŞ GÖREVLER
-${scheduledList}
-
-BEKLEYEN GÖREVLER (henüz güne atanmamış — boşluk varsa buradan çek)
-${backlogList}
-
-Göreli tarih ("yarın") geçerse block.date alanına gerçek YYYY-MM-DD yaz;
-tarih belirtilmediyse ${input.targetDate} kullan.`
-
-  const messages = sanitizeMessages([
-    ...historyToMessages(input.history),
-    { role: 'user', content: input.userMessage },
-  ])
-
-  return { system: systemBlocks(stable, volatile), messages }
-}
-
-export interface PlannerResult {
-  message: string
-  actions: Record<string, unknown>[]
-}
-
-/** Var olmayan id'ye remove/move üretmek istemcide sessiz hataya yol açıyordu. */
-export function parsePlannerResult(text: string, knownBlockIds: Set<string>): PlannerResult {
-  const parsed = extractJsonObject(text)
-  if (!parsed) return { message: text.trim(), actions: [] }
-
-  const rawActions = Array.isArray(parsed['actions']) ? parsed['actions'] : []
-  const actions = rawActions.flatMap((entry): Record<string, unknown>[] => {
-    if (!entry || typeof entry !== 'object') return []
-    const record = entry as Record<string, unknown>
-    const action = record['action']
-    if (action === 'add') return record['block'] && typeof record['block'] === 'object' ? [record] : []
-    if (action === 'remove' || action === 'move') {
-      const blockId = asString(record['block_id'])
-      if (!blockId || !knownBlockIds.has(blockId)) return []
-      if (action === 'move' && (!record['block'] || typeof record['block'] !== 'object')) return []
-      return [record]
-    }
-    return []
-  })
-
-  return { message: asString(parsed['message'], text.trim()), actions }
 }

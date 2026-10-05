@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'
+import type { LifeArea } from '../types/planning'
 import type { Task, TaskFilters, CreateTaskInput, UpdateTaskInput, TaskStatus, ChecklistItem } from '../types/task'
 import { toDateString } from '../utils/date'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
-type TaskInsert = Database['public']['Tables']['tasks']['Insert']
+// area (065) üretilmiş database.ts'te henüz yok; `pnpm db:types` sonrası kendiliğinden gereksiz kalır.
+type TaskInsert = Database['public']['Tables']['tasks']['Insert'] & { area?: LifeArea | null }
 type TaskUpdate = Database['public']['Tables']['tasks']['Update']
 type TaskDetailsInsert = Database['public']['Tables']['task_details']['Insert']
 
@@ -150,6 +152,8 @@ function toTaskInsert(userId: string, input: CreateTaskInput, external?: Externa
     risk_score: input.risk_score ?? 3,
     effort_score: input.effort_score ?? 3,
     friction_score: input.friction_score ?? 3,
+    // Yalnızca verilince yazılır: kolon yoksa (065 uygulanmadan) alan vermeyen çağrılar bozulmasın.
+    ...(input.area !== undefined && { area: input.area }),
   }
 }
 

@@ -5,7 +5,7 @@
 // Prompt'lar ve yanıt ayrıştırma _shared/ai/coach.ts içinde. Buradaki iş:
 // yetkilendirme, erişim kararı ve yönlendirme. Veritabanından bağlam toplama,
 // modele gitme ve yanıtı döndürme rota modüllerinde: planning.ts, tasks.ts,
-// workout.ts, nutrition.ts.
+// workout.ts, nutrition.ts, lifeSetup.ts, dailyReport.ts.
 
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
@@ -15,6 +15,8 @@ import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import { isIsoDate, localDate } from '../_shared/ai/muscleLoad.ts'
 import { getCorsHeaders } from './cors.ts'
 import { BUDGET_CHAT_MODEL, CHAT_MODEL } from './model.ts'
+import { handleDailyReport } from './dailyReport.ts'
+import { handleLifeSetup } from './lifeSetup.ts'
 import { handleNutritionChat } from './nutrition.ts'
 import { handleDailyPlan, handleReplan } from './planning.ts'
 import type { RouteContext, SuggestRequest } from './request.ts'
@@ -84,6 +86,8 @@ serve(async (req: Request) => {
     if (type === 'workout_program_chat') return await handleWorkoutProgramChat(route)
     if (type === 'replan') return await handleReplan(route)
     if (type === 'nutrition_chat') return await handleNutritionChat(route)
+    if (type === 'life_setup') return await handleLifeSetup(route)
+    if (type === 'daily_report') return await handleDailyReport(route)
 
     return json({ error: 'Geçersiz istek tipi' }, 400)
   } catch (error) {

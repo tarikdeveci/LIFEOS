@@ -192,7 +192,13 @@ export function addNotificationResponseListener(
     } else if (data['type'] === 'daily_digest_midday') {
       navigate('/(tabs)/today')
     } else if (data['type'] === 'daily_digest_evening') {
-      navigate('/(tabs)/nutrition')
+      // Rapor bildirimi report_date taşır; eski kalori özeti taşımaz ve beslenmeye açılır.
+      const reportDate = data['report_date']
+      navigate(
+        typeof reportDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reportDate)
+          ? `/report?date=${reportDate}`
+          : '/(tabs)/nutrition',
+      )
     } else if (data['type'] === 'daily_digest_weight') {
       // Kilo Takibi kartı profil ekranında.
       navigate('/(tabs)/profile')

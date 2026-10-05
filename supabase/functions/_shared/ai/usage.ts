@@ -4,8 +4,9 @@
 // buradan karar verir; kural tek yerde durur.
 //
 // Kurallar:
-//   • Free   : yalnızca FREE_KINDS rotaları, ömür boyu 3 kez. Sayaç
-//              migration 052'deki ai_allowance() içinde.
+//   • Free   : yalnızca FREE_KINDS rotaları (freeKinds.ts, erişim kararının
+//              tek noktası), ömür boyu 3 kez. Sayaç migration 052'deki
+//              ai_allowance() içinde.
 //   • Deneme : Pro gibi, bütçesi AI_TRIAL_BUDGET_USD.
 //   • Pro    : aylık bütçe kullanıcının ödediği fiyatla ölçeklenir. Bütçe
 //              aşılınca sohbetler ucuz modele, öğün ayrıştırma kural katmanına
@@ -13,6 +14,8 @@
 //
 // Maliyet her model yanıtının `usage` alanından hesaplanıp `events.ai_used`
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
+
+import { FREE_KINDS } from './freeKinds.ts'
 
 interface QueryError {
   message: string
@@ -58,10 +61,6 @@ function envNumber(name: string, fallback: number): number {
   const value = Number(Deno.env.get(name))
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
-
-// Ücretsiz kullanıcıya açık rotalar: ürünün vaadi olan gün planı. Sohbet ve
-// antrenman koçu açılmıyor, çünkü onlar "bir kez görüp anlama" özelliği değil.
-const FREE_KINDS = new Set(['replan'])
 
 // Kullanıcının ödediği AYLIK fiyatın (USD) bu oranı AI'a gidebilir. Fiyat
 // bilinmiyorsa (web/PayTR, fiyatı henüz yazılmamış eski abonelik) taban bütçe.

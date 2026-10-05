@@ -6,3 +6,4 @@ export { useRoutineStore } from './routineStore'
 export { useGoalStore, type GoalReviewDecision } from './goalStore'
 
 export * from './focusStore'
+export { useReportStore, type CheckinMark } from './reportStore'

@@ -3,6 +3,7 @@ import type {
   CreateRoutineInput,
   Routine,
   RoutineCompletion,
+  RoutineProgress,
   UpdateRoutineInput,
 } from '../types/routine'
 
@@ -103,6 +104,13 @@ export async function materializeMyRoutines(supabase: Supabase): Promise<number>
   const { data, error } = await supabase.rpc('materialize_my_routines')
   if (error) throw error
   return (data as number | null) ?? 0
+}
+
+/** Sayaçlı rutinlerin (target_count) biten oturum sayıları: "X/42". RPC auth.uid() ile süzer. */
+export async function getRoutineProgress(supabase: Supabase): Promise<RoutineProgress[]> {
+  const { data, error } = await supabase.rpc('my_routine_progress')
+  if (error) throw error
+  return (data as RoutineProgress[] | null) ?? []
 }
 
 /** Alışkanlık tamamlamaları, [from, to] dahil. */
