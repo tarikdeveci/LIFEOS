@@ -5,9 +5,10 @@ import { fromDateString, shiftIsoDate } from '../utils/date'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
 
-const GOAL_TASK_COLUMNS = 'id, goal_id, status, tags, estimated_minutes, scheduled_date, completed_at'
+const GOAL_TASK_COLUMNS = 'id, title, goal_id, status, tags, estimated_minutes, scheduled_date, completed_at'
 
-export type GoalTask = GoalTaskLike & { id: string }
+/** Başlık, hedefin adım listesi için. */
+export type GoalTask = GoalTaskLike & { id: string; title: string }
 
 /** period_start >= since olan hedefler (değerlendirme için geçen çeyrekten başlatın). */
 export async function getGoals(supabase: Supabase, userId: string, since: string): Promise<Goal[]> {
@@ -45,6 +46,8 @@ export async function getGoalTasks(
       `and(status.eq.done,scheduled_date.gte.${from},scheduled_date.lte.${to})`,
       `and(status.eq.done,scheduled_date.is.null,completed_at.gte."${doneFrom}",completed_at.lt."${doneTo}")`,
     ].join(','))
+    // Adım listesi eklenme sırasıyla dursun: tik atınca satırlar yer değiştirmesin.
+    .order('created_at')
 
   if (error) throw error
   return data as unknown as GoalTask[]
