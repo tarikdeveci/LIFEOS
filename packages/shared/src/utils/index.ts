@@ -30,3 +30,4 @@ export * from './lifeSetup'
 
 export * from './focus'
 export * from './liveWorkout'
+export * from './lifeSetupMeta'

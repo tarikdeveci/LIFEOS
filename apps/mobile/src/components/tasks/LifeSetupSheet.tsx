@@ -1,11 +1,12 @@
 import { View, Text, TextInput, ActivityIndicator } from 'react-native'
+import { useLifeSetup } from '@lifeos/shared'
+import { supabase } from '@/src/lib/supabase'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, spacing, radius } from '@/src/theme/tokens'
 import { LifeSetupReview } from './LifeSetupReview'
-import { useLifeSetup } from './useLifeSetup'
 
 interface Props {
   visible: boolean
@@ -20,8 +21,8 @@ interface Props {
 /** Hayat planımı kur: serbest metin, AI önerisi, tek onay ekranı, uygula. */
 export function LifeSetupSheet({ visible, onClose, onDone, userId, requirePro }: Props) {
   const { colors } = useTheme()
-  const { t } = useLang()
-  const ls = useLifeSetup(userId, requirePro, onDone)
+  const { t, lang } = useLang()
+  const ls = useLifeSetup({ supabase, userId, lang, t, requirePro, onDone })
   const applying = ls.busy === 'apply'
 
   function close() {

@@ -1,7 +1,7 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
 import { formsEn, formsTr } from './i18nForms'
 import { reportEn, reportTr } from './i18nReport'
-import { lifeSetupEn, lifeSetupTr } from './i18nLifeSetup'
+import { lifeSetupEn, lifeSetupTr } from '@lifeos/shared'
 
 export type Language = 'en' | 'tr'
 export const LANG_STORAGE_KEY = 'lifeos_lang'

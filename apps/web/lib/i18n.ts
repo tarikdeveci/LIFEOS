@@ -1,9 +1,12 @@
+import { lifeSetupEn, lifeSetupTr } from '@lifeos/shared'
+
 export type Language = 'en' | 'tr'
 
 export const LANG_STORAGE_KEY = 'lifeos_lang'
 
 const translations = {
   en: {
+    ...lifeSetupEn,
     // Nav
     nav_mobile: 'Mobile app',
     nav_features: 'Features',
@@ -588,6 +591,10 @@ const translations = {
     goal_reopen: "Reopen",
     goal_delete: "Delete",
     goal_error: "Could not save the goal",
+    goal_steps: "Steps",
+    goal_steps_empty: "No steps yet. Add one, then tick it off to move the bar.",
+    goal_step_placeholder: "Add a step",
+    goal_step_error: "Could not save the step",
     goal_review_title: "Review last month's goals",
     goal_review_done: "Done",
     goal_review_drop: "Dropped",
@@ -703,6 +710,7 @@ const translations = {
     tcard_priority_high: 'High',
     tcard_priority_medium: 'Medium',
     tcard_priority_low: 'Low',
+    tcard_repeat_more: 'Repeats: {n} more upcoming',
     integ_import_title: 'Import tasks',
     integ_google: 'Google Calendar',
     integ_google_hint: 'LifeOS blocks go to a separate "LifeOS" calendar; only busy/free is read from your calendar, never titles.',
@@ -809,6 +817,7 @@ const translations = {
     qtask_create: 'Create Task',
   },
   tr: {
+    ...lifeSetupTr,
     nav_mobile: 'Mobil uygulama',
     nav_features: 'Özellikler',
     nav_pricing: 'Fiyatlar',
@@ -1398,6 +1407,10 @@ const translations = {
     goal_reopen: "Yeniden aç",
     goal_delete: "Sil",
     goal_error: "Hedef kaydedilemedi",
+    goal_steps: "Adımlar",
+    goal_steps_empty: "Henüz adım yok. Bir adım ekle, tikledikçe çubuk dolar.",
+    goal_step_placeholder: "Adım ekle",
+    goal_step_error: "Adım kaydedilemedi",
     goal_review_title: "Geçen ayın hedeflerini değerlendir",
     goal_review_done: "Tamamlandı",
     goal_review_drop: "Bıraktım",
@@ -1511,6 +1524,7 @@ const translations = {
     tcard_priority_high: 'Yüksek',
     tcard_priority_medium: 'Orta',
     tcard_priority_low: 'Düşük',
+    tcard_repeat_more: 'Tekrar eder: sırada {n} tane daha var',
     integ_import_title: 'Görevleri içe aktar',
     integ_google: 'Google Takvim',
     integ_google_hint: 'LifeOS blokları ayrı bir "LifeOS" takvimine yazılır; takviminden sadece dolu/boş okunur, başlıklar okunmaz.',

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Task, TaskStatus, CreateTaskInput, UpdateTaskInput, ImportedTask } from '@lifeos/shared'
-import { TASK_STATUS_COLORS } from '@lifeos/shared'
+import { TASK_STATUS_COLORS, collapseRoutineTasks } from '@lifeos/shared'
 import { useTaskStore } from '@lifeos/shared'
 import { getTaskById, importExternalTasks, updateTaskDetails } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
@@ -45,8 +45,10 @@ export default function TasksClientPage({ userId }: { userId: string }) {
     deferred:    t.tasks_status_deferred,
   }
 
-  const { tasks, loading, fetchTasks, fetchBacklog, addTask, addTasks, updateTask, deleteTask, setStatus } =
+  const { tasks: allTasks, loading, fetchTasks, fetchBacklog, addTask, addTasks, updateTask, deleteTask, setStatus } =
     useTaskStore()
+  // Rutin örnekleri tek karta iner: yedi günlük seri kanbanı ve listeyi aynı kartla dolduruyordu.
+  const { tasks, more: routineMore } = useMemo(() => collapseRoutineTasks(allTasks), [allTasks])
 
   // İlk yükleme
   useEffect(() => {
@@ -173,7 +175,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
         </div>
       </div>
       <TaskImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImportTasks} />
-      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreateTask} />
+      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreateTask} userId={userId} />
 
       {/* Tab bar */}
       <div className="flex gap-1 rounded-xl bg-border/40 p-1">
@@ -295,6 +297,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
               <TaskCard
                 key={task.id}
                 task={task}
+                repeatMore={routineMore.get(task.id)}
                 onClick={openTaskDetail}
                 onStatusChange={handleStatusChange}
               />
@@ -329,6 +332,7 @@ export default function TasksClientPage({ userId }: { userId: string }) {
                       <TaskCard
                         key={task.id}
                         task={task}
+                        repeatMore={routineMore.get(task.id)}
                         onClick={openTaskDetail}
                         onStatusChange={handleStatusChange}
                         compact
