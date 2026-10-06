@@ -94,3 +94,35 @@ export const CARRY_PROMPT_THRESHOLD = 3
 export function shouldAskStillImportant(task: { carry_count: number; routine_id: string | null }): boolean {
   return task.routine_id === null && task.carry_count >= CARRY_PROMPT_THRESHOLD
 }
+
+interface RoutineTaskLike {
+  id: string
+  status: string
+  routine_id: string | null
+  occurrence_date: string | null
+}
+
+/**
+ * Görev listesi ve kanban için: bir rutinin açık örneklerinden yalnızca en yakını kalır.
+ * Sunucu görev rutinini 7 gün ileriye ürettiğinden aynı kart art arda 7 kez çıkıyordu.
+ * `more`: kalan kartın kimliği → arkasına katlanan örnek sayısı. Tamamlanan ve ertelenen
+ * örnekler ile sıradan görevler olduğu gibi kalır, sıra korunur.
+ */
+export function collapseRoutineTasks<T extends RoutineTaskLike>(tasks: readonly T[]): { tasks: T[]; more: Map<string, number> } {
+  const isOpen = (task: T) => task.routine_id !== null && task.status !== 'done' && task.status !== 'deferred'
+  const nearest = new Map<string, T>()
+  const count = new Map<string, number>()
+  for (const task of tasks) {
+    if (!isOpen(task)) continue
+    const key = task.routine_id!
+    count.set(key, (count.get(key) ?? 0) + 1)
+    const kept = nearest.get(key)
+    if (!kept || (task.occurrence_date ?? '') < (kept.occurrence_date ?? '')) nearest.set(key, task)
+  }
+  const more = new Map<string, number>()
+  for (const [key, task] of nearest) {
+    const hidden = (count.get(key) ?? 1) - 1
+    if (hidden > 0) more.set(task.id, hidden)
+  }
+  return { tasks: tasks.filter((task) => !isOpen(task) || nearest.get(task.routine_id!) === task), more }
+}

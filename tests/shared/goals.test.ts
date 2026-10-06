@@ -175,3 +175,82 @@ test('hedef taşıma yarıda kalıp tekrar denenince ikinci yeni hedef açılmaz
   await useGoalStore.getState().reviewGoal(client, 'u', old, 'carry', '', '2026-10-05')
   assert.equal(inserts.length, 1)
 })
+
+type GoalStore = typeof import('../../packages/shared/src/stores/goalStore.ts').useGoalStore
+type StepClient = Parameters<ReturnType<GoalStore['getState']>['addStep']>[0]
+
+/** tasks ve task_details yazımlarını kaydeden sahte istemci; `failing.update` açıkken güncelleme hata döner. */
+function stepClient() {
+  const calls = { inserted: 0, updates: [] as Record<string, unknown>[], deleted: [] as string[] }
+  const failing = { update: false }
+  const client = {
+    from: (table: string) => ({
+      insert: (rows: Record<string, unknown>[]) => {
+        const data = table === 'tasks'
+          ? rows.map((r) => ({ id: `t${++calls.inserted}`, completed_at: null, ...r }))
+          : null
+        const result = { data, error: null }
+        return { select: async () => result, then: (resolve: (value: typeof result) => void) => resolve(result) }
+      },
+      update: (patch: Record<string, unknown>) => ({
+        eq: (_column: string, id: string) => ({
+          select: () => ({
+            single: async () => {
+              if (failing.update) return { data: null, error: { message: 'ağ' } }
+              calls.updates.push(patch)
+              return { data: { id, ...patch }, error: null }
+            },
+          }),
+        }),
+      }),
+      delete: () => ({
+        eq: async (_column: string, id: string) => { calls.deleted.push(id); return { error: null } },
+      }),
+    }),
+  }
+  return { client: client as unknown as StepClient, calls, failing }
+}
+
+test('hedefe adım eklenir; tiklenince ilerleme artar, geri açılınca düşer', async () => {
+  const { useGoalStore } = await import('../../packages/shared/src/stores/goalStore.ts')
+  const { useTaskStore } = await import('../../packages/shared/src/stores/taskStore.ts')
+  const g = goal({ target: null, count_mode: null, tag_filter: [] })
+  useGoalStore.setState({ goals: [g], tasks: [] })
+  useTaskStore.setState({ tasks: [] })
+  const { client, calls } = stepClient()
+  const pct = () => goalTreeProgress(useGoalStore.getState().goals, useGoalStore.getState().tasks).get('g1')?.pct
+
+  await useGoalStore.getState().addStep(client, 'u', 'g1', 'İlk bölümü oku')
+  const [step] = useGoalStore.getState().tasks
+  assert.deepEqual({ id: step?.id, title: step?.title, goal_id: step?.goal_id, status: step?.status },
+    { id: 't1', title: 'İlk bölümü oku', goal_id: 'g1', status: 'backlog' })
+  assert.deepEqual(calls.updates, [{ goal_id: 'g1', value_score: 4 }])
+  assert.equal(useTaskStore.getState().tasks[0]?.goal_id, 'g1', 'görev listesi de bağı görmeli')
+  assert.equal(pct(), 0)
+
+  await useGoalStore.getState().setStepDone(client, 't1', true)
+  assert.equal(pct(), 100)
+  assert.equal(calls.updates[1]?.status, 'done')
+
+  await useGoalStore.getState().setStepDone(client, 't1', false)
+  assert.equal(pct(), 0)
+  assert.equal(calls.updates[2]?.status, 'backlog', 'takvimsiz adım backlog\'a döner')
+})
+
+test('adım yazılamazsa: tik geri alınır, bağlanamayan yeni adım silinir', async () => {
+  const { useGoalStore } = await import('../../packages/shared/src/stores/goalStore.ts')
+  const { useTaskStore } = await import('../../packages/shared/src/stores/taskStore.ts')
+  const existing = { id: 's1', title: 'Koş', ...task({ goal_id: 'g1', status: 'planned' }) }
+  useGoalStore.setState({ goals: [goal()], tasks: [existing] })
+  useTaskStore.setState({ tasks: [] })
+  const { client, calls, failing } = stepClient()
+  failing.update = true
+
+  await assert.rejects(useGoalStore.getState().setStepDone(client, 's1', true))
+  assert.deepEqual(useGoalStore.getState().tasks, [existing])
+
+  await assert.rejects(useGoalStore.getState().addStep(client, 'u', 'g1', 'Yeni adım'))
+  assert.deepEqual(useGoalStore.getState().tasks, [existing])
+  assert.deepEqual(calls.deleted, ['t1'])
+  assert.deepEqual(useTaskStore.getState().tasks, [])
+})

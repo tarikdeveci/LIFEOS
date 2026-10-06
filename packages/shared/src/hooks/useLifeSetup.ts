@@ -1,16 +1,12 @@
 import { useRef, useState } from 'react'
-import {
-  describeAiError,
-  LIFE_SETUP_TEXT_MAX,
-  useGoalStore,
-  useRoutineStore,
-  useTaskStore,
-  type LifeSetupProposal,
-  type PlanningRules,
-} from '@lifeos/shared'
-import { applyLifeSetup, requestLifeSetup, type ApplyProgress } from '@lifeos/shared/supabase'
-import { supabase } from '@/src/lib/supabase'
-import { useLang } from '@/src/contexts/LangContext'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { LIFE_SETUP_TEXT_MAX, type LifeSetupProposal } from '../types/lifeSetup'
+import type { PlanningRules } from '../types/user'
+import { useGoalStore } from '../stores/goalStore'
+import { useRoutineStore } from '../stores/routineStore'
+import { useTaskStore } from '../stores/taskStore'
+import { applyLifeSetup, requestLifeSetup, type ApplyProgress } from '../supabase/lifeSetup'
+import { describeAiError } from '../utils/aiError'
 
 export type RuleKey = keyof PlanningRules
 
@@ -79,9 +75,20 @@ function anyWritten(w: Written): boolean {
     || Object.values(w.rules).some(Boolean)
 }
 
-/** Kurulum akışının tüm durumu: metin, öneri, tikler, yazılanlar, meşgul ve hata. */
-export function useLifeSetup(userId: string | null, requirePro: (source?: string) => boolean, onDone: () => void) {
-  const { t, lang } = useLang()
+export interface LifeSetupDeps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>
+  userId: string | null
+  lang: Parameters<typeof requestLifeSetup>[2]
+  /** Hata metinleri, uygulamanın kendi çevirisinden. */
+  t: Record<'setup_err_empty' | 'setup_err_too_long' | 'setup_err_generic' | 'setup_err_apply' | 'setup_err_apply_none', string>
+  /** Ücretsiz hak bitince çağrılır: Pro ise true döner, değilse yükseltme çağrısını gösterir. */
+  requirePro: (source?: string) => boolean
+  onDone: () => void
+}
+
+/** Kurulum akışının tüm durumu: metin, öneri, tikler, yazılanlar, meşgul ve hata. Web ve mobil ortak kullanır. */
+export function useLifeSetup({ supabase, userId, lang, t, requirePro, onDone }: LifeSetupDeps) {
   const [text, setText] = useState('')
   const [proposal, setProposal] = useState<LifeSetupProposal | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)

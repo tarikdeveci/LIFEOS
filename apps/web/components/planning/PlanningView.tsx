@@ -266,7 +266,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
             onChanged={() => void fetchDayData(supabase, userId, date)} />
 
           {/* Haftalık Hedefler */}
-          <GoalsPanel userId={userId} />
+          <GoalsPanel userId={userId} onStepToggle={() => void fetchDayData(supabase, userId, date)} />
 
           {/* Agentic AI Chat */}
           <PlanningAiChat chat={chat} isPro={isPro} freePlansLeft={freePlansLeft} freePlansUsedUp={freePlansUsedUp} />

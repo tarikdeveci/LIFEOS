@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Goal, GoalHorizon } from '@lifeos/shared'
+import type { GoalTask } from '@lifeos/shared/supabase'
 import {
   goalPeriodStart,
   goalTreeProgress,
@@ -15,15 +16,22 @@ import { useLang } from '@/lib/contexts/LangContext'
 import { GoalReviewCard } from './GoalReviewCard'
 import { GoalForm } from './GoalForm'
 
-interface GoalsPanelProps { userId: string }
+interface GoalsPanelProps {
+  userId: string
+  /** Bir adım tiklendi ya da geri açıldı: aynı görevi gösteren gün görünümü yenilensin. */
+  onStepToggle?: () => void
+}
 
 const HORIZONS: GoalHorizon[] = ['week', 'month', 'quarter']
 const PARENT_OF: Record<GoalHorizon, GoalHorizon | null> = { week: 'month', month: 'quarter', quarter: null }
 
 /** Çeyrek, ay ve hafta hedefleri. Eski localStorage haftalık hedeflerini bir kez DB'ye taşır. */
-export function GoalsPanel({ userId }: GoalsPanelProps) {
+export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
   const { t } = useLang()
-  const { goals, tasks, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal } = useGoalStore()
+  const {
+    goals, tasks, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal,
+    addStep, setStepDone,
+  } = useGoalStore()
   const [tab, setTab] = useState<GoalHorizon>('week')
   const [editing, setEditing] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -67,9 +75,13 @@ export function GoalsPanel({ userId }: GoalsPanelProps) {
     ? Math.round(visible.reduce((s, g) => s + (progress.get(g.id)?.pct ?? 0), 0) / visible.length)
     : 0
 
-  const run = async (fn: () => Promise<unknown>): Promise<boolean> => {
+  const run = async (fn: () => Promise<unknown>, failed: string = t.goal_error): Promise<boolean> => {
     setActionError(null)
-    try { await fn(); return true } catch { setActionError(t.goal_error); return false }
+    try { await fn(); return true } catch { setActionError(failed); return false }
+  }
+
+  const toggleStep = async (step: GoalTask) => {
+    if (await run(() => setStepDone(supabase, step.id, step.status !== 'done'), t.goal_step_error)) onStepToggle?.()
   }
 
   if (loading && goals.length === 0) {
@@ -121,11 +133,12 @@ export function GoalsPanel({ userId }: GoalsPanelProps) {
             pct={progress.get(goal.id)?.pct ?? 0}
             label={progressLabel(goal, progress.get(goal.id))}
             parentTitle={goals.find((p) => p.id === goal.parent_id)?.title ?? null}
+            steps={tasks.filter((task) => task.goal_id === goal.id)}
             editing={editing}
             onToggleDone={() => run(() => editGoal(supabase, goal.id, { status: goal.status === 'done' ? 'active' : 'done' }))}
             onDelete={() => run(() => removeGoal(supabase, goal.id))}
-            doneLabel={goal.status === 'done' ? t.goal_reopen : t.goal_mark_done}
-            deleteLabel={t.goal_delete}
+            onAddStep={(title) => run(() => addStep(supabase, userId, goal.id, title), t.goal_step_error)}
+            onToggleStep={(step) => void toggleStep(step)}
           />
         ))}
       </div>
@@ -157,15 +170,35 @@ interface GoalRowProps {
   pct: number
   label: string
   parentTitle: string | null
+  /** Hedefe bağlı görevler, eklenme sırasıyla. */
+  steps: GoalTask[]
   editing: boolean
   onToggleDone: () => void
   onDelete: () => void
-  doneLabel: string
-  deleteLabel: string
+  /** false dönerse kayıt başarısız: taslak korunur. */
+  onAddStep: (title: string) => Promise<boolean>
+  onToggleStep: (step: GoalTask) => void
 }
 
-function GoalRow({ goal, pct, label, parentTitle, editing, onToggleDone, onDelete, doneLabel, deleteLabel }: GoalRowProps) {
+function GoalRow({ goal, pct, label, parentTitle, steps, editing, onToggleDone, onDelete, onAddStep, onToggleStep }: GoalRowProps) {
+  const { t } = useLang()
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
   const done = goal.status === 'done' || pct >= 100
+  const stepsDone = steps.filter((s) => s.status === 'done').length
+
+  const submitStep = async () => {
+    const title = draft.trim()
+    if (!title || saving) return
+    setSaving(true)
+    try {
+      if (await onAddStep(title)) setDraft('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-xs">
@@ -183,10 +216,34 @@ function GoalRow({ goal, pct, label, parentTitle, editing, onToggleDone, onDelet
         />
       </div>
       {parentTitle && <p className="mt-0.5 text-[10px] text-muted">↳ {parentTitle}</p>}
-      {editing && (
-        <div className="mt-1 flex gap-2">
-          <button onClick={onToggleDone} className="text-[10px] text-accent hover:underline">{doneLabel}</button>
-          <button onClick={onDelete} className="text-[10px] text-danger hover:underline">{deleteLabel}</button>
+      <div className="mt-1 flex items-center gap-2">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mr-auto text-[10px] text-muted hover:text-accent">
+          {open ? '▾' : '▸'} {t.goal_steps}{steps.length > 0 && ` ${stepsDone}/${steps.length}`}
+        </button>
+        <button onClick={onToggleDone} className="text-[10px] text-accent hover:underline">
+          {goal.status === 'done' ? t.goal_reopen : t.goal_mark_done}
+        </button>
+        {editing && <button onClick={onDelete} className="text-[10px] text-danger hover:underline">{t.goal_delete}</button>}
+      </div>
+      {open && (
+        <div className="mt-1.5 space-y-1.5 rounded-xl bg-background p-2">
+          {steps.length === 0 && <p className="text-[10px] text-muted">{t.goal_steps_empty}</p>}
+          <div className="max-h-40 space-y-1 overflow-y-auto">
+            {steps.map((step) => (
+              <label key={step.id} className="flex cursor-pointer items-start gap-2 text-[11px]">
+                <input type="checkbox" checked={step.status === 'done'} onChange={() => onToggleStep(step)} className="mt-0.5" />
+                <span className={step.status === 'done' ? 'text-muted line-through' : 'text-primary'}>{step.title}</span>
+              </label>
+            ))}
+          </div>
+          <form onSubmit={(e) => { e.preventDefault(); void submitStep() }} className="flex gap-1.5">
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={200} placeholder={t.goal_step_placeholder}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-primary" />
+            <button type="submit" disabled={saving || !draft.trim()}
+              className="rounded-lg bg-accent px-2 py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-40">
+              {t.plan_weekly_add}
+            </button>
+          </form>
         </div>
       )}
     </div>

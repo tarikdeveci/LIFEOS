@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CreateGoalInput, Goal, UpdateGoalInput } from '../types/goal'
+import type { TaskStatus } from '../types/task'
 import {
   createGoal,
   createGoals,
@@ -11,7 +12,8 @@ import {
   type GoalTask,
 } from '../supabase/goals'
 import { todayDate } from '../utils/date'
-import { addMonths, goalPeriodEnd, goalPeriodStart } from '../utils/goals'
+import { addMonths, goalPeriodEnd, goalPeriodStart, valueScoreForGoal } from '../utils/goals'
+import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -40,6 +42,10 @@ interface GoalState {
     note: string,
     today?: string,
   ) => Promise<void>
+  /** Hedefe bağlı yeni adım (backlog görevi). */
+  addStep: (supabase: Supabase, userId: string, goalId: string, title: string) => Promise<void>
+  /** Adımı tamamlar ya da geri açar; ilerleme aynı anda güncellenir. */
+  setStepDone: (supabase: Supabase, taskId: string, done: boolean) => Promise<void>
   /** Çıkışta: sonraki hesap öncekinin hedeflerini görmesin. */
   reset: () => void
 }
@@ -141,5 +147,51 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       })
     }
     await get().editGoal(supabase, goal.id, reviewed)
+  },
+
+  // Yazımlar görev store'u üzerinden: açık görev listeleri de aynı anda güncellenir.
+  addStep: async (supabase, userId, goalId, title) => {
+    const gen = generation
+    const taskStore = useTaskStore.getState()
+    // CreateTaskInput'ta goal_id yok: adım önce yazılır, sonra bağ ve değer puanı birlikte güncellenir.
+    const [task] = await taskStore.addTasks(supabase, userId, [{ title }])
+    if (!task) throw new Error('task insert returned no row')
+    try {
+      await taskStore.updateTask(supabase, task.id, {
+        goal_id: goalId,
+        value_score: valueScoreForGoal(task.value_score, goalId),
+      })
+    } catch (err) {
+      // Bağlanamayan adım backlog'da sahipsiz kalmasın, tekrar deneme ikinci görev açmasın.
+      try { await taskStore.deleteTask(supabase, task.id) } catch { /* asıl hata fırlatılır */ }
+      throw err
+    }
+    if (gen !== generation) return
+    const step: GoalTask = {
+      id: task.id,
+      title: task.title,
+      goal_id: goalId,
+      status: task.status,
+      tags: task.tags,
+      estimated_minutes: task.estimated_minutes,
+      scheduled_date: task.scheduled_date,
+      completed_at: task.completed_at,
+    }
+    set((state) => ({ tasks: [...state.tasks, step] }))
+  },
+
+  setStepDone: async (supabase, taskId, done) => {
+    const previous = get().tasks.find((t) => t.id === taskId)
+    if (!previous) return
+    // Geri açılan adım takvimliyse planned, değilse backlog (reportStore ile aynı kural).
+    const status: TaskStatus = done ? 'done' : previous.scheduled_date ? 'planned' : 'backlog'
+    const put = (next: GoalTask) => set((state) => ({ tasks: state.tasks.map((t) => (t.id === taskId ? next : t)) }))
+    put({ ...previous, status, completed_at: done ? new Date().toISOString() : null })
+    try {
+      await useTaskStore.getState().setStatus(supabase, taskId, status)
+    } catch (err) {
+      put(previous)
+      throw err
+    }
   },
 }))

@@ -1,5 +1,5 @@
-// "Hayat planımı kur" akışının metinleri (Aklındakileri dök sayfasından açılır).
-// Ana i18n.ts 500 satırı aştığı için ayrı dosyada; getTranslations birleştirir.
+// "Hayat planımı kur" akışının metinleri (Aklındakileri dök penceresinden açılır).
+// Web ve mobil aynı akışı gösterdiği için ortak pakette; her uygulamanın i18n'i birleştirir.
 // tr, en ile aynı anahtarları taşımak zorunda.
 
 export const lifeSetupEn = {
@@ -11,7 +11,7 @@ export const lifeSetupEn = {
   setup_extract: 'Build my plan',
   setup_loading: 'Reading your text and drafting a plan',
   setup_back: 'Back',
-  setup_review_hint: 'Untick anything you do not want. Nothing is saved until you tap Apply.',
+  setup_review_hint: 'Untick anything you do not want. Nothing is saved until you press Apply.',
   setup_summary_label: 'Summary',
   setup_sec_routines: 'Routines',
   setup_sec_goals: 'Goals',
@@ -56,8 +56,9 @@ export const lifeSetupEn = {
   setup_err_empty: 'Write a few sentences first.',
   setup_err_too_long: 'That text is too long. Shorten it and try again.',
   setup_err_generic: 'The plan could not be drafted. Try again.',
-  setup_err_apply: 'Saving stopped halfway. Items marked Saved are in your app, the others are not. Tap Apply the rest to continue.',
+  setup_err_apply: 'Saving stopped halfway. Items marked Saved are in your app, the others are not. Press Apply the rest to continue.',
   setup_err_apply_none: 'Nothing was saved. Check your connection and try again.',
+  setup_pro_needed: 'Your free AI allowance is used up. Go Pro to keep building plans.',
 }
 
 export const lifeSetupTr: typeof lifeSetupEn = {
@@ -69,7 +70,7 @@ export const lifeSetupTr: typeof lifeSetupEn = {
   setup_extract: 'Planı çıkar',
   setup_loading: 'Metnin okunuyor ve plan hazırlanıyor',
   setup_back: 'Geri',
-  setup_review_hint: 'İstemediklerinin tikini kaldır. Uygula\'ya dokunana kadar hiçbir şey kaydedilmez.',
+  setup_review_hint: 'İstemediklerinin tikini kaldır. Uygula\'ya basana kadar hiçbir şey kaydedilmez.',
   setup_summary_label: 'Özet',
   setup_sec_routines: 'Rutinler',
   setup_sec_goals: 'Hedefler',
@@ -114,6 +115,7 @@ export const lifeSetupTr: typeof lifeSetupEn = {
   setup_err_empty: 'Önce birkaç cümle yaz.',
   setup_err_too_long: 'Metin çok uzun. Kısaltıp tekrar dene.',
   setup_err_generic: 'Plan hazırlanamadı. Tekrar dene.',
-  setup_err_apply: 'Kayıt yarıda kaldı. Kaydedildi işaretli öğeler uygulamanda, diğerleri değil. Devam etmek için Kalanları uygula\'ya dokun.',
+  setup_err_apply: 'Kayıt yarıda kaldı. Kaydedildi işaretli öğeler uygulamanda, diğerleri değil. Devam etmek için Kalanları uygula\'ya bas.',
   setup_err_apply_none: 'Hiçbir şey kaydedilmedi. Bağlantını kontrol edip tekrar dene.',
+  setup_pro_needed: 'Ücretsiz AI hakkın bitti. Plan çıkarmaya devam etmek için Pro\'ya geç.',
 }

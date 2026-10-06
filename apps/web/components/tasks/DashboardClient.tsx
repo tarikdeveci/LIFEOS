@@ -157,7 +157,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
           <QuickTaskInput onCreateTask={handleCreate} />
         </div>
       </div>
-      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreate} />
+      <BrainDumpModal open={brainOpen} onClose={() => setBrainOpen(false)} onCreateTask={handleCreate} userId={userId} />
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-12 gap-6">

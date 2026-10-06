@@ -19,23 +19,27 @@ import { supabase } from '@/lib/supabase/client'
 import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useSpeechInput } from '@/lib/hooks/useSpeechInput'
 import { useLang } from '@/lib/contexts/LangContext'
+import { LifeSetupModal } from './LifeSetupModal'
 
 interface BrainDumpModalProps {
   open: boolean
   onClose: () => void
   onCreateTask: (input: CreateTaskInput) => Promise<Task | void>
+  /** Verilirse "Hayat planımı kur" bağlantısı görünür. */
+  userId?: string
 }
 
 /** `created`: görev yazıldı ama zaman bloğu düştüyse görev burada kalır, tekrar denemede yalnız blok yazılır. */
 interface Candidate extends QuickParseResult { keep: boolean; created?: Task }
 
 /** Aklındakileri dök: konuş ya da yaz, görevlere bölünsün, onayla ve ekle. */
-export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalProps) {
+export function BrainDumpModal({ open, onClose, onCreateTask, userId }: BrainDumpModalProps) {
   const { t, lang } = useLang()
   const { isPro } = useSubscription()
   const [text, setText] = useState('')
   const [items, setItems] = useState<Candidate[] | null>(null)
   const [busy, setBusy] = useState<'ai' | 'save' | null>(null)
+  const [setupOpen, setSetupOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const speech = useSpeechInput((chunk) => setText((prev) => `${prev}${prev && !prev.endsWith('\n') ? '\n' : ''}${chunk}`))
 
@@ -105,7 +109,8 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
   const kept = items?.filter((i) => i.keep).length ?? 0
 
   return (
-    <Modal open={open} onClose={reset} title={t.brain_title} size="lg">
+    <>
+    <Modal open={open && !setupOpen} onClose={reset} title={t.brain_title} size="lg">
       {items === null ? (
         <div className="space-y-3">
           <p className="text-xs text-muted">{t.brain_hint}</p>
@@ -122,6 +127,11 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
               <Button variant="outline" size="sm" onClick={speech.listening ? speech.stop : speech.start}>
                 {speech.listening ? `⏹ ${t.brain_stop}` : `🎤 ${t.brain_speak}`}
               </Button>
+            )}
+            {userId && (
+              <button onClick={() => setSetupOpen(true)} className="text-xs font-medium text-accent hover:underline">
+                {t.setup_link}
+              </button>
             )}
             <div className="flex-1" />
             <Button variant="outline" size="sm" onClick={splitFree} disabled={!text.trim()}>{t.brain_split}</Button>
@@ -167,5 +177,14 @@ export function BrainDumpModal({ open, onClose, onCreateTask }: BrainDumpModalPr
       )}
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </Modal>
+    {userId && (
+      <LifeSetupModal
+        open={open && setupOpen}
+        onClose={() => setSetupOpen(false)}
+        onDone={() => { setSetupOpen(false); reset() }}
+        userId={userId}
+      />
+    )}
+    </>
   )
 }
