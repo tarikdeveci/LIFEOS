@@ -167,3 +167,4 @@ export const PORTION_RUNG_LABELS: Record<PortionRung, string> = {
 
 export * from './equipment'
 export * from './lifeSetupText'
+export * from './reportText'

@@ -8,7 +8,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 import { Reveal, clamp01, type Progress } from './motion'
-import type { PostponedRow } from './reportModel'
+import type { PostponedRow } from '@lifeos/shared'
 
 interface SectionTitleProps { label: string }
 interface WentWellProps { lines: string[] }

@@ -21,6 +21,7 @@ import { WeekView } from '@/components/planning/WeekView'
 import { MonthView } from '@/components/planning/MonthView'
 import { GoalsPanel } from '@/components/planning/GoalsPanel'
 import { DayStartCard } from '@/components/planning/DayStartCard'
+import { DayCloseCard } from '@/components/planning/DayCloseCard'
 import { FlexPool } from '@/components/planning/FlexPool'
 import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
 import { HabitsToday } from '@/components/planning/HabitsToday'
@@ -234,6 +235,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       {viewMode === 'day' && (
         <div className="col-span-4 space-y-4">
           <DayStartCard isToday={isToday} onStartRitual={() => setRitualOpen(true)} />
+          {isToday && (allDayTasks.length > 0 || timeBlocks.length > 0) && <DayCloseCard userId={userId} date={todayStr} />}
 
           <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} busy={busy} />
 

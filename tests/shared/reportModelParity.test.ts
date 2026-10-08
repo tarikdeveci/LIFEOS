@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { postponedRows, summarize, viewItems } from '../../apps/mobile/src/components/report/reportModel.ts'
+import { postponedRows, summarize, viewItems } from '../../packages/shared/src/utils/dayReport.ts'
 import { applyCheckin, summarizeDay } from '../../supabase/functions/_shared/report/narrative.ts'
 import type { DailyReport } from '../../packages/shared/src/types/report.ts'
 import type { DayCheckin, DayFacts, DayItem } from '../../supabase/functions/_shared/report/types.ts'
 
-// Mobil halka (reportModel) ve sunucu anlatısı (narrative) aynı günü aynı sayılarla saymalı.
+// Rapor halkası (dayReport) ve sunucu anlatısı (narrative) aynı günü aynı sayılarla saymalı.
 
 const item = (over: Partial<DayItem> & { key: string }): DayItem => ({
   kind: over.key.startsWith('habit:') ? 'habit' : over.key.startsWith('block:') ? 'block' : 'task',

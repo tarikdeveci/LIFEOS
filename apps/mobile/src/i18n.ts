@@ -1,6 +1,6 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
 import { formsEn, formsTr } from './i18nForms'
-import { reportEn, reportTr } from './i18nReport'
+import { reportEn, reportTr } from '@lifeos/shared'
 import { lifeSetupEn, lifeSetupTr } from '@lifeos/shared'
 
 export type Language = 'en' | 'tr'

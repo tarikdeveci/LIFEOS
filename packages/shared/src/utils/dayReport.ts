@@ -1,6 +1,19 @@
 // Gün raporunun ekran modeli: sunucudan gelen satırı bölümlerin çizdiği biçime çevirir.
 // Saf fonksiyonlar. Olgu hesaplanmaz; yalnızca kapanış işaretleri öğelere işlenir ve sayılır.
-import type { DailyReport, DayItem, DayNarrative, HabitWeek, SkipReason } from '@lifeos/shared'
+// Web ve mobil aynı modeli kullanır.
+import type { DailyReport, DayItem, DayNarrative, HabitWeek, SkipReason } from '../types/report'
+import { daysBetween, fromDateString, toDateString } from './date'
+
+/** Rapor en fazla bu kadar gün geriye açılır; sunucu da eski günlerde satır üretmez. */
+export const REPORT_MAX_DAYS_BACK = 30
+
+/** Geçerli bir takvim günü, gelecek değil, 30 günden eski değil; aksi hâlde bugün. */
+export function resolveReportDate(raw: unknown, today: string): string {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return today
+  if (toDateString(fromDateString(raw)) !== raw) return today
+  const back = daysBetween(raw, today)
+  return back < 0 || back > REPORT_MAX_DAYS_BACK ? today : raw
+}
 
 export type RingTone = 'done' | 'partial' | 'rest'
 

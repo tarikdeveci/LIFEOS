@@ -1,4 +1,4 @@
-import { lifeSetupEn, lifeSetupTr } from '@lifeos/shared'
+import { lifeSetupEn, lifeSetupTr, reportEn, reportTr } from '@lifeos/shared'
 
 export type Language = 'en' | 'tr'
 
@@ -7,6 +7,7 @@ export const LANG_STORAGE_KEY = 'lifeos_lang'
 const translations = {
   en: {
     ...lifeSetupEn,
+    ...reportEn,
     // Nav
     nav_mobile: 'Mobile app',
     nav_features: 'Features',
@@ -834,6 +835,7 @@ const translations = {
   },
   tr: {
     ...lifeSetupTr,
+    ...reportTr,
     nav_mobile: 'Mobil uygulama',
     nav_features: 'Özellikler',
     nav_pricing: 'Fiyatlar',
