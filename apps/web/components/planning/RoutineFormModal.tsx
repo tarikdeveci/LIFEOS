@@ -8,8 +8,10 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { DayToggles } from '@/components/planning/RecurrencePicker'
+import { TaskGoalSelect } from '@/components/tasks/TaskGoalSelect'
 
 interface RoutineFormModalProps {
+  userId: string
   open: boolean
   /** null = yeni rutin */
   routine: Routine | null
@@ -33,6 +35,8 @@ interface FormState {
   start: string
   end: string
   endsOn: string
+  /** Bağlı hedef; blok rutininde yok. */
+  goalId: string | null
 }
 
 function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
@@ -48,6 +52,7 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
     endsOn: r?.ends_on ?? '',
+    goalId: r?.goal_id ?? null,
   }
 }
 
@@ -60,8 +65,8 @@ function toInput(f: FormState, isNew: boolean): CreateRoutineInput | FormError {
   if (f.kind === 'habit') {
     // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
     return f.habitMode === 'weekly'
-      ? { title, kind: 'habit', days_of_week: [], times_per_week: f.timesPerWeek, times_per_day: null, ends_on: f.endsOn || null }
-      : { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: f.timesPerDay > 1 ? f.timesPerDay : null, ends_on: f.endsOn || null }
+      ? { title, kind: 'habit', days_of_week: [], times_per_week: f.timesPerWeek, times_per_day: null, ends_on: f.endsOn || null, goal_id: f.goalId }
+      : { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: f.timesPerDay > 1 ? f.timesPerDay : null, ends_on: f.endsOn || null, goal_id: f.goalId }
   }
   if (f.days.length === 0) return 'plan_err_pick_day'
   const hasTime = f.start !== '' && f.end !== ''
@@ -78,10 +83,11 @@ function toInput(f: FormState, isNew: boolean): CreateRoutineInput | FormError {
     // düzenlemede eski çapa korunur ki seri bir hafta kaymasın.
     ...(isNew && { starts_on: todayDate() }),
     ends_on: f.endsOn || null,
+    goal_id: f.kind === 'task' ? f.goalId : null,
   }
 }
 
-export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, defaultKind = 'block' }: RoutineFormModalProps) {
+export function RoutineFormModal({ userId, open, routine, onClose, onSave, onDelete, defaultKind = 'block' }: RoutineFormModalProps) {
   const { t } = useLang()
   const [form, setForm] = useState<FormState>(() => toForm(routine, defaultKind))
   const [error, setError] = useState<string | null>(null)
@@ -174,6 +180,10 @@ export function RoutineFormModal({ open, routine, onClose, onSave, onDelete, def
               </div>
             )}
           </>
+        )}
+
+        {form.kind !== 'block' && (
+          <TaskGoalSelect userId={userId} goalId={form.goalId} onChange={(goalId) => patch({ goalId })} />
         )}
 
         <Input label={t.routines_ends_on} type="date" value={form.endsOn} onChange={(e) => patch({ endsOn: e.target.value })} />

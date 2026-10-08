@@ -104,7 +104,7 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
         </View>
       ))}
 
-      <RoutineSheet visible={sheetOpen} routine={editing}
+      <RoutineSheet userId={userId} visible={sheetOpen} routine={editing}
         onClose={() => setSheetOpen(false)}
         onSave={handleSave}
         onDelete={editing ? handleDelete : undefined} />

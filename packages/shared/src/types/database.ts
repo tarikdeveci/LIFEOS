@@ -557,6 +557,44 @@ export type Database = {
         }
         Relationships: []
       }
+      goal_entries: {
+        Row: {
+          amount: number
+          created_at: string
+          entry_date: string
+          goal_id: string
+          id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          entry_date: string
+          goal_id: string
+          id?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          entry_date?: string
+          goal_id?: string
+          id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_entries_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
           count_mode: string | null
@@ -1314,6 +1352,7 @@ export type Database = {
           estimated_minutes: number | null
           every_n_weeks: number
           friction_score: number
+          goal_id: string | null
           id: string
           is_active: boolean
           is_protected: boolean
@@ -1345,6 +1384,7 @@ export type Database = {
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1376,6 +1416,7 @@ export type Database = {
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1395,7 +1436,15 @@ export type Database = {
           user_id?: string
           value_score?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "routines_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {

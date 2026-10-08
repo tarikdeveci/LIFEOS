@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
-import { todayDate, habitDoneDays, habitWeekProgress, useRoutineStore } from '@lifeos/shared'
+import { todayDate, habitDoneDays, habitWeekProgress, isRoutineActiveOn, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
 import { useToast } from '@/components/ui/Toast'
@@ -22,7 +22,7 @@ export function HabitsToday({ userId }: HabitsTodayProps) {
   const [editing, setEditing] = useState<Routine | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const today = todayDate()
-  const habits = routines.filter((r) => r.kind === 'habit' && r.is_active)
+  const habits = routines.filter((r) => r.kind === 'habit' && isRoutineActiveOn(r, today))
 
   const write = (routineId: string, count: number) => {
     setHabitCount(supabase, userId, routineId, today, count).catch(() => showToast(t.plan_routine_error, 'error'))
@@ -84,7 +84,7 @@ export function HabitsToday({ userId }: HabitsTodayProps) {
         </div>
       )}
 
-      <RoutineFormModal open={formOpen} routine={editing} defaultKind="habit"
+      <RoutineFormModal userId={userId} open={formOpen} routine={editing} defaultKind="habit"
         onClose={() => setFormOpen(false)}
         onSave={handleSave}
         onDelete={editing ? () => removeRoutine(supabase, editing.id) : undefined} />

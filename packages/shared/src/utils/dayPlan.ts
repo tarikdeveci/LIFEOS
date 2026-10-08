@@ -216,3 +216,32 @@ export function busyToIntervals(rows: readonly { starts_at: string; ends_at: str
   }
   return mergeIntervals(out.filter((i) => i.end > i.start))
 }
+
+/**
+ * Görev listesinde durumu değişen (done/planned) görevlerin, plan (timeBlocks) içindeki karşılığını eşitler.
+ * Yalnızca değişmesi gereken blokları (completed_at uyuşmayanları) döner.
+ */
+export function syncBlocksWithTasks(
+  blocks: readonly { id: string; task_id?: string | null; completed_at: string | null }[],
+  tasks: readonly { id: string; status: string; completed_at: string | null }[]
+): { id: string; completed_at: string | null }[] {
+  const taskMap = new Map(tasks.map((t) => [t.id, t]))
+  const updates: { id: string; completed_at: string | null }[] = []
+
+  for (const block of blocks) {
+    if (!block.task_id) continue
+    const task = taskMap.get(block.task_id)
+    if (!task) continue
+
+    const blockDone = block.completed_at !== null
+    const taskDone = task.status === 'done'
+
+    if (taskDone && !blockDone) {
+      updates.push({ id: block.id, completed_at: task.completed_at || new Date().toISOString() })
+    } else if (!taskDone && blockDone) {
+      updates.push({ id: block.id, completed_at: null })
+    }
+  }
+
+  return updates
+}

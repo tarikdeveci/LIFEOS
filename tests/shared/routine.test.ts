@@ -6,6 +6,7 @@ import {
   habitDoneDays,
   habitWeekProgress,
   habitWeekStreak,
+  isRoutineActiveOn,
   isRoutineDay,
   mondayOf,
   routineOccurrenceDates,
@@ -114,4 +115,14 @@ test('rutinin açık örneklerinden yalnızca en yakını kalır, tamamlananlar 
   assert.deepEqual(tasks.map((t) => t.id), ['x', 'a1', 'a0', 'b1'])
   assert.equal(more.get('a1'), 2)
   assert.equal(more.has('b1'), false)
+})
+
+test('isRoutineActiveOn: etkin, başlamış ve bitmemiş rutin geçerli', () => {
+  const habit = { is_active: true, starts_on: '2026-10-05', ends_on: '2026-10-11' }
+  assert.equal(isRoutineActiveOn(habit, '2026-10-04'), false, 'başlamadan önce')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-05'), true, 'başladığı gün')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-11'), true, 'bittiği gün dahil')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-12'), false, 'bittikten sonra')
+  assert.equal(isRoutineActiveOn({ ...habit, ends_on: null }, '2027-01-01'), true, 'süresiz')
+  assert.equal(isRoutineActiveOn({ ...habit, is_active: false }, '2026-10-06'), false, 'pasif')
 })

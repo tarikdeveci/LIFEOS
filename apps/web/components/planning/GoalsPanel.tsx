@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
 import { GoalReviewCard } from './GoalReviewCard'
 import { GoalForm } from './GoalForm'
+import { GoalProgressEntries } from './GoalProgressEntries'
 
 interface GoalsPanelProps {
   userId: string
@@ -29,7 +30,7 @@ const PARENT_OF: Record<GoalHorizon, GoalHorizon | null> = { week: 'month', mont
 export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
   const { t } = useLang()
   const {
-    goals, tasks, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal,
+    goals, tasks, entries, habitEntries, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal,
     addStep, setStepDone,
   } = useGoalStore()
   const [tab, setTab] = useState<GoalHorizon>('week')
@@ -63,7 +64,7 @@ export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
     void load()
   }, [userId, fetchGoals, importGoals])
 
-  const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
+  const progress = useMemo(() => goalTreeProgress(goals, tasks, [...entries, ...habitEntries]), [goals, tasks, entries, habitEntries])
   const period = goalPeriodStart(tab, today)
   const visible = goals.filter((g) => g.horizon === tab && g.period_start === period && g.status !== 'dropped')
   const parentHorizon = PARENT_OF[tab]
@@ -130,6 +131,7 @@ export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
           <GoalRow
             key={goal.id}
             goal={goal}
+            userId={userId}
             pct={progress.get(goal.id)?.pct ?? 0}
             label={progressLabel(goal, progress.get(goal.id))}
             parentTitle={goals.find((p) => p.id === goal.parent_id)?.title ?? null}
@@ -145,6 +147,7 @@ export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
 
       {editing && (
         <GoalForm
+          key={tab}
           horizon={tab}
           periodStart={period}
           parents={parents}
@@ -166,6 +169,7 @@ function progressLabel(goal: Goal, p: { current: number; total: number; pct: num
 }
 
 interface GoalRowProps {
+  userId: string
   goal: Goal
   pct: number
   label: string
@@ -180,7 +184,7 @@ interface GoalRowProps {
   onToggleStep: (step: GoalTask) => void
 }
 
-function GoalRow({ goal, pct, label, parentTitle, steps, editing, onToggleDone, onDelete, onAddStep, onToggleStep }: GoalRowProps) {
+function GoalRow({ userId, goal, pct, label, parentTitle, steps, editing, onToggleDone, onDelete, onAddStep, onToggleStep }: GoalRowProps) {
   const { t } = useLang()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
@@ -225,6 +229,9 @@ function GoalRow({ goal, pct, label, parentTitle, steps, editing, onToggleDone, 
         </button>
         {editing && <button onClick={onDelete} className="text-[10px] text-danger hover:underline">{t.goal_delete}</button>}
       </div>
+      {goal.target != null && goal.count_mode && (
+        <GoalProgressEntries goal={goal} userId={userId} expanded={open} />
+      )}
       {open && (
         <div className="mt-1.5 space-y-1.5 rounded-xl bg-background p-2">
           {steps.length === 0 && <p className="text-[10px] text-muted">{t.goal_steps_empty}</p>}

@@ -47,6 +47,8 @@ export interface Routine {
   is_protected: boolean
   /** Seri, sayaç ve hatırlatma gösterilmez (maneviyat gibi ölçülmeyecek işler). */
   is_untracked: boolean
+  /** 068: bağlı hedef (yalnızca task ve habit). Görev örnekleri ve alışkanlık günleri ilerlemeye sayılır. */
+  goal_id: string | null
   created_at: string
   updated_at: string
 }
@@ -80,6 +82,7 @@ export interface CreateRoutineInput {
   min_minutes?: number | null
   is_protected?: boolean
   is_untracked?: boolean
+  goal_id?: string | null
 }
 
 /** my_routine_progress RPC satırı: sayaçlı rutinin biten oturum sayısı. */

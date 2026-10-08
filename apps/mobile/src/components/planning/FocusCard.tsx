@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { View, Text, TouchableOpacity, AppState } from 'react-native'
+import { View, Text, TouchableOpacity, AppState, Alert } from 'react-native'
 import {
   DEFAULT_POMODORO,
   focusMinutesByBlock,
@@ -10,6 +10,7 @@ import {
   remainingFocusSeconds,
   shiftIsoDate,
   useFocusStore,
+  usePlanningStore,
   type TimeBlock,
 } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
@@ -50,6 +51,8 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
   const { t } = useLang()
   const { active, pending, saving, saveError, start, tick, finish, close, save, load } = useFocusStore()
   const minutesByBlock = useFocusMinutesByBlock()
+  // Odaklanılan blok bugünün planında ve hâlâ açıksa bitiş ekranı onu da kapatabilir.
+  const focusBlock = usePlanningStore((s) => (active ? s.timeBlocks.find((b) => b.id === active.blockId) : undefined))
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -100,6 +103,17 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
     close()
   }
 
+  // Her tur otomatik tamamlama sayılmaz; işi bitirdiğine kullanıcı karar verir.
+  async function handleCompleteBlock() {
+    if (!active) return
+    try {
+      await usePlanningStore.getState().setBlockDone(supabase, active.blockId, true)
+      handleClose()
+    } catch {
+      Alert.alert(t.error, t.plan_block_update_error)
+    }
+  }
+
   function handleAgain() {
     if (!active) return
     finish(Date.now())
@@ -136,7 +150,10 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
             <Button label={t.focus_stop} onPress={handleFinish} variant="secondary" style={{ flex: 1 }} />
           ) : (
             <>
-              {phase === 'ready' && <Button label={t.focus_again} onPress={handleAgain} disabled={blocked} style={{ flex: 1 }} />}
+              {focusBlock && !focusBlock.completed_at && (
+                <Button label={t.focus_complete_block} onPress={() => void handleCompleteBlock()} disabled={blocked} style={{ flex: 1 }} />
+              )}
+              {phase === 'ready' && <Button label={t.focus_again} onPress={handleAgain} disabled={blocked} variant={focusBlock && !focusBlock.completed_at ? 'secondary' : 'primary'} style={{ flex: 1 }} />}
               <Button label={t.focus_close} onPress={handleClose} variant="ghost" disabled={blocked} style={{ flex: 1 }} />
             </>
           )}

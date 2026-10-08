@@ -32,19 +32,23 @@ const EMPTY: Draft = {
 
 export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormProps) {
   const { t } = useLang()
-  const [draft, setDraft] = useState<Draft>(EMPTY)
+  const empty = { ...EMPTY, countable: horizon === 'week' }
+  const [draft, setDraft] = useState<Draft>(empty)
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
-  // Sayılabilir hedef varsayılanı sadece haftada açık; ay ve çeyrek oranla ölçülür.
-  const countable = horizon === 'week' ? draft.countable : false
+  // Ay ve çeyrek de istenirse miktarla ölçülebilir.
+  const countable = draft.countable
   // Sekme değişince önceki ufkun üst hedefi listede yoksa seçim boşa düşer.
   const parentId = parents.some((p) => p.id === draft.parentId) ? draft.parentId : ''
   // Birim, seçili dilde yazılıp öyle saklanır; dil değişirse ilk seçeneğe döner.
   const units = [t.goal_unit_day, t.goal_unit_hour, t.goal_unit_meal, t.goal_unit_time]
-  const unit = units.includes(draft.unit) ? draft.unit : units[0]!
+  const unit = draft.countMode === 'units' ? draft.unit.trim() : units.includes(draft.unit) ? draft.unit : units[0]!
+
+  // Miktar pozitif olmalı; elle kaydedilen hedefte birim de yazılmalı.
+  const invalid = countable && (!Number.isFinite(draft.target) || draft.target <= 0 || (draft.countMode === 'units' && !unit))
 
   const submit = async () => {
-    if (saving || !draft.title.trim()) return
+    if (saving || !draft.title.trim() || invalid) return
     setSaving(true)
     try {
       const ok = await onSubmit({
@@ -56,9 +60,9 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
         target: countable ? draft.target : null,
         unit: countable ? unit : null,
         count_mode: countable ? draft.countMode : null,
-        tag_filter: countable ? draft.tags.split(',').map((x) => x.trim()).filter(Boolean) : [],
+        tag_filter: countable && draft.countMode !== 'units' ? draft.tags.split(',').map((x) => x.trim()).filter(Boolean) : [],
       })
-      if (ok) setDraft(EMPTY)
+      if (ok) setDraft(empty)
     } finally {
       setSaving(false)
     }
@@ -95,37 +99,41 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
         </label>
       )}
 
-      {horizon === 'week' && (
-        <label className="flex items-center gap-2 text-[10px] text-muted">
+      <label className="flex items-center gap-2 text-[10px] text-muted">
           <input type="checkbox" checked={draft.countable} onChange={(e) => set({ countable: e.target.checked })} />
           {t.goal_countable}
-        </label>
-      )}
+      </label>
 
       {countable && (
         <>
           <div className="flex gap-2">
             <span className="flex items-center gap-1 text-[10px] text-muted">
               {t.plan_weekly_target}
-              <input type="number" min={1} max={99} value={draft.target}
-                onChange={(e) => set({ target: Math.max(1, parseInt(e.target.value) || 1) })}
+              <input type="number" min={0.001} max={100000} step="any" value={draft.target}
+                onChange={(e) => set({ target: Number(e.target.value) })}
                 className={`w-12 text-center ${inputCls}`} />
             </span>
-            <select value={unit} onChange={(e) => set({ unit: e.target.value })} className={inputCls}>
+            {draft.countMode === 'units' ? (
+              <input value={draft.unit} onChange={(e) => set({ unit: e.target.value })} maxLength={20}
+                aria-label={t.goal_unit_custom} placeholder={t.goal_unit_custom} className={`min-w-0 flex-1 ${inputCls}`} />
+            ) : <select value={unit} onChange={(e) => set({ unit: e.target.value })} className={inputCls}>
               {units.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
+            </select>}
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-muted">{t.plan_weekly_tags}</span>
-            <input value={draft.tags} onChange={(e) => set({ tags: e.target.value })}
-              className={`flex-1 ${inputCls}`} placeholder={t.goal_tags_placeholder} />
-          </div>
+          {/* Elle kaydedilen hedefte görev sayılmaz; etiket alanı gereksiz. */}
+          {draft.countMode !== 'units' && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted">{t.plan_weekly_tags}</span>
+              <input value={draft.tags} onChange={(e) => set({ tags: e.target.value })}
+                className={`flex-1 ${inputCls}`} placeholder={t.goal_tags_placeholder} />
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted">{t.plan_weekly_count}</span>
-            {(['tasks', 'hours'] as const).map((m) => (
+            {(['tasks', 'hours', 'units'] as const).map((m) => (
               <button key={m} onClick={() => set({ countMode: m })}
                 className={`rounded-lg px-2 py-0.5 text-[10px] font-medium ${draft.countMode === m ? 'bg-accent text-white' : 'bg-border/40 text-muted'}`}>
-                {m === 'tasks' ? t.plan_weekly_count_tasks : t.plan_weekly_count_hours}
+                {m === 'tasks' ? t.plan_weekly_count_tasks : m === 'hours' ? t.plan_weekly_count_hours : t.goal_count_units}
               </button>
             ))}
           </div>
@@ -133,11 +141,11 @@ export function GoalForm({ horizon, periodStart, parents, onSubmit }: GoalFormPr
       )}
 
       <div className="flex gap-2">
-        <button onClick={() => setDraft(EMPTY)}
+        <button onClick={() => setDraft(empty)}
           className="flex-1 rounded-lg border border-border py-1 text-[10px] text-muted hover:bg-border/30">
           {t.plan_weekly_cancel}
         </button>
-        <button onClick={() => void submit()} disabled={saving || !draft.title.trim()}
+        <button onClick={() => void submit()} disabled={saving || !draft.title.trim() || invalid}
           className="flex-1 rounded-lg bg-accent py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-40">
           {t.plan_weekly_add}
         </button>

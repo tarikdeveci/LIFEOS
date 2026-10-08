@@ -13,6 +13,15 @@ export function mondayOf(dateStr: string): string {
   return toDateString(weekStart(fromDateString(dateStr)))
 }
 
+/** Rutin bu tarihte geçerli mi: etkin, başlamış ve bitmemiş (gün kuralına bakmaz). */
+export function isRoutineActiveOn(
+  routine: { is_active: boolean } & Pick<RoutineSchedule, 'starts_on' | 'ends_on'>,
+  dateStr: string,
+): boolean {
+  if (!routine.is_active || dateStr < routine.starts_on) return false
+  return !routine.ends_on || dateStr <= routine.ends_on
+}
+
 /** Verilen gün kurala uyuyor mu (istisnalar hariç). */
 export function isRoutineDay(schedule: RoutineSchedule, dateStr: string): boolean {
   if (dateStr < schedule.starts_on) return false

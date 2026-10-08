@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
-import { habitDoneDays, habitWeekProgress, todayDate, useRoutineStore } from '@lifeos/shared'
+import { habitDoneDays, habitWeekProgress, isRoutineActiveOn, todayDate, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { RoutineSheet } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -23,7 +23,7 @@ export function HabitsCard({ userId }: Props) {
   const [editing, setEditing] = useState<Routine | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const today = todayDate()
-  const habits = routines.filter((r) => r.kind === 'habit' && r.is_active)
+  const habits = routines.filter((r) => r.kind === 'habit' && isRoutineActiveOn(r, today))
 
   const write = async (routineId: string, count: number) => {
     try {
@@ -122,7 +122,7 @@ export function HabitsCard({ userId }: Props) {
         </ScrollView>
       )}
 
-      <RoutineSheet visible={sheetOpen} routine={editing} defaultKind="habit"
+      <RoutineSheet userId={userId} visible={sheetOpen} routine={editing} defaultKind="habit"
         onClose={() => setSheetOpen(false)}
         onSave={handleSave}
         onDelete={editing ? () => removeRoutine(supabase, editing.id) : undefined} />
