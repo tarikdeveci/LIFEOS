@@ -7,5 +7,7 @@ export type {
   Selection as LifeSetupSelection,
   Written as LifeSetupWritten,
 } from './useLifeSetup'
+export { useWeeklyReview } from './useWeeklyReview'
+export type { WeeklyReviewData, WeeklyReviewDeps } from './useWeeklyReview'
 export { useDayReport } from './useDayReport'
 export type { DayReportDeps, DayReportState, DayReportView } from './useDayReport'
