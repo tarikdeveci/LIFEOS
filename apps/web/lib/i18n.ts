@@ -1,4 +1,4 @@
-import { lifeSetupEn, lifeSetupTr } from '@lifeos/shared'
+import { lifeSetupEn, lifeSetupTr, REVIEW_I18N } from '@lifeos/shared'
 
 export type Language = 'en' | 'tr'
 
@@ -225,46 +225,6 @@ const translations = {
     cmd_task_error: 'Task could not be added.',
 
     // Weekly review
-    review_title: 'Weekly review',
-    review_this_week: 'This week',
-    review_last_week: 'Last week',
-    review_prev: 'Previous week',
-    review_next: 'Next week',
-    review_go_planning: 'Plan ahead',
-    review_load_error: 'Weekly review could not be loaded.',
-    review_hours: 'h',
-    review_minutes: 'm',
-    review_vs_last: 'last week {value}',
-    review_no_previous: 'no data last week',
-    review_type_task: 'Task',
-    review_type_routine: 'Routine',
-    review_type_break: 'Break',
-    review_type_focus: 'Focus',
-    review_type_meal: 'Meal',
-    review_type_workout: 'Workout',
-    review_highlights: 'Highlights',
-    review_best_day: 'Your most productive day was {day}.',
-    review_top_type: 'Most of your planned time went to {type} blocks.',
-    review_carryover_count: '{n} scheduled tasks were not finished this week.',
-    review_block_time: 'Completed block time',
-    review_planned_total: '{rate} of {planned} planned',
-    review_no_blocks: 'No blocks planned',
-    review_tasks_done: 'Tasks completed',
-    review_plan_adherence: 'Scheduled tasks done',
-    review_workouts: 'Workouts done',
-    review_meals_logged: 'Days with meals logged',
-    review_avg_calories: 'avg {kcal} kcal, target {target}',
-    review_energy: 'Average energy',
-    review_by_day: 'Day by day',
-    review_planned: 'planned',
-    review_completed_label: 'completed',
-    review_tasks_short: 'tasks',
-    review_by_type: 'Where your time went',
-    review_carryover: 'Left over',
-    review_carryover_empty: 'Nothing left over, every scheduled task got done.',
-    review_completed: 'Completed',
-    review_completed_empty: 'No tasks completed this week.',
-    review_more: '+{n} more',
     settings_account: 'Account',
     settings_logout: 'Sign Out',
     settings_calendar: 'Calendar Integration',
@@ -1022,46 +982,6 @@ const translations = {
     cmd_task_added: 'Backlog\'a eklendi: {q}',
     cmd_task_error: 'Görev eklenemedi.',
 
-    review_title: 'Haftalık değerlendirme',
-    review_this_week: 'Bu hafta',
-    review_last_week: 'Geçen hafta',
-    review_prev: 'Önceki hafta',
-    review_next: 'Sonraki hafta',
-    review_go_planning: 'Planlamaya git',
-    review_load_error: 'Haftalık değerlendirme yüklenemedi.',
-    review_hours: 'sa',
-    review_minutes: 'dk',
-    review_vs_last: 'geçen hafta {value}',
-    review_no_previous: 'geçen hafta veri yok',
-    review_type_task: 'Görev',
-    review_type_routine: 'Rutin',
-    review_type_break: 'Mola',
-    review_type_focus: 'Odak',
-    review_type_meal: 'Yemek',
-    review_type_workout: 'Spor',
-    review_highlights: 'Öne çıkanlar',
-    review_best_day: 'En verimli günün {day} oldu.',
-    review_top_type: 'Planlanan zamanının çoğu {type} bloklarına gitti.',
-    review_carryover_count: 'Bu haftaya planlanan {n} görev bitmedi.',
-    review_block_time: 'Tamamlanan blok süresi',
-    review_planned_total: 'planlanan {planned} sürenin {rate} kadarı',
-    review_no_blocks: 'Blok planlanmadı',
-    review_tasks_done: 'Biten görev',
-    review_plan_adherence: 'Planlanan görevlerden biten',
-    review_workouts: 'Yapılan antrenman',
-    review_meals_logged: 'Öğün kaydedilen gün',
-    review_avg_calories: 'ortalama {kcal} kcal, hedef {target}',
-    review_energy: 'Ortalama enerji',
-    review_by_day: 'Gün gün',
-    review_planned: 'planlanan',
-    review_completed_label: 'tamamlanan',
-    review_tasks_short: 'görev',
-    review_by_type: 'Zamanın nereye gitti',
-    review_carryover: 'Kalanlar',
-    review_carryover_empty: 'Kalan yok, planladığın her görev bitti.',
-    review_completed: 'Bitenler',
-    review_completed_empty: 'Bu hafta biten görev yok.',
-    review_more: '+{n} tane daha',
     settings_account: 'Hesap',
     settings_logout: 'Çıkış Yap',
     settings_calendar: 'Takvim Entegrasyonları',
@@ -1605,8 +1525,13 @@ const translations = {
 } as const
 
 // Mutable string version of translations.en shape — avoids literal type narrowing issues
-export type Translations = { [K in keyof typeof translations.en]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof REVIEW_I18N.en]: string }
+
+const merged = {
+  en: { ...translations.en, ...REVIEW_I18N.en },
+  tr: { ...translations.tr, ...REVIEW_I18N.tr },
+}
 
 export function getTranslations(lang: Language): Translations {
-  return translations[lang] as unknown as Translations
+  return merged[lang] as unknown as Translations
 }
