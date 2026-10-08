@@ -84,7 +84,7 @@ export function HabitsToday({ userId }: HabitsTodayProps) {
         </div>
       )}
 
-      <RoutineFormModal open={formOpen} routine={editing} defaultKind="habit"
+      <RoutineFormModal userId={userId} open={formOpen} routine={editing} defaultKind="habit"
         onClose={() => setFormOpen(false)}
         onSave={handleSave}
         onDelete={editing ? () => removeRoutine(supabase, editing.id) : undefined} />

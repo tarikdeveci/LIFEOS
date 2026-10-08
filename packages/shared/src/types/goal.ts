@@ -76,6 +76,17 @@ export interface GoalEntry {
   created_at: string
 }
 
+/** Hedefe bağlı alışkanlığın bir günü (068: routine_completions + routines.goal_id). */
+export interface HabitGoalDay {
+  routine_id: string
+  goal_id: string
+  user_id: string
+  completed_on: string
+  count: number
+  /** NULL = günde tek işaret. */
+  times_per_day: number | null
+}
+
 export interface CreateGoalEntryInput {
   goal_id: string
   amount: number

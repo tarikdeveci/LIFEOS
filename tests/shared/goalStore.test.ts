@@ -33,9 +33,11 @@ function fakeDb(goals = [goal()], entries: GoalEntry[] = [], tasks: Task[] = [])
     from: (table: string) => ({
       select: () => {
         const chain = {
-          eq: () => chain, gte: () => chain, lte: () => chain, or: () => chain, order: () => chain,
+          eq: () => chain, gte: () => chain, lte: () => chain, or: () => chain, order: () => chain, not: () => chain,
           then: (resolve: (value: unknown) => void) => resolve({
-            data: table === 'goals' ? [...db.goals] : table === 'goal_entries' ? [...db.entries] : [...db.tasks], error: null,
+            data: table === 'goals' ? [...db.goals] : table === 'goal_entries' ? [...db.entries]
+              : table === 'routines' ? [] : [...db.tasks],
+            error: null,
           }),
         }
         return chain

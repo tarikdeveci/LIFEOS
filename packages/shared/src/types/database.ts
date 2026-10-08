@@ -1352,6 +1352,7 @@ export type Database = {
           effort_score: number
           end_time: string | null
           ends_on: string | null
+          goal_id: string | null
           estimated_minutes: number | null
           every_n_weeks: number
           friction_score: number
@@ -1383,6 +1384,7 @@ export type Database = {
           effort_score?: number
           end_time?: string | null
           ends_on?: string | null
+          goal_id?: string | null
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
@@ -1414,6 +1416,7 @@ export type Database = {
           effort_score?: number
           end_time?: string | null
           ends_on?: string | null
+          goal_id?: string | null
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number

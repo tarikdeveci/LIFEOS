@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CreateGoalEntryInput, CreateGoalInput, Goal, GoalEntry, GoalTaskLike, UpdateGoalInput } from '../types/goal'
+import type { CreateGoalEntryInput, CreateGoalInput, Goal, GoalEntry, GoalTaskLike, HabitGoalDay, UpdateGoalInput } from '../types/goal'
 import { fromDateString, shiftIsoDate } from '../utils/date'
 
 type Supabase = SupabaseClient
@@ -115,4 +115,27 @@ export async function createGoalEntry(
 export async function deleteGoalEntry(supabase: Supabase, entryId: string): Promise<void> {
   const { error } = await supabase.from('goal_entries').delete().eq('id', entryId)
   if (error) throw error
+}
+
+/** Hedefe bağlı alışkanlıkların [since, until] içindeki tamamlama günleri. */
+export async function getHabitGoalDays(
+  supabase: Supabase, userId: string, since: string, until: string,
+): Promise<HabitGoalDay[]> {
+  const { data: routines, error } = await supabase.from('routines').select('id, goal_id, times_per_day')
+    .eq('user_id', userId).eq('kind', 'habit').not('goal_id', 'is', null)
+  if (error) throw error
+  const linked = (routines ?? []) as { id: string; goal_id: string; times_per_day: number | null }[]
+  if (linked.length === 0) return []
+  const byId = new Map(linked.map((r) => [r.id, r]))
+  const { data, error: completionsError } = await supabase.from('routine_completions')
+    .select('routine_id, completed_on, count')
+    .in('routine_id', [...byId.keys()]).gte('completed_on', since).lte('completed_on', until)
+  if (completionsError) throw completionsError
+  return ((data ?? []) as { routine_id: string; completed_on: string; count: number }[]).flatMap((c) => {
+    const routine = byId.get(c.routine_id)
+    return routine ? [{
+      routine_id: c.routine_id, goal_id: routine.goal_id, user_id: userId,
+      completed_on: c.completed_on, count: c.count, times_per_day: routine.times_per_day,
+    }] : []
+  })
 }

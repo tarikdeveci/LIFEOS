@@ -122,7 +122,7 @@ export function HabitsCard({ userId }: Props) {
         </ScrollView>
       )}
 
-      <RoutineSheet visible={sheetOpen} routine={editing} defaultKind="habit"
+      <RoutineSheet userId={userId} visible={sheetOpen} routine={editing} defaultKind="habit"
         onClose={() => setSheetOpen(false)}
         onSave={handleSave}
         onDelete={editing ? () => removeRoutine(supabase, editing.id) : undefined} />

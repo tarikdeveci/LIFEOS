@@ -9,6 +9,7 @@ import {
   goalTreeProgress,
   goalsNeedingReview,
   goalsToAutoComplete,
+  habitGoalEntries,
   legacyWeeklyGoalsToInputs,
   valueScoreForGoal,
 } from '../../packages/shared/src/utils/goals.ts'
@@ -291,4 +292,33 @@ test('elle ilerleme üst hedeflere akar; yalnız dolu ve aktif hedefler otomatik
   progress.set('empty', { current: 0, total: 0, pct: 100 })
   progress.set('dropped', { current: 3, total: 3, pct: 100 })
   assert.deepEqual(goalsToAutoComplete(goals, progress), ['g1', 'm'])
+})
+
+test('habitGoalEntries: units hedefte işaret sayısı, tasks hedefte günlük hedefi tutan gün', () => {
+  const goals = [
+    { id: 'units', target: 35, count_mode: 'units' as const },
+    { id: 'days', target: 5, count_mode: 'tasks' as const },
+    { id: 'hours', target: 3, count_mode: 'hours' as const },
+    { id: 'ratio', target: null, count_mode: null },
+  ]
+  const day = (goal_id: string, completed_on: string, count: number, times_per_day: number | null) =>
+    ({ routine_id: `r-${goal_id}`, goal_id, user_id: 'u', completed_on, count, times_per_day })
+  const out = habitGoalEntries([
+    day('units', '2026-10-05', 3, 5),
+    day('days', '2026-10-05', 5, 5),
+    day('days', '2026-10-06', 2, 5),
+    day('days', '2026-10-07', 1, null),
+    day('hours', '2026-10-05', 1, null),
+    day('ratio', '2026-10-05', 1, null),
+    day('missing', '2026-10-05', 1, null),
+  ], goals)
+  assert.deepEqual(out.map((e) => [e.goal_id, e.entry_date, e.amount]), [
+    ['units', '2026-10-05', 3],
+    ['days', '2026-10-05', 1],
+    ['days', '2026-10-07', 1],
+  ])
+  const progress = goalTreeProgress(
+    [goal({ id: 'days', horizon: 'week', period_start: '2026-10-05', target: 5, count_mode: 'tasks' })], [], out,
+  )
+  assert.equal(progress.get('days')?.current, 2)
 })

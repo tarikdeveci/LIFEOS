@@ -8,6 +8,7 @@ import type {
   GoalEntry,
   GoalProgressInfo,
   GoalTaskLike,
+  HabitGoalDay,
 } from '../types/goal'
 import { shiftIsoDate, toDateString } from './date'
 import { mondayOf } from './routine'
@@ -105,6 +106,25 @@ export function goalTreeProgress(goals: Goal[], tasks: GoalTaskLike[], entries: 
     }
   }
   return out
+}
+
+/**
+ * Hedefe bağlı alışkanlık günlerini ilerleme kaydına çevirir. 'units' hedefte işaret sayısı,
+ * 'tasks' hedefte günlük hedefi tutan gün 1 sayılır. Saat hedefi ve sayılamayan hedef saymaz.
+ */
+export function habitGoalEntries(days: HabitGoalDay[], goals: Pick<Goal, 'id' | 'target' | 'count_mode'>[]): GoalEntry[] {
+  const byId = new Map(goals.map((g) => [g.id, g]))
+  return days.flatMap((day) => {
+    const goal = byId.get(day.goal_id)
+    if (!goal || goal.target == null) return []
+    const amount = goal.count_mode === 'units' ? day.count
+      : goal.count_mode === 'tasks' && day.count >= (day.times_per_day ?? 1) ? 1 : 0
+    if (amount <= 0) return []
+    return [{
+      id: `habit-${day.routine_id}-${day.completed_on}`, goal_id: day.goal_id, user_id: day.user_id,
+      amount, entry_date: day.completed_on, note: null, created_at: day.completed_on,
+    }]
+  })
 }
 
 /** Hedefe bağlanan görevin değer puanı en az 4 olur; bağ kopunca olduğu gibi kalır. */

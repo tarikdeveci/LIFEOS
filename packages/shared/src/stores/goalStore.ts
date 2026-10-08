@@ -11,11 +11,15 @@ import {
   deleteGoal,
   getGoalTasks,
   getGoals,
+  getHabitGoalDays,
   updateGoal,
   type GoalTask,
 } from '../supabase/goals'
 import { todayDate } from '../utils/date'
-import { addMonths, goalPeriodEnd, goalPeriodStart, goalsToAutoComplete, goalTreeProgress, valueScoreForGoal } from '../utils/goals'
+import {
+  addMonths, goalPeriodEnd, goalPeriodStart, goalsToAutoComplete, goalTreeProgress, habitGoalEntries, valueScoreForGoal,
+} from '../utils/goals'
+import { useRoutineStore } from './routineStore'
 import { useTaskStore } from './taskStore'
 
 type Supabase = SupabaseClient
@@ -25,6 +29,8 @@ export type GoalReviewDecision = 'done' | 'dropped' | 'carry'
 interface GoalState {
   goals: Goal[]
   entries: GoalEntry[]
+  /** Bağlı alışkanlıkların günleri, ilerleme kaydı biçiminde (salt okunur, listede gösterilmez). */
+  habitEntries: GoalEntry[]
   /** İlerleme hesabına giren görevler (bağlı olanlar + bu çeyrekte tamamlananlar). */
   tasks: GoalTask[]
   loading: boolean
@@ -55,7 +61,7 @@ interface GoalState {
   reset: () => void
 }
 
-const INITIAL = { goals: [] as Goal[], tasks: [] as GoalTask[], entries: [] as GoalEntry[], loading: false, error: null }
+const INITIAL = { goals: [] as Goal[], tasks: [] as GoalTask[], entries: [] as GoalEntry[], habitEntries: [] as GoalEntry[], loading: false, error: null }
 
 // Çıkışta artar: önceki hesabın geciken yanıtı yeni hesabın store'una yazılmasın.
 let generation = 0
@@ -64,6 +70,11 @@ let activeUser: string | null = null
 let statusQueue: Promise<void> = Promise.resolve()
 let entrySequence = 0
 let stepWrites = 0
+
+// İlerlemeye giren kayıtlar: kaydı süren elle girişler henüz sayılmaz (yarım kayıt hedefi kapatmasın).
+function settledEntries(state: Pick<GoalState, 'entries' | 'habitEntries'>): GoalEntry[] {
+  return [...state.entries.filter((e) => !e.id.startsWith('pending-')), ...state.habitEntries]
+}
 
 // Görevin sayıldığı hedefler: doğrudan bağlı olan ya da etiketi eşleşen.
 function goalIdsForTask(goals: Goal[], task: Pick<GoalTask, 'goal_id' | 'tags'>): string[] {
@@ -79,7 +90,7 @@ async function reconcileGoals(supabase: Supabase, reopen: ReadonlySet<string> = 
     await previous
     if (gen !== generation) return
     const state = useGoalStore.getState()
-    const progress = goalTreeProgress(state.goals, state.tasks, state.entries.filter((e) => !e.id.startsWith('pending-')))
+    const progress = goalTreeProgress(state.goals, state.tasks, settledEntries(state))
     const reopenIds = state.goals.filter((g) => reopen.has(g.id) && g.status === 'done'
       && g.target != null && (progress.get(g.id)?.pct ?? 0) < 100).map((g) => g.id)
     for (const id of reopenIds) {
@@ -87,7 +98,7 @@ async function reconcileGoals(supabase: Supabase, reopen: ReadonlySet<string> = 
       await useGoalStore.getState().editGoal(supabase, id, { status: 'active' })
     }
     const fresh = useGoalStore.getState()
-    const ids = goalsToAutoComplete(fresh.goals, goalTreeProgress(fresh.goals, fresh.tasks, fresh.entries.filter((e) => !e.id.startsWith('pending-'))))
+    const ids = goalsToAutoComplete(fresh.goals, goalTreeProgress(fresh.goals, fresh.tasks, settledEntries(fresh)))
     for (const id of ids) {
       if (gen !== generation) return
       await useGoalStore.getState().editGoal(supabase, id, { status: 'done' })
@@ -116,13 +127,15 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       const quarter = goalPeriodStart('quarter', today)
       // Geçen çeyrek de gelir: ay başında önceki ayın değerlendirmesi görünsün.
       const since = addMonths(quarter, -3)
-      const [goals, tasks, entries] = await Promise.all([
+      const until = goalPeriodEnd('quarter', quarter)
+      const [goals, tasks, entries, habitDays] = await Promise.all([
         getGoals(supabase, userId, since),
-        getGoalTasks(supabase, userId, since, goalPeriodEnd('quarter', quarter)),
-        getGoalEntries(supabase, userId, since, goalPeriodEnd('quarter', quarter)),
+        getGoalTasks(supabase, userId, since, until),
+        getGoalEntries(supabase, userId, since, until),
+        getHabitGoalDays(supabase, userId, since, until),
       ])
       if (gen !== generation) return
-      set({ goals, tasks, entries, loading: false })
+      set({ goals, tasks, entries, habitEntries: habitGoalEntries(habitDays, goals), loading: false })
       await reconcileGoals(supabase)
     } catch (err) {
       if (gen === generation) set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
@@ -317,3 +330,29 @@ useTaskStore.subscribe((state, previous) => {
   useGoalStore.setState({ tasks })
   if (activeClient && stepWrites === 0) void reconcileGoals(activeClient, reopened)
 })
+
+// Alışkanlık işaretlenince bağlı hedefin ilerlemesi tazelenir; düşen hedef geri açılabilir.
+useRoutineStore.subscribe((state, previous) => {
+  if (state.completions === previous.completions || !activeClient || !activeUser) return
+  const changed = new Set([...state.completions, ...previous.completions].map((c) => c.routine_id))
+  const linked = state.routines.some((r) => changed.has(r.id) && r.goal_id)
+  if (linked) void refreshHabitEntries(activeClient, activeUser)
+})
+
+async function refreshHabitEntries(supabase: Supabase, userId: string, today = todayDate()): Promise<void> {
+  const gen = generation
+  const quarter = goalPeriodStart('quarter', today)
+  try {
+    const days = await getHabitGoalDays(supabase, userId, addMonths(quarter, -3), goalPeriodEnd('quarter', quarter))
+    if (gen !== generation) return
+    const state = useGoalStore.getState()
+    const before = goalTreeProgress(state.goals, state.tasks, settledEntries(state))
+    useGoalStore.setState({ habitEntries: habitGoalEntries(days, state.goals) })
+    const fresh = useGoalStore.getState()
+    const after = goalTreeProgress(fresh.goals, fresh.tasks, settledEntries(fresh))
+    const dropped = new Set(fresh.goals.filter((g) => (after.get(g.id)?.pct ?? 0) < (before.get(g.id)?.pct ?? 0)).map((g) => g.id))
+    await reconcileGoals(supabase, dropped)
+  } catch {
+    if (gen === generation) useGoalStore.setState({ error: 'Hedef ilerlemesi yenilenemedi' })
+  }
+}

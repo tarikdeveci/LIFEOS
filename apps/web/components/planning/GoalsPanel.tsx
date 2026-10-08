@@ -30,7 +30,7 @@ const PARENT_OF: Record<GoalHorizon, GoalHorizon | null> = { week: 'month', mont
 export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
   const { t } = useLang()
   const {
-    goals, tasks, entries, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal,
+    goals, tasks, entries, habitEntries, loading, error, fetchGoals, addGoal, importGoals, editGoal, removeGoal, reviewGoal,
     addStep, setStepDone,
   } = useGoalStore()
   const [tab, setTab] = useState<GoalHorizon>('week')
@@ -64,7 +64,7 @@ export function GoalsPanel({ userId, onStepToggle }: GoalsPanelProps) {
     void load()
   }, [userId, fetchGoals, importGoals])
 
-  const progress = useMemo(() => goalTreeProgress(goals, tasks, entries), [goals, tasks, entries])
+  const progress = useMemo(() => goalTreeProgress(goals, tasks, [...entries, ...habitEntries]), [goals, tasks, entries, habitEntries])
   const period = goalPeriodStart(tab, today)
   const visible = goals.filter((g) => g.horizon === tab && g.period_start === period && g.status !== 'dropped')
   const parentHorizon = PARENT_OF[tab]

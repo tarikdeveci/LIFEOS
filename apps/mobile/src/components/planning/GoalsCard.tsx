@@ -14,6 +14,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { GoalProgressEntries } from './GoalProgressEntries'
+import { GoalSteps } from './GoalSteps'
 
 interface Props { userId: string }
 
@@ -27,7 +28,7 @@ const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode
 export function GoalsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { goals, tasks, entries, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
+  const { goals, tasks, entries, habitEntries, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
   const [ui, setUi] = useState({ sheet: false, saving: false })
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [open, setOpen] = useState(false)
@@ -39,7 +40,7 @@ export function GoalsCard({ userId }: Props) {
   // Sekmeye her dönüşte: başka sekmede tamamlanan bağlı görev ilerlemeye yansısın.
   useFocusEffect(useCallback(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals]))
 
-  const progress = useMemo(() => goalTreeProgress(goals, tasks, entries), [goals, tasks, entries])
+  const progress = useMemo(() => goalTreeProgress(goals, tasks, [...entries, ...habitEntries]), [goals, tasks, entries, habitEntries])
   const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')
   const isDone = (g: (typeof weekly)[number]) => (progress.get(g.id)?.pct ?? 0) >= 100 || g.status === 'done'
   // Yükleme hatası boş liste gibi görünmesin: "henüz hedef yok" mevcut hedefleri saklıyordu.
@@ -135,6 +136,7 @@ export function GoalsCard({ userId }: Props) {
               </View>
             </TouchableOpacity>
             {g.target != null && g.count_mode && <GoalProgressEntries goal={g} userId={userId} />}
+            <GoalSteps goal={g} userId={userId} />
             </View>
           )
         })}
