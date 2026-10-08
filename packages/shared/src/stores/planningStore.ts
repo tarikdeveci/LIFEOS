@@ -27,6 +27,8 @@ type Supabase = SupabaseClient<any>
 interface PlanningState {
   date: string
   timeBlocks: TimeBlock[]
+  /** Bugünün blokları. Planlama başka güne bakarken widget ve canlı bildirim bunu okur. */
+  todayBlocks: TimeBlock[]
   dailyPlan: DailyPlan | null
   flexTasks: Task[]
   carryoverTasks: Task[]
@@ -55,9 +57,29 @@ interface PlanningState {
 /** Son fetchDayData isteği; eski yanıtlar yok sayılır. */
 let dayRequest = 0
 
+type BlockEvent = { eventType: string; new: unknown; old: unknown }
+
+/**
+ * Realtime olayını bir günün blok listesine uygular. Başka güne ait blok eklenmez;
+ * başka güne taşınan blok listeden çıkar, bu güne taşınan eklenir.
+ */
+export function applyBlockEvent(blocks: TimeBlock[], event: BlockEvent, day: string): TimeBlock[] {
+  if (event.eventType === 'DELETE') {
+    const id = (event.old as { id?: string } | null)?.id
+    return blocks.some((b) => b.id === id) ? blocks.filter((b) => b.id !== id) : blocks
+  }
+  if (event.eventType !== 'INSERT' && event.eventType !== 'UPDATE') return blocks
+  const block = event.new as TimeBlock
+  const index = blocks.findIndex((b) => b.id === block.id)
+  if (block.date !== day) return index < 0 ? blocks : blocks.filter((b) => b.id !== block.id)
+  if (index >= 0) return blocks.map((b) => (b.id === block.id ? { ...b, ...block } : b))
+  return [...blocks, block].sort((a, b) => a.start_time.localeCompare(b.start_time))
+}
+
 export const usePlanningStore = create<PlanningState>((set, get) => ({
   date: todayDate(),
   timeBlocks: [],
+  todayBlocks: [],
   dailyPlan: null,
   flexTasks: [],
   carryoverTasks: [],
@@ -227,40 +249,44 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   },
 
   handleRealtimeEvent: (event) => {
-    const { eventType, new: newRecord, old: oldRecord } = event
-    const { timeBlocks } = get()
-
-    if (eventType === 'INSERT') {
-      const block = newRecord as TimeBlock
-      if (!timeBlocks.find((b) => b.id === block.id)) {
-        set({
-          timeBlocks: [...timeBlocks, block].sort((a, b) =>
-            a.start_time.localeCompare(b.start_time),
-          ),
-        })
-      }
-    } else if (eventType === 'UPDATE') {
-      const block = newRecord as TimeBlock
-      set({ timeBlocks: timeBlocks.map((b) => (b.id === block.id ? { ...b, ...block } : b)) })
-    } else if (eventType === 'DELETE') {
-      const deleted = oldRecord as { id: string }
-      set({ timeBlocks: timeBlocks.filter((b) => b.id !== deleted.id) })
+    const { date, timeBlocks, todayBlocks } = get()
+    const today = todayDate()
+    const next = applyBlockEvent(timeBlocks, event, date)
+    // Seçili gün bugünse ayna aboneliği todayBlocks'u eşitler; değilse bugünü ayrıca güncelle.
+    if (date === today) {
+      if (next !== timeBlocks) set({ timeBlocks: next })
+      return
     }
+    const nextToday = applyBlockEvent(todayBlocks, event, today)
+    if (next !== timeBlocks || nextToday !== todayBlocks) set({ timeBlocks: next, todayBlocks: nextToday })
   },
 }))
 
 // Görev başka bir ekrandan kapanınca ya da geri açılınca bağlı blok da aynı anda
 // yeşile döner. Yalnızca durumu bu değişiklikte değişen görevlere bakılır: eski bir
-// görev kopyası başka cihazda tamamlanmış bloğu geri açmasın.
+// görev kopyası başka cihazda tamamlanmış bloğu geri açmasın. Planlama başka güne
+// bakarken bugünün aynası da güncellenir.
 useTaskStore.subscribe((taskState, prevTaskState) => {
   if (taskState.tasks === prevTaskState.tasks) return
   const before = new Map(prevTaskState.tasks.map((t) => [t.id, t.status]))
   const changed = taskState.tasks.filter((t) => before.has(t.id) && before.get(t.id) !== t.status)
   if (changed.length === 0) return
-  const { timeBlocks } = usePlanningStore.getState()
-  const updates = new Map(syncBlocksWithTasks(timeBlocks, changed).map((u) => [u.id, u.completed_at]))
-  if (updates.size === 0) return
-  usePlanningStore.setState({
-    timeBlocks: timeBlocks.map((b) => (updates.has(b.id) ? { ...b, completed_at: updates.get(b.id) ?? null } : b)),
-  })
+  const sync = (blocks: TimeBlock[]) => {
+    const updates = new Map(syncBlocksWithTasks(blocks, changed).map((u) => [u.id, u.completed_at]))
+    return updates.size === 0 ? blocks
+      : blocks.map((b) => (updates.has(b.id) ? { ...b, completed_at: updates.get(b.id) ?? null } : b))
+  }
+  const { timeBlocks, todayBlocks } = usePlanningStore.getState()
+  const nextBlocks = sync(timeBlocks)
+  const nextToday = sync(todayBlocks)
+  if (nextBlocks !== timeBlocks || nextToday !== todayBlocks) {
+    usePlanningStore.setState({ timeBlocks: nextBlocks, todayBlocks: nextToday })
+  }
+})
+
+// Seçili gün bugünken her blok değişikliği bugünün aynasına yazılır.
+usePlanningStore.subscribe((state) => {
+  if (state.date === todayDate() && state.todayBlocks !== state.timeBlocks) {
+    usePlanningStore.setState({ todayBlocks: state.timeBlocks })
+  }
 })

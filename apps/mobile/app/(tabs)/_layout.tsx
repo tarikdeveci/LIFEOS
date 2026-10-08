@@ -7,6 +7,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useWidgetSync } from '@/src/hooks/useWidgetSync'
 import { useBlockLiveActivity } from '@/src/hooks/useBlockLiveActivity'
+import { useRealtimeSync } from '@/src/hooks/useRealtimeSync'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
@@ -108,6 +109,7 @@ export default function TabsLayout() {
   // Store değişimlerini ana ekran/kilit ekranı widget'larına yansıt
   useWidgetSync()
   useBlockLiveActivity()
+  useRealtimeSync()
 
   return (
     <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
