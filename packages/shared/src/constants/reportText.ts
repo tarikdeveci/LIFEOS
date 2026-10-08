@@ -1,5 +1,5 @@
-// Gün raporu ekranının metinleri. Ana i18n.ts 500 satırı aştığı için ayrı dosyada;
-// getTranslations birleştirir. tr, en ile aynı anahtarları taşımak zorunda.
+// Gün raporu ekranının metinleri; web ve mobil kendi getTranslations'ında birleştirir.
+// tr, en ile aynı anahtarları taşımak zorunda.
 // Ton: somut ve suçlamasız. Kaçan iş başarısızlık diye sunulmaz, kırmızı uyarı dili yok.
 
 export const reportEn = {

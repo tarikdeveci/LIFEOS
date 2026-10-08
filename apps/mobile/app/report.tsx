@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router'
-import { daysBetween, fromDateString, toDateString, todayDate } from '@lifeos/shared'
+import { resolveReportDate, todayDate } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { ReportStory } from '@/src/components/report/ReportStory'
 import { ReportError, ReportMissing, ReportSkeleton } from '@/src/components/report/ReportStates'
@@ -10,17 +10,6 @@ interface BodyProps { date: string }
 function close() {
   if (router.canGoBack()) router.back()
   else router.replace('/(tabs)/today' as never)
-}
-
-/** Rapor en fazla bu kadar gün geriye açılır; sunucu da eski günlerde satır üretmez. */
-const MAX_DAYS_BACK = 30
-
-/** Geçerli bir takvim günü, gelecek değil, 30 günden eski değil; aksi hâlde bugün. */
-function resolveReportDate(raw: unknown, today: string): string {
-  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return today
-  if (toDateString(fromDateString(raw)) !== raw) return today
-  const back = daysBetween(raw, today)
-  return back < 0 || back > MAX_DAYS_BACK ? today : raw
 }
 
 function ReportBody({ date }: BodyProps) {

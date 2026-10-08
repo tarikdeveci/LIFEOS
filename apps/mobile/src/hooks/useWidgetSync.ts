@@ -19,7 +19,8 @@ import { persistWidgetSnapshot } from '../widgets/storage'
  */
 export function useWidgetSync(): void {
   const tasks = useTaskStore((s) => s.tasks)
-  const timeBlocks = usePlanningStore((s) => s.timeBlocks)
+  // Planlama başka güne bakarken widget boşalmasın: bugünün aynası okunur.
+  const timeBlocks = usePlanningStore((s) => s.todayBlocks)
   const meals = useNutritionStore((s) => s.meals)
   const dailySummary = useNutritionStore((s) => s.dailySummary)
   const target = useNutritionStore((s) => s.target)
@@ -65,7 +66,7 @@ export function useWidgetSync(): void {
       const settings = useHealthStore.getState().settings
       const snapshot = buildWidgetSnapshot({
         tasks: useTaskStore.getState().tasks,
-        timeBlocks: usePlanningStore.getState().timeBlocks,
+        timeBlocks: usePlanningStore.getState().todayBlocks,
         caloriesConsumed,
         caloriesTarget: useNutritionStore.getState().target?.calories ?? null,
         steps: settings?.enabled ? useHealthStore.getState().today?.steps ?? null : null,

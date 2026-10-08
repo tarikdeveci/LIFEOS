@@ -7,7 +7,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { Reveal } from './motion'
 import { SectionTitle } from './ReportSections'
-import { fill, type ViewItem } from './reportModel'
+import { fill, type ViewItem } from '@lifeos/shared'
 
 type Mark = 'partial' | 'skipped'
 

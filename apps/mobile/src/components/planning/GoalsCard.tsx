@@ -13,6 +13,8 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { GoalProgressEntries } from './GoalProgressEntries'
+import { GoalSteps } from './GoalSteps'
 
 interface Props { userId: string }
 
@@ -26,17 +28,19 @@ const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode
 export function GoalsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { goals, tasks, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
-  const [sheet, setSheet] = useState(false)
+  const { goals, tasks, entries, habitEntries, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
+  const [ui, setUi] = useState({ sheet: false, saving: false })
   const [draft, setDraft] = useState<Draft>(EMPTY)
-  const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(false)
+  const { sheet, saving } = ui
+  const setSheet = (sheet: boolean) => setUi((state) => ({ ...state, sheet }))
+  const setSaving = (saving: boolean) => setUi((state) => ({ ...state, saving }))
   const week = goalPeriodStart('week', todayDate())
 
   // Sekmeye her dönüşte: başka sekmede tamamlanan bağlı görev ilerlemeye yansısın.
   useFocusEffect(useCallback(() => { void fetchGoals(supabase, userId) }, [userId, fetchGoals]))
 
-  const progress = useMemo(() => goalTreeProgress(goals, tasks), [goals, tasks])
+  const progress = useMemo(() => goalTreeProgress(goals, tasks, [...entries, ...habitEntries]), [goals, tasks, entries, habitEntries])
   const weekly = goals.filter((g) => g.horizon === 'week' && g.period_start === week && g.status !== 'dropped')
   const isDone = (g: (typeof weekly)[number]) => (progress.get(g.id)?.pct ?? 0) >= 100 || g.status === 'done'
   // Yükleme hatası boş liste gibi görünmesin: "henüz hedef yok" mevcut hedefleri saklıyordu.
@@ -48,10 +52,10 @@ export function GoalsCard({ userId }: Props) {
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
 
   const save = async () => {
-    const target = parseInt(draft.target, 10)
+    const target = Number(draft.target.replace(',', '.'))
     // Sessiz ret yok: pencere açık kalıp hiçbir şey olmaması bozuk düğme gibi görünüyordu.
     if (!draft.title.trim()) { Alert.alert(t.plan_err_name_required); return }
-    if (!(target > 0)) { Alert.alert(t.goals_err_target); return }
+    if (!Number.isFinite(target) || !(target > 0)) { Alert.alert(t.goals_err_target); return }
     setSaving(true)
     try {
       await addGoal(supabase, userId, {
@@ -91,6 +95,8 @@ export function GoalsCard({ userId }: Props) {
       <CollapsibleTitle title={t.goals_title} summary={summary} open={open} onToggle={() => setOpen((v) => !v)}
         onAdd={() => setSheet(true)} addLabel={t.goals_add} />
 
+      {open && error && !loadFailed && <Text style={{ color: palette.danger, fontSize: fontSize.xs }}>{t.goals_error}</Text>}
+
       {open && loadFailed && (
         <TouchableOpacity onPress={() => void fetchGoals(supabase, userId)} style={{ alignItems: 'center', paddingVertical: spacing[3] }}>
           <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.retry}</Text>
@@ -111,7 +117,8 @@ export function GoalsCard({ userId }: Props) {
           const done = isDone(g)
           const tint = done ? palette.success : palette.accent
           return (
-            <TouchableOpacity key={g.id} onLongPress={() => confirmDelete(g.id)} delayLongPress={400}
+            <View key={g.id}>
+            <TouchableOpacity onLongPress={() => confirmDelete(g.id)} delayLongPress={400}
               style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
               <View style={{ width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${tint}18` }}>
                 <Text style={{ fontSize: 18 }}>{g.icon ?? '🎯'}</Text>
@@ -128,6 +135,9 @@ export function GoalsCard({ userId }: Props) {
                 </View>
               </View>
             </TouchableOpacity>
+            {g.target != null && g.count_mode && <GoalProgressEntries goal={g} userId={userId} />}
+            <GoalSteps goal={g} userId={userId} />
+            </View>
           )
         })}
       </View>}
@@ -136,16 +146,17 @@ export function GoalsCard({ userId }: Props) {
         <View style={{ gap: spacing[3] }}>
           <Input label={t.goals_name} value={draft.title} onChangeText={(v) => patch({ title: v })} maxLength={200} />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.goals_target} value={draft.target} keyboardType="number-pad"
-              onChangeText={(v) => patch({ target: v.replace(/\D/g, '') })} containerStyle={{ flex: 1 }} />
-            <Input label={t.goals_unit} value={draft.unit} onChangeText={(v) => patch({ unit: v })} containerStyle={{ flex: 1 }} />
+            <Input label={t.goals_target} value={draft.target} keyboardType="decimal-pad"
+              onChangeText={(v) => patch({ target: v })} containerStyle={{ flex: 1 }} />
+            <Input label={t.goals_unit} value={draft.unit} maxLength={20} placeholder={draft.countMode === 'units' ? t.goal_unit_custom : undefined}
+              onChangeText={(v) => patch({ unit: v })} containerStyle={{ flex: 1 }} />
           </View>
           <Input label={t.goals_tags} value={draft.tags} onChangeText={(v) => patch({ tags: v })} placeholder="spor, koşu" />
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            {(['tasks', 'hours'] as const).map((m) => (
+            {(['tasks', 'hours', 'units'] as const).map((m) => (
               <TouchableOpacity key={m} onPress={() => patch({ countMode: m })} style={chip(draft.countMode === m)}>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.countMode === m ? '#fff' : colors.textMuted }}>
-                  {m === 'tasks' ? t.goals_count_tasks : t.goals_count_hours}
+                  {m === 'tasks' ? t.goals_count_tasks : m === 'hours' ? t.goals_count_hours : t.goal_count_units}
                 </Text>
               </TouchableOpacity>
             ))}

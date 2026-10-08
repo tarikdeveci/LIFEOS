@@ -21,6 +21,7 @@ import { WeekView } from '@/components/planning/WeekView'
 import { MonthView } from '@/components/planning/MonthView'
 import { GoalsPanel } from '@/components/planning/GoalsPanel'
 import { DayStartCard } from '@/components/planning/DayStartCard'
+import { DayCloseCard } from '@/components/planning/DayCloseCard'
 import { FlexPool } from '@/components/planning/FlexPool'
 import { WeeklyRoutines } from '@/components/planning/WeeklyRoutines'
 import { HabitsToday } from '@/components/planning/HabitsToday'
@@ -143,7 +144,9 @@ export function PlanningView({ userId }: PlanningViewProps) {
   const allDayTasks = [...flexTasks, ...carryoverTasks]
   // Gece devrinin bugüne taşıdıkları esnek havuzda değil "Dünden kalanlar"da görünür.
   const carriedToday = date === todayDate() ? flexTasks.filter((task) => task.carry_count > 0) : []
-  const freshFlexTasks = carriedToday.length > 0 ? flexTasks.filter((task) => !(task.carry_count > 0)) : flexTasks
+  // Bloğa yerleşen görev havuzdan çıkar (sunucudaki is_time_blocked bayrağı güncellenmiyor).
+  const blockedTaskIds = new Set(timeBlocks.map((b) => b.task_id).filter(Boolean))
+  const freshFlexTasks = flexTasks.filter((task) => !blockedTaskIds.has(task.id) && !(carriedToday.length > 0 && task.carry_count > 0))
 
   // Kapasite: güne atanmış ama henüz bloğa konmamış görevler.
   const unblockedTasks = allDayTasks.filter((task) => !timeBlocks.some((b) => b.task_id === task.id))
@@ -232,6 +235,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
       {viewMode === 'day' && (
         <div className="col-span-4 space-y-4">
           <DayStartCard isToday={isToday} onStartRitual={() => setRitualOpen(true)} />
+          {isToday && (allDayTasks.length > 0 || timeBlocks.length > 0) && <DayCloseCard userId={userId} date={todayStr} />}
 
           <CapacityBar tasks={unblockedTasks} timeBlocks={timeBlocks} isToday={isToday} busy={busy} />
 

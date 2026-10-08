@@ -5,7 +5,7 @@ import Animated, { useAnimatedProps } from 'react-native-reanimated'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { palette } from '@/src/theme/tokens'
 import { clamp01, type Progress } from './motion'
-import type { RingTone } from './reportModel'
+import type { RingTone } from '@lifeos/shared'
 
 interface Props {
   /** Günün işleri sırasıyla; her dilim bir iş. */

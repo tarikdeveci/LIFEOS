@@ -8,7 +8,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { Reveal, clamp01, type Progress } from './motion'
 import { SectionTitle } from './ReportSections'
-import { fill, type ProgramRow } from './reportModel'
+import { fill, type ProgramRow } from '@lifeos/shared'
 
 interface HabitsWeekProps { habits: HabitWeek[] }
 interface HabitRowProps { habit: HabitWeek; progress: Progress }
