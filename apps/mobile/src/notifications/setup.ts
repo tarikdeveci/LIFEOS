@@ -224,6 +224,9 @@ function routeResponse(response: Notifications.NotificationResponse, navigate: (
 
   if (data['type'] === 'task_reminder' && data['task_id']) {
     navigate(`/task/${data['task_id']}`)
+  } else if (data['type'] === 'block_reminder') {
+    // Yaklaşan blok bugünün planında.
+    navigate('/(tabs)/planning')
   } else if (data['type'] === 'morning_briefing') {
     navigate('/(tabs)/today')
   } else if (data['type'] === 'evening_nutrition') {

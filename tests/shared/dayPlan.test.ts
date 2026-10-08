@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  autoPlace, dayCapacity, dropBlockMirrors, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes,
+  autoPlace, dayCapacity, dropBlockMirrors, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes, syncBlocksWithTasks,
 } from '../../packages/shared/src/utils/dayPlan.ts'
 
 test('subtractIntervals: kesişen kısım çıkar, kalan parçalar sıralı döner', () => {
@@ -136,4 +136,26 @@ test('yaz saati geçişi olan günde meşgul aralık duvar saatiyle hesaplanır'
     if (previous === undefined) delete process.env['TZ']
     else process.env['TZ'] = previous
   }
+})
+
+test('syncBlocksWithTasks: görev durumuna göre blok tamamlanma saatini eşitler', () => {
+  const blocks = [
+    { id: 'b1', task_id: 't1', completed_at: null }, // görev bitmiş -> kapanmalı
+    { id: 'b2', task_id: 't2', completed_at: '2026-10-08T10:00Z' }, // görev bitmemiş -> açılmalı
+    { id: 'b3', task_id: 't3', completed_at: '2026-10-08T10:00Z' }, // görev bitmiş -> dokunulmaz
+    { id: 'b4', task_id: 't4', completed_at: null }, // görev bitmemiş -> dokunulmaz
+    { id: 'b5', task_id: null, completed_at: null }, // tasksız blok -> dokunulmaz
+  ]
+  const tasks = [
+    { id: 't1', status: 'done', completed_at: '2026-10-08T11:00Z' },
+    { id: 't2', status: 'planned', completed_at: null },
+    { id: 't3', status: 'done', completed_at: '2026-10-08T10:00Z' },
+    { id: 't4', status: 'in_progress', completed_at: null },
+  ]
+  const updates = syncBlocksWithTasks(blocks, tasks)
+  assert.equal(updates.length, 2)
+  assert.equal(updates[0]?.id, 'b1')
+  assert.equal(updates[0]?.completed_at, '2026-10-08T11:00Z')
+  assert.equal(updates[1]?.id, 'b2')
+  assert.equal(updates[1]?.completed_at, null)
 })

@@ -87,6 +87,8 @@ Deno.serve(async () => {
     .gte('date', utcDateStr(now, -1))
     .lte('date', utcDateStr(now, 1))
     .is('notification_sent_at', null)
+    // Erken bitirilen blok için hatırlatma gitmez.
+    .is('completed_at', null)
 
   if (error) {
     return new Response(`DB error: ${error.message}`, { status: 500 })
