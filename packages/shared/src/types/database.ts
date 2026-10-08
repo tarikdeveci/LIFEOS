@@ -557,8 +557,47 @@ export type Database = {
         }
         Relationships: []
       }
+      goal_entries: {
+        Row: {
+          amount: number
+          created_at: string
+          entry_date: string
+          goal_id: string
+          id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          entry_date: string
+          goal_id: string
+          id?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          entry_date?: string
+          goal_id?: string
+          id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_entries_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
+          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode: string | null
           created_at: string
           daily_cap: number | null
@@ -578,6 +617,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode?: string | null
           created_at?: string
           daily_cap?: number | null
@@ -597,6 +637,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode?: string | null
           created_at?: string
           daily_cap?: number | null

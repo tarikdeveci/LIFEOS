@@ -3,7 +3,7 @@
 
 export type GoalHorizon = 'quarter' | 'month' | 'week'
 export type GoalStatus = 'active' | 'done' | 'dropped'
-export type GoalCountMode = 'tasks' | 'hours'
+export type GoalCountMode = 'tasks' | 'hours' | 'units'
 
 export interface Goal {
   id: string
@@ -64,4 +64,21 @@ export interface GoalProgressInfo {
   total: number
   /** 0-100 */
   pct: number
+}
+
+export interface GoalEntry {
+  id: string
+  goal_id: string
+  user_id: string
+  amount: number
+  entry_date: string
+  note: string | null
+  created_at: string
+}
+
+export interface CreateGoalEntryInput {
+  goal_id: string
+  amount: number
+  entry_date: string
+  note?: string | null
 }

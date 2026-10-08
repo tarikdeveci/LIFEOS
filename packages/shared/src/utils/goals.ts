@@ -5,6 +5,7 @@ import type {
   CreateGoalInput,
   Goal,
   GoalHorizon,
+  GoalEntry,
   GoalProgressInfo,
   GoalTaskLike,
 } from '../types/goal'
@@ -69,14 +70,17 @@ export function computeGoalProgress(
   goal: Pick<Goal, 'id' | 'horizon' | 'period_start' | 'target' | 'count_mode' | 'tag_filter' | 'status'>,
   tasks: GoalTaskLike[],
   children: { status: Goal['status']; pct: number }[] = [],
+  entries: GoalEntry[] = [],
 ): GoalProgressInfo {
   if (goal.target != null && goal.count_mode) {
     const done = tasks.filter((t) => t.status === 'done' && matchesGoal(goal, t) && inPeriod(goal, taskDay(t)))
     // Saat kesirli kalır: tam saate yuvarlanınca 1 saatlik hedefte 30 dk %100, 25 dk %0 görünüyordu.
-    const amount = goal.count_mode === 'tasks'
-      ? done.length
-      : done.reduce((s, t) => s + (t.estimated_minutes ?? 60), 0) / 60
-    const current = Math.round(amount * 10) / 10
+    const taskAmount = goal.count_mode === 'tasks' ? done.length
+      : goal.count_mode === 'hours' ? done.reduce((s, t) => s + (t.estimated_minutes ?? 60), 0) / 60 : 0
+    const amount = taskAmount + entries
+      .filter((e) => e.goal_id === goal.id && inPeriod(goal, e.entry_date))
+      .reduce((sum, e) => sum + e.amount, 0)
+    const current = goal.count_mode === 'hours' ? Math.round(amount * 10) / 10 : amount
     return { current, total: goal.target, pct: Math.min(100, Math.round((amount / goal.target) * 100)) }
   }
 
@@ -90,14 +94,14 @@ export function computeGoalProgress(
 }
 
 /** Tüm ağacın ilerlemesi; önce haftalar, sonra aylar, sonra çeyrekler hesaplanır. */
-export function goalTreeProgress(goals: Goal[], tasks: GoalTaskLike[]): Map<string, GoalProgressInfo> {
+export function goalTreeProgress(goals: Goal[], tasks: GoalTaskLike[], entries: GoalEntry[] = []): Map<string, GoalProgressInfo> {
   const out = new Map<string, GoalProgressInfo>()
   for (const horizon of ['week', 'month', 'quarter'] as const) {
     for (const goal of goals.filter((g) => g.horizon === horizon)) {
       const children = goals
         .filter((c) => c.parent_id === goal.id)
         .map((c) => ({ status: c.status, pct: out.get(c.id)?.pct ?? 0 }))
-      out.set(goal.id, computeGoalProgress(goal, tasks, children))
+      out.set(goal.id, computeGoalProgress(goal, tasks, children, entries))
     }
   }
   return out
@@ -149,4 +153,13 @@ export function legacyWeeklyGoalsToInputs(raw: unknown, weekStartDate: string): 
     })
   }
   return out
+}
+
+/** İçeriği tamamlanan aktif hedefler. Boş oran hedefleri kapanmaz. */
+export function goalsToAutoComplete(goals: Goal[], progressMap: Map<string, GoalProgressInfo>): string[] {
+  return goals.filter((goal) => {
+    const p = progressMap.get(goal.id)
+    return goal.status === 'active' && p != null && p.pct >= 100
+      && (goal.target != null || p.total > 0)
+  }).map((goal) => goal.id)
 }

@@ -1,9 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CreateGoalInput, Goal, GoalTaskLike, UpdateGoalInput } from '../types/goal'
+import type { CreateGoalEntryInput, CreateGoalInput, Goal, GoalEntry, GoalTaskLike, UpdateGoalInput } from '../types/goal'
 import { fromDateString, shiftIsoDate } from '../utils/date'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Supabase = SupabaseClient<any>
+type Supabase = SupabaseClient
 
 const GOAL_TASK_COLUMNS = 'id, title, goal_id, status, tags, estimated_minutes, scheduled_date, completed_at'
 
@@ -89,5 +88,31 @@ export async function updateGoal(supabase: Supabase, goalId: string, input: Upda
 /** Alt hedeflerin ve görevlerin bağı kopar (ON DELETE SET NULL); kendileri silinmez. */
 export async function deleteGoal(supabase: Supabase, goalId: string): Promise<void> {
   const { error } = await supabase.from('goals').delete().eq('id', goalId)
+  if (error) throw error
+}
+
+export async function getGoalEntries(
+  supabase: Supabase, userId: string, since: string, until: string,
+): Promise<GoalEntry[]> {
+  const { data, error } = await supabase.from('goal_entries').select('*')
+    .eq('user_id', userId).gte('entry_date', since).lte('entry_date', until)
+    .order('entry_date', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw error
+  if (!data) throw new Error('goal entries returned no data')
+  return data as GoalEntry[]
+}
+
+export async function createGoalEntry(
+  supabase: Supabase, userId: string, input: CreateGoalEntryInput,
+): Promise<GoalEntry> {
+  const { data, error } = await supabase.from('goal_entries')
+    .insert({ ...input, user_id: userId }).select().single()
+  if (error) throw error
+  if (!data) throw new Error('goal entry insert returned no row')
+  return data as GoalEntry
+}
+
+export async function deleteGoalEntry(supabase: Supabase, entryId: string): Promise<void> {
+  const { error } = await supabase.from('goal_entries').delete().eq('id', entryId)
   if (error) throw error
 }
