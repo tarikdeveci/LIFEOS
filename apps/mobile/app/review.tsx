@@ -49,22 +49,23 @@ function dayName(date: string, lang: string) {
 }
 
 function MetricCard({
-  label, value, detail, delta, deltaLabel, trendColor
+  label, value, detail, delta, formatDelta = String, deltaLabel, trendColor
 }: {
   label: string; value: string | number; detail?: string
-  delta?: number | null; deltaLabel?: string; trendColor?: string
+  delta?: number | null; formatDelta?: (abs: number) => string; deltaLabel?: string; trendColor?: string
 }) {
   const { colors } = useTheme()
   const hasDelta = delta != null
   const trend = hasDelta && delta !== 0 ? (delta > 0 ? 'up' : 'down') : 'flat'
+  // Fark, değerle aynı birimde yazılır (dakika, yüzde puanı, ondalık).
   const trendText = hasDelta
-    ? trend === 'up' ? `+${delta}` : String(delta)
+    ? `${trend === 'up' ? '+' : trend === 'down' ? '-' : ''}${formatDelta(Math.abs(delta))}`
     : null
 
   return (
     <GlassCard padding={spacing[4]} style={{ flexBasis: '47%', flexGrow: 1 }}>
       <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, marginBottom: 2 }}>{label}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing[2] }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: spacing[2] }}>
         <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>{value}</Text>
         {trendText && (
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: trendColor ?? (trend === 'up' ? palette.success : palette.danger), marginBottom: 2 }}>
@@ -256,7 +257,7 @@ function ReviewScreen() {
         >
           {/* Week selector */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
               <TouchableOpacity
                 onPress={() => setStart(shiftIsoDate(start, -7))}
                 activeOpacity={0.7}
@@ -319,6 +320,7 @@ function ReviewScreen() {
                       ? t.review_planned_total.replace('{planned}', format(cur.plannedMinutes)).replace('{rate}', pct(cur.blockRate))
                       : t.review_no_blocks}
                     delta={cur.completedMinutes - prev.completedMinutes}
+                    formatDelta={format}
                     deltaLabel={vsLast(format(prev.completedMinutes))}
                     trendColor={palette.success}
                   />
@@ -334,6 +336,7 @@ function ReviewScreen() {
                     value={pct(cur.scheduledRate)}
                     detail={cur.scheduledTotal > 0 ? `${cur.scheduledDone}/${cur.scheduledTotal}` : undefined}
                     delta={diff(cur.scheduledRate, prev.scheduledRate)}
+                    formatDelta={pct}
                     deltaLabel={prev.scheduledRate == null ? t.review_no_previous : vsLast(pct(prev.scheduledRate))}
                     trendColor={palette.info}
                   />
@@ -358,6 +361,7 @@ function ReviewScreen() {
                     label={t.review_energy}
                     value={cur.avgEnergy == null ? '-' : `${cur.avgEnergy.toFixed(1)}/5`}
                     delta={diff(cur.avgEnergy, prev.avgEnergy)}
+                    formatDelta={(n) => n.toFixed(1)}
                     deltaLabel={prev.avgEnergy == null ? t.review_no_previous : vsLast(prev.avgEnergy.toFixed(1))}
                     trendColor={palette.success}
                   />
