@@ -7,7 +7,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { DayRing } from './DayRing'
 import { RiseText } from './motion'
-import { fill, type DaySummary } from './reportModel'
+import { fill, type DaySummary } from '@lifeos/shared'
 
 interface Props {
   dateLabel: string

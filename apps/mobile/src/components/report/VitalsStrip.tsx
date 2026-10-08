@@ -7,7 +7,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { Reveal, RiseText, clamp01, type Progress } from './motion'
 import { SectionTitle } from './ReportSections'
-import { fill, formatNumber, type Lang } from './reportModel'
+import { fill, formatNumber, type Lang } from '@lifeos/shared'
 
 interface Props {
   facts: DayFacts
