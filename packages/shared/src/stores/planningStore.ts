@@ -17,7 +17,7 @@ import {
 } from '../supabase/planning'
 import { todayDate } from '../utils/date'
 import type { Interval, Placement, ShiftResult } from '../utils/dayPlan'
-import { busyToIntervals } from '../utils/dayPlan'
+import { busyToIntervals, syncBlocksWithTasks } from '../utils/dayPlan'
 import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -234,3 +234,19 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     }
   },
 }))
+
+// Görev başka bir ekrandan kapanınca ya da geri açılınca bağlı blok da aynı anda
+// yeşile döner. Yalnızca durumu bu değişiklikte değişen görevlere bakılır: eski bir
+// görev kopyası başka cihazda tamamlanmış bloğu geri açmasın.
+useTaskStore.subscribe((taskState, prevTaskState) => {
+  if (taskState.tasks === prevTaskState.tasks) return
+  const before = new Map(prevTaskState.tasks.map((t) => [t.id, t.status]))
+  const changed = taskState.tasks.filter((t) => before.has(t.id) && before.get(t.id) !== t.status)
+  if (changed.length === 0) return
+  const { timeBlocks } = usePlanningStore.getState()
+  const updates = new Map(syncBlocksWithTasks(timeBlocks, changed).map((u) => [u.id, u.completed_at]))
+  if (updates.size === 0) return
+  usePlanningStore.setState({
+    timeBlocks: timeBlocks.map((b) => (updates.has(b.id) ? { ...b, completed_at: updates.get(b.id) ?? null } : b)),
+  })
+})
