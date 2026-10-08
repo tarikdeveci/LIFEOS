@@ -12,9 +12,11 @@ import {
   shiftIsoDate,
   todayDate,
   useFocusStore,
+  usePlanningStore,
 } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
 
 /** Yerel günün başı, UTC anı olarak. `YYYY-MM-DDT00:00` Z'siz yazılınca tarayıcı yerel saatle okur. */
@@ -40,6 +42,9 @@ interface FocusTimerProps {
 export function FocusTimer({ userId }: FocusTimerProps) {
   const { t } = useLang()
   const { active, pending, saving, saveError, tick, finish, close, save, start } = useFocusStore()
+  const { showToast } = useToast()
+  // Odaklanılan blok bugünün planında ve hâlâ açıksa bitiş ekranı onu da kapatabilir.
+  const block = usePlanningStore((s) => (active ? s.timeBlocks.find((b) => b.id === active.blockId) : undefined))
   const [now, setNow] = useState(() => Date.now())
 
   // Süren tur ve bekleyen kayıt sayfa yenilenince kaybolmasın.
@@ -77,6 +82,17 @@ export function FocusTimer({ userId }: FocusTimerProps) {
 
   if (!active) return null
 
+  // Her tur otomatik tamamlama sayılmaz; işi bitirdiğine kullanıcı karar verir.
+  const completeBlock = async () => {
+    try {
+      await usePlanningStore.getState().setBlockDone(supabase, active.blockId, true)
+      finish(Date.now())
+      close()
+    } catch {
+      showToast(t.plan_block_update_error, 'error')
+    }
+  }
+
   const again = () => {
     finish(Date.now())
     start(newFocusSessionId(), userId, { id: active.blockId, task_id: active.taskId, block_type: active.taskId ? 'task' : 'focus', label: active.label }, Date.now())
@@ -100,7 +116,10 @@ export function FocusTimer({ userId }: FocusTimerProps) {
           <Button size="sm" variant="outline" onClick={() => finish(Date.now())}>{t.focus_stop}</Button>
         ) : (
           <>
-            {phase === 'ready' && <Button size="sm" onClick={again} disabled={pending !== null || saving}>{t.focus_again}</Button>}
+            {block && !block.completed_at && (
+              <Button size="sm" onClick={() => void completeBlock()} disabled={pending !== null || saving}>{t.focus_complete_block}</Button>
+            )}
+            {phase === 'ready' && <Button size="sm" variant={block && !block.completed_at ? 'outline' : 'primary'} onClick={again} disabled={pending !== null || saving}>{t.focus_again}</Button>}
             <Button size="sm" variant="ghost" disabled={pending !== null || saving} onClick={() => { finish(Date.now()); close() }}>{t.focus_close}</Button>
           </>
         )}

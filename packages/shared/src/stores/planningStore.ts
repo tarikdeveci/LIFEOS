@@ -18,6 +18,7 @@ import {
 import { todayDate } from '../utils/date'
 import type { Interval, Placement, ShiftResult } from '../utils/dayPlan'
 import { busyToIntervals, syncBlocksWithTasks } from '../utils/dayPlan'
+import { useRoutineStore } from './routineStore'
 import { useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,11 +116,12 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
    *
    * Bloğa bağlı bir görev varsa o da aynı anda kapanıyor: kullanıcı için bunlar
    * tek bir iş, iki ayrı yerde işaretlemek zorunda kalmamalı. Geri alırken görev
-   * 'planned'a döner — takvimde yeri olan bir iş 'backlog'a düşerse plandan
-   * kaybolur.
+   * 'planned'a döner, takvimde yeri olan bir iş 'backlog'a düşerse plandan kaybolur.
+   * Görevi sunucuda 067 tetikleyicisi blokla birlikte yazar; burada yalnızca yerel
+   * kopya eşitlenir. İkinci bir yazma hata verse bile blok sunucuda tamam kalırdı.
    *
-   * Yazma başarısız olursa hem blok hem görev eski hâline geri sarılır; aksi
-   * halde ekranda tamamlanmış görünen ama sunucuda duran bir blok kalıyor.
+   * Blok yazması başarısız olursa blok eski hâline geri sarılır; aksi halde ekranda
+   * tamamlanmış görünen ama sunucuda duran bir blok kalıyor.
    */
   setBlockDone: async (supabase, blockId, done) => {
     const previous = get().timeBlocks.find((b) => b.id === blockId)
@@ -134,14 +136,26 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
 
     try {
       await updateTimeBlock(supabase, blockId, { completed_at: completedAt })
-      if (previous.task_id) {
-        await useTaskStore.getState().setStatus(supabase, previous.task_id, done ? 'done' : 'planned')
-      }
     } catch (err) {
       set((state) => ({
         timeBlocks: state.timeBlocks.map((b) => (b.id === blockId ? previous : b)),
       }))
       throw err
+    }
+
+    const status = done ? 'done' : 'planned'
+    const task = previous.task_id ? useTaskStore.getState().tasks.find((t) => t.id === previous.task_id) : undefined
+    if (task && task.status !== status) {
+      useTaskStore.setState((state) => ({
+        tasks: state.tasks.map((t) => (t.id === task.id ? { ...t, status, completed_at: completedAt } : t)),
+      }))
+    }
+
+    // Program sayacı (065) sunucuda tamamlamadan sayılır; ekrandaki sayı da tazelensin.
+    const routineId = previous.routine_id ?? task?.routine_id ?? null
+    const routines = useRoutineStore.getState()
+    if (routineId && routines.routines.some((r) => r.id === routineId && r.target_count)) {
+      void routines.refreshProgress(supabase)
     }
   },
 

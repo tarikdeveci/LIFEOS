@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { usePlanningStore } from '../../packages/shared/src/stores/planningStore.ts'
+import { useRoutineStore } from '../../packages/shared/src/stores/routineStore.ts'
 import { useTaskStore } from '../../packages/shared/src/stores/taskStore.ts'
+import type { Routine } from '../../packages/shared/src/types/routine.ts'
 import type { TimeBlock } from '../../packages/shared/src/types/planning.ts'
 import type { Task } from '../../packages/shared/src/types/task.ts'
 
@@ -69,4 +71,43 @@ test('durumu değişmeyen eski görev kopyası başka cihazda tamamlanmış blo�
   useTaskStore.setState({ tasks: [task('t1', 'planned'), task('t2', 'done')] })
 
   assert.equal(usePlanningStore.getState().timeBlocks[0]?.completed_at, '2026-10-08T09:30Z')
+})
+
+/** Yazılan tabloları ve çağrılan RPC'leri kaydeder; her yazma başarılı. */
+function recordingDb(log: string[]) {
+  const client = {
+    from: (table: string) => ({
+      update: (patch: Record<string, unknown>) => ({
+        eq: (_col: string, id: string) => ({
+          select: () => ({
+            single: async () => {
+              log.push(`update:${table}`)
+              return { data: { id, ...patch }, error: null }
+            },
+          }),
+        }),
+      }),
+    }),
+    rpc: async (name: string) => {
+      log.push(`rpc:${name}`)
+      return { data: [{ routine_id: 'r1', done_count: 8 }], error: null }
+    },
+  }
+  return client as unknown as SupabaseClient
+}
+
+test('blok tamamlanınca görev sunucuya ikinci kez yazılmaz, yerelde kapanır, program sayacı tazelenir', async () => {
+  const log: string[] = []
+  usePlanningStore.setState({ timeBlocks: [{ ...block('b1', '09:00', '10:00', 't1'), routine_id: 'r1' }] })
+  useTaskStore.setState({ tasks: [task('t1', 'planned')] })
+  useRoutineStore.setState({ routines: [{ id: 'r1', target_count: 42 } as unknown as Routine], progress: { r1: 7 } })
+
+  await usePlanningStore.getState().setBlockDone(recordingDb(log), 'b1', true)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  // 067 tetikleyicisi görevi sunucuda kapatır; istemci yalnızca bloğu yazar.
+  assert.deepEqual(log, ['update:time_blocks', 'rpc:my_routine_progress'])
+  assert.equal(useTaskStore.getState().tasks[0]?.status, 'done')
+  assert.notEqual(usePlanningStore.getState().timeBlocks[0]?.completed_at, null)
+  assert.equal(useRoutineStore.getState().progress.r1, 8)
 })
