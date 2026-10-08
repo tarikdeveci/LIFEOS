@@ -1,6 +1,5 @@
 -- 069: Rutin, alışkanlık işareti ve hedef değişiklikleri realtime ile öteki cihaza gider.
--- İstemci olay gelince ilgili listeyi yeniden okur; eski satır içeriğine ihtiyaç yok,
--- bu yüzden REPLICA IDENTITY varsayılan kalır (DELETE olayında birincil anahtar gelir).
+-- İstemci olay gelince ilgili listeyi yeniden okur.
 DO $$
 DECLARE
   t TEXT;
@@ -15,3 +14,14 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- İstemci user_id filtresiyle abone olur. Supabase filtreli DELETE olayını ancak
+-- REPLICA IDENTITY FULL ile iletir; yoksa silinen görev, blok, öğün veya sıfıra inen
+-- alışkanlık işareti öteki cihaza hiç ulaşmaz. RLS açık olduğu için olaydaki eski
+-- satır yine yalnızca id taşır, istemci de yalnızca id kullanır.
+ALTER TABLE public.tasks REPLICA IDENTITY FULL;
+ALTER TABLE public.time_blocks REPLICA IDENTITY FULL;
+ALTER TABLE public.meals REPLICA IDENTITY FULL;
+ALTER TABLE public.routines REPLICA IDENTITY FULL;
+ALTER TABLE public.routine_completions REPLICA IDENTITY FULL;
+ALTER TABLE public.goals REPLICA IDENTITY FULL;
