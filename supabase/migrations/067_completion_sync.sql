@@ -18,11 +18,11 @@ BEGIN
   IF NEW.status = 'done' AND OLD.status IS DISTINCT FROM 'done' THEN
     UPDATE time_blocks
     SET completed_at = COALESCE(NEW.completed_at, now())
-    WHERE task_id = NEW.id AND completed_at IS NULL;
+    WHERE task_id = NEW.id AND user_id = NEW.user_id AND completed_at IS NULL;
   ELSIF OLD.status = 'done' AND NEW.status IS DISTINCT FROM 'done' THEN
     UPDATE time_blocks
     SET completed_at = NULL
-    WHERE task_id = NEW.id AND completed_at IS NOT NULL;
+    WHERE task_id = NEW.id AND user_id = NEW.user_id AND completed_at IS NOT NULL;
   END IF;
   RETURN NULL;
 END;
@@ -45,19 +45,23 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  SELECT status INTO v_task_status FROM tasks WHERE id = NEW.task_id;
+  -- time_blocks.task_id sahiplik denetimi yok; başkasının görevine dokunulmaz.
+  SELECT status INTO v_task_status FROM tasks WHERE id = NEW.task_id AND user_id = NEW.user_id;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
 
   IF NEW.completed_at IS NOT NULL AND OLD.completed_at IS NULL THEN
     IF v_task_status IS DISTINCT FROM 'done' THEN
       UPDATE tasks
       SET status = 'done', completed_at = COALESCE(completed_at, NEW.completed_at)
-      WHERE id = NEW.task_id;
+      WHERE id = NEW.task_id AND user_id = NEW.user_id;
     END IF;
   ELSIF NEW.completed_at IS NULL AND OLD.completed_at IS NOT NULL THEN
     IF v_task_status = 'done' THEN
       UPDATE tasks
       SET status = 'planned', completed_at = NULL
-      WHERE id = NEW.task_id;
+      WHERE id = NEW.task_id AND user_id = NEW.user_id;
     END IF;
   END IF;
 
