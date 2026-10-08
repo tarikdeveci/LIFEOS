@@ -597,7 +597,6 @@ export type Database = {
       }
       goals: {
         Row: {
-          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode: string | null
           created_at: string
           daily_cap: number | null
@@ -617,7 +616,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode?: string | null
           created_at?: string
           daily_cap?: number | null
@@ -637,7 +635,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          /** tasks: görev, hours: saat, units: elle kayıt. */
           count_mode?: string | null
           created_at?: string
           daily_cap?: number | null
@@ -1352,10 +1349,10 @@ export type Database = {
           effort_score: number
           end_time: string | null
           ends_on: string | null
-          goal_id: string | null
           estimated_minutes: number | null
           every_n_weeks: number
           friction_score: number
+          goal_id: string | null
           id: string
           is_active: boolean
           is_protected: boolean
@@ -1384,10 +1381,10 @@ export type Database = {
           effort_score?: number
           end_time?: string | null
           ends_on?: string | null
-          goal_id?: string | null
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1416,10 +1413,10 @@ export type Database = {
           effort_score?: number
           end_time?: string | null
           ends_on?: string | null
-          goal_id?: string | null
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1439,7 +1436,15 @@ export type Database = {
           user_id?: string
           value_score?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "routines_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
