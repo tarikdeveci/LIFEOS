@@ -76,6 +76,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   UPDATE tasks SET goal_id = NEW.goal_id
   WHERE routine_id = NEW.id
+    AND user_id = NEW.user_id
     AND status <> 'done'
     AND occurrence_date >= (now() AT TIME ZONE public.user_timezone(NEW.user_id))::date
     AND goal_id IS DISTINCT FROM NEW.goal_id;
