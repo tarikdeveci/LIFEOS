@@ -334,6 +334,7 @@ const translations = {
     plan_ended: 'ended',
     plan_day_not_started: 'Day has not started yet',
     plan_day_over: 'Nothing left on the plan today',
+    plan_day_done: "Today's plan is done",
     plan_jump_to_now: 'Jump to now',
 
     // Auth
@@ -780,7 +781,8 @@ const translations = {
     plan_starts_in: '{d} sonra başlıyor',
     plan_ended: 'bitti',
     plan_day_not_started: 'Gün henüz başlamadı',
-    plan_day_over: 'Bugünün planı tamamlandı',
+    plan_day_over: 'Bugün için blok kalmadı',
+    plan_day_done: 'Bugünün planı tamamlandı',
     plan_jump_to_now: 'Şu ana git',
 
     auth_full_name: 'Ad Soyad',

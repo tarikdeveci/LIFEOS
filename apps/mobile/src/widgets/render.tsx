@@ -97,7 +97,7 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
       ) : (
         <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }} clickAction="OPEN_APP">
           <TextWidget
-            text={state.dayOver ? 'Bugünün planı tamam' : 'Şu an boş zaman'}
+            text={state.dayOver ? 'Bugün blok kalmadı' : 'Şu an boş zaman'}
             style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}
           />
           {next ? (

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { fromDateString, shiftIsoDate, toDateString, weekStart, type BlockType } from '@lifeos/shared'
+import { formatDecimal, fromDateString, shiftIsoDate, toDateString, weekStart, type BlockType } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import { useWeeklyReview } from '@/lib/hooks/useWeeklyReview'
 import { DayBars, MetricCard, TaskList, TypeBreakdown } from '@/components/review/ReviewParts'
@@ -107,9 +107,9 @@ export function WeeklyReview({ userId }: WeeklyReviewProps) {
                   .replace('{kcal}', String(Math.round(cur.avgCalories)))
                   .replace('{target}', data.calorieTarget ? String(data.calorieTarget) : '-')}
                 delta={cur.loggedDays - prev.loggedDays} deltaLabel={vsLast(`${prev.loggedDays}/7`)} />
-              <MetricCard label={t.review_energy} value={cur.avgEnergy == null ? '-' : `${cur.avgEnergy.toFixed(1)}/5`}
+              <MetricCard label={t.review_energy} value={cur.avgEnergy == null ? '-' : `${formatDecimal(cur.avgEnergy, lang)}/5`}
                 delta={diff(cur.avgEnergy, prev.avgEnergy)}
-                deltaLabel={prev.avgEnergy == null ? t.review_no_previous : vsLast(prev.avgEnergy.toFixed(1))} />
+                deltaLabel={prev.avgEnergy == null ? t.review_no_previous : vsLast(formatDecimal(prev.avgEnergy, lang))} />
             </div>
 
             {highlights.length > 0 && (

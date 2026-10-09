@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { View, Text, TouchableOpacity, AppState, Alert } from 'react-native'
 import {
-  DEFAULT_POMODORO,
   focusMinutesByBlock,
+  focusWorkMinutes,
   fromDateString,
   minutesBetween,
   newFocusSessionId,
@@ -89,7 +89,7 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
   }, [active?.id, workStartedAt])
 
   function handleStart(block: TimeBlock) {
-    start(newFocusSessionId(), userId, block, Date.now())
+    start(newFocusSessionId(), userId, block, Date.now(), focusWorkMinutes(block))
   }
 
   function handleFinish() {
@@ -117,7 +117,7 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
   function handleAgain() {
     if (!active) return
     finish(Date.now())
-    start(newFocusSessionId(), userId, { id: active.blockId, task_id: active.taskId, block_type: active.taskId ? 'task' : 'focus', label: active.label }, Date.now())
+    start(newFocusSessionId(), userId, { id: active.blockId, task_id: active.taskId, block_type: active.taskId ? 'task' : 'focus', label: active.label }, Date.now(), focusWorkMinutes(focusBlock))
   }
 
   const blocked = pending !== null || saving
@@ -169,7 +169,7 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
   return frame(
     <>
       <Button
-        label={`▶  ${t.focus_start.replace('{n}', String(DEFAULT_POMODORO.workMinutes))}`}
+        label={`▶  ${t.focus_start.replace('{n}', String(focusWorkMinutes(activeBlock)))}`}
         onPress={() => handleStart(activeBlock)}
         disabled={blocked}
         fullWidth

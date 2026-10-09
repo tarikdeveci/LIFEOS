@@ -1,6 +1,26 @@
 import type { FocusSession, PomodoroConfig, PomodoroState } from '../types/focus'
+import type { TimeBlock } from '../types/planning'
+import { blockTimingForDate } from './schedule'
 
 export const DEFAULT_POMODORO: Readonly<PomodoroConfig> = { workMinutes: 25, breakMinutes: 5 }
+
+/** Bloğun bitimine bundan az kalsa da tur en az bu kadar sürer. */
+export const MIN_FOCUS_MINUTES = 5
+
+/**
+ * Tur süresi: süren blokta bloğun bitişini aşmaz (en az MIN_FOCUS_MINUTES), blok
+ * sürmüyorsa varsayılan. 15 dakikası kalan blokta 25 dakikalık tur başlıyordu.
+ */
+export function focusWorkMinutes(
+  block: Pick<TimeBlock, 'start_time' | 'end_time' | 'date'> | null | undefined,
+  now: Date = new Date(),
+): number {
+  const base = DEFAULT_POMODORO.workMinutes
+  if (!block) return base
+  const timing = blockTimingForDate(block, now)
+  if (timing.phase !== 'active') return base
+  return Math.min(base, Math.max(MIN_FOCUS_MINUTES, timing.remainingMinutes))
+}
 
 /**
  * Odak oturumu kimliği (UUID v4 biçimi). Güvenlik anahtarı değil, tekrar denemede aynı

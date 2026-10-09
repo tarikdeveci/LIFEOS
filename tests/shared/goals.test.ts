@@ -207,7 +207,7 @@ function stepClient() {
         }),
       }),
       delete: () => ({
-        eq: async (_column: string, id: string) => { calls.deleted.push(id); return { error: null } },
+        eq: async (_column: string, id: string) => { if (table === 'tasks') calls.deleted.push(id); return { error: null } },
       }),
     }),
   }
