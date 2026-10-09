@@ -188,6 +188,7 @@ const translations = {
     goal_unit_custom: "Unit (km, pages, books)",
     goal_steps: "Steps",
     goal_steps_empty: "No steps yet. Add one, then tick it off to move the bar.",
+    goal_steps_empty_units: "No steps yet. This goal fills from logged progress; steps only break the work down.",
     goal_step_placeholder: "Add a step",
     goal_step_error: "Could not save the step",
     goals_error: "Could not save the goal",
@@ -333,6 +334,7 @@ const translations = {
     plan_ended: 'ended',
     plan_day_not_started: 'Day has not started yet',
     plan_day_over: 'Nothing left on the plan today',
+    plan_day_done: "Today's plan is done",
     plan_jump_to_now: 'Jump to now',
 
     // Auth
@@ -635,6 +637,7 @@ const translations = {
     goal_unit_custom: "Birim (km, sayfa, kitap)",
     goal_steps: "Adımlar",
     goal_steps_empty: "Henüz adım yok. Bir adım ekle, tikledikçe çubuk dolar.",
+    goal_steps_empty_units: "Henüz adım yok. Bu hedefte çubuk kayıtlarla dolar, adımlar işi bölmek için.",
     goal_step_placeholder: "Adım ekle",
     goal_step_error: "Adım kaydedilemedi",
     goals_error: "Hedef kaydedilemedi",
@@ -778,7 +781,8 @@ const translations = {
     plan_starts_in: '{d} sonra başlıyor',
     plan_ended: 'bitti',
     plan_day_not_started: 'Gün henüz başlamadı',
-    plan_day_over: 'Bugünün planı tamamlandı',
+    plan_day_over: 'Bugün için blok kalmadı',
+    plan_day_done: 'Bugünün planı tamamlandı',
     plan_jump_to_now: 'Şu ana git',
 
     auth_full_name: 'Ad Soyad',

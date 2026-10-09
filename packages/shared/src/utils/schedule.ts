@@ -149,6 +149,8 @@ export interface DayPosition {
   beforeFirstBlock: boolean
   /** Günün tüm blokları bitti mi */
   afterLastBlock: boolean
+  /** Tüm bloklar tamamlandı olarak işaretli mi (vakti geçip yapılmayan varsa false) */
+  allDone: boolean
 }
 
 /**
@@ -200,5 +202,6 @@ export function getDayPosition(blocks: TimeBlock[], now: Date = new Date()): Day
     nowMinute,
     beforeFirstBlock: blocks.length > 0 && pastCount === 0 && activeBlock === null,
     afterLastBlock: blocks.length > 0 && pastCount === blocks.length,
+    allDone: blocks.length > 0 && blocks.every((b) => b.completed_at),
   }
 }

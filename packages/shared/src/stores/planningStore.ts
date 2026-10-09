@@ -19,7 +19,7 @@ import { todayDate } from '../utils/date'
 import type { Interval, Placement, ShiftResult } from '../utils/dayPlan'
 import { busyToIntervals, syncBlocksWithTasks } from '../utils/dayPlan'
 import { useRoutineStore } from './routineStore'
-import { useTaskStore } from './taskStore'
+import { onTaskDeleted, useTaskStore } from './taskStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -279,6 +279,18 @@ useTaskStore.subscribe((taskState, prevTaskState) => {
   const { timeBlocks, todayBlocks } = usePlanningStore.getState()
   const nextBlocks = sync(timeBlocks)
   const nextToday = sync(todayBlocks)
+  if (nextBlocks !== timeBlocks || nextToday !== todayBlocks) {
+    usePlanningStore.setState({ timeBlocks: nextBlocks, todayBlocks: nextToday })
+  }
+})
+
+// Silinen görevin blokları sunucuda da siliniyor (deleteTask); ekrandan hemen kalksın.
+onTaskDeleted((taskId) => {
+  const { timeBlocks, todayBlocks } = usePlanningStore.getState()
+  const drop = (blocks: TimeBlock[]) =>
+    blocks.some((b) => b.task_id === taskId) ? blocks.filter((b) => b.task_id !== taskId) : blocks
+  const nextBlocks = drop(timeBlocks)
+  const nextToday = drop(todayBlocks)
   if (nextBlocks !== timeBlocks || nextToday !== todayBlocks) {
     usePlanningStore.setState({ timeBlocks: nextBlocks, todayBlocks: nextToday })
   }

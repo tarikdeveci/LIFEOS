@@ -94,8 +94,9 @@ export function DayBlockList({
   const reportAnchor = onNowAnchorLayout ? track(anchorY) : undefined
 
   const timings = blocks.map((block) => blockTiming(block, isToday ? nowMinute : -1))
-  const activeIndex = isToday ? timings.findIndex((timing) => timing.phase === 'active') : -1
-  const nextIndex = isToday ? timings.findIndex((timing) => timing.phase === 'upcoming') : -1
+  // Tamamlanan blok "şu an" ya da "sırada" sayılmaz; sıradaki etiketi bir sonraki açık bloğa geçer.
+  const activeIndex = isToday ? timings.findIndex((timing, i) => timing.phase === 'active' && !blocks[i]?.completed_at) : -1
+  const nextIndex = isToday ? timings.findIndex((timing, i) => timing.phase === 'upcoming' && !blocks[i]?.completed_at) : -1
 
   const allDay = events.filter((e) => e.isAllDay)
   const timedEvents = events.filter((e) => !e.isAllDay)

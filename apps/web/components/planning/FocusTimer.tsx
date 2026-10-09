@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { TimeBlock } from '@lifeos/shared'
 import {
-  DEFAULT_POMODORO,
   focusMinutesByBlock,
+  focusWorkMinutes,
   minutesBetween,
   newFocusSessionId,
   persistFocus,
@@ -95,7 +95,7 @@ export function FocusTimer({ userId }: FocusTimerProps) {
 
   const again = () => {
     finish(Date.now())
-    start(newFocusSessionId(), userId, { id: active.blockId, task_id: active.taskId, block_type: active.taskId ? 'task' : 'focus', label: active.label }, Date.now())
+    start(newFocusSessionId(), userId, { id: active.blockId, task_id: active.taskId, block_type: active.taskId ? 'task' : 'focus', label: active.label }, Date.now(), focusWorkMinutes(block))
   }
 
   return (
@@ -155,11 +155,11 @@ export function FocusBlockAction({ block, userId, onStarted }: FocusBlockActionP
       {isToday && !block.completed_at && (
         <button
           disabled={busy}
-          onClick={() => { start(newFocusSessionId(), userId, block, Date.now()); onStarted() }}
+          onClick={() => { start(newFocusSessionId(), userId, block, Date.now(), focusWorkMinutes(block)); onStarted() }}
           className="w-full rounded-xl bg-accent/10 py-2.5 text-sm font-medium text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
           title={busy ? t.focus_busy : undefined}
         >
-          ▶ {t.focus_start.replace('{n}', String(DEFAULT_POMODORO.workMinutes))}
+          ▶ {t.focus_start.replace('{n}', String(focusWorkMinutes(block)))}
         </button>
       )}
     </div>

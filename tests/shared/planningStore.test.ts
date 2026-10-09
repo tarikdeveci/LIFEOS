@@ -145,3 +145,23 @@ test('başka güne bakarken görev kapanınca bugünün aynasındaki blok da kap
   useTaskStore.setState({ tasks: [{ ...task('t1', 'done'), completed_at: '2026-10-08T10:00Z' }] })
   assert.equal(usePlanningStore.getState().todayBlocks[0]?.completed_at, '2026-10-08T10:00Z')
 })
+
+test('görev silinince bağlı blokları sunucuda ve ekranda (bugünün aynası dahil) silinir', async () => {
+  const today = todayDate()
+  const linked = { ...block('b1', '09:00', '10:00', 't1'), date: today }
+  const other = { ...block('b2', '11:00', '12:00', 't2'), date: today }
+  usePlanningStore.setState({ date: today, timeBlocks: [linked, other], todayBlocks: [linked, other] })
+  useTaskStore.setState({ tasks: [task('t1'), task('t2')] })
+  const deletes: string[] = []
+  const db = {
+    from: (table: string) => ({
+      delete: () => ({
+        eq: async (col: string, id: string) => { deletes.push(`${table}.${col}=${id}`); return { error: null } },
+      }),
+    }),
+  } as unknown as SupabaseClient
+  await useTaskStore.getState().deleteTask(db, 't1')
+  assert.deepEqual(deletes, ['time_blocks.task_id=t1', 'tasks.id=t1'])
+  assert.deepEqual(usePlanningStore.getState().timeBlocks.map((b) => b.id), ['b2'])
+  assert.deepEqual(usePlanningStore.getState().todayBlocks.map((b) => b.id), ['b2'])
+})

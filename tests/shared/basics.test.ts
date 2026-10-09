@@ -45,3 +45,14 @@ test('tamamlanan blok şu an ya da sıradaki sayılmaz', () => {
   const allDone = getDayPosition([dayBlock('a', '10:00', '11:00', done), dayBlock('b', '12:00', '13:00', done)], now)
   assert.equal(allDone.afterLastBlock, true)
 })
+
+test('allDone yalnızca her blok işaretliyse doğru; yapılmamış geçmiş blok varken gün sadece bitti', () => {
+  const now = new Date(2026, 9, 1, 16, 0)
+  const done = '2026-10-01T10:05:00Z'
+  const missed = getDayPosition([dayBlock('a', '10:00', '11:00'), dayBlock('b', '14:00', '15:00', done)], now)
+  assert.equal(missed.afterLastBlock, true)
+  assert.equal(missed.allDone, false)
+  const all = getDayPosition([dayBlock('a', '10:00', '11:00', done), dayBlock('b', '17:00', '18:00', done)], now)
+  assert.equal(all.afterLastBlock, true)
+  assert.equal(all.allDone, true)
+})

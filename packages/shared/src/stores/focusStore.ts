@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createFocusSession, getFocusSessionsBetween } from '../supabase/focus'
 import type { CreateFocusSessionInput, FocusSession, PomodoroState } from '../types/focus'
-import { advancePomodoro, completedFocusWork, startPomodoro, stopPomodoro } from '../utils/focus'
+import { DEFAULT_POMODORO, advancePomodoro, completedFocusWork, startPomodoro, stopPomodoro } from '../utils/focus'
 
 interface FocusBlock {
   id: string
@@ -36,7 +36,8 @@ interface FocusStore {
   loadError: boolean
   saveError: boolean
   loadRequest: number
-  start: (id: string, userId: string, block: FocusBlock, now: number) => void
+  /** `workMinutes` verilmezse varsayılan tur süresi; bkz. `focusWorkMinutes`. */
+  start: (id: string, userId: string, block: FocusBlock, now: number, workMinutes?: number) => void
   tick: (now: number) => void
   finish: (now: number) => void
   close: () => void
@@ -71,14 +72,14 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     // Uçuştaki yüklemenin sonucu yok sayılsın.
     loadRequest: state.loadRequest + 1,
   })),
-  start: (id, userId, block, now) => {
+  start: (id, userId, block, now, workMinutes = DEFAULT_POMODORO.workMinutes) => {
     const { active, pending, saving } = get()
     if (pending || saving || (active && active.timer.phase !== 'ready' && active.timer.phase !== 'stopped')) return
     set({
       active: {
         id, userId, blockId: block.id,
         taskId: block.block_type === 'task' ? block.task_id : null,
-        label: block.label ?? '', timer: startPomodoro(now),
+        label: block.label ?? '', timer: startPomodoro(now, { ...DEFAULT_POMODORO, workMinutes }),
       }, saveError: false,
     })
   },

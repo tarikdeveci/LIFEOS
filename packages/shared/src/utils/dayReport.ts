@@ -148,6 +148,11 @@ export function formatNumber(value: number, lang: Lang): string {
   return new Intl.NumberFormat(localeOf(lang)).format(Math.round(value))
 }
 
+/** Tek ondalıklı sayı, dilin ayırıcısıyla: tr '4,5', en '4.5'. */
+export function formatDecimal(value: number, lang: Lang): string {
+  return new Intl.NumberFormat(localeOf(lang), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
+}
+
 /** '2026-10-05' → '5 Ekim Pazartesi' */
 export function formatDay(date: string, lang: Lang, short = false): string {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number]

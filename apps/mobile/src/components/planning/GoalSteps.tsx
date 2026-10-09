@@ -46,7 +46,7 @@ export function GoalSteps({ goal, userId }: GoalStepsProps) {
       {state.error && <Text accessibilityRole="alert" style={{ color: palette.danger, fontSize: fontSize.xs }}>{t.goal_step_error}</Text>}
       {state.open && (
         <View style={{ gap: spacing[2] }}>
-          {steps.length === 0 && <Text style={{ color: colors.textMuted, fontSize: fontSize.xs }}>{t.goal_steps_empty}</Text>}
+          {steps.length === 0 && <Text style={{ color: colors.textMuted, fontSize: fontSize.xs }}>{goal.count_mode === 'units' ? t.goal_steps_empty_units : t.goal_steps_empty}</Text>}
           {steps.map((step) => {
             const done = step.status === 'done'
             return (

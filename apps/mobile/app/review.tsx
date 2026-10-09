@@ -8,7 +8,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { fontSize, fontWeight, spacing, radius, palette } from '@/src/theme/tokens'
-import { shiftIsoDate, toDateString, useWeeklyReview, weekStart, type BlockType, type WeekReview } from '@lifeos/shared'
+import { formatDecimal, shiftIsoDate, toDateString, useWeeklyReview, weekStart, type BlockType, type WeekReview } from '@lifeos/shared'
 import type { Translations } from '@/src/i18n'
 
 const BAR_HEIGHT = 48
@@ -359,10 +359,10 @@ function ReviewScreen() {
                   />
                   <MetricCard
                     label={t.review_energy}
-                    value={cur.avgEnergy == null ? '-' : `${cur.avgEnergy.toFixed(1)}/5`}
+                    value={cur.avgEnergy == null ? '-' : `${formatDecimal(cur.avgEnergy, lang)}/5`}
                     delta={diff(cur.avgEnergy, prev.avgEnergy)}
-                    formatDelta={(n) => n.toFixed(1)}
-                    deltaLabel={prev.avgEnergy == null ? t.review_no_previous : vsLast(prev.avgEnergy.toFixed(1))}
+                    formatDelta={(n) => formatDecimal(n, lang)}
+                    deltaLabel={prev.avgEnergy == null ? t.review_no_previous : vsLast(formatDecimal(prev.avgEnergy, lang))}
                     trendColor={palette.success}
                   />
                 </View>
