@@ -234,7 +234,7 @@ function GoalRow({ userId, goal, pct, label, parentTitle, steps, editing, onTogg
       )}
       {open && (
         <div className="mt-1.5 space-y-1.5 rounded-xl bg-background p-2">
-          {steps.length === 0 && <p className="text-[10px] text-muted">{t.goal_steps_empty}</p>}
+          {steps.length === 0 && <p className="text-[10px] text-muted">{goal.count_mode === 'units' ? t.goal_steps_empty_units : t.goal_steps_empty}</p>}
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {steps.map((step) => (
               <label key={step.id} className="flex cursor-pointer items-start gap-2 text-[11px]">
