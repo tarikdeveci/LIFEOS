@@ -347,6 +347,10 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
         // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
         keyboardShouldPersistTaps="handled"
+        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
+        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
