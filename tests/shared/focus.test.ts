@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
-  advancePomodoro, completedFocusWork, focusMinutesByBlock, pomodoroDeadline,
+  advancePomodoro, completedFocusWork, focusMinutesByBlock, focusWorkMinutes, pomodoroDeadline,
   remainingFocusSeconds, startPomodoro, stopPomodoro,
 } from '../../packages/shared/src/utils/focus.ts'
+import { formatDecimal } from '../../packages/shared/src/utils/dayReport.ts'
 
 const start = Date.parse('2026-09-30T20:50:00+03:00')
 
@@ -68,4 +69,21 @@ test('block totals include repeat sessions and ignore deleted block links', () =
     { block_id: 'a', minutes: 7 }, { block_id: null, minutes: 10 },
   ]), new Map([['a', 32], ['b', 3]]))
   assert.deepEqual(focusMinutesByBlock([]), new Map())
+})
+
+test('tur süresi süren bloğun bitişini aşmaz, en az 5 dk; blok sürmüyorsa 25 dk', () => {
+  const now = new Date(2026, 9, 9, 13, 15)
+  const block = (start: string, end: string, date = '2026-10-09') => ({ start_time: start, end_time: end, date })
+  assert.equal(focusWorkMinutes(block('13:00', '13:30'), now), 15)
+  assert.equal(focusWorkMinutes(block('13:00', '15:00'), now), 25)
+  assert.equal(focusWorkMinutes(block('13:00', '13:17'), now), 5)
+  assert.equal(focusWorkMinutes(block('14:00', '14:30'), now), 25)
+  assert.equal(focusWorkMinutes(block('13:00', '13:30', '2026-10-10'), now), 25)
+  assert.equal(focusWorkMinutes(null, now), 25)
+})
+
+test('ondalık sayı dilin ayırıcısıyla yazılır', () => {
+  assert.equal(formatDecimal(5, 'tr'), '5,0')
+  assert.equal(formatDecimal(4.25, 'en'), '4.3')
+  assert.equal(formatDecimal(0, 'tr'), '0,0')
 })

@@ -94,7 +94,7 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
         </div>
       )}
 
-      <RoutineFormModal open={formOpen} routine={editing}
+      <RoutineFormModal userId={userId} open={formOpen} routine={editing}
         onClose={() => setFormOpen(false)}
         onSave={handleSave}
         onDelete={editing ? handleDelete : undefined} />

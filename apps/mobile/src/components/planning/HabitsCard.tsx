@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
-import { habitDoneDays, habitWeekProgress, todayDate, useRoutineStore } from '@lifeos/shared'
+import { habitDoneDays, habitWeekProgress, isRoutineActiveOn, todayDate, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { RoutineSheet } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -19,15 +19,17 @@ interface Props { userId: string }
 export function HabitsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { routines, completions, setHabitCount, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
+  const { routines, completions, progress, refreshProgress, setHabitCount, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
   const [editing, setEditing] = useState<Routine | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const today = todayDate()
-  const habits = routines.filter((r) => r.kind === 'habit' && r.is_active)
+  const habits = routines.filter((r) => r.kind === 'habit' && isRoutineActiveOn(r, today))
 
   const write = async (routineId: string, count: number) => {
-    try { await setHabitCount(supabase, userId, routineId, today, count) }
-    catch { Alert.alert(t.routines_error) }
+    try {
+      await setHabitCount(supabase, userId, routineId, today, count)
+      if (habits.some((h) => h.id === routineId && h.target_count)) void refreshProgress(supabase)
+    } catch { Alert.alert(t.routines_error) }
   }
 
   const openSheet = (routine: Routine | null) => { setEditing(routine); setSheetOpen(true) }
@@ -104,16 +106,23 @@ export function HabitsCard({ userId }: Props) {
                   <Ionicons name={doneToday ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={doneToday ? palette.success : colors.textSubtle} />
                 )}
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary, maxWidth: 160 }} numberOfLines={1}>{h.title}</Text>
-                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: doneToday || week.met ? palette.success : colors.textSubtle, fontVariant: ['tabular-nums'] }}>
-                  {counter}
-                </Text>
+                {!h.is_untracked && (
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: doneToday || week.met ? palette.success : colors.textSubtle, fontVariant: ['tabular-nums'] }}>
+                    {counter}
+                  </Text>
+                )}
+                {!h.is_untracked && h.target_count != null && progress[h.id] !== undefined && (
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>
+                    {`${Math.min(progress[h.id] ?? 0, h.target_count)}/${h.target_count}`}
+                  </Text>
+                )}
               </TouchableOpacity>
             )
           })}
         </ScrollView>
       )}
 
-      <RoutineSheet visible={sheetOpen} routine={editing} defaultKind="habit"
+      <RoutineSheet userId={userId} visible={sheetOpen} routine={editing} defaultKind="habit"
         onClose={() => setSheetOpen(false)}
         onSave={handleSave}
         onDelete={editing ? () => removeRoutine(supabase, editing.id) : undefined} />

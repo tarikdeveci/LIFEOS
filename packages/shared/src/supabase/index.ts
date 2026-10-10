@@ -13,5 +13,8 @@ export * from './events'
 export * from './notifications'
 export * from './integrations'
 export * from './quickTask'
+export * from './profile'
+export * from './lifeSetup'
 
 export * from './focus'
+export * from './reports'

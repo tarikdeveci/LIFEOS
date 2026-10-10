@@ -1,13 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CreateGoalInput, Goal, GoalTaskLike, UpdateGoalInput } from '../types/goal'
+import type { CreateGoalEntryInput, CreateGoalInput, Goal, GoalEntry, GoalTaskLike, HabitGoalDay, UpdateGoalInput } from '../types/goal'
 import { fromDateString, shiftIsoDate } from '../utils/date'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Supabase = SupabaseClient<any>
+type Supabase = SupabaseClient
 
-const GOAL_TASK_COLUMNS = 'id, goal_id, status, tags, estimated_minutes, scheduled_date, completed_at'
+const GOAL_TASK_COLUMNS = 'id, title, goal_id, status, tags, estimated_minutes, scheduled_date, completed_at'
 
-export type GoalTask = GoalTaskLike & { id: string }
+/** Başlık, hedefin adım listesi için. */
+export type GoalTask = GoalTaskLike & { id: string; title: string }
 
 /** period_start >= since olan hedefler (değerlendirme için geçen çeyrekten başlatın). */
 export async function getGoals(supabase: Supabase, userId: string, since: string): Promise<Goal[]> {
@@ -45,6 +45,8 @@ export async function getGoalTasks(
       `and(status.eq.done,scheduled_date.gte.${from},scheduled_date.lte.${to})`,
       `and(status.eq.done,scheduled_date.is.null,completed_at.gte."${doneFrom}",completed_at.lt."${doneTo}")`,
     ].join(','))
+    // Adım listesi eklenme sırasıyla dursun: tik atınca satırlar yer değiştirmesin.
+    .order('created_at')
 
   if (error) throw error
   return data as unknown as GoalTask[]
@@ -87,4 +89,53 @@ export async function updateGoal(supabase: Supabase, goalId: string, input: Upda
 export async function deleteGoal(supabase: Supabase, goalId: string): Promise<void> {
   const { error } = await supabase.from('goals').delete().eq('id', goalId)
   if (error) throw error
+}
+
+export async function getGoalEntries(
+  supabase: Supabase, userId: string, since: string, until: string,
+): Promise<GoalEntry[]> {
+  const { data, error } = await supabase.from('goal_entries').select('*')
+    .eq('user_id', userId).gte('entry_date', since).lte('entry_date', until)
+    .order('entry_date', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw error
+  if (!data) throw new Error('goal entries returned no data')
+  return data as GoalEntry[]
+}
+
+export async function createGoalEntry(
+  supabase: Supabase, userId: string, input: CreateGoalEntryInput,
+): Promise<GoalEntry> {
+  const { data, error } = await supabase.from('goal_entries')
+    .insert({ ...input, user_id: userId }).select().single()
+  if (error) throw error
+  if (!data) throw new Error('goal entry insert returned no row')
+  return data as GoalEntry
+}
+
+export async function deleteGoalEntry(supabase: Supabase, entryId: string): Promise<void> {
+  const { error } = await supabase.from('goal_entries').delete().eq('id', entryId)
+  if (error) throw error
+}
+
+/** Hedefe bağlı alışkanlıkların [since, until] içindeki tamamlama günleri. */
+export async function getHabitGoalDays(
+  supabase: Supabase, userId: string, since: string, until: string,
+): Promise<HabitGoalDay[]> {
+  const { data: routines, error } = await supabase.from('routines').select('id, goal_id, times_per_day')
+    .eq('user_id', userId).eq('kind', 'habit').not('goal_id', 'is', null)
+  if (error) throw error
+  const linked = (routines ?? []) as { id: string; goal_id: string; times_per_day: number | null }[]
+  if (linked.length === 0) return []
+  const byId = new Map(linked.map((r) => [r.id, r]))
+  const { data, error: completionsError } = await supabase.from('routine_completions')
+    .select('routine_id, completed_on, count')
+    .in('routine_id', [...byId.keys()]).gte('completed_on', since).lte('completed_on', until)
+  if (completionsError) throw completionsError
+  return ((data ?? []) as { routine_id: string; completed_on: string; count: number }[]).flatMap((c) => {
+    const routine = byId.get(c.routine_id)
+    return routine ? [{
+      routine_id: c.routine_id, goal_id: routine.goal_id, user_id: userId,
+      completed_on: c.completed_on, count: c.count, times_per_day: routine.times_per_day,
+    }] : []
+  })
 }

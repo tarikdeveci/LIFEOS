@@ -111,7 +111,7 @@ struct SmallHomeView: View {
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
             } else {
-                Text(r.stale ? "Plan yok" : (r.dayOver ? "Plan tamam" : "Boş zaman"))
+                Text(r.stale ? "Plan yok" : (r.dayOver ? "Blok kalmadı" : "Boş zaman"))
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
                 if let next = r.next {
@@ -159,7 +159,7 @@ struct MediumHomeView: View {
                         .foregroundColor(color)
                     ProgressBar(progress: r.progress, color: color)
                 } else {
-                    Text(r.stale ? "Bugün için plan yok" : (r.dayOver ? "Bugünün planı tamam" : "Şu an boş zaman"))
+                    Text(r.stale ? "Bugün için plan yok" : (r.dayOver ? "Bugün blok kalmadı" : "Şu an boş zaman"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
                 }
@@ -250,7 +250,7 @@ struct AccessoryRectView: View {
                 Text("\(next.startTime) · \(formatRemaining(r.minutesUntilStart)) sonra")
                     .font(.system(size: 12)).foregroundColor(.secondary)
             } else {
-                Text(r.stale ? "Plan yok" : (r.dayOver ? "Plan tamam" : "Boş zaman"))
+                Text(r.stale ? "Plan yok" : (r.dayOver ? "Blok kalmadı" : "Boş zaman"))
                     .font(.system(size: 14, weight: .semibold))
                 Text("\(s.pendingTasks) görev bekliyor")
                     .font(.system(size: 12)).foregroundColor(.secondary)

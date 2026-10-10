@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../lib/supabase'
 
 // Foreground notification handler
@@ -44,6 +45,36 @@ export async function syncTimezone(userId: string): Promise<void> {
     .from('notification_preferences')
     .update({ timezone: tz })
     .eq('user_id', userId)
+}
+
+/** Hesabı bu süreden yeni olan kullanıcı "yeni kullanıcı" sayılır. */
+const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Gün raporu bildirimi (report_enabled) kolonda varsayılan FALSE gelir. Yalnızca YENİ
+ * kullanıcıda (hesap son 24 saatte açıldı) bu sürümle bir kez true yapılır; mevcut
+ * kullanıcının akşam bildirimi değişmez, isterse ayarlardan açar. Varsayılan DB'de TRUE
+ * yapılmadı: rapor ekranı olmayan eski sürümle kaydolan kullanıcıya da giderdi.
+ * Bayrak yazma başarılı olunca konur; kullanıcı sonra kapatırsa tekrar açılmaz. Kolon yoksa
+ * (42703, migration canlıda değil) sessizce geçilir, bir sonraki açılışta denenir.
+ */
+export async function enableReportOnce(userId: string, accountCreatedAt: string): Promise<void> {
+  const flagKey = `report_enabled_default_v1:${userId}`
+  try {
+    if (await AsyncStorage.getItem(flagKey)) return
+    const created = Date.parse(accountCreatedAt)
+    if (Number.isNaN(created) || Date.now() - created > NEW_ACCOUNT_MS) {
+      await AsyncStorage.setItem(flagKey, '1')
+      return
+    }
+    const { error } = await supabase
+      .from('notification_preferences')
+      .upsert({ user_id: userId, report_enabled: true }, { onConflict: 'user_id' })
+    if (error) return
+    await AsyncStorage.setItem(flagKey, '1')
+  } catch {
+    // Bildirim varsayılanı ürünü bloklamaz; sonraki açılışta tekrar denenir.
+  }
 }
 
 /**
@@ -119,6 +150,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     if (cleanupError) console.warn('Eski push token silinemedi:', cleanupError.message)
 
     await syncTimezone(user.id)
+    await enableReportOnce(user.id, user.created_at)
   }
 
   // Android kanal ayarla
@@ -171,6 +203,54 @@ export async function unregisterPushTokenAsync(): Promise<void> {
 }
 
 /**
+ * Bildirime dokunma yönlendirmesi. Soğuk açılışta (uygulama kapalıyken dokunuş) yanıt
+ * listener'a güvenilir ulaşmaz ve auth/router hazır değildir: hazır olana kadar listener
+ * yanıtları yok sayar, ilk yanıt `handleInitialNotification` ile okunur. Aynı yanıt iki
+ * kez işlenmez (kimliği saklanır).
+ */
+let navigationReady = false
+const handledResponses = new Set<string>()
+
+function responseKey(response: Notifications.NotificationResponse): string {
+  return `${response.notification.request.identifier}:${response.actionIdentifier}:${response.notification.date}`
+}
+
+function routeResponse(response: Notifications.NotificationResponse, navigate: (path: string) => void) {
+  const key = responseKey(response)
+  if (handledResponses.has(key)) return
+  handledResponses.add(key)
+
+  const data = (response.notification.request.content.data ?? {}) as Record<string, string>
+
+  if (data['type'] === 'task_reminder' && data['task_id']) {
+    navigate(`/task/${data['task_id']}`)
+  } else if (data['type'] === 'block_reminder') {
+    // Yaklaşan blok bugünün planında.
+    navigate('/(tabs)/planning')
+  } else if (data['type'] === 'morning_briefing') {
+    navigate('/(tabs)/today')
+  } else if (data['type'] === 'evening_nutrition') {
+    navigate('/(tabs)/nutrition')
+  } else if (data['type'] === 'daily_digest_morning') {
+    // Sabah bildirimi planlama ritüelini açar (ritüel o gün bittiyse sadece sekme açılır).
+    navigate('/(tabs)/planning?ritual=1')
+  } else if (data['type'] === 'daily_digest_midday') {
+    navigate('/(tabs)/today')
+  } else if (data['type'] === 'daily_digest_evening') {
+    // Rapor bildirimi report_date taşır; eski kalori özeti taşımaz ve beslenmeye açılır.
+    const reportDate = data['report_date']
+    navigate(
+      typeof reportDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reportDate)
+        ? `/report?date=${reportDate}`
+        : '/(tabs)/nutrition',
+    )
+  } else if (data['type'] === 'daily_digest_weight') {
+    // Kilo Takibi kartı profil ekranında.
+    navigate('/(tabs)/profile')
+  }
+}
+
+/**
  * Notification tıklama listener'ı
  * Expo Router ile ilgili sayfaya navigate eder
  */
@@ -178,24 +258,21 @@ export function addNotificationResponseListener(
   navigate: (path: string) => void,
 ) {
   return Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data as Record<string, string>
-
-    if (data['type'] === 'task_reminder' && data['task_id']) {
-      navigate(`/task/${data['task_id']}`)
-    } else if (data['type'] === 'morning_briefing') {
-      navigate('/(tabs)/today')
-    } else if (data['type'] === 'evening_nutrition') {
-      navigate('/(tabs)/nutrition')
-    } else if (data['type'] === 'daily_digest_morning') {
-      // Sabah bildirimi planlama ritüelini açar (ritüel o gün bittiyse sadece sekme açılır).
-      navigate('/(tabs)/planning?ritual=1')
-    } else if (data['type'] === 'daily_digest_midday') {
-      navigate('/(tabs)/today')
-    } else if (data['type'] === 'daily_digest_evening') {
-      navigate('/(tabs)/nutrition')
-    } else if (data['type'] === 'daily_digest_weight') {
-      // Kilo Takibi kartı profil ekranında.
-      navigate('/(tabs)/profile')
-    }
+    if (!navigationReady) return
+    routeResponse(response, navigate)
   })
+}
+
+/**
+ * Auth ve router hazır olduktan sonra çağrılır: listener'ı açar ve uygulama kapalıyken
+ * dokunulan bildirim varsa onu yönlendirir. Tekrar çağrılması zararsızdır.
+ */
+export async function handleInitialNotification(navigate: (path: string) => void): Promise<void> {
+  navigationReady = true
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync()
+    if (response) routeResponse(response, navigate)
+  } catch (err) {
+    console.warn('Son bildirim okunamadı:', err)
+  }
 }

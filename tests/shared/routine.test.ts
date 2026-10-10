@@ -2,9 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  collapseRoutineTasks,
   habitDoneDays,
   habitWeekProgress,
   habitWeekStreak,
+  isRoutineActiveOn,
   isRoutineDay,
   mondayOf,
   routineOccurrenceDates,
@@ -97,4 +99,30 @@ test('üç kez devreden sıradan görevde soru sorulur, rutin örneğinde sorulm
   assert.equal(shouldAskStillImportant({ carry_count: 3, routine_id: null }), true)
   assert.equal(shouldAskStillImportant({ carry_count: 2, routine_id: null }), false)
   assert.equal(shouldAskStillImportant({ carry_count: 5, routine_id: 'r1' }), false)
+})
+
+test('rutinin açık örneklerinden yalnızca en yakını kalır, tamamlananlar ve sıradan görevler durur', () => {
+  const row = (id: string, routine_id: string | null, occurrence_date: string | null, status = 'planned') =>
+    ({ id, routine_id, occurrence_date, status })
+  const { tasks, more } = collapseRoutineTasks([
+    row('a3', 'r1', '2026-10-08'),
+    row('x', null, null),
+    row('a1', 'r1', '2026-10-06'),
+    row('a0', 'r1', '2026-10-05', 'done'),
+    row('a2', 'r1', '2026-10-07'),
+    row('b1', 'r2', '2026-10-06'),
+  ])
+  assert.deepEqual(tasks.map((t) => t.id), ['x', 'a1', 'a0', 'b1'])
+  assert.equal(more.get('a1'), 2)
+  assert.equal(more.has('b1'), false)
+})
+
+test('isRoutineActiveOn: etkin, başlamış ve bitmemiş rutin geçerli', () => {
+  const habit = { is_active: true, starts_on: '2026-10-05', ends_on: '2026-10-11' }
+  assert.equal(isRoutineActiveOn(habit, '2026-10-04'), false, 'başlamadan önce')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-05'), true, 'başladığı gün')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-11'), true, 'bittiği gün dahil')
+  assert.equal(isRoutineActiveOn(habit, '2026-10-12'), false, 'bittikten sonra')
+  assert.equal(isRoutineActiveOn({ ...habit, ends_on: null }, '2027-01-01'), true, 'süresiz')
+  assert.equal(isRoutineActiveOn({ ...habit, is_active: false }, '2026-10-06'), false, 'pasif')
 })

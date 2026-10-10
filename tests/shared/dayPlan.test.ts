@@ -2,8 +2,36 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  autoPlace, dayCapacity, freeIntervals, mergeIntervals, shiftRemaining, taskMinutes,
+  autoPlace, dayCapacity, dropBlockMirrors, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes, syncBlocksWithTasks,
 } from '../../packages/shared/src/utils/dayPlan.ts'
+
+test('subtractIntervals: kesişen kısım çıkar, kalan parçalar sıralı döner', () => {
+  const busy = [{ start: 600, end: 720 }]
+  assert.deepEqual(subtractIntervals(busy, [{ start: 630, end: 660 }]), [{ start: 600, end: 630 }, { start: 660, end: 720 }])
+  assert.deepEqual(subtractIntervals(busy, [{ start: 590, end: 620 }, { start: 610, end: 730 }]), [])
+  assert.deepEqual(subtractIntervals(busy, []), busy)
+  assert.deepEqual(subtractIntervals([], busy), [])
+})
+
+test('dropBlockMirrors: bloğun takvimdeki ikizi elenir, aynı adlı başka saatteki etkinlik kalır', () => {
+  const blocks = [
+    { label: 'Güç · Gün 1', start_time: '18:00', end_time: '19:10:00' },
+    { label: null, start_time: '09:00', end_time: '10:00' },
+    { label: 'Gece koşusu', start_time: '23:30', end_time: '00:15' },
+  ]
+  const event = (title: string, start: number, end: number) => ({ title, start, end })
+  const kept = dropBlockMirrors([
+    event('Güç · Gün 1', 1080, 1150),
+    // Blok 15 dakika kaydırılmış olsa da kesişiyor: hâlâ ikiz.
+    event(' Güç · Gün 1 ', 1065, 1135),
+    event('Güç · Gün 1', 600, 670),
+    event('Diş hekimi', 1080, 1150),
+    event('Toplantı', 540, 600),
+    event('Gece koşusu', 1410, 15),
+  ], blocks)
+  assert.deepEqual(kept.map((e) => [e.title, e.start]), [['Güç · Gün 1', 600], ['Diş hekimi', 1080], ['Toplantı', 540]])
+  assert.deepEqual(dropBlockMirrors([event('Güç · Gün 1', 1080, 1150)], []).length, 1)
+})
 
 const block = (id: string, start: string, end: string, done = false) =>
   ({ id, start_time: start, end_time: end, completed_at: done ? '2026-09-29T08:00:00Z' : null })
@@ -108,4 +136,26 @@ test('yaz saati geçişi olan günde meşgul aralık duvar saatiyle hesaplanır'
     if (previous === undefined) delete process.env['TZ']
     else process.env['TZ'] = previous
   }
+})
+
+test('syncBlocksWithTasks: görev durumuna göre blok tamamlanma saatini eşitler', () => {
+  const blocks = [
+    { id: 'b1', task_id: 't1', completed_at: null }, // görev bitmiş -> kapanmalı
+    { id: 'b2', task_id: 't2', completed_at: '2026-10-08T10:00Z' }, // görev bitmemiş -> açılmalı
+    { id: 'b3', task_id: 't3', completed_at: '2026-10-08T10:00Z' }, // görev bitmiş -> dokunulmaz
+    { id: 'b4', task_id: 't4', completed_at: null }, // görev bitmemiş -> dokunulmaz
+    { id: 'b5', task_id: null, completed_at: null }, // tasksız blok -> dokunulmaz
+  ]
+  const tasks = [
+    { id: 't1', status: 'done', completed_at: '2026-10-08T11:00Z' },
+    { id: 't2', status: 'planned', completed_at: null },
+    { id: 't3', status: 'done', completed_at: '2026-10-08T10:00Z' },
+    { id: 't4', status: 'in_progress', completed_at: null },
+  ]
+  const updates = syncBlocksWithTasks(blocks, tasks)
+  assert.equal(updates.length, 2)
+  assert.equal(updates[0]?.id, 'b1')
+  assert.equal(updates[0]?.completed_at, '2026-10-08T11:00Z')
+  assert.equal(updates[1]?.id, 'b2')
+  assert.equal(updates[1]?.completed_at, null)
 })

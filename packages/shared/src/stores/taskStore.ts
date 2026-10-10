@@ -17,6 +17,14 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
 
+// Görev silinince bağlı blokları ekrandan kaldırmak için. planningStore bu modülü
+// içe aktardığından ters yönde import döngü kurardı; dinleyiciyi o kaydeder.
+const deleteListeners = new Set<(taskId: string) => void>()
+export function onTaskDeleted(listener: (taskId: string) => void): () => void {
+  deleteListeners.add(listener)
+  return () => { deleteListeners.delete(listener) }
+}
+
 interface TaskState {
   tasks: Task[]
   selectedTask: Task | null
@@ -110,6 +118,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       tasks: state.tasks.filter((t) => t.id !== taskId),
       selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask,
     }))
+    deleteListeners.forEach((listener) => listener(taskId))
     await deleteTask(supabase, taskId)
   },
 

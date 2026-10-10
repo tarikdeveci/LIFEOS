@@ -1,7 +1,7 @@
 // Rutin domain types
 // Şema: supabase/migrations/054_routines.sql → routines, routine_exceptions, routine_completions
 
-import type { BlockType } from './planning'
+import type { BlockType, LifeArea } from './planning'
 
 /**
  * block: saatli takvim bloğu. task: o güne planlanan görev (saat verilirse bağlı blok da).
@@ -35,6 +35,20 @@ export interface Routine {
   starts_on: string             // 'YYYY-MM-DD'
   ends_on: string | null        // NULL = süresiz
   is_active: boolean
+  /** 065: yaşam alanı; NULL = sınıflanmamış. */
+  area: LifeArea | null
+  /** Program uzunluğu ("42 oturum"); dolunca seri kendiliğinden biter. NULL = süresiz. */
+  target_count: number | null
+  /** Rutin kurulmadan önce bitmiş oturum sayısı. */
+  start_count: number
+  /** Düşük enerji günü için asgari süre (dk). */
+  min_minutes: number | null
+  /** AI planlayıcı bu rutinin bloklarını taşıyamaz, silemez. */
+  is_protected: boolean
+  /** Seri, sayaç ve hatırlatma gösterilmez (maneviyat gibi ölçülmeyecek işler). */
+  is_untracked: boolean
+  /** 068: bağlı hedef (yalnızca task ve habit). Görev örnekleri ve alışkanlık günleri ilerlemeye sayılır. */
+  goal_id: string | null
   created_at: string
   updated_at: string
 }
@@ -62,6 +76,19 @@ export interface CreateRoutineInput {
   color?: string
   starts_on?: string
   ends_on?: string | null
+  area?: LifeArea | null
+  target_count?: number | null
+  start_count?: number
+  min_minutes?: number | null
+  is_protected?: boolean
+  is_untracked?: boolean
+  goal_id?: string | null
+}
+
+/** my_routine_progress RPC satırı: sayaçlı rutinin biten oturum sayısı. */
+export interface RoutineProgress {
+  routine_id: string
+  done_count: number
 }
 
 export type UpdateRoutineInput = Partial<CreateRoutineInput> & { is_active?: boolean }

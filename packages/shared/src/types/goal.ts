@@ -3,7 +3,7 @@
 
 export type GoalHorizon = 'quarter' | 'month' | 'week'
 export type GoalStatus = 'active' | 'done' | 'dropped'
-export type GoalCountMode = 'tasks' | 'hours'
+export type GoalCountMode = 'tasks' | 'hours' | 'units'
 
 export interface Goal {
   id: string
@@ -20,6 +20,8 @@ export interface Goal {
   unit: string | null
   count_mode: GoalCountMode | null
   tag_filter: string[]
+  /** 065: bu hedefe bağlı işlerden bir günde en çok kaçı öncelik olabilir. NULL = sınırsız. */
+  daily_cap: number | null
   status: GoalStatus
   review_note: string | null
   reviewed_at: string | null
@@ -37,6 +39,7 @@ export interface CreateGoalInput {
   unit?: string | null
   count_mode?: GoalCountMode | null
   tag_filter?: string[]
+  daily_cap?: number | null
 }
 
 export type UpdateGoalInput = Partial<Omit<CreateGoalInput, 'horizon'>> & {
@@ -61,4 +64,32 @@ export interface GoalProgressInfo {
   total: number
   /** 0-100 */
   pct: number
+}
+
+export interface GoalEntry {
+  id: string
+  goal_id: string
+  user_id: string
+  amount: number
+  entry_date: string
+  note: string | null
+  created_at: string
+}
+
+/** Hedefe bağlı alışkanlığın bir günü (068: routine_completions + routines.goal_id). */
+export interface HabitGoalDay {
+  routine_id: string
+  goal_id: string
+  user_id: string
+  completed_on: string
+  count: number
+  /** NULL = günde tek işaret. */
+  times_per_day: number | null
+}
+
+export interface CreateGoalEntryInput {
+  goal_id: string
+  amount: number
+  entry_date: string
+  note?: string | null
 }

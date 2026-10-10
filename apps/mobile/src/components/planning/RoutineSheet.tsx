@@ -5,6 +5,7 @@ import { todayDate } from '@lifeos/shared'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
+import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -14,6 +15,7 @@ export const WEEKDAY_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0]
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 interface Props {
+  userId: string
   visible: boolean
   /** null = yeni rutin */
   routine: Routine | null
@@ -35,6 +37,8 @@ interface FormState {
   timesPerDay: string
   start: string
   end: string
+  /** Bağlı hedef; blok rutininde yok. */
+  goalId: string | null
 }
 
 function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
@@ -48,6 +52,7 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     timesPerDay: String(r?.times_per_day ?? 1),
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
+    goalId: r?.goal_id ?? null,
   }
 }
 
@@ -64,12 +69,12 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     if (f.habitMode === 'weekly') {
       const n = Number(f.timesPerWeek)
       if (!Number.isInteger(n) || n < 1 || n > 7) return 'routines_err_per_week'
-      return { title, kind: 'habit', days_of_week: [], times_per_week: n, times_per_day: null }
+      return { title, kind: 'habit', days_of_week: [], times_per_week: n, times_per_day: null, goal_id: f.goalId }
     }
     // Her gün: hafta hedefi 7 gün, gün sayaç N'ye ulaşınca tamam (1 = tek işaret).
     const n = Number(f.timesPerDay)
     if (!Number.isInteger(n) || n < 1 || n > 20) return 'routines_err_per_day'
-    return { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: n > 1 ? n : null }
+    return { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: n > 1 ? n : null, goal_id: f.goalId }
   }
   if (f.days.length === 0) return 'plan_err_pick_day'
   const hasTime = f.start !== '' || f.end !== ''
@@ -85,10 +90,11 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     ...(hasTime && { start_time: f.start, end_time: f.end }),
     // İki haftalık parite starts_on'a çapalı; düzenlemede eski çapa korunur.
     ...(isNew && { starts_on: todayDate() }),
+    goal_id: f.kind === 'task' ? f.goalId : null,
   }
 }
 
-export function RoutineSheet({ visible, routine, onClose, onSave, onDelete, defaultKind = 'block' }: Props) {
+export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDelete, defaultKind = 'block' }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
   const [form, setForm] = useState<FormState>(() => toForm(routine, defaultKind))
@@ -189,6 +195,10 @@ export function RoutineSheet({ visible, routine, onClose, onSave, onDelete, defa
             </View>
             {form.kind === 'task' && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_time_optional}</Text>}
           </>
+        )}
+
+        {form.kind !== 'block' && (
+          <TaskGoalPicker userId={userId} goalId={form.goalId} onChange={(goalId) => patch({ goalId })} />
         )}
 
         <Button label={t.routines_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[2] }} />

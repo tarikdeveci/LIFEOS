@@ -5,7 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
-import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore } from '@lifeos/shared'
+import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore, useTaskStore } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -14,6 +14,7 @@ import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet
 import { NowCard } from '@/src/components/planning/NowCard'
 import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
+import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
@@ -77,7 +78,7 @@ export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { timeBlocks, dailyPlan, busy, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
   const BLOCK_LABELS: Record<BlockType, string> = {
     task: t.block_task, routine: t.block_routine, break: t.block_break,
     focus: t.block_focus, meal: t.block_meal, workout: t.block_workout,
@@ -303,6 +304,9 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   )
 
   const isViewingToday = selectedDate === todayStr
+  // Bugüne ait blok ya da görev yoksa "Günü kapat" kartı çıkmaz: verisi olmayan kullanıcıda ekran değişmez.
+  const hasTodayTasks = useTaskStore((s) => s.tasks.some((task) => task.scheduled_date === todayStr))
+  const hasTodayItems = hasTodayTasks || timeBlocks.some((b) => b.date === todayStr)
   const dayTitle = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })
   // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
   const dayPosition = useMemo(
@@ -343,6 +347,10 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
         // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
         keyboardShouldPersistTaps="handled"
+        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
+        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
@@ -382,11 +390,13 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         ) : (
           <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
         ))}
+        {isViewingToday && userId && hasTodayItems && <DayCloseCard userId={userId} now={now} date={todayStr} />}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
         <DayBlockList
           blocks={dayBlocks}
           events={localEventsForDate}
+          busy={busy}
           isToday={isViewingToday}
           now={now}
           blockColors={BLOCK_COLORS}

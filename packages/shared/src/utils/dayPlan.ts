@@ -43,6 +43,45 @@ export function mergeIntervals(intervals: readonly Interval[]): Interval[] {
   return out
 }
 
+/** `from` aralıklarından `cut` ile kesişen kısımları çıkarır; kalan parçalar sıralı döner. */
+export function subtractIntervals(from: readonly Interval[], cut: readonly Interval[]): Interval[] {
+  const cuts = mergeIntervals(cut)
+  const out: Interval[] = []
+  for (const f of mergeIntervals(from)) {
+    let cursor = f.start
+    for (const c of cuts) {
+      if (c.end <= cursor) continue
+      if (c.start >= f.end) break
+      if (c.start > cursor) out.push({ start: cursor, end: c.start })
+      cursor = Math.max(cursor, c.end)
+    }
+    if (cursor < f.end) out.push({ start: cursor, end: f.end })
+  }
+  return out
+}
+
+/**
+ * Bir bloğun cihaz takvimindeki ikizi olan etkinlikleri eler. Antrenman programı aynı seansı hem
+ * blok hem takvim etkinliği olarak yazabiliyor; takvim geri okununca gün iki kez görünüyordu.
+ * İkiz: başlığı bloğun etiketiyle aynı ve saati blokla kesişen etkinlik. Yalnızca başlığa bakmak
+ * aynı adlı ama başka saatteki gerçek etkinliği de gizlerdi.
+ */
+export function dropBlockMirrors<E extends Interval & { title: string }>(
+  events: readonly E[],
+  blocks: readonly (BlockLike & { label: string | null })[],
+): E[] {
+  const labelled = blocks.flatMap((b) => {
+    const label = b.label?.trim()
+    return label ? [{ label, ...toInterval(b) }] : []
+  })
+  return events.filter((e) => {
+    const title = e.title.trim()
+    // Gece yarısını aşan etkinlik de blok gibi gün sonuna sabitlenir.
+    const end = e.end > e.start ? e.end : 1440
+    return !labelled.some((b) => b.label === title && b.start < end && e.start < b.end)
+  })
+}
+
 /**
  * [dayStart, dayEnd] içinde bloklar ve dış meşgul aralıklar (ör. Google takvimi)
  * dışında kalan boşluklar. `from` verilirse ondan önceki kısım kesilir (şu an).
@@ -176,4 +215,33 @@ export function busyToIntervals(rows: readonly { starts_at: string; ends_at: str
     if (e > s) out.push({ start: s === dayStart ? 0 : wall(s), end: e === dayEnd ? 1440 : wall(e) })
   }
   return mergeIntervals(out.filter((i) => i.end > i.start))
+}
+
+/**
+ * Görev listesinde durumu değişen (done/planned) görevlerin, plan (timeBlocks) içindeki karşılığını eşitler.
+ * Yalnızca değişmesi gereken blokları (completed_at uyuşmayanları) döner.
+ */
+export function syncBlocksWithTasks(
+  blocks: readonly { id: string; task_id?: string | null; completed_at: string | null }[],
+  tasks: readonly { id: string; status: string; completed_at: string | null }[]
+): { id: string; completed_at: string | null }[] {
+  const taskMap = new Map(tasks.map((t) => [t.id, t]))
+  const updates: { id: string; completed_at: string | null }[] = []
+
+  for (const block of blocks) {
+    if (!block.task_id) continue
+    const task = taskMap.get(block.task_id)
+    if (!task) continue
+
+    const blockDone = block.completed_at !== null
+    const taskDone = task.status === 'done'
+
+    if (taskDone && !blockDone) {
+      updates.push({ id: block.id, completed_at: task.completed_at || new Date().toISOString() })
+    } else if (!taskDone && blockDone) {
+      updates.push({ id: block.id, completed_at: null })
+    }
+  }
+
+  return updates
 }

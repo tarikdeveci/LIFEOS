@@ -10,6 +10,8 @@ interface TaskCardProps {
   onClick?: (task: Task) => void
   onStatusChange?: (taskId: string, status: TaskStatus) => void
   compact?: boolean
+  /** Rutin kartının arkasına katlanan sonraki örnek sayısı. */
+  repeatMore?: number
 }
 
 function PriorityIndicator({ score }: { score: number }) {
@@ -42,7 +44,7 @@ function EffortBar({ effort }: { effort: number }) {
   )
 }
 
-export function TaskCard({ task, onClick, onStatusChange, compact = false }: TaskCardProps) {
+export function TaskCard({ task, onClick, onStatusChange, compact = false, repeatMore }: TaskCardProps) {
   const { t } = useLang()
   const statusColors = TASK_STATUS_COLORS[task.status]
   // todayDate() yerel takvim günü. toISOString() UTC verdiği için UTC+3'te gece
@@ -98,6 +100,10 @@ export function TaskCard({ task, onClick, onStatusChange, compact = false }: Tas
           {/* Meta row */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge color={statusColors}>{t[`tasks_status_${task.status}`]}</Badge>
+
+            {repeatMore != null && (
+              <span title={t.tcard_repeat_more.replace('{n}', String(repeatMore))} className="text-xs text-muted">↻ +{repeatMore}</span>
+            )}
 
             <EffortBar effort={task.effort_score} />
 

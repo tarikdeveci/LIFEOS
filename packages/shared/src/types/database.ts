@@ -183,6 +183,39 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_reports: {
+        Row: {
+          checkin: Json
+          created_at: string
+          date: string
+          facts: Json
+          narrative: Json | null
+          opened_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          checkin?: Json
+          created_at?: string
+          date: string
+          facts?: Json
+          narrative?: Json | null
+          opened_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          checkin?: Json
+          created_at?: string
+          date?: string
+          facts?: Json
+          narrative?: Json | null
+          opened_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       events: {
         Row: {
           created_at: string
@@ -216,6 +249,7 @@ export type Database = {
           created_at: string | null
           equipment: string[] | null
           id: string
+          image_start_url: string | null
           image_url: string | null
           instructions: string | null
           is_bodyweight: boolean | null
@@ -231,6 +265,7 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
+          image_start_url?: string | null
           image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
@@ -246,6 +281,7 @@ export type Database = {
           created_at?: string | null
           equipment?: string[] | null
           id?: string
+          image_start_url?: string | null
           image_url?: string | null
           instructions?: string | null
           is_bodyweight?: boolean | null
@@ -521,10 +557,49 @@ export type Database = {
         }
         Relationships: []
       }
+      goal_entries: {
+        Row: {
+          amount: number
+          created_at: string
+          entry_date: string
+          goal_id: string
+          id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          entry_date: string
+          goal_id: string
+          id?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          entry_date?: string
+          goal_id?: string
+          id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_entries_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goals: {
         Row: {
           count_mode: string | null
           created_at: string
+          daily_cap: number | null
           horizon: string
           icon: string | null
           id: string
@@ -543,6 +618,7 @@ export type Database = {
         Insert: {
           count_mode?: string | null
           created_at?: string
+          daily_cap?: number | null
           horizon: string
           icon?: string | null
           id?: string
@@ -561,6 +637,7 @@ export type Database = {
         Update: {
           count_mode?: string | null
           created_at?: string
+          daily_cap?: number | null
           horizon?: string
           icon?: string | null
           id?: string
@@ -831,6 +908,7 @@ export type Database = {
           evening_hour: number | null
           midday_enabled: boolean | null
           midday_hour: number | null
+          report_enabled: boolean
           timezone: string
           updated_at: string | null
           user_id: string
@@ -847,6 +925,7 @@ export type Database = {
           evening_hour?: number | null
           midday_enabled?: boolean | null
           midday_hour?: number | null
+          report_enabled?: boolean
           timezone?: string
           updated_at?: string | null
           user_id: string
@@ -863,6 +942,7 @@ export type Database = {
           evening_hour?: number | null
           midday_enabled?: boolean | null
           midday_hour?: number | null
+          report_enabled?: boolean
           timezone?: string
           updated_at?: string | null
           user_id?: string
@@ -1261,6 +1341,7 @@ export type Database = {
       }
       routines: {
         Row: {
+          area: string | null
           block_type: Database["public"]["Enums"]["block_type"]
           color: string | null
           created_at: string
@@ -1271,12 +1352,18 @@ export type Database = {
           estimated_minutes: number | null
           every_n_weeks: number
           friction_score: number
+          goal_id: string | null
           id: string
           is_active: boolean
+          is_protected: boolean
+          is_untracked: boolean
           kind: string
+          min_minutes: number | null
           risk_score: number
+          start_count: number
           start_time: string | null
           starts_on: string
+          target_count: number | null
           times_per_day: number | null
           times_per_week: number | null
           title: string
@@ -1286,6 +1373,7 @@ export type Database = {
           value_score: number
         }
         Insert: {
+          area?: string | null
           block_type?: Database["public"]["Enums"]["block_type"]
           color?: string | null
           created_at?: string
@@ -1296,12 +1384,18 @@ export type Database = {
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
+          is_protected?: boolean
+          is_untracked?: boolean
           kind: string
+          min_minutes?: number | null
           risk_score?: number
+          start_count?: number
           start_time?: string | null
           starts_on?: string
+          target_count?: number | null
           times_per_day?: number | null
           times_per_week?: number | null
           title: string
@@ -1311,6 +1405,7 @@ export type Database = {
           value_score?: number
         }
         Update: {
+          area?: string | null
           block_type?: Database["public"]["Enums"]["block_type"]
           color?: string | null
           created_at?: string
@@ -1321,12 +1416,18 @@ export type Database = {
           estimated_minutes?: number | null
           every_n_weeks?: number
           friction_score?: number
+          goal_id?: string | null
           id?: string
           is_active?: boolean
+          is_protected?: boolean
+          is_untracked?: boolean
           kind?: string
+          min_minutes?: number | null
           risk_score?: number
+          start_count?: number
           start_time?: string | null
           starts_on?: string
+          target_count?: number | null
           times_per_day?: number | null
           times_per_week?: number | null
           title?: string
@@ -1335,7 +1436,15 @@ export type Database = {
           user_id?: string
           value_score?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "routines_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
@@ -1446,6 +1555,7 @@ export type Database = {
       }
       tasks: {
         Row: {
+          area: string | null
           carry_count: number
           completed_at: string | null
           created_at: string | null
@@ -1481,6 +1591,7 @@ export type Database = {
           value_score: number | null
         }
         Insert: {
+          area?: string | null
           carry_count?: number
           completed_at?: string | null
           created_at?: string | null
@@ -1516,6 +1627,7 @@ export type Database = {
           value_score?: number | null
         }
         Update: {
+          area?: string | null
           carry_count?: number
           completed_at?: string | null
           created_at?: string | null
@@ -1869,6 +1981,10 @@ export type Database = {
           month_cost_usd: number
         }[]
       }
+      close_routine_if_complete: {
+        Args: { p_routine: string }
+        Returns: undefined
+      }
       confirm_estimated_food: {
         Args: { p_food_id: string }
         Returns: undefined
@@ -1894,6 +2010,13 @@ export type Database = {
       is_valid_timezone: { Args: { tz: string }; Returns: boolean }
       materialize_my_routines: { Args: never; Returns: number }
       materialize_routines: { Args: { p_user?: string }; Returns: number }
+      my_routine_progress: {
+        Args: never
+        Returns: {
+          done_count: number
+          routine_id: string
+        }[]
+      }
       record_food_gap: {
         Args: { p_phrase: string; p_reason: string; p_user: string }
         Returns: undefined
@@ -1902,7 +2025,9 @@ export type Database = {
         Args: { p_from?: string; p_routine: string }
         Returns: number
       }
+      reserve_ai_use: { Args: { p_kind: string }; Returns: number }
       roll_over_tasks: { Args: never; Returns: number }
+      routine_done_count: { Args: { p_routine: string }; Returns: number }
       routine_occurrence_days: {
         Args: { p_user: string }
         Returns: {
@@ -1980,6 +2105,10 @@ export type Database = {
       }
       set_food_corpus_embeddings: { Args: { p_rows: Json }; Returns: number }
       set_food_item_embeddings: { Args: { p_rows: Json }; Returns: number }
+      settle_ai_use: {
+        Args: { p_id: number; p_props: Json; p_user_id: string }
+        Returns: boolean
+      }
       user_timezone: { Args: { p_user: string }; Returns: string }
     }
     Enums: {

@@ -21,7 +21,8 @@ export default function TodayScreen() {
   const { lang, t } = useLang()
   const bottomPadding = useBottomTabPadding()
   const { tasks, fetchTasks } = useTaskStore()
-  const { timeBlocks, fetchDayData } = usePlanningStore()
+  // Planlama sekmesi başka güne bakarken de bugün ekranı bugünün bloklarını gösterir.
+  const { todayBlocks: timeBlocks, fetchDayData } = usePlanningStore()
   const { meals, target, dailySummary, fetchDayNutrition } = useNutritionStore()
   const health = useHealthStore()
   const [userId, setUserId] = useState<string | null>(null)
@@ -81,7 +82,11 @@ export default function TodayScreen() {
     const sorted = todayBlocks
       .slice()
       .sort((a, b) => a.start_time.localeCompare(b.start_time))
-      .map((block) => ({ block, timing: blockTiming(block, nowMinute) }))
+      .map((block) => {
+        const timing = blockTiming(block, nowMinute)
+        // Tamamlanan blok vakti gelmemiş olsa da bitmiş gibi görünür.
+        return { block, timing: block.completed_at ? { ...timing, phase: 'past' as const } : timing }
+      })
 
     const activeIdx = sorted.findIndex((b) => b.timing.phase === 'active')
     const upcomingIdx = sorted.findIndex((b) => b.timing.phase === 'upcoming')

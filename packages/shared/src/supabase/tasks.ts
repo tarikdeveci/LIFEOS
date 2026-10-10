@@ -150,6 +150,7 @@ function toTaskInsert(userId: string, input: CreateTaskInput, external?: Externa
     risk_score: input.risk_score ?? 3,
     effort_score: input.effort_score ?? 3,
     friction_score: input.friction_score ?? 3,
+    ...(input.area !== undefined && { area: input.area }),
   }
 }
 
@@ -225,7 +226,13 @@ export async function updateTask(
   return data as unknown as Task
 }
 
+/**
+ * Görevi takvimdeki bloklarıyla birlikte siler. time_blocks.task_id ON DELETE SET NULL
+ * olduğu için bloklar görevsiz kalıp takvimde görünmeye devam ediyordu.
+ */
 export async function deleteTask(supabase: Supabase, taskId: string): Promise<void> {
+  const { error: blockError } = await supabase.from('time_blocks').delete().eq('task_id', taskId)
+  if (blockError) throw blockError
   const { error } = await supabase.from('tasks').delete().eq('id', taskId)
   if (error) throw error
 }

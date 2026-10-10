@@ -22,6 +22,7 @@ import {
 import { supabase } from '@/src/lib/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { ReportNotifToggle } from '@/src/components/settings/ReportNotifToggle'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -374,6 +375,7 @@ export default function NotificationSettingsScreen() {
             disabled={!push?.evening_enabled}
             onChange={(h) => void patchPush({ evening_hour: h })}
           />
+          {userId && <ReportNotifToggle userId={userId} />}
         </GlassCard>
 
         <GlassCard style={{ marginBottom: spacing[4] }}>

@@ -141,7 +141,7 @@ export interface DayPosition {
   /** Şu andan sonra başlayan ilk blok */
   nextBlock: TimeBlock | null
   nextTiming: BlockTiming | null
-  /** Biten blok sayısı */
+  /** Biten blok sayısı (vakti geçen ya da tamamlanan) */
   pastCount: number
   /** Şu anın gün içi dakikası */
   nowMinute: number
@@ -149,6 +149,8 @@ export interface DayPosition {
   beforeFirstBlock: boolean
   /** Günün tüm blokları bitti mi */
   afterLastBlock: boolean
+  /** Tüm bloklar tamamlandı olarak işaretli mi (vakti geçip yapılmayan varsa false) */
+  allDone: boolean
 }
 
 /**
@@ -157,6 +159,8 @@ export interface DayPosition {
  *
  * Bloklar çakışıyorsa en son başlayan aktif blok seçilir — kullanıcı elle blok
  * eklerken çakışma engellenmiyor, bu yüzden "birden fazla aktif" durumu gerçek.
+ * Tamamlanan blok vakti gelmemiş olsa da bitmiş sayılır: "şu an" ya da
+ * "sıradaki" olarak gösterilmez.
  */
 export function getDayPosition(blocks: TimeBlock[], now: Date = new Date()): DayPosition {
   const nowMinute = minutesOfDay(now)
@@ -170,7 +174,7 @@ export function getDayPosition(blocks: TimeBlock[], now: Date = new Date()): Day
   for (const block of blocks) {
     const timing = blockTiming(block, nowMinute)
 
-    if (timing.phase === 'past') {
+    if (timing.phase === 'past' || block.completed_at) {
       pastCount += 1
       continue
     }
@@ -198,5 +202,6 @@ export function getDayPosition(blocks: TimeBlock[], now: Date = new Date()): Day
     nowMinute,
     beforeFirstBlock: blocks.length > 0 && pastCount === 0 && activeBlock === null,
     afterLastBlock: blocks.length > 0 && pastCount === blocks.length,
+    allDone: blocks.length > 0 && blocks.every((b) => b.completed_at),
   }
 }

@@ -5,7 +5,7 @@
 // Prompt'lar ve yanıt ayrıştırma _shared/ai/coach.ts içinde. Buradaki iş:
 // yetkilendirme, erişim kararı ve yönlendirme. Veritabanından bağlam toplama,
 // modele gitme ve yanıtı döndürme rota modüllerinde: planning.ts, tasks.ts,
-// workout.ts, nutrition.ts.
+// workout.ts, nutrition.ts, lifeSetup.ts, dailyReport.ts.
 
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
@@ -15,6 +15,8 @@ import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import { isIsoDate, localDate } from '../_shared/ai/muscleLoad.ts'
 import { getCorsHeaders } from './cors.ts'
 import { BUDGET_CHAT_MODEL, CHAT_MODEL } from './model.ts'
+import { handleDailyReport } from './dailyReport.ts'
+import { handleLifeSetup } from './lifeSetup.ts'
 import { handleNutritionChat } from './nutrition.ts'
 import { handleDailyPlan, handleReplan } from './planning.ts'
 import type { RouteContext, SuggestRequest } from './request.ts'
@@ -34,6 +36,7 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let ledger: AiLedger | null = null
   try {
     // Auth token'dan kullanıcı ID'si al
     const authHeader = req.headers.get('Authorization')
@@ -65,7 +68,12 @@ serve(async (req: Request) => {
     // çağrısı yapıyor; satır o çağrıdan hemen sonra token ve USD maliyetiyle
     // yazılır. `supabase` kullanıcının JWT'siyle çalışıyor, RLS insert
     // politikasından geçiyor.
-    const ledger = new AiLedger(supabase, user.id, type, access.tier)
+    // Ücretsiz katmanda rezervasyon satırını kapatmak için service role gerekir
+    // (events kullanıcıya yalnızca INSERT açık; satırı kullanıcı güncelleyemez).
+    const settleClient = access.tier === 'free'
+      ? createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      : null
+    ledger = new AiLedger(supabase, user.id, type, access.tier, settleClient)
 
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! })
     const lang: Lang = language === 'en' ? 'en' : 'tr'
@@ -84,9 +92,13 @@ serve(async (req: Request) => {
     if (type === 'workout_program_chat') return await handleWorkoutProgramChat(route)
     if (type === 'replan') return await handleReplan(route)
     if (type === 'nutrition_chat') return await handleNutritionChat(route)
+    if (type === 'life_setup') return await handleLifeSetup(route)
+    if (type === 'daily_report') return await handleDailyReport(route)
 
     return json({ error: 'Geçersiz istek tipi' }, 400)
   } catch (error) {
+    // Model fırlattıysa ayrılmış ücretsiz hak yanmasın.
+    await ledger?.abandon()
     console.error('ai-suggest error:', error)
     const message = error instanceof Error ? error.message : String(error)
     console.error('ai-suggest stack:', error instanceof Error ? error.stack : undefined)

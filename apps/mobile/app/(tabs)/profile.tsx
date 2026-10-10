@@ -25,6 +25,7 @@ import type { Language } from '@/src/i18n'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
 import { SupportCard } from '@/src/components/settings/SupportCard'
+import { DataSourcesCard } from '@/src/components/settings/DataSourcesCard'
 
 const ACTIVITY_LEVELS_DEF = [
   { key: 'sedentary',          trLabel: 'Hareketsiz',  enLabel: 'Sedentary',      trSub: 'Masabaşı, spor yok',       enSub: 'Desk job, no exercise' },
@@ -407,6 +408,27 @@ export default function ProfileScreen() {
 
         <IntegrationsLink />
 
+        {/* Haftalık değerlendirme */}
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <TouchableOpacity onPress={() => router.push('/review' as any)} activeOpacity={0.7}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flex: 1 }}>
+                <Ionicons name="bar-chart-outline" size={18} color={palette.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                    {lang === 'tr' ? 'Haftalık Değerlendirme' : 'Weekly Review'}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+                    {lang === 'tr' ? 'Geçen hafta ile karşılaştırmalı özet' : 'Comparative summary with last week'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         {/* Calendar */}
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <TouchableOpacity onPress={() => router.push('/(tabs)/settings/calendar' as any)} activeOpacity={0.7}>
@@ -556,44 +578,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </GlassCard>
 
-        {/*
-          Besin veri kaynakları. Open Food Facts ODbL altında dağıtılır ve atıf
-          ZORUNLUDUR — bu kart lisans yükümlülüğüdür, dekorasyon değil.
-        */}
-        <GlassCard style={{ marginBottom: spacing[4] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[3] }}>
-            <Ionicons name="library-outline" size={19} color={palette.accent} />
-            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-              {lang === 'tr' ? 'Besin Veri Kaynakları' : 'Nutrition Data Sources'}
-            </Text>
-          </View>
-          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18, marginBottom: spacing[3] }}>
-            {lang === 'tr'
-              ? 'Besin değerleri LifeOS küratörlü sözlüğünün yanı sıra iki açık kaynaktan gelir. Küratörsüz kaynaklardan gelen eşleşmeler onayına sunulur.'
-              : 'Nutrition values come from the LifeOS curated dictionary plus two open sources. Matches from uncurated sources are shown for your confirmation.'}
-          </Text>
-          <TouchableOpacity onPress={() => void openExternalUrl('https://fdc.nal.usda.gov/')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3] }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>USDA FoodData Central</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                {lang === 'tr' ? 'Hammadde ve yemek analizleri · kamu malı' : 'Ingredient and dish analyses · public domain'}
-              </Text>
-            </View>
-            <Ionicons name="open-outline" size={17} color={colors.textMuted} />
-          </TouchableOpacity>
-          <View style={{ height: 1, backgroundColor: colors.border }} />
-          <TouchableOpacity onPress={() => void openExternalUrl('https://world.openfoodfacts.org/')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing[3] }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>Open Food Facts</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                {lang === 'tr'
-                  ? 'Paketli ürünler · Open Database License (ODbL) altında kullanılır'
-                  : 'Packaged products · used under the Open Database License (ODbL)'}
-              </Text>
-            </View>
-            <Ionicons name="open-outline" size={17} color={colors.textMuted} />
-          </TouchableOpacity>
-        </GlassCard>
+        <DataSourcesCard />
 
         <Button label={t.profile_logout} onPress={handleSignOut} variant="danger" fullWidth />
       </ScrollView>

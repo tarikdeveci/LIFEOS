@@ -1,5 +1,7 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
 import { formsEn, formsTr } from './i18nForms'
+import { reportEn, reportTr } from '@lifeos/shared'
+import { lifeSetupEn, lifeSetupTr, REVIEW_I18N } from '@lifeos/shared'
 
 export type Language = 'en' | 'tr'
 export const LANG_STORAGE_KEY = 'lifeos_lang'
@@ -174,6 +176,21 @@ const translations = {
     goals_count_tasks: "Tasks",
     goals_count_hours: "Hours",
     goals_empty: "Add a weekly goal; completed tasks with matching tags or linked to it count.",
+    goal_count_units: "Log manually",
+    goal_log_progress: "Add progress",
+    goal_progress_amount: "Amount",
+    goal_progress_save: "Save",
+    goal_progress_entries: "Recent entries",
+    goal_progress_empty: "No entries yet",
+    goal_progress_remove: "Remove",
+    goal_progress_error: "Could not save progress",
+    goal_progress_invalid: "Enter an amount greater than 0 and at most 100000",
+    goal_unit_custom: "Unit (km, pages, books)",
+    goal_steps: "Steps",
+    goal_steps_empty: "No steps yet. Add one, then tick it off to move the bar.",
+    goal_steps_empty_units: "No steps yet. This goal fills from logged progress; steps only break the work down.",
+    goal_step_placeholder: "Add a step",
+    goal_step_error: "Could not save the step",
     goals_error: "Could not save the goal",
     goals_delete_confirm: "Delete this goal?",
     goals_field: "Goal",
@@ -244,6 +261,7 @@ const translations = {
     focus_stop: 'Finish',
     focus_again: 'New round',
     focus_close: 'Close',
+    focus_complete_block: 'Mark it done',
     focus_save_error: 'Focus time could not be saved.',
     focus_retry: 'Tap to retry',
     focus_actual: 'Focused {actual} min / planned {plan} min',
@@ -295,6 +313,8 @@ const translations = {
     plan_week_section: 'This week',
     plan_agenda: 'Schedule',
     plan_gap_free: '{d} free',
+    plan_busy: 'Busy',
+    plan_busy_source: 'Google Calendar',
     plan_block_delete_q: 'Delete this block?',
     habits_short: 'Habits',
     habits_add: 'Add habit',
@@ -314,6 +334,7 @@ const translations = {
     plan_ended: 'ended',
     plan_day_not_started: 'Day has not started yet',
     plan_day_over: 'Nothing left on the plan today',
+    plan_day_done: "Today's plan is done",
     plan_jump_to_now: 'Jump to now',
 
     // Auth
@@ -604,6 +625,21 @@ const translations = {
     goals_count_tasks: "Görev",
     goals_count_hours: "Saat",
     goals_empty: "Haftalık hedef ekle; etiketi eşleşen ya da hedefe bağlı tamamlanmış görevler sayılır.",
+    goal_count_units: "Elle kaydet",
+    goal_log_progress: "İlerleme ekle",
+    goal_progress_amount: "Miktar",
+    goal_progress_save: "Kaydet",
+    goal_progress_entries: "Son kayıtlar",
+    goal_progress_empty: "Henüz kayıt yok",
+    goal_progress_remove: "Kaldır",
+    goal_progress_error: "İlerleme kaydedilemedi",
+    goal_progress_invalid: "0 üzerinde, en fazla 100000 miktar girin",
+    goal_unit_custom: "Birim (km, sayfa, kitap)",
+    goal_steps: "Adımlar",
+    goal_steps_empty: "Henüz adım yok. Bir adım ekle, tikledikçe çubuk dolar.",
+    goal_steps_empty_units: "Henüz adım yok. Bu hedefte çubuk kayıtlarla dolar, adımlar işi bölmek için.",
+    goal_step_placeholder: "Adım ekle",
+    goal_step_error: "Adım kaydedilemedi",
     goals_error: "Hedef kaydedilemedi",
     goals_delete_confirm: "Bu hedef silinsin mi?",
     goals_field: "Hedef",
@@ -674,6 +710,7 @@ const translations = {
     focus_stop: 'Bitir',
     focus_again: 'Yeni tur',
     focus_close: 'Kapat',
+    focus_complete_block: 'İşi de tamamla',
     focus_save_error: 'Odak süresi kaydedilemedi.',
     focus_retry: 'Tekrar denemek için dokun',
     focus_actual: 'Gerçek {actual} dk / plan {plan} dk',
@@ -725,6 +762,8 @@ const translations = {
     plan_week_section: 'Bu hafta',
     plan_agenda: 'Program',
     plan_gap_free: '{d} boş',
+    plan_busy: 'Meşgul',
+    plan_busy_source: 'Google Takvim',
     plan_block_delete_q: 'Bu blok silinsin mi?',
     habits_short: 'Alışkanlıklar',
     habits_add: 'Alışkanlık ekle',
@@ -742,7 +781,8 @@ const translations = {
     plan_starts_in: '{d} sonra başlıyor',
     plan_ended: 'bitti',
     plan_day_not_started: 'Gün henüz başlamadı',
-    plan_day_over: 'Bugünün planı tamamlandı',
+    plan_day_over: 'Bugün için blok kalmadı',
+    plan_day_done: 'Bugünün planı tamamlandı',
     plan_jump_to_now: 'Şu ana git',
 
     auth_full_name: 'Ad Soyad',
@@ -866,11 +906,11 @@ const translations = {
   },
 } as const
 
-export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof reportEn | keyof typeof lifeSetupEn | keyof typeof REVIEW_I18N.en]: string }
 
 const merged = {
-  en: { ...translations.en, ...workoutEn, ...formsEn },
-  tr: { ...translations.tr, ...workoutTr, ...formsTr },
+  en: { ...translations.en, ...workoutEn, ...formsEn, ...reportEn, ...lifeSetupEn, ...REVIEW_I18N.en },
+  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...reportTr, ...lifeSetupTr, ...REVIEW_I18N.tr },
 }
 
 export function getTranslations(lang: Language): Translations {

@@ -95,7 +95,8 @@ export default function ExerciseDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
         <ExerciseImage
           uri={exercise.image_url}
-          style={{ width: '100%', aspectRatio: 3 / 2, borderRadius: radius.lg }}
+          startUri={exercise.image_start_url}
+          style={{ width: '100%', aspectRatio: exercise.image_start_url ? 2 : 3 / 2, borderRadius: radius.lg }}
           fallback={(
             <View style={{ height: 120, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
               <Ionicons name={CATEGORY_ICONS[exercise.category] ?? 'fitness-outline'} size={48} color={palette.accent} />

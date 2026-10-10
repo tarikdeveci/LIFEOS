@@ -36,6 +36,9 @@ export function GlassCard({
       style={{
         backgroundColor: Platform.OS === 'android' ? colors.glassSolid : colors.glassFill,
         padding,
+        // Satırda komşu kart daha uzunsa dış View uzar; dolgu da uzamazsa altta
+        // yalnızca gölge kalır (Android'de gri parça olarak görünüyordu).
+        flexGrow: 1,
       }}
     >
       {/* Top shimmer line */}

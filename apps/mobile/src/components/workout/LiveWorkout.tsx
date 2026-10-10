@@ -143,7 +143,7 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
         <View style={{ padding: spacing[3], borderRadius: radius.lg, borderWidth: 1, borderColor: `${palette.workout}40`, backgroundColor: `${palette.workout}0D`, gap: spacing[2], marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: palette.workout, letterSpacing: 0.5 }}>{t.wk_live_now.toLocaleUpperCase(lang)}</Text>
           <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{nameOf(focused.exercise)}</Text>
-          <ExerciseImage uri={focused.exercise?.image_url} style={{ width: '100%', height: 160, borderRadius: radius.md }} />
+          <ExerciseImage uri={focused.exercise?.image_url} startUri={focused.exercise?.image_start_url} style={{ width: '100%', height: 160, borderRadius: radius.md }} />
 
           <View style={{ flexDirection: 'row', gap: spacing[2], paddingRight: 62 }}>
             <Text style={{ width: 26, fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center' }}>Set</Text>

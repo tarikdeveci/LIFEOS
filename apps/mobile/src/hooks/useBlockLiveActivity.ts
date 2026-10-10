@@ -29,7 +29,7 @@ function atClock(dayDate: string, hhmm: string): Date | null {
 
 export function useBlockLiveActivity(): void {
   const tasks = useTaskStore((s) => s.tasks)
-  const timeBlocks = usePlanningStore((s) => s.timeBlocks)
+  const timeBlocks = usePlanningStore((s) => s.todayBlocks)
 
   // En son gösterilen durumun imzası — gereksiz native çağrısı yapmamak için
   const lastKeyRef = useRef<string | null>(null)
@@ -41,7 +41,7 @@ export function useBlockLiveActivity(): void {
       const now = new Date()
       const snapshot = buildWidgetSnapshot({
         tasks: useTaskStore.getState().tasks,
-        timeBlocks: usePlanningStore.getState().timeBlocks,
+        timeBlocks: usePlanningStore.getState().todayBlocks,
         caloriesConsumed: null,
         caloriesTarget: null,
         steps: null,

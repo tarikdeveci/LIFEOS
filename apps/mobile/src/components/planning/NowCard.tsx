@@ -24,7 +24,7 @@ interface Props {
 export function NowCard({ position, blockColors, blockLabels, onJumpToNow, children }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const { activeBlock, activeTiming, nextBlock, nextTiming, nowMinute, afterLastBlock } = position
+  const { activeBlock, activeTiming, nextBlock, nextTiming, nowMinute, afterLastBlock, allDone } = position
 
   const accent = activeBlock ? blockColors[activeBlock.block_type] ?? palette.accent : palette.accent
   const label = (b: NonNullable<DayPosition['nextBlock']>) => b.label ?? blockLabels[b.block_type] ?? b.block_type
@@ -62,9 +62,10 @@ export function NowCard({ position, blockColors, blockLabels, onJumpToNow, child
           </>
         ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
-            <Ionicons name={afterLastBlock ? 'checkmark-done-outline' : 'cafe-outline'} size={20} color={colors.textMuted} />
+            <Ionicons name={allDone ? 'checkmark-done-outline' : afterLastBlock ? 'moon-outline' : 'cafe-outline'} size={20} color={colors.textMuted} />
             <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-              {afterLastBlock ? t.plan_day_over : t.plan_now_free}
+              {/* "Tamamlandı" yalnızca her blok işaretliyse; yapılmamış blok varken gün sadece bitti. */}
+              {afterLastBlock ? (allDone ? t.plan_day_done : t.plan_day_over) : t.plan_now_free}
             </Text>
           </View>
         )}

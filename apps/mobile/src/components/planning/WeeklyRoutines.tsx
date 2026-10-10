@@ -25,7 +25,7 @@ interface Props {
 export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const { routines, loading, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
+  const { routines, progress, loading, fetchRoutines, addRoutine, updateSeries, removeRoutine } = useRoutineStore()
   const [editing, setEditing] = useState<Routine | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -40,6 +40,13 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   const open = (r: Routine | null) => { setEditing(r); setSheetOpen(true) }
 
   const describe = (r: Routine): string => {
+    const base = describeBase(r)
+    // Program sayacı yalnız hedefi olan, ölçülen rutinde; yoksa metin birebir aynı kalır.
+    if (r.target_count == null || r.is_untracked || progress[r.id] === undefined) return base
+    return `${base} · ${Math.min(progress[r.id] ?? 0, r.target_count)}/${r.target_count}`
+  }
+
+  const describeBase = (r: Routine): string => {
     if (r.kind === 'habit') {
       if (r.times_per_day) return t.routines_habit_daily_target.replace('{n}', String(r.times_per_day))
       return r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
@@ -97,7 +104,7 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
         </View>
       ))}
 
-      <RoutineSheet visible={sheetOpen} routine={editing}
+      <RoutineSheet userId={userId} visible={sheetOpen} routine={editing}
         onClose={() => setSheetOpen(false)}
         onSave={handleSave}
         onDelete={editing ? handleDelete : undefined} />
