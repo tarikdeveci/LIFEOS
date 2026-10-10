@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { AI_CHAT_MESSAGE_MAX } from '@lifeos/shared'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { BottomSheet } from '../ui/BottomSheet'
@@ -166,6 +167,7 @@ export function AiChatSheet({
             value={input}
             onChangeText={onChangeInput}
             placeholder={placeholder ?? 'Sorun...'}
+            maxLength={AI_CHAT_MESSAGE_MAX}
             containerStyle={{ flex: 1 }}
             onSubmitEditing={onSend}
             returnKeyType="send"

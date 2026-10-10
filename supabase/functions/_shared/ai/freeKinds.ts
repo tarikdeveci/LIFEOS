@@ -11,8 +11,8 @@
 // Bilerek DIŞARIDA: daily_report (gün raporu AI yorumu yalnızca Pro) ve sohbet
 // rotaları. Sohbet ve antrenman koçu "bir kez görüp anlama" özelliği değil.
 //
-// Dikkat: ömür boyu 3 hakkı sayan SQL (ai_allowance, 052/053) yalnızca
-// props->>'kind' = 'replan' satırlarını sayıyor. life_setup'ın hak düşürmesi için
-// o fonksiyonun FILTER koşulu bu kümeyle birlikte güncellenmeli.
+// Dikkat: aynı küme SQL'de de yazılı: ai_allowance() sayacı ve reserve_ai_use()
+// rezervasyonu (065). Küme değişirse yeni bir migration ile ikisi de güncellenmeli;
+// tests/functions/aiAccess.test.ts farkı yakalar.
 
 export const FREE_KINDS: ReadonlySet<string> = new Set(['replan', 'life_setup'])

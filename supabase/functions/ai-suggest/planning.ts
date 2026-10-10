@@ -5,7 +5,7 @@ import { buildPlannerPrompt, parsePlannerResult, type PlannerTask } from '../_sh
 import { DEFAULT_PLANNING_RULES } from '../_shared/ai/planningRules.ts'
 import { CHAT_EFFORT, LEGACY_MODEL, firstText } from './model.ts'
 import { loadPlanningRules, loadRoutineContext } from './planningContext.ts'
-import { normalizeHistory, type RouteContext } from './request.ts'
+import { readReplanInput, type ReplanBlock, type RouteContext } from './request.ts'
 import { busyBlocks } from './time.ts'
 
 export async function handleDailyPlan(route: RouteContext): Promise<Response> {
@@ -113,10 +113,14 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
 
 export async function handleReplan(route: RouteContext): Promise<Response> {
   const { supabase, userId, body, client, chatModel, ledger, lang, today, json } = route
-  const { date, energy_level, buffer_minutes, existing_blocks, user_message, current_time } = body
+  const { energy_level, buffer_minutes } = body
 
-  const targetDate = date ?? today
-  const now = current_time ?? new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  // İstemci girdisi hak ayrılmadan doğrulanır: ret ücretsiz hakkı yakmaz.
+  const input = readReplanInput(body)
+  if (!input.ok) return json({ error: input.error, code: input.code, max: input.max }, 400)
+
+  const targetDate = input.date ?? today
+  const now = input.currentTime ?? new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
   const planningCutoff = targetDate === today ? now : '00:00'
 
   const { data: scheduledRows } = await supabase
@@ -155,7 +159,7 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     .eq('date', targetDate)
     .maybeSingle()
 
-  const blocks = [...(existing_blocks ?? []), ...(await busyBlocks(supabase, userId, targetDate))]
+  const blocks: ReplanBlock[] = [...input.blocks, ...(await busyBlocks(supabase, userId, targetDate))]
 
   // Kullanıcının kalıcı kuralları ve korumalı rutin blokları (065). Kaydettiği
   // tampon, istemcinin gönderdiği sabit değerin önüne geçer.
@@ -181,8 +185,8 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
     futureBlocks: blocks.filter((b) => b.end > planningCutoff),
     scheduledTasks: (scheduledRows ?? []).map(toPlannerTask),
     backlogTasks: (backlogRows ?? []).map(toPlannerTask),
-    history: normalizeHistory(body.history),
-    userMessage: user_message?.trim() || 'Günümü planla',
+    history: input.history,
+    userMessage: input.userMessage || 'Günümü planla',
   })
 
   // Ücretsiz katmanda hak model çağrısından ÖNCE atomik ayrılır (usage.ts).
