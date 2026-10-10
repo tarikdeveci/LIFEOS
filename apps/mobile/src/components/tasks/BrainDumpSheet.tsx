@@ -163,7 +163,7 @@ export function BrainDumpSheet({ visible, onClose, userId, isPro, requirePro }: 
           {bd.items.map((item, i) => {
             const meta = [
               item.scheduled_date && `${relativeDateLabel(item.scheduled_date, lang)}${item.start_time ? ` ${item.start_time}` : ''}`,
-              item.estimated_minutes && `${item.estimated_minutes} dk`,
+              item.estimated_minutes && `${item.estimated_minutes} ${lang === 'tr' ? 'dk' : 'min'}`,
               ...item.tags.map((tag) => `#${tag}`),
             ].filter(Boolean).join(' · ')
             return (
