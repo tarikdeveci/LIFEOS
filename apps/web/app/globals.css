@@ -194,3 +194,40 @@
     box-shadow: 0 0 0 3px rgba(129,140,248,0.15), inset 0 1px 0 rgba(255,255,255,0.04);
   }
 }
+
+/* ─── Tanıtım sayfası: WSJF kaydırıcısı ve öne çıkan fiyat kartı ─── */
+@layer components {
+  .landing-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 20px;
+    width: 20px;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.25), 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: transform 0.15s ease;
+  }
+  .landing-range:active::-webkit-slider-thumb { transform: scale(1.2); }
+  .landing-range::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.25), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  .landing-range:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: 4px; }
+
+  @property --landing-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
+  .landing-border-spin {
+    background: conic-gradient(from var(--landing-angle), rgba(99, 102, 241, 0.25), #818cf8, #a78bfa, #22d3ee, rgba(99, 102, 241, 0.25));
+    animation: landing-spin 6s linear infinite;
+  }
+  @keyframes landing-spin { to { --landing-angle: 360deg; } }
+  @media (prefers-reduced-motion: reduce) {
+    .landing-border-spin { animation: none; }
+  }
+}
