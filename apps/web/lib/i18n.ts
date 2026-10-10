@@ -26,7 +26,7 @@ const translations = {
 
     // Stats
     stat_tasks: 'Start without a card',
-    stat_ai: 'Write your meal in plain Turkish — the AI does the rest',
+    stat_ai: 'Type your meal in your own words, AI works out the macros',
     stat_platforms: 'The same plan on iPhone and web',
 
     // Features
@@ -812,8 +812,8 @@ const translations = {
     hero_note: 'Kredi kartı gerekmez · Ücretsiz plan sonsuzdur',
 
     stat_tasks: 'Kart istemeden başla',
-    stat_ai: 'Öğününü Türkçe yaz, gerisini AI çözsün',
-    stat_platforms: 'iPhone ve web — aynı plan',
+    stat_ai: 'Öğününü kendi cümlenle yaz, makroları AI hesaplasın',
+    stat_platforms: 'iPhone ve web’de aynı plan',
 
     features_title: 'Gün nasıl kuruluyor',
     features_subtitle: 'Üç adım. Uygulamanın geri kalanı bunların üstüne oturuyor.',
