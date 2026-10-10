@@ -63,7 +63,7 @@
         "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_WEIGHT"
       ],
-      "versionCode": 27
+      "versionCode": 28
     },
     "plugins": [
       "expo-router",
