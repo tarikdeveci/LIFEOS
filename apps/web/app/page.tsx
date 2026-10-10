@@ -108,13 +108,14 @@ export default function LandingPage() {
 
         {/* Bu şerit önce '10K+ Yönetilen Görev' diyordu; doğrulanamayan sayısal iddia
             hem Ticari Reklam Yönetmeliği'ne aykırı hem de güveni düşürüyor. Yerine
-            itiraz karşılayan üç doğru bilgi: para istemiyoruz, Türkçe çalışıyor,
-            iki cihazda aynı plan. */}
+            itiraz karşılayan üç doğru bilgi: para istemiyoruz, öğün serbest metinle
+            girilir, iki cihazda aynı plan. Değerler dilden bağımsız; önceki "Türkçe"
+            değeri İngilizce sayfada da Türkçe görünüyordu. */}
         <section className="border-y border-white/5 bg-white/[0.02] py-12">
           <div className="mx-auto grid max-w-4xl grid-cols-3 gap-6 px-6 text-center">
             {[
               { value: '₺0', label: t.stat_tasks },
-              { value: 'Türkçe', label: t.stat_ai },
+              { value: 'AI', label: t.stat_ai },
               { value: 'iOS + Web', label: t.stat_platforms },
             ].map(({ value, label }, i) => (
               <Reveal key={value} delay={i * 0.1} y={16}>
