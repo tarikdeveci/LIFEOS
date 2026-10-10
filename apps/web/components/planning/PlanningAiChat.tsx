@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { AI_CHAT_MESSAGE_MAX } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import type { PlanningAiChatState } from '@/lib/hooks/usePlanningAiChat'
 
@@ -165,7 +166,7 @@ export function PlanningAiChat({ chat, isPro, freePlansLeft, freePlansUsedUp }: 
       ) : (
       <div className="border-t border-gray-100 p-3">
         <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
-          <input ref={chatInputRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+          <input ref={chatInputRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} maxLength={AI_CHAT_MESSAGE_MAX}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat() } }}
             placeholder={t.plan_replan_placeholder}
             className="flex-1 bg-transparent text-xs text-gray-800 outline-none placeholder:text-gray-400"

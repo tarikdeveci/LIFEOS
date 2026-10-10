@@ -714,7 +714,7 @@ export default function NutritionScreen() {
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? 'Hızlı Yiyecek Ara'}</Text>
-          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder="Yumurta, ekmek, peynir..." />
+          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'} />
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
               {foodResults.map((food) => (
@@ -737,7 +737,7 @@ export default function NutritionScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={2}>{meal.raw_input}</Text>
                       <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-                        {meal.total_calories} kcal · P:{meal.total_protein}g · K:{meal.total_carbs}g · Y:{meal.total_fat}g
+                        {meal.total_calories} kcal · P:{meal.total_protein}g · {lang === 'tr' ? 'K' : 'C'}:{meal.total_carbs}g · {lang === 'tr' ? 'Y' : 'F'}:{meal.total_fat}g
                       </Text>
                     </View>
                     <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -844,7 +844,7 @@ export default function NutritionScreen() {
                 label={t.nutr_search_food}
                 value={foodSearch}
                 onChangeText={handleFoodSearch}
-                placeholder="Yumurta, ekmek, peynir..."
+                placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'}
               />
 
               {pendingChoice ? (
