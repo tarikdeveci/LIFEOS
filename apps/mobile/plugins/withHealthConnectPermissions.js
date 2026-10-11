@@ -1,15 +1,22 @@
-const { withAndroidManifest, withMainActivity } = require('expo/config-plugins')
+const fs = require('fs')
+const path = require('path')
+const { withAndroidManifest, withDangerousMod, withMainActivity } = require('expo/config-plugins')
 
-// react-native-health-connect'in kendi plugin'i yalnız ACTION_SHOW_PERMISSIONS_RATIONALE
-// filtresini ekliyor. Native tarafta iki eksik kalıyor:
+// react-native-health-connect'in native kurulumunun tamamı burada. Kütüphanenin kendi plugin'i
+// (gerekçe filtresini MainActivity'ye ekler) app.json'da kayıtlı değil: ikisi birlikte çalışırsa
+// gerekçe intent'ini iki activity karşılar.
 // 1. MainActivity izin delegesini kaydetmezse requestPermission() uygulamayı çökertir
 //    (lateinit requestPermission; JS try/catch yakalamaz).
-// 2. Android 14+ izin ekranı, VIEW_PERMISSION_USAGE + HEALTH_PERMISSIONS'ı karşılayan
-//    bir activity bulamazsa açılır açılmaz kapanır.
+// 2. İzin ekranı, gerekçe intent'ini karşılayan bir activity bulamazsa açılır açılmaz kapanır:
+//    Android 13 ve altı ACTION_SHOW_PERMISSIONS_RATIONALE, Android 14+ ise
+//    VIEW_PERMISSION_USAGE + HEALTH_PERMISSIONS (alias) arar.
+// 3. O activity gizlilik politikasını göstermeli; izin ekranındaki bağlantı onu açar.
 
 const DELEGATE_IMPORT = 'import dev.matinzd.healthconnect.permissions.HealthConnectPermissionDelegate'
 const DELEGATE_CALL = 'HealthConnectPermissionDelegate.setPermissionDelegate(this)'
+const RATIONALE_ACTIVITY = 'PermissionsRationaleActivity'
 const ALIAS_NAME = 'ViewPermissionUsageActivity'
+const PRIVACY_POLICY_URL = 'https://lifeos.tr/gizlilik-kvkk'
 
 function addPermissionDelegate(contents) {
   if (contents.includes(DELEGATE_CALL)) return contents
@@ -25,7 +32,45 @@ function addPermissionDelegate(contents) {
     .replace(superOnCreate, (line, indent) => `${line}\n${indent}${DELEGATE_CALL}`)
 }
 
-function addRationaleAlias(application) {
+function rationaleActivitySource(packageName) {
+  return `package ${packageName}
+
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+
+class ${RATIONALE_ACTIVITY} : Activity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    try {
+      startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${PRIVACY_POLICY_URL}")))
+    } catch (e: ActivityNotFoundException) {
+      // Tarayıcı yoksa politikayı gösterecek yer yok.
+    }
+    finish()
+  }
+}
+`
+}
+
+function addRationaleActivity(application) {
+  const activities = application.activity ?? []
+  if (!activities.some((activity) => activity.$['android:name'] === `.${RATIONALE_ACTIVITY}`)) {
+    activities.push({
+      $: {
+        'android:name': `.${RATIONALE_ACTIVITY}`,
+        'android:exported': 'true',
+        'android:theme': '@android:style/Theme.NoDisplay',
+      },
+      'intent-filter': [
+        { action: [{ $: { 'android:name': 'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE' } }] },
+      ],
+    })
+    application.activity = activities
+  }
+
   const aliases = application['activity-alias'] ?? []
   if (aliases.some((alias) => alias.$['android:name'] === ALIAS_NAME)) return
 
@@ -33,7 +78,7 @@ function addRationaleAlias(application) {
     $: {
       'android:name': ALIAS_NAME,
       'android:exported': 'true',
-      'android:targetActivity': '.MainActivity',
+      'android:targetActivity': `.${RATIONALE_ACTIVITY}`,
       'android:permission': 'android.permission.START_VIEW_PERMISSION_USAGE',
     },
     'intent-filter': [
@@ -52,12 +97,24 @@ function withHealthConnectPermissions(config) {
     return mod
   })
 
-  return withAndroidManifest(withDelegate, (mod) => {
-    addRationaleAlias(mod.modResults.manifest.application[0])
+  const withManifest = withAndroidManifest(withDelegate, (mod) => {
+    addRationaleActivity(mod.modResults.manifest.application[0])
     return mod
   })
+
+  return withDangerousMod(withManifest, [
+    'android',
+    (mod) => {
+      const packageName = mod.android.package
+      const dir = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/java', ...packageName.split('.'))
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, `${RATIONALE_ACTIVITY}.kt`), rationaleActivitySource(packageName))
+      return mod
+    },
+  ])
 }
 
 module.exports = withHealthConnectPermissions
 module.exports.addPermissionDelegate = addPermissionDelegate
-module.exports.addRationaleAlias = addRationaleAlias
+module.exports.addRationaleActivity = addRationaleActivity
+module.exports.rationaleActivitySource = rationaleActivitySource
