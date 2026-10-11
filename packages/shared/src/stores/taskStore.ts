@@ -86,8 +86,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   addTask: async (supabase, userId, input) => {
     const task = await createTask(supabase, userId, input)
-    // Optimistic: listeye ekle
-    set((state) => ({ tasks: [task, ...state.tasks] }))
+    // Realtime INSERT olayı yanıttan önce gelmiş olabilir; aynı id iki kez eklenmesin
+    set((state) => (state.tasks.some((t) => t.id === task.id) ? state : { tasks: [task, ...state.tasks] }))
     return task
   },
 
