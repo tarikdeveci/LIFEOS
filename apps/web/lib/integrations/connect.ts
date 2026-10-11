@@ -1,59 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { GOOGLE_CAL_API, GOOGLE_TOKEN_URL, googleCredentials, googleRedirectUri } from './google'
-import { callbackUri } from './oauth'
-import { providerCredentials, type OAuthProvider } from './providers'
 import type { ConnectResult } from './handoff'
 
 /**
- * Kodu token'a çevirip bağlantıyı yazan adımlar. Web'de callback, mobilde /complete çağırır;
+ * Kodu token'a çevirip bağlantıyı yazan adım. Web'de callback, mobilde /complete çağırır;
  * ikisi de aynı redirect_uri'yi kullanır (token isteğinde yetki isteğiyle birebir aynı olmalı).
  */
-
-/** Jira / Notion / Microsoft To Do / Slack: bağlantıyı yazar, token'ı Vault'a koyar. */
-export async function connectProvider(req: Request, slug: string, provider: OAuthProvider, userId: string, verifier: string, code: string): Promise<ConnectResult> {
-  const creds = providerCredentials(provider)
-  if (!creds) throw new Error('credentials')
-  const admin = createAdminClient()
-  const connected = await provider.exchange({ code, redirectUri: callbackUri(req, slug), verifier, creds })
-
-  if (provider.provider === 'slack') {
-    // Bir Slack kullanıcısı tek LifeOS hesabına bağlanır: komut kime yazılacağı belli olsun.
-    await admin.from('integrations').delete()
-      .eq('provider', 'slack')
-      .eq('settings->>team_id', String(connected.settings['team_id']))
-      .eq('settings->>slack_user_id', String(connected.settings['slack_user_id']))
-      .neq('user_id', userId)
-  }
-
-  // Yeniden bağlanınca önceki seçimler (Notion veritabanı gibi) korunur.
-  const { data: previous } = await admin
-    .from('integrations')
-    .select('settings')
-    .eq('user_id', userId)
-    .eq('provider', provider.provider)
-    .eq('account_label', connected.accountLabel)
-    .maybeSingle()
-  const settings = { ...((previous as { settings?: Record<string, unknown> } | null)?.settings ?? {}), ...connected.settings }
-
-  const { data: integration, error } = await admin
-    .from('integrations')
-    .upsert(
-      { user_id: userId, provider: provider.provider, account_label: connected.accountLabel, status: 'active', last_error: null, settings },
-      { onConflict: 'user_id,provider,account_label' },
-    )
-    .select('id')
-    .single()
-  if (error || !integration) throw new Error(error?.message ?? 'integration')
-
-  if (connected.secret) {
-    const { error: secretError } = await admin.rpc('integration_set_secret', {
-      p_integration: (integration as { id: string }).id,
-      p_secret: JSON.stringify(connected.secret),
-    })
-    if (secretError) throw new Error(secretError.message)
-  }
-  return 'ok'
-}
 
 /**
  * Google Takvim: refresh token'ı Vault'a yazar, "LifeOS" takvimini açar (yoksa) ve mevcut
