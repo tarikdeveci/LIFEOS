@@ -12,7 +12,7 @@ type Supabase = SupabaseClient<any>
 
 /**
  * Hızlı eklemeden gelen görevi yazar. Saat verildiyse o güne görev bloğu da açılır
- * (süre yoksa 30 dk; gece yarısını aşmaz). Web, mobil ve Slack komutu aynı yolu kullanır.
+ * (süre yoksa 30 dk; gece yarısını aşmaz). Web ve mobil aynı yolu kullanır.
  */
 export async function createParsedTask(
   supabase: Supabase,
