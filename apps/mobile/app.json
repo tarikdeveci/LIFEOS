@@ -2,7 +2,7 @@
   "expo": {
     "name": "LifeOS",
     "slug": "lifeos",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -63,7 +63,7 @@
         "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_WEIGHT"
       ],
-      "versionCode": 30
+      "versionCode": 31
     },
     "plugins": [
       "expo-router",
