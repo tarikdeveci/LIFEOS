@@ -97,8 +97,8 @@ export async function readDay(range: DayRange): Promise<HealthReadResult> {
         const seconds = (r as { EXERCISE_DURATION_TOTAL?: { inSeconds: number } }).EXERCISE_DURATION_TOTAL?.inSeconds
         return seconds == null ? null : seconds / 60
       }),
-      aggregateNumber(hc, 'RestingHeartRate', between, (r) => (r as { BPM_AVG?: number }).BPM_AVG ?? null),
-      aggregateNumber(hc, 'HeartRate', between, (r) => (r as { BPM_AVG?: number }).BPM_AVG ?? null),
+      aggregateNumber(hc, 'RestingHeartRate', between, averageBpm),
+      aggregateNumber(hc, 'HeartRate', between, averageBpm),
       readSleep(hc, sleepWindow),
     ])
 
@@ -123,6 +123,15 @@ export async function readDay(range: DayRange): Promise<HealthReadResult> {
   } catch {
     return { ok: false, reason: 'denied' }
   }
+}
+
+/**
+ * Kütüphane ölçüm olmayan aralıkta BPM_AVG'yi boş değil 0 döndürür. 0 nabız
+ * health_daily kısıtına (en az 20) takılıp günün bütün senkronunu düşürüyordu;
+ * saati olmayan herkes bu durumda. 0 burada "ölçüm yok" demek.
+ */
+export function averageBpm(result: unknown): number | null {
+  return (result as { BPM_AVG?: number }).BPM_AVG || null
 }
 
 type TimeRange = { operator: 'between'; startTime: string; endTime: string }

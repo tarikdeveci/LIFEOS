@@ -92,7 +92,7 @@
           "background": false
         }
       ],
-      "react-native-health-connect",
+      "./plugins/withHealthConnectPermissions",
       [
         "react-native-android-widget",
         {
