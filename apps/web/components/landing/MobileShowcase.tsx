@@ -23,9 +23,10 @@ interface MobileShowcaseProps {
     mobile_shot_nutrition: string
     mobile_shot_planning: string
   }
+  tr: boolean
 }
 
-export function MobileShowcase({ t }: MobileShowcaseProps) {
+export function MobileShowcase({ t, tr }: MobileShowcaseProps) {
   const ref = useRef<HTMLElement>(null)
   const reduce = useReducedMotion()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
@@ -48,10 +49,12 @@ export function MobileShowcase({ t }: MobileShowcaseProps) {
     tiltY.set(0)
   }
 
+  // Görsellerin başlığı ve içindeki uygulama ekranı dile göre değişir.
+  const suffix = tr ? '' : '-en'
   const phones = [
-    { src: '/mobile/tasks.png', alt: t.mobile_shot_tasks, y: ySide, rotate: rotL, cls: 'mt-10 w-1/3' },
-    { src: '/mobile/nutrition.png', alt: t.mobile_shot_nutrition, y: yMid, rotate: undefined, cls: 'z-10 w-[38%]' },
-    { src: '/mobile/planning.png', alt: t.mobile_shot_planning, y: ySide, rotate: rotR, cls: 'mt-10 w-1/3' },
+    { src: `/mobile/tasks${suffix}.png`, alt: t.mobile_shot_tasks, y: ySide, rotate: rotL, cls: 'mt-10 w-1/3' },
+    { src: `/mobile/nutrition${suffix}.png`, alt: t.mobile_shot_nutrition, y: yMid, rotate: undefined, cls: 'z-10 w-[38%]' },
+    { src: `/mobile/planning${suffix}.png`, alt: t.mobile_shot_planning, y: ySide, rotate: rotR, cls: 'mt-10 w-1/3' },
   ]
 
   return (

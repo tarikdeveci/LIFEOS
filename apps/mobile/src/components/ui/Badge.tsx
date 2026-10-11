@@ -1,20 +1,22 @@
 import { View, Text } from 'react-native'
+import { useLang } from '../../contexts/LangContext'
 import { palette, radius, fontSize } from '../../theme/tokens'
 
 const STATUS_CONFIG = {
-  backlog:     { label: 'Backlog',    color: palette.backlog },
-  planned:     { label: 'Planlandı', color: palette.planned },
-  in_progress: { label: 'Devam',     color: palette.inProgress },
-  blocked:     { label: 'Bloke',     color: palette.blocked },
-  done:        { label: 'Tamamlandı',color: palette.done },
-  deferred:    { label: 'Ertelendi', color: palette.deferred },
-}
+  backlog:     { label: 'tasks_status_backlog',     color: palette.backlog },
+  planned:     { label: 'tasks_status_planned',     color: palette.planned },
+  in_progress: { label: 'tasks_status_in_progress', color: palette.inProgress },
+  blocked:     { label: 'tasks_status_blocked',     color: palette.blocked },
+  done:        { label: 'tasks_status_done',        color: palette.done },
+  deferred:    { label: 'tasks_status_deferred',    color: palette.deferred },
+} as const
 
 interface Props {
   status: keyof typeof STATUS_CONFIG
 }
 
 export function StatusBadge({ status }: Props) {
+  const { t } = useLang()
   const cfg = STATUS_CONFIG[status]
   return (
     <View
@@ -28,7 +30,7 @@ export function StatusBadge({ status }: Props) {
       }}
     >
       <Text style={{ fontSize: fontSize.xs, fontWeight: '600', color: cfg.color }}>
-        {cfg.label}
+        {t[cfg.label]}
       </Text>
     </View>
   )

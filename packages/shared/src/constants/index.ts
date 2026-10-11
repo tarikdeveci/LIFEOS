@@ -86,6 +86,12 @@ export const APP_DEFAULTS = {
   DEFAULT_FIBER_G: 30,
 } as const
 
+/**
+ * AI sohbet kutusuna yazılabilecek en uzun mesaj. Sunucu replan rotasında
+ * aynı sınırı uygular (ai-suggest/request.ts, REPLAN_MESSAGE_MAX); üstü 400 döner.
+ */
+export const AI_CHAT_MESSAGE_MAX = 2000
+
 // Workout sabitleri
 export const WORKOUT_CATEGORY_LABELS: Record<WorkoutCategory, string> = {
   strength:    'Kuvvet',

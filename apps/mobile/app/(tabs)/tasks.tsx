@@ -137,7 +137,7 @@ export default function TasksScreen() {
     const parts = [
       p.scheduled_date && `${relativeDateLabel(p.scheduled_date, lang)}${p.start_time ? ` ${p.start_time}` : ''}`,
       p.due_date && `${t.qtask_due_short}: ${relativeDateLabel(p.due_date, lang)}`,
-      p.estimated_minutes && `${p.estimated_minutes} dk`,
+      p.estimated_minutes && `${p.estimated_minutes} ${lang === 'tr' ? 'dk' : 'min'}`,
       ...p.tags.map((tag) => `#${tag}`),
     ].filter(Boolean)
     return parts.length > 0 ? parts.join(' · ') : null
@@ -298,13 +298,14 @@ export default function TasksScreen() {
 
 function DayHeader({ label, count, minutes, isToday }: { label: string; count: number; minutes: number; isToday: boolean }) {
   const { colors } = useTheme()
+  const { lang } = useLang()
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing[2] }}>
       <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: isToday ? palette.accent : colors.textSecondary }}>
         {label}
       </Text>
       <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-        {count}{minutes > 0 ? ` · ${minutes}dk` : ''}
+        {count}{minutes > 0 ? ` · ${minutes}${lang === 'tr' ? 'dk' : ' min'}` : ''}
       </Text>
     </View>
   )
@@ -312,6 +313,7 @@ function DayHeader({ label, count, minutes, isToday }: { label: string; count: n
 
 function TaskRow({ task, onPress, onToggle }: { task: Task; onPress: () => void; onToggle: () => void }) {
   const { colors } = useTheme()
+  const { lang } = useLang()
   const isDone = task.status === 'done'
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
@@ -334,7 +336,7 @@ function TaskRow({ task, onPress, onToggle }: { task: Task; onPress: () => void;
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flexWrap: 'wrap' }}>
               <StatusBadge status={task.status as never} />
-              {task.estimated_minutes && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{task.estimated_minutes}dk</Text>}
+              {task.estimated_minutes && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{task.estimated_minutes}{lang === 'tr' ? 'dk' : ' min'}</Text>}
               {task.priority_score != null && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>WSJF {task.priority_score.toFixed(1)}</Text>}
             </View>
           </View>

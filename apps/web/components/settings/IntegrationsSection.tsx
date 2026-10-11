@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useLang } from '@/lib/contexts/LangContext'
-import { NotionSourcePicker } from './NotionSourcePicker'
 
 /** Marka adları; Google Takvim dile göre değiştiği için `providerLabel` içinde sözlükten gelir. */
 const PROVIDER_LABELS: Record<Exclude<IntegrationProvider, 'google_calendar'>, string> = {
@@ -17,18 +16,6 @@ const PROVIDER_LABELS: Record<Exclude<IntegrationProvider, 'google_calendar'>, s
   todoist: 'Todoist',
   ticktick: 'TickTick',
   microsoft_todo: 'Microsoft To Do',
-}
-
-/** OAuth ile bağlanan görev kaynakları: rota slug'ı ve tablodaki sağlayıcı adı. */
-const SOURCES = [
-  { slug: 'jira', provider: 'jira', hint: 'integ_jira_hint' },
-  { slug: 'notion', provider: 'notion', hint: 'integ_notion_hint' },
-  { slug: 'microsoft', provider: 'microsoft_todo', hint: 'integ_microsoft_hint' },
-  { slug: 'slack', provider: 'slack', hint: 'integ_slack_hint' },
-] as const satisfies readonly { slug: string; provider: IntegrationProvider; hint: string }[]
-
-const SLUG_PROVIDER: Record<string, IntegrationProvider> = {
-  google: 'google_calendar', ...Object.fromEntries(SOURCES.map((s) => [s.slug, s.provider])),
 }
 
 /** Bağlı hesaplar (durum, son senkron, bağlantıyı kes) ve tek seferlik içe aktarma. */
@@ -56,22 +43,20 @@ export function IntegrationsSection() {
 
   useEffect(() => { void load() }, [load])
 
-  // OAuth dönüşü: /settings?integration=<slug>&status=ok|error|denied
+  // OAuth dönüşü: /settings?integration=google&status=ok|error|denied
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const provider = SLUG_PROVIDER[params.get('integration') ?? '']
-    if (!provider) return
-    const name = providerLabel(provider)
+    if (params.get('integration') !== 'google') return
     const ok = params.get('status') === 'ok'
-    showToast((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', name), ok ? 'success' : 'error')
+    showToast((ok ? t.integ_connect_ok : t.integ_connect_error).replace('{name}', t.integ_google), ok ? 'success' : 'error')
     window.history.replaceState(null, '', window.location.pathname)
-  }, [showToast, providerLabel, t.integ_connect_ok, t.integ_connect_error])
+  }, [showToast, t.integ_google, t.integ_connect_ok, t.integ_connect_error])
 
-  const connect = async (slug: string) => {
-    setBusy(slug)
-    const name = providerLabel(SLUG_PROVIDER[slug]!)
+  const connectGoogle = async () => {
+    setBusy('google')
+    const name = t.integ_google
     try {
-      const res = await fetch(`/api/integrations/${slug}/start`, {
+      const res = await fetch('/api/integrations/google/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: 'web' }),
       })
       if (res.status === 503) { showToast(t.integ_unavailable.replace('{name}', name), 'error'); return }
@@ -153,12 +138,6 @@ export function IntegrationsSection() {
               <Button size="sm" variant="ghost" onClick={() => void disconnect(item)} disabled={busy === item.id}>
                 {t.integ_disconnect}
               </Button>
-              {item.provider === 'notion' && (
-                <div className="basis-full">
-                  <NotionSourcePicker integrationId={item.id} hasSelection={typeof item.settings['data_source_id'] === 'string'}
-                    onSaved={() => void load()} />
-                </div>
-              )}
             </div>
           ))
         )}
@@ -168,25 +147,7 @@ export function IntegrationsSection() {
         <div className="space-y-2 rounded-xl bg-background/60 p-3">
           <p className="text-xs font-semibold text-primary">{t.integ_google}</p>
           <p className="text-xs text-muted">{t.integ_google_hint}</p>
-          <Button size="sm" onClick={() => void connect('google')} disabled={busy === 'google'}>{t.integ_google_connect}</Button>
-        </div>
-      )}
-
-      {items !== undefined && (
-        <div className="space-y-2 border-t border-border/60 pt-4">
-          <p className="text-sm font-medium text-primary">{t.integ_sources}</p>
-          <p className="text-xs text-muted">{t.integ_sources_hint}</p>
-          {SOURCES.filter((src) => !items.some((i) => i.provider === src.provider)).map((src) => (
-            <div key={src.slug} className="flex items-center gap-3 rounded-xl bg-background/60 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-primary">{providerLabel(src.provider)}</p>
-                <p className="text-xs text-muted">{t[src.hint]}</p>
-              </div>
-              <Button size="sm" variant="secondary" onClick={() => void connect(src.slug)} disabled={busy === src.slug}>
-                {t.integ_connect}
-              </Button>
-            </div>
-          ))}
+          <Button size="sm" onClick={() => void connectGoogle()} disabled={busy === 'google'}>{t.integ_google_connect}</Button>
         </div>
       )}
 

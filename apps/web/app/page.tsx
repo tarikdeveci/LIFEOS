@@ -128,8 +128,8 @@ export default function LandingPage() {
 
         <WsjfPlayground copy={copy} />
         <DayBuilder copy={copy} tr={lang === 'tr'} />
-        <MuscleMapShowcase copy={copy} />
-        <MobileShowcase t={t} />
+        <MuscleMapShowcase copy={copy} tr={lang === 'tr'} />
+        <MobileShowcase t={t} tr={lang === 'tr'} />
         <Pricing eyebrow={t.nav_pricing} title={t.pricing_title} subtitle={t.pricing_subtitle} plans={plans} />
         <Faq title={t.faq_title} items={faqs} />
         <Closing t={t} />

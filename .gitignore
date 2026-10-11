@@ -9,6 +9,13 @@ out
 build
 .expo
 
+# Native projeler (CNG prebuild çıktısı). apps/mobile/.gitignore bunları zaten
+# dışarıda tutuyor, ama EAS CLI Windows'ta alt klasörlerdeki .gitignore'ları
+# uygulamıyor (yol ayırıcı farkı) ve yerel android/ build arşivine giriyor.
+# Kökte de yazınca EAS her build'de temiz prebuild yapar.
+/apps/mobile/android
+/apps/mobile/ios
+
 # Store build artifacts (.ipa / .aab) — never commit
 dist-store/
 graphify-out/

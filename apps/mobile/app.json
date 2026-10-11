@@ -2,7 +2,7 @@
   "expo": {
     "name": "LifeOS",
     "slug": "lifeos",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -23,7 +23,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "tr.lifeos.app",
       "appleTeamId": "P2N597P2GX",
-      "buildNumber": "31",
+      "buildNumber": "34",
       "googleServicesFile": "./GoogleService-Info.plist",
       "entitlements": {
         "com.apple.security.application-groups": [
@@ -63,7 +63,7 @@
         "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_WEIGHT"
       ],
-      "versionCode": 26
+      "versionCode": 31
     },
     "plugins": [
       "expo-router",
@@ -92,7 +92,7 @@
           "background": false
         }
       ],
-      "react-native-health-connect",
+      "./plugins/withHealthConnectPermissions",
       [
         "react-native-android-widget",
         {
@@ -117,7 +117,10 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# expo-notifications ve expo-task-manager kendi keep kurallarini pakete baglamiyor.\n# Zamanlanmis bildirimler sinif adiyla serilestirilip saklanir: adlar surumler arasi sabit kalmali.\n-keep class expo.modules.notifications.** { *; }\n-keep class expo.modules.taskManager.** { *; }\n# Manifest meta-data'sindan isimle yuklenir (arka plan gorevleri); R8 referansi goremeyip siliyor.\n-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }"
           }
         }
       ],

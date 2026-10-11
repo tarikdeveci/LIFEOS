@@ -9,8 +9,9 @@ import { Reveal, SectionHeading } from './primitives'
 const CYCLE_MS = 4500
 
 // Görseller uygulamanın gerçek ekranından kırpıldı (yalnız kas haritası kartı),
-// kaynak: marketing/promo-film-15s/screens/kas-*.png
-export function MuscleMapShowcase({ copy }: { copy: LandingCopy }) {
+// kaynak: marketing/promo-film-15s/screens/kas-*.png. İngilizce sayfa, uygulamanın
+// İngilizce arayüzünden çekilmiş -en kopyalarını gösterir (Front/Back, Ready...).
+export function MuscleMapShowcase({ copy, tr }: { copy: LandingCopy; tr: boolean }) {
   const tabs = copy.muscle_tabs
   const [idx, setIdx] = useState(1)
   const [auto, setAuto] = useState(true)
@@ -106,7 +107,7 @@ export function MuscleMapShowcase({ copy }: { copy: LandingCopy }) {
                     transition={{ duration: 0.55 }}
                     className="absolute inset-0"
                   >
-                    <Image src={`/landing/muscle-${tab.key}.webp`} alt={`${copy.muscle_alt}: ${tab.label}`} fill sizes="(min-width: 1024px) 520px, 90vw" className="object-contain object-top" />
+                    <Image src={`/landing/muscle-${tab.key}${tr ? '' : '-en'}.webp`} alt={`${copy.muscle_alt}: ${tab.label}`} fill sizes="(min-width: 1024px) 520px, 90vw" className="object-contain object-top" />
                   </motion.div>
                 </AnimatePresence>
               </div>
