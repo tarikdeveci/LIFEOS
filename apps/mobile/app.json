@@ -117,7 +117,10 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# expo-notifications ve expo-task-manager kendi keep kurallarini pakete baglamiyor.\n# Zamanlanmis bildirimler sinif adiyla serilestirilip saklanir: adlar surumler arasi sabit kalmali.\n-keep class expo.modules.notifications.** { *; }\n-keep class expo.modules.taskManager.** { *; }\n# Manifest meta-data'sindan isimle yuklenir (arka plan gorevleri); R8 referansi goremeyip siliyor.\n-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }"
           }
         }
       ],
