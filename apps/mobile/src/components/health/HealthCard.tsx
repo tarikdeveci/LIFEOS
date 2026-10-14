@@ -40,6 +40,8 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const providerName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'
+  // Android'de mesafe ve nabız okunmuyor (healthConnect.ts), kutuları da çizilmez.
+  const readsDistanceAndHeartRate = Platform.OS === 'ios'
   // Kart tüm ekranı kaplamasın: varsayılan kapalı, tercih cihazda saklanır.
   const [expanded, setExpanded] = useState(false)
 
@@ -152,7 +154,9 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
 
           {/* Metrik ızgarası */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-            <HealthMetric icon="footsteps-outline" color={palette.info} label={t.health_distance} value={formatDistance(today?.distance_m ?? null, lang)} />
+            {readsDistanceAndHeartRate && (
+              <HealthMetric icon="footsteps-outline" color={palette.info} label={t.health_distance} value={formatDistance(today?.distance_m ?? null, lang)} />
+            )}
             <HealthMetric icon="flame-outline" color={palette.warning} label={t.health_active_energy} value={today?.active_energy_kcal != null ? `${Math.round(today.active_energy_kcal)} kcal` : '–'} />
             <HealthMetric icon="timer-outline" color={palette.success} label={t.health_exercise_minutes} value={today?.exercise_minutes != null ? `${Math.round(today.exercise_minutes)} min` : '–'} />
             <HealthMetric icon="barbell-outline" color={palette.workout} label={t.health_workouts} value={today?.workout_count != null ? `${today.workout_count}` : '–'} />
@@ -163,18 +167,22 @@ export function HealthCard({ today, range, settings, isSyncing, onSync }: Props)
               value={formatSleepDuration(today?.sleep_minutes ?? null, lang)}
               sub={sleepProgress?.reached ? '✓' : undefined}
             />
-            <HealthMetric
-              icon="pulse-outline"
-              color={palette.danger}
-              label={t.health_resting_hr}
-              value={today?.resting_heart_rate != null ? `${Math.round(today.resting_heart_rate)} bpm` : '–'}
-            />
-            <HealthMetric
-              icon="heart-circle-outline"
-              color={palette.danger}
-              label={t.health_avg_hr}
-              value={today?.avg_heart_rate != null ? `${Math.round(today.avg_heart_rate)} bpm` : '–'}
-            />
+            {readsDistanceAndHeartRate && (
+              <>
+                <HealthMetric
+                  icon="pulse-outline"
+                  color={palette.danger}
+                  label={t.health_resting_hr}
+                  value={today?.resting_heart_rate != null ? `${Math.round(today.resting_heart_rate)} bpm` : '–'}
+                />
+                <HealthMetric
+                  icon="heart-circle-outline"
+                  color={palette.danger}
+                  label={t.health_avg_hr}
+                  value={today?.avg_heart_rate != null ? `${Math.round(today.avg_heart_rate)} bpm` : '–'}
+                />
+              </>
+            )}
           </View>
 
           {(suggestedEnergy !== null || recovery.status !== 'unknown') && (
@@ -386,7 +394,7 @@ export function HealthConnectPrompt({ onPress }: { onPress: () => void }) {
               {providerName}
             </Text>
             <Text style={{ marginTop: 2, fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 17 }}>
-              {t.health_prompt_desc.replace('{provider}', providerName)}
+              {(Platform.OS === 'android' ? t.health_prompt_desc_android : t.health_prompt_desc).replace('{provider}', providerName)}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />

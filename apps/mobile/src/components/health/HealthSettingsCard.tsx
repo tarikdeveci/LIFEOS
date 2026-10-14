@@ -28,7 +28,7 @@ export function HealthSettingsCard({ userId }: Props) {
   const enabled = settings?.enabled ?? false
   const providerName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'
   const connectLabel = t.health_connect.replace('{provider}', providerName)
-  const connectDescription = t.health_connect_desc.replace('{provider}', providerName)
+  const connectDescription = (Platform.OS === 'android' ? t.health_connect_desc_android : t.health_connect_desc).replace('{provider}', providerName)
   const readOnlyDescription = t.health_read_only.replace('{provider}', providerName)
   const lastSyncText = settings?.last_synced_at
     ? new Date(settings.last_synced_at).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', {
