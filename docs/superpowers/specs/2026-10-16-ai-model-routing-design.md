@@ -100,37 +100,45 @@ süresince kalır).
 
 | Rota | Birinci | Yedek |
 |---|---|---|
-| replan, brain_dump, workout_plan, workout_program_chat, nutrition_chat, life_setup, daily_report | opus-5 | sonnet-5 |
-| daily_plan, task_priority | sonnet-5 (`extra_params`: thinking kapalı) | boş |
-| meal_extract, meal_estimate | opus-4-6 | sonnet-5 |
-| meal_verify, meal_portion | sonnet-5 | boş |
+| replan, workout_plan, workout_program_chat, nutrition_chat, life_setup, daily_report | opus-5 | sonnet-5 |
+| brain_dump | opus-5-nothink | sonnet-5-nothink |
+| daily_plan, task_priority | sonnet-5-nothink | boş |
+| meal_extract, meal_estimate | opus-4-6 | sonnet-5-nothink |
+| meal_verify, meal_portion | sonnet-5-nothink | boş |
 
-Katalogda ayrıca `gemini-flash` ve `gemini-flash-lite` satırları bulunur ama hiçbir
-rotaya atanmaz. Atama, 4.5'teki değerlendirmeden sonra tek tek yapılır. Düşünmesi
-kapalı ve açık iki varyant gerekirse katalogda iki ayrı satır olur (örn.
-`sonnet-5` ve `sonnet-5-nothink`).
+Modele özgü bütün parametreler katalogdadır, rotada değil: `opus-5` ve `sonnet-5`
+satırlarında `{"output_config":{"effort":"low"}}`, `*-nothink` satırlarında
+`{"thinking":{"type":"disabled"}}`, `opus-4-6` satırında `{"temperature":0}`. Bu,
+bugün kodda dağınık duran `CHAT_EFFORT`, `thinking` ve `sampling` kararlarının
+birebir karşılığıdır.
+
+Gemini satırları migration'a girmez: model adları ve fiyatları yayın sırasında
+Google'ın güncel listesinden doğrulanıp tek `insert` ile eklenir, değerlendirmeden
+sonra rotalara tek tek atanır.
+
+`events_name_check` kısıtına `ai_fallback_notified` adı eklenir (4.4).
 
 Yeni migration'dan sonra eski 4 ortam değişkeni okunmaz; kaldırılır.
 
-### 4.2 Sağlayıcı katmanı (`supabase/functions/_shared/ai/`)
+### 4.2 Sağlayıcı katmanı (`supabase/functions/_shared/ai/llm/`)
 
-- **`llm.ts`**: tek giriş noktası.
-  - `LlmRequest`: `stableSystem`, `volatileSystem`, `messages`, `maxTokens`,
-    isteğe bağlı `effort`, isteğe bağlı `tool` (ad, açıklama, JSON şema, strict).
+- **`generate.ts`** (+ `types.ts`): tek giriş noktası.
+  - `LlmRequest`: `system` (düz metin ya da mevcut `SystemBlock[]`: sabit blok
+    önce, değişken blok sonra), `messages`, `maxTokens`, isteğe bağlı `tool` (ad,
+    açıklama, JSON şema, strict). Effort ve düşünme istekte değil, katalogda.
   - `LlmResult`: `text`, `toolInput`, `usage` (input, output, cacheRead,
     cacheWrite), `modelId`, `stopReason` (`end` | `max_tokens` | `tool`), `mode`
     (`primary` | `fallback`).
   - `generate(route, request, ctx)`: router'dan modeli alır, adaptörü çağırır.
 - **`providers/anthropic.ts`**: mevcut SDK. Sabit sistem metni `cache_control`
-  bloğu olur, `effort` → `output_config`, `tool` → `tools` + zorunlu `tool_choice`,
-  `thinking` / `temperature` model farkları burada. Anthropic SDK import'u yalnız
-  bu dosyada.
+  bloğu olarak olduğu gibi gider, `tool` → `tools` + zorunlu `tool_choice`,
+  `extra_params` isteğe eklenir. Anthropic SDK import'u yalnız bu dosyada.
 - **`providers/openaiCompat.ts`**: SDK yok, `fetch` ile
   `{base_url}/chat/completions`. Sabit metin öne konur (otomatik önek önbelleği
   için). `tool` → `tools:[{type:'function'}]` + zorunlu `tool_choice`, argüman JSON'u
   ayrıştırılır. `finish_reason:'length'` → `max_tokens`. Kullanım
   `prompt_tokens`, `completion_tokens`, `prompt_tokens_details.cached_tokens`
-  alanlarından. `effort` bu adaptörde gönderilmez; gerekiyorsa `extra_params`.
+  alanlarından. Sağlayıcıya özgü ayarlar `extra_params` ile.
 - **`router.ts`**: iki tabloyu service role istemcisiyle okur, 60 saniye bellekte
   tutar. Rota ve bütçe durumuna göre modeli seçer, anahtarı
   `Deno.env.get(api_key_secret)` ile çözer (ad kuralı tekrar kontrol edilir).
@@ -144,7 +152,7 @@ model yazılır. Yedek de düşerse bugünkü hata davranışı korunur.
 **Çağrı noktaları:** 9 handler'da `client.messages.create` yerine `generate`,
 `firstText(response)` yerine `result.text`. Öğün tarafında `createAnthropic*`
 fabrikaları `createLlm*` olur; `Extractor`, `Verifier` arayüzleri ve iç mantık
-değişmez. `systemBlocks` yerine `stableSystem` / `volatileSystem` ayrımı kullanılır.
+değişmez. Prompt kurucuları (`systemBlocks`) olduğu gibi kalır.
 
 **Bilinen risk:** Gemini'nin strict şema desteği Claude'unkinden dar. Öğün
 şemaları basit (enum, sayı, metin); uyumsuzluk 4.5'teki değerlendirmede görünür.
@@ -219,10 +227,13 @@ uygulamadaki bütçe uyarısı kendiliğinden görünmez olur.
 Token yoksa ya da gönderim düşerse istek etkilenmez. Metin (TR / EN):
 
 > Bu ayki hızlı AI kullanımın doldu. AI özelliklerin çalışmaya devam ediyor, ay
-> sonuna kadar daha hafif bir modelle. {ay adı} 1'de yenilenir.
+> sonuna kadar daha hafif bir modelle. Yenilenme: 1 {Ay}.
 
 > Your fast AI allowance for this month is used up. Your AI features keep working
-> with a lighter model until the end of the month. It renews on {month} 1.
+> with a lighter model until the end of the month. Renews: {Month} 1.
+
+Sayıdan sonra ek yazılmaz (`daily-digest/copy.ts` kuralı); bu yüzden "1 Kasım'da"
+yerine "Yenilenme: 1 Kasım."
 
 Bildirimde ödeme, kredi ya da web sitesi geçmez.
 
