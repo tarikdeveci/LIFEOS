@@ -65,7 +65,7 @@ test('router: tablo hatası', async () => {
 
 test('router: kapalı model', async () => {
   const disabled = createRouter({ load: async () => catalog({ enabled: false }), env })
-  assert.equal((await disabled.resolve('brain_dump')).primary.id, 'opus-5-nothink')
+  assert.equal((await disabled.resolve('brain_dump')).primary.id, 'sonnet-5-nothink')
 
   const missing = createRouter({
     load: async () => ({ models: [], routes: [{ route: 'task_priority', primary_model: 'yok', fallback_model: null }] }),
@@ -88,13 +88,13 @@ test('router: kapalı model', async () => {
 
 test('router: secret adı', async () => {
   const evil = createRouter({ load: async () => catalog({ api_key_secret: 'SUPABASE_SERVICE_ROLE_KEY' }), env: () => 'x' })
-  assert.equal((await evil.resolve('brain_dump')).primary.id, 'opus-5-nothink')
+  assert.equal((await evil.resolve('brain_dump')).primary.id, 'sonnet-5-nothink')
 
   const noKey = createRouter({ load: async () => catalog(), env: (n) => (n === 'AI_KEY_GEMINI' ? undefined : 'a') })
-  assert.equal((await noKey.resolve('brain_dump')).primary.id, 'opus-5-nothink')
+  assert.equal((await noKey.resolve('brain_dump')).primary.id, 'sonnet-5-nothink')
 
   const http = createRouter({ load: async () => catalog({ base_url: 'http://example.test' }), env })
-  assert.equal((await http.resolve('brain_dump')).primary.id, 'opus-5-nothink')
+  assert.equal((await http.resolve('brain_dump')).primary.id, 'sonnet-5-nothink')
 })
 
 test('router: anthropic geçiş anahtarı', async () => {
@@ -103,4 +103,36 @@ test('router: anthropic geçiş anahtarı', async () => {
     env: (n) => (n === 'ANTHROPIC_API_KEY' ? 'old-key' : undefined),
   })
   assert.equal((await router.resolve('replan')).primary.apiKey, 'old-key')
+})
+
+test('router: ayrılmış alanlar extra_params içinden ayıklanır', async () => {
+  const router = createRouter({
+    load: async () => catalog({
+      extra_params: { model: 'pahali', messages: [], system: 'x', tools: [], tool_choice: 'x', stream: true, max_tokens: 9, reasoning_effort: 'none' },
+    }),
+    env,
+  })
+  assert.deepEqual((await router.resolve('brain_dump')).primary.extraParams, { reasoning_effort: 'none' })
+})
+
+test('router: birinci modelin anahtarı yoksa ayarlı yedek öne geçer', async () => {
+  const router = createRouter({
+    load: async () => catalog(),
+    env: (n) => (n === 'AI_KEY_GEMINI' ? undefined : ENV[n]),
+  })
+  const { primary, fallback } = await router.resolve('brain_dump')
+  assert.equal(primary.id, 'sonnet-5-nothink')
+  assert.equal(fallback, null)
+})
+
+test('router: cheap koddaki varsayılan yedeği taşır', async () => {
+  const router = createRouter({ load: async () => catalog(), env })
+  assert.equal((await router.resolve('replan')).cheap?.id, 'sonnet-5')
+})
+
+test('router: openai_compat satırı Anthropic anahtarını kullanamaz', async () => {
+  const router = createRouter({ load: async () => catalog({ api_key_secret: 'AI_KEY_ANTHROPIC' }), env })
+  const { primary } = await router.resolve('brain_dump')
+  // Birinci reddedildi, ayarli yedek (anthropic) one gecti.
+  assert.equal(primary.id, 'sonnet-5-nothink')
 })

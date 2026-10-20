@@ -35,6 +35,8 @@ export interface CatalogRows {
 export interface RouteModels {
   primary: ResolvedModel
   fallback: ResolvedModel | null
+  /** Koddaki varsayilan ucuz model (anahtari varsa): butce asildiginda tabloda yedek yoksa buna dusulur. */
+  cheap: ResolvedModel | null
 }
 
 export interface AiRouter {
@@ -50,6 +52,9 @@ export interface RouterDeps {
 
 const SECRET_PATTERN = /^AI_KEY_[A-Z0-9_]+$/
 const DEFAULT_TTL_MS = 60_000
+const ANTHROPIC_SECRET = 'AI_KEY_ANTHROPIC'
+/** Govdenin kimligini ve sekli belirleyen alanlar: katalog bunlari ezemez (fatura baska model calisir). */
+const RESERVED_PARAMS = new Set(['model', 'messages', 'system', 'tools', 'tool_choice', 'stream', 'max_tokens'])
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
@@ -64,13 +69,18 @@ function parseRow(row: AiModelRow): ModelSpec | null {
   if (!SECRET_PATTERN.test(row.api_key_secret)) return null
   if (row.base_url !== null && !row.base_url.startsWith('https://')) return null
   if (row.provider === 'openai_compat' && row.base_url === null) return null
+  // Anthropic anahtari ucuncu taraf bir adrese gonderilmez.
+  if (row.provider === 'openai_compat' && row.api_key_secret === ANTHROPIC_SECRET) return null
   const input = toNumber(row.input_per_mtok)
   const output = toNumber(row.output_per_mtok)
   if (input === null || output === null) return null
   const extra = row.extra_params
-  const extraParams = typeof extra === 'object' && extra !== null && !Array.isArray(extra)
-    ? (extra as Record<string, unknown>)
-    : {}
+  const extraParams: Record<string, unknown> = {}
+  if (typeof extra === 'object' && extra !== null && !Array.isArray(extra)) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (!RESERVED_PARAMS.has(key)) extraParams[key] = value
+    }
+  }
   return {
     id: row.id,
     provider: row.provider,
@@ -107,7 +117,7 @@ export function createRouter(deps: RouterDeps): AiRouter {
     const direct = deps.env(spec.apiKeySecret)
     if (direct) return direct
     // Gecis suresince: AI_KEY_ANTHROPIC yoksa eski secret.
-    if (spec.apiKeySecret === 'AI_KEY_ANTHROPIC') return deps.env('ANTHROPIC_API_KEY') || null
+    if (spec.apiKeySecret === ANTHROPIC_SECRET) return deps.env('ANTHROPIC_API_KEY') || null
     return null
   }
 
@@ -139,6 +149,11 @@ export function createRouter(deps: RouterDeps): AiRouter {
         primary = withKey(specs.get(row.primary_model))
         fallback = row.fallback_model ? withKey(specs.get(row.fallback_model)) : null
       }
+      if (!primary && fallback) {
+        // Birinci modelin anahtari yok ama ayarli yedek calisiyor: yedek one gecer.
+        primary = fallback
+        fallback = null
+      }
       if (!primary) {
         // Satir yok, tablo okunamadi ya da model kullanilamaz: koddaki esleme.
         primary = defaultModel(defaults.primary)
@@ -147,7 +162,7 @@ export function createRouter(deps: RouterDeps): AiRouter {
       if (!primary) {
         throw new LlmError(`'${route}' rotasi icin model anahtari tanimli degil`, null, false)
       }
-      return { primary, fallback }
+      return { primary, fallback, cheap: defaultModel(defaults.fallback) }
     },
   }
 }

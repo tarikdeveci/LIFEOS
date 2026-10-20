@@ -23,7 +23,7 @@ export interface GenerateOptions {
   /** Aylik butce asildi: yedek model varsa onunla calis. */
   overBudget: boolean
   /** Basarili sonuc geldiginde bir kez cagrilir (maliyet defteri). */
-  onResult?: (result: LlmResult) => void
+  onResult?: (result: LlmResult) => void | Promise<void>
   /** Testler icin adaptor yerine koyma. */
   providers?: Partial<Record<ResolvedModel['provider'], ProviderFn>>
 }
@@ -39,7 +39,7 @@ export async function generate(
   request: LlmRequest,
   options: GenerateOptions,
 ): Promise<LlmResult> {
-  const { primary, fallback } = await router.resolve(route)
+  const { primary, fallback, cheap } = await router.resolve(route)
   const providers = { ...DEFAULT_PROVIDERS, ...options.providers }
 
   async function run(model: ResolvedModel, mode: LlmResult['mode']): Promise<LlmResult> {
@@ -54,11 +54,18 @@ export async function generate(
       costUsd: costUsd(model, provider.usage),
       mode,
     }
-    options.onResult?.(result)
+    try {
+      await options.onResult?.(result)
+    } catch (err) {
+      // Defter hatasi kullanicinin basarili istegini bozmaz.
+      console.error('AI sonuc kaydi basarisiz:', err instanceof Error ? err.message : err)
+    }
     return result
   }
 
-  if (options.overBudget && fallback) return run(fallback, 'fallback')
+  // Butce bitti: ayarli yedek, yoksa koddaki ucuz model; hic ucuz model yoksa birinci.
+  const budgetModel = fallback ?? cheap
+  if (options.overBudget && budgetModel) return run(budgetModel, 'fallback')
   try {
     return await run(primary, 'primary')
   } catch (err) {

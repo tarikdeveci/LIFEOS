@@ -12,6 +12,10 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 }
 
+function isCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
 function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
@@ -61,9 +65,18 @@ function parse(response: unknown): ProviderResult {
   const body = record(response)
   const choice = record(Array.isArray(body['choices']) ? body['choices'][0] : null)
   const message = record(choice['message'])
+  const rawUsage = record(body['usage'])
+  // Eksik mesaj ya da kullanim sifir maliyetli basari sayilmaz: gecici hata, yedek calissin.
+  if (
+    Object.keys(message).length === 0
+    || !isCount(rawUsage['prompt_tokens'])
+    || !isCount(rawUsage['completion_tokens'])
+  ) {
+    throw new LlmError('Model yaniti gecersiz: mesaj ya da kullanim eksik', null, true)
+  }
   const toolCalls = Array.isArray(message['tool_calls']) ? message['tool_calls'] : []
   const toolArgs = toolCalls.length > 0 ? record(record(toolCalls[0])['function'])['arguments'] : undefined
-  const usage = record(body['usage'])
+  const usage = rawUsage
   const cached = count(record(usage['prompt_tokens_details'])['cached_tokens'])
   const finish = choice['finish_reason']
   return {

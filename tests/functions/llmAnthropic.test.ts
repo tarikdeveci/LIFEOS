@@ -18,7 +18,7 @@ function capture(response: unknown): { create: (b: Record<string, unknown>) => P
   }
 }
 
-const EMPTY = { content: [], usage: {}, stop_reason: 'end_turn' }
+const EMPTY = { content: [], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: 'end_turn' }
 
 test('anthropic: gövde', async () => {
   const system = [
@@ -40,7 +40,7 @@ test('anthropic: gövde', async () => {
 test('anthropic: araç', async () => {
   const fake = capture({
     content: [{ type: 'tool_use', name: 't', input: { a: 1 } }],
-    usage: {},
+    usage: { input_tokens: 1, output_tokens: 1 },
     stop_reason: 'tool_use',
   })
   const request: LlmRequest = {
@@ -94,4 +94,19 @@ test('anthropic: hata sınıflandırma', async () => {
 test('resolver: npm: öneki', async () => {
   const mod = await import('npm:@anthropic-ai/sdk')
   assert.equal(typeof mod.default, 'function')
+})
+
+test('anthropic: eksik kullanım ya da içerik geçici hata sayılır', async () => {
+  for (const bad of [
+    { content: [], stop_reason: 'end_turn' },
+    { content: [], usage: {}, stop_reason: 'end_turn' },
+    { usage: { input_tokens: 1, output_tokens: 1 } },
+    null,
+  ]) {
+    const fake = capture(bad)
+    await assert.rejects(
+      callAnthropic(opus, { system: 's', messages: [], maxTokens: 1 }, { create: fake.create }),
+      (e: unknown) => e instanceof LlmError && e.retryable,
+    )
+  }
 })

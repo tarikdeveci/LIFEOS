@@ -11,8 +11,14 @@ function resolved(id: string): ResolvedModel {
   return { ...DEFAULT_MODELS.find((m) => m.id === id)!, apiKey: 'k' }
 }
 
-function routerOf(primary: string, fallback: string | null): AiRouter {
-  return { resolve: async () => ({ primary: resolved(primary), fallback: fallback ? resolved(fallback) : null }) }
+function routerOf(primary: string, fallback: string | null, cheap: string | null = null): AiRouter {
+  return {
+    resolve: async () => ({
+      primary: resolved(primary),
+      fallback: fallback ? resolved(fallback) : null,
+      cheap: cheap ? resolved(cheap) : null,
+    }),
+  }
 }
 
 const USAGE = { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 }
@@ -91,4 +97,36 @@ test('generate: maliyet', async () => {
   assert.equal(result.costUsd, costUsd(resolved('opus-5'), USAGE))
   assert.equal(result.route, 'replan')
   assert.equal(result.apiModel, 'claude-opus-5')
+})
+
+test('generate: bütçe aşımında yedek yoksa koddaki ucuz model', async () => {
+  const p = providers(async () => OK)
+  const result = await generate(routerOf('opus-5', null, 'sonnet-5-nothink'), 'replan', REQUEST, {
+    overBudget: true,
+    providers: p.providers,
+  })
+  assert.equal(result.mode, 'fallback')
+  assert.equal(result.modelId, 'sonnet-5-nothink')
+})
+
+test('generate: defter hatası isteği bozmaz, onResult beklenir', async () => {
+  const p = providers(async () => OK)
+  const original = console.error
+  console.error = () => {}
+  let finished = false
+  try {
+    const result = await generate(routerOf('opus-5', null), 'replan', REQUEST, {
+      overBudget: false,
+      providers: p.providers,
+      onResult: async () => {
+        await Promise.resolve()
+        finished = true
+        throw new Error('defter yazilamadi')
+      },
+    })
+    assert.equal(result.text, 'tamam')
+    assert.equal(finished, true)
+  } finally {
+    console.error = original
+  }
 })

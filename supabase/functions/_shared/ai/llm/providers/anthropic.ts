@@ -21,6 +21,10 @@ function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+function isCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
 function buildBody(model: ResolvedModel, request: LlmRequest): Record<string, unknown> {
   const tools = request.tool
     ? {
@@ -33,7 +37,7 @@ function buildBody(model: ResolvedModel, request: LlmRequest): Record<string, un
         tool_choice: { type: 'tool', name: request.tool.name },
       }
     : {}
-  // extraParams en son birlesir: katalog son sozu soyler.
+  // extraParams en son birlesir; ayrilmis alanlar router'da (parseRow) ayiklanir.
   return {
     model: model.apiModel,
     max_tokens: request.maxTokens,
@@ -54,14 +58,18 @@ function classify(err: unknown): LlmError {
 
 function parse(response: unknown): ProviderResult {
   const body = record(response)
-  const blocks = Array.isArray(body['content']) ? body['content'].map(record) : []
+  const usage = record(body['usage'])
+  // Eksik icerik ya da kullanim sifir maliyetli basari sayilmaz: gecici hata, yedek calissin.
+  if (!Array.isArray(body['content']) || !isCount(usage['input_tokens']) || !isCount(usage['output_tokens'])) {
+    throw new LlmError('Anthropic yaniti gecersiz: icerik ya da kullanim eksik', null, true)
+  }
+  const blocks = body['content'].map(record)
   const text = blocks
     .filter((b) => b['type'] === 'text' && typeof b['text'] === 'string')
     .map((b) => b['text'] as string)
     .join('')
   const toolBlock = blocks.find((b) => b['type'] === 'tool_use')
   const input = toolBlock ? record(toolBlock['input']) : null
-  const usage = record(body['usage'])
   const stop = body['stop_reason']
   return {
     text,

@@ -28,7 +28,7 @@ function fakeFetch(payload: unknown, status = 200): { fetchImpl: typeof fetch; s
   return { fetchImpl, seen }
 }
 
-const OK = { choices: [{ message: { content: 'merhaba' }, finish_reason: 'stop' }], usage: {} }
+const OK = { choices: [{ message: { content: 'merhaba' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }
 
 test('openai: istek', async () => {
   const { fetchImpl, seen } = fakeFetch(OK)
@@ -58,7 +58,7 @@ test('openai: istek', async () => {
 test('openai: araç', async () => {
   const call = (args: string) => ({
     choices: [{ message: { tool_calls: [{ function: { name: 't', arguments: args } }] }, finish_reason: 'tool_calls' }],
-    usage: {},
+    usage: { prompt_tokens: 1, completion_tokens: 1 },
   })
   const request = {
     system: 's',
@@ -107,4 +107,19 @@ test('openai: hata', async () => {
   assert.ok(net instanceof LlmError)
   assert.equal(net.retryable, true)
   assert.equal(net.status, null)
+})
+
+test('openai: eksik mesaj ya da kullanım geçici hata sayılır', async () => {
+  for (const bad of [
+    { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+    { choices: [{ message: { content: 'x' } }] },
+    { choices: [{ message: { content: 'x' } }], usage: {} },
+    {},
+  ]) {
+    const { fetchImpl } = fakeFetch(bad)
+    await assert.rejects(
+      callOpenAiCompat(model, { system: 's', messages: [], maxTokens: 1 }, fetchImpl),
+      (e: unknown) => e instanceof LlmError && e.retryable,
+    )
+  }
 })
