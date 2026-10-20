@@ -2,8 +2,10 @@
 //
 // Aylik AI butcesi dolup kullanici hafif (yedek) modele gectiginde ayda BIR kez
 // push bildirimi. "Bu ay bildirildi" kilidi events tablosundaki
-// `ai_fallback_notified` satiridir; push dusarsa kilit silinir ki bir sonraki
-// istek yeniden denesin.
+// `ai_fallback_notified` satiridir ve ATOMIKTIR: (user_id, props->>'month')
+// uzerindeki kismi unique index (migration 072) sayesinde es zamanli iki istekten
+// yalnizca biri satiri yazabilir. Push dusarsa ya da gonderilecek token yoksa
+// kendi satirimiz silinir ki bir sonraki istek yeniden denesin.
 
 import { sendExpoPush, type PushMessage } from '../push.ts'
 
@@ -12,13 +14,17 @@ export type NoticeResult = 'sent' | 'skipped' | 'failed'
 
 interface QueryError {
   message: string
+  /** Postgres hata kodu; 23505 = unique ihlali (bu ay zaten talep edildi). */
+  code?: string
 }
 
 interface Query extends PromiseLike<{ data?: unknown; error: QueryError | null }> {
-  eq(column: string, value: string): Query
-  gte(column: string, value: string): Query
+  eq(column: string, value: string | number): Query
   in(column: string, values: readonly string[]): Query
-  limit(count: number): Query
+}
+
+interface InsertQuery {
+  select(columns: string): PromiseLike<{ data?: unknown; error: QueryError | null }>
 }
 
 /**
@@ -28,7 +34,7 @@ interface Query extends PromiseLike<{ data?: unknown; error: QueryError | null }
 export interface NoticeClient {
   from(table: string): {
     select(columns: string): Query
-    insert(row: Record<string, unknown>): PromiseLike<{ error: QueryError | null }>
+    insert(row: Record<string, unknown>): InsertQuery
     delete(): Query
   }
 }
@@ -55,8 +61,9 @@ export function fallbackNoticeCopy(lang: NoticeLang, now: Date): { title: string
   }
 }
 
-function monthStartIso(now: Date): string {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+/** Kilit anahtari: UTC ay, `YYYY-MM`. */
+function monthKey(now: Date): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 /**
@@ -69,38 +76,33 @@ export async function notifyFallbackOnce(
   lang: NoticeLang,
   now: Date = new Date(),
 ): Promise<NoticeResult> {
-  const since = monthStartIso(now)
-  let locked = false
+  let claimId: string | number | null = null
 
+  // Yalnizca KENDI satirimizi siler: baska bir istegin kilidine dokunmaz.
   const unlock = async () => {
-    if (!locked) return
+    if (claimId === null) return
     try {
-      await admin.from('events').delete().eq('user_id', userId).eq('name', NOTICE_EVENT).gte('created_at', since)
+      await admin.from('events').delete().eq('id', claimId)
     } catch (error) {
       console.error('ai_fallback_notified kilidi silinemedi:', error)
     }
+    claimId = null
   }
 
   try {
-    const existing = await admin
+    // Talep = tek INSERT. Unique ihlali "bu ay zaten talep edilmis" demek.
+    const claim = await admin
       .from('events')
+      .insert({ user_id: userId, name: NOTICE_EVENT, props: { month: monthKey(now) } })
       .select('id')
-      .eq('user_id', userId)
-      .eq('name', NOTICE_EVENT)
-      .gte('created_at', since)
-      .limit(1)
-    if (existing.error) {
-      console.error('ai_fallback_notified okunamadi:', existing.error.message)
+    if (claim.error) {
+      if (claim.error.code === '23505') return 'skipped'
+      console.error('ai_fallback_notified yazilamadi:', claim.error.message)
       return 'failed'
     }
-    if (Array.isArray(existing.data) && existing.data.length > 0) return 'skipped'
-
-    const inserted = await admin.from('events').insert({ user_id: userId, name: NOTICE_EVENT })
-    if (inserted.error) {
-      console.error('ai_fallback_notified yazilamadi:', inserted.error.message)
-      return 'failed'
-    }
-    locked = true
+    const claimed = Array.isArray(claim.data) ? (claim.data[0] as { id?: string | number } | undefined) : undefined
+    if (claimed?.id === undefined) return 'failed'
+    claimId = claimed.id
 
     const tokenRows = await admin.from('push_tokens').select('token').eq('user_id', userId)
     if (tokenRows.error) {
@@ -111,7 +113,11 @@ export async function notifyFallbackOnce(
     const tokens = (Array.isArray(tokenRows.data) ? tokenRows.data : [])
       .map((row) => (row as { token?: unknown }).token)
       .filter((token): token is string => typeof token === 'string' && token.length > 0)
-    if (tokens.length === 0) return 'skipped'
+    if (tokens.length === 0) {
+      // Haber verilemedi: kilit kalirsa kullanici token kaydettiginde de bu ay haber alamaz.
+      await unlock()
+      return 'skipped'
+    }
 
     const copy = fallbackNoticeCopy(lang, now)
     const messages: PushMessage[] = tokens.map((to) => ({

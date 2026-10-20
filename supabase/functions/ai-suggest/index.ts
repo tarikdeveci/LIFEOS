@@ -76,12 +76,6 @@ serve(async (req: Request) => {
 
     const lang: Lang = language === 'en' ? 'en' : 'tr'
 
-    // Bütçe doldu ve hafif modele geçildi: kullanıcıya ayda bir kez haber ver.
-    // Hata fırlatmaz; isteği geciktirse de düşürmez.
-    if (access.overBudget && access.tier !== 'free') {
-      const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-      await notifyFallbackOnce(admin as unknown as NoticeClient, user.id, lang)
-    }
     const langInstr = lang === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'
     const today = isIsoDate(clientToday) ? clientToday : localDate(await userTimeZone(supabase, user.id))
 
@@ -114,6 +108,14 @@ serve(async (req: Request) => {
     const response = await dispatch()
     // Toplanan çağrılar tek `ai_used` satırı olarak şimdi yazılır.
     await activeLedger.flush()
+
+    // Bütçe doldu ve yedek model GERCEKTEN yanıt verdi: kullanıcıya ayda bir kez
+    // haber ver. Başarısız istek ya da birincil modelin cevapladığı istek bildirim
+    // üretmez. Hata fırlatmaz.
+    if (response.ok && access.overBudget && access.tier !== 'free' && activeLedger.mode() === 'fallback') {
+      const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      await notifyFallbackOnce(admin as unknown as NoticeClient, user.id, lang)
+    }
     return response
   } catch (error) {
     // Model fırlattıysa ayrılmış ücretsiz hak yanmasın; harcanan maliyet yine yazılır.

@@ -123,3 +123,16 @@ test('openai: eksik mesaj ya da kullanım geçici hata sayılır', async () => {
     )
   }
 })
+
+test('openai: geçerli kullanımlı geçersiz mesaj hatası kullanımı taşır', async () => {
+  const { fetchImpl } = fakeFetch({ choices: [], usage: { prompt_tokens: 9, completion_tokens: 4 } })
+  await assert.rejects(
+    callOpenAiCompat(model, { system: 's', messages: [], maxTokens: 1 }, fetchImpl),
+    (e: unknown) => e instanceof LlmError && e.retryable && e.usage?.input === 9 && e.usage.output === 4,
+  )
+  const none = fakeFetch({ choices: [] })
+  await assert.rejects(
+    callOpenAiCompat(model, { system: 's', messages: [], maxTokens: 1 }, none.fetchImpl),
+    (e: unknown) => e instanceof LlmError && e.usage === null,
+  )
+})

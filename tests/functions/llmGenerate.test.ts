@@ -130,3 +130,45 @@ test('generate: defter hatası isteği bozmaz, onResult beklenir', async () => {
     console.error = original
   }
 })
+
+test('generate: başarısız denemenin maliyeti de deftere yazılır', async () => {
+  const results: LlmResult[] = []
+  const p = providers(async (model) => {
+    if (model.id === 'opus-5') throw new LlmError('gecersiz', null, true, USAGE)
+    return OK
+  })
+  const result = await generate(routerOf('opus-5', 'sonnet-5'), 'replan', REQUEST, {
+    overBudget: false,
+    providers: p.providers,
+    onResult: (r) => results.push(r),
+  })
+  assert.equal(result.mode, 'fallback')
+  assert.equal(results.length, 2)
+  assert.equal(results[0]!.modelId, 'opus-5')
+  assert.equal(results[0]!.mode, 'primary')
+  assert.equal(results[0]!.costUsd, costUsd(resolved('opus-5'), USAGE))
+  assert.equal(results[1]!.modelId, 'sonnet-5')
+})
+
+test('generate: kullanımsız hata deftere yazılmaz, başarıda çift sayım yok', async () => {
+  const results: LlmResult[] = []
+  const failing = providers(async () => {
+    throw new LlmError('asiri yuk', 529, true)
+  })
+  await assert.rejects(
+    generate(routerOf('opus-5', null), 'replan', REQUEST, {
+      overBudget: false,
+      providers: failing.providers,
+      onResult: (r) => results.push(r),
+    }),
+  )
+  assert.equal(results.length, 0)
+
+  const ok = providers(async () => OK)
+  await generate(routerOf('opus-5', 'sonnet-5'), 'replan', REQUEST, {
+    overBudget: false,
+    providers: ok.providers,
+    onResult: (r) => results.push(r),
+  })
+  assert.equal(results.length, 1)
+})

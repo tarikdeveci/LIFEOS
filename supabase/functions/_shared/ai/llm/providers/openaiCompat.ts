@@ -4,7 +4,7 @@
 // `fetch` ile `{base_url}/chat/completions`.
 
 import { LlmError } from '../types.ts'
-import type { LlmRequest, ProviderResult, ResolvedModel } from '../types.ts'
+import type { LlmRequest, LlmUsage, ProviderResult, ResolvedModel } from '../types.ts'
 
 const TIMEOUT_MS = 90_000
 
@@ -61,34 +61,40 @@ function parseToolArguments(raw: unknown): Record<string, unknown> | null {
   }
 }
 
+function toUsage(raw: Record<string, unknown>): LlmUsage {
+  const cached = count(record(raw['prompt_tokens_details'])['cached_tokens'])
+  return {
+    input: Math.max(0, count(raw['prompt_tokens']) - cached),
+    output: count(raw['completion_tokens']),
+    cacheRead: cached,
+    cacheWrite: 0,
+  }
+}
+
 function parse(response: unknown): ProviderResult {
   const body = record(response)
   const choice = record(Array.isArray(body['choices']) ? body['choices'][0] : null)
   const message = record(choice['message'])
   const rawUsage = record(body['usage'])
   // Eksik mesaj ya da kullanim sifir maliyetli basari sayilmaz: gecici hata, yedek calissin.
-  if (
-    Object.keys(message).length === 0
-    || !isCount(rawUsage['prompt_tokens'])
-    || !isCount(rawUsage['completion_tokens'])
-  ) {
-    throw new LlmError('Model yaniti gecersiz: mesaj ya da kullanim eksik', null, true)
+  const usageValid = isCount(rawUsage['prompt_tokens']) && isCount(rawUsage['completion_tokens'])
+  if (Object.keys(message).length === 0 || !usageValid) {
+    // Kullanim gecerliyse harcama gercek: hata bunu tasir, defter yazar.
+    throw new LlmError(
+      'Model yaniti gecersiz: mesaj ya da kullanim eksik',
+      null,
+      true,
+      usageValid ? toUsage(rawUsage) : null,
+    )
   }
   const toolCalls = Array.isArray(message['tool_calls']) ? message['tool_calls'] : []
   const toolArgs = toolCalls.length > 0 ? record(record(toolCalls[0])['function'])['arguments'] : undefined
-  const usage = rawUsage
-  const cached = count(record(usage['prompt_tokens_details'])['cached_tokens'])
   const finish = choice['finish_reason']
   return {
     text: typeof message['content'] === 'string' ? message['content'] : '',
     toolInput: toolCalls.length > 0 ? parseToolArguments(toolArgs) : null,
     // prompt_tokens onbellekliyi de sayar; maliyet icin ayri veriyoruz.
-    usage: {
-      input: Math.max(0, count(usage['prompt_tokens']) - cached),
-      output: count(usage['completion_tokens']),
-      cacheRead: cached,
-      cacheWrite: 0,
-    },
+    usage: toUsage(rawUsage),
     stopReason: finish === 'length' ? 'max_tokens' : toolCalls.length > 0 ? 'tool' : 'end',
   }
 }
@@ -118,6 +124,7 @@ export async function callOpenAiCompat(
   try {
     return parse(await response.json())
   } catch (err) {
+    if (err instanceof LlmError) throw err
     throw new LlmError(err instanceof Error ? err.message : 'Model yaniti okunamadi', response.status, true)
   }
 }

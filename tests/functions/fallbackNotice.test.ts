@@ -9,8 +9,8 @@ import {
 const NOW = new Date('2026-10-20T12:00:00Z')
 
 interface FakeOptions {
-  existing?: boolean
-  selectError?: boolean
+  /** Insert unique ihlali (23505) verir: bu ay zaten talep edilmis. */
+  duplicate?: boolean
   insertError?: boolean
   tokens?: string[]
 }
@@ -18,49 +18,46 @@ interface FakeOptions {
 function fakeClient(options: FakeOptions = {}) {
   const log = {
     inserts: [] as Record<string, unknown>[],
-    deletes: [] as string[],
-    filters: [] as [string, unknown][],
+    deletes: [] as [string, unknown][],
   }
 
-  const query = (table: string, kind: 'select' | 'delete') => {
-    const filters: [string, unknown][] = []
+  const tokenQuery = () => {
     const builder: Record<string, unknown> = {}
-    const chain = (name: string) => (column: string, value: unknown) => {
-      filters.push([`${name}:${column}`, value])
+    builder.in = () => builder
+    builder.eq = () => builder
+    builder.then = (resolve: (value: unknown) => unknown) =>
+      Promise.resolve({ data: (options.tokens ?? []).map((token) => ({ token })), error: null }).then(resolve)
+    return builder
+  }
+
+  const deleteQuery = (table: string) => {
+    const builder: Record<string, unknown> = {}
+    builder.eq = (column: string, value: unknown) => {
+      log.deletes.push([`${table}:${column}`, value])
       return builder
     }
-    builder.eq = chain('eq')
-    builder.gte = chain('gte')
-    builder.in = chain('in')
-    builder.limit = () => builder
-    builder.then = (resolve: (value: unknown) => unknown) => {
-      log.filters.push(...filters)
-      if (kind === 'delete') {
-        log.deletes.push(table)
-        return Promise.resolve({ error: null }).then(resolve)
-      }
-      if (table === 'events') {
-        return Promise.resolve({
-          data: options.existing ? [{ id: 1 }] : [],
-          error: options.selectError ? { message: 'boom' } : null,
-        }).then(resolve)
-      }
-      return Promise.resolve({
-        data: (options.tokens ?? []).map((token) => ({ token })),
-        error: null,
-      }).then(resolve)
-    }
+    builder.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve)
     return builder
   }
 
   const client = {
     from: (table: string) => ({
-      select: () => query(table, 'select'),
+      select: () => tokenQuery(),
       insert: (row: Record<string, unknown>) => {
         log.inserts.push(row)
-        return Promise.resolve({ error: options.insertError ? { message: 'x' } : null })
+        return {
+          select: () => {
+            if (options.duplicate) {
+              return Promise.resolve({ data: null, error: { message: 'dup', code: '23505' } })
+            }
+            if (options.insertError) {
+              return Promise.resolve({ data: null, error: { message: 'x', code: '42501' } })
+            }
+            return Promise.resolve({ data: [{ id: 77 }], error: null })
+          },
+        }
       },
-      delete: () => query(table, 'delete'),
+      delete: () => deleteQuery(table),
     }),
   } as unknown as NoticeClient
 
@@ -91,59 +88,61 @@ test('notice: metin', () => {
   assert.equal(fallbackNoticeCopy('en', NOW).title, 'Switched to light AI mode')
 })
 
-test('notice: ayda bir kez', async () => {
-  const { client, log } = fakeClient({ existing: true, tokens: ['t1'] })
+test('notice: ayda bir kez (unique ihlali talebi reddeder)', async () => {
+  const { client, log } = fakeClient({ duplicate: true, tokens: ['t1'] })
   const expo = stubExpo((m) => m.map(() => ({ status: 'ok' })))
   try {
     assert.equal(await notifyFallbackOnce(client, 'u1', 'tr', NOW), 'skipped')
-    assert.equal(log.inserts.length, 0)
+    assert.equal(log.inserts.length, 1)
     assert.equal(expo.sent.length, 0)
-    assert.ok(log.filters.some(([k, v]) => k === 'gte:created_at' && v === '2026-10-01T00:00:00.000Z'))
+    assert.equal(log.deletes.length, 0)
   } finally {
     expo.restore()
   }
 })
 
-test('notice: ilk kez', async () => {
+test('notice: ilk kez, kilit satirina ay yazilir', async () => {
   const { client, log } = fakeClient({ tokens: ['t1', 't2'] })
   const expo = stubExpo((m) => m.map(() => ({ status: 'ok' })))
   try {
     assert.equal(await notifyFallbackOnce(client, 'u1', 'en', NOW), 'sent')
-    assert.deepEqual(log.inserts, [{ user_id: 'u1', name: 'ai_fallback_notified' }])
+    assert.deepEqual(log.inserts, [{ user_id: 'u1', name: 'ai_fallback_notified', props: { month: '2026-10' } }])
     assert.deepEqual(expo.sent.map((m) => m.to), ['t1', 't2'])
     assert.equal(expo.sent[0]!.title, 'Switched to light AI mode')
     assert.deepEqual(expo.sent[0]!.data, { type: 'ai_fallback' })
+    assert.equal(log.deletes.length, 0)
   } finally {
     expo.restore()
   }
 })
 
-test('notice: token yok', async () => {
+test('notice: token yok, kilit birakilir ve skipped doner', async () => {
   const { client, log } = fakeClient({ tokens: [] })
   const expo = stubExpo(() => [])
   try {
     assert.equal(await notifyFallbackOnce(client, 'u1', 'tr', NOW), 'skipped')
     assert.equal(log.inserts.length, 1)
     assert.equal(expo.sent.length, 0)
+    assert.deepEqual(log.deletes, [['events:id', 77]])
   } finally {
     expo.restore()
   }
 })
 
-test('notice: push düşerse kilit silinir', async () => {
+test('notice: push dusarse yalniz kendi kilidi silinir', async () => {
   const { client, log } = fakeClient({ tokens: ['t1'] })
   const expo = stubExpo((m) => m.map(() => ({ status: 'error', details: { error: 'MessageRateExceeded' } })))
   try {
     assert.equal(await notifyFallbackOnce(client, 'u1', 'tr', NOW), 'failed')
     assert.equal(log.inserts.length, 1)
-    assert.ok(log.deletes.includes('events'))
+    assert.deepEqual(log.deletes, [['events:id', 77]])
   } finally {
     expo.restore()
   }
 })
 
-test('notice: hata fırlatmaz', async () => {
-  const { client } = fakeClient({ selectError: true })
+test('notice: hata firlatmaz', async () => {
+  const { client } = fakeClient({ insertError: true })
   assert.equal(await notifyFallbackOnce(client, 'u1', 'tr', NOW), 'failed')
 
   const throwing = {

@@ -121,12 +121,6 @@ serve(async (req: Request) => {
     const { pro, useModel: modelTierAvailable, limited: budgetLimited } = planMealAi(access)
     const overBudget = access.allowed && access.overBudget
 
-    // Hafif modele geçildi: kullanıcıya ayda bir kez haber ver. İstek gövdesinde
-    // dil alanı yok, bildirim Türkçe gider.
-    if (overBudget && pro) {
-      await notifyFallbackOnce(supabase as unknown as NoticeClient, user.id, 'tr')
-    }
-
     // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
     // göre birkaç model çağrısı yapıyor; hepsi toplanıp tek `ai_used` satırı
     // olarak yazılır. Model katmanı çalışmadıysa satır yazılmaz.
@@ -163,6 +157,12 @@ serve(async (req: Request) => {
       }
       // Katman yarıda düştüyse de o ana kadarki çağrılar faturalandı.
       await ledger.flush()
+
+      // Yedek model gerçekten sonuç verdiyse kullanıcıya ayda bir kez haber ver.
+      // İstek gövdesinde dil alanı yok, bildirim Türkçe gider.
+      if (result && aiError === null && overBudget && pro && ledger.mode() === 'fallback') {
+        await notifyFallbackOnce(supabase as unknown as NoticeClient, user.id, 'tr')
+      }
     }
 
     if (!result) {

@@ -96,6 +96,12 @@ ALTER TABLE public.events ADD CONSTRAINT events_name_check CHECK (name IN (
   'ai_fallback_notified'
 ));
 
+-- Bildirim kilidi atomik: kullanici basina ayda en fazla bir satir. props.month
+-- 'YYYY-MM' (UTC). Es zamanli iki istekten ikincisi unique ihlaliyle reddedilir.
+CREATE UNIQUE INDEX IF NOT EXISTS events_ai_fallback_month_uq
+  ON public.events (user_id, (props->>'month'))
+  WHERE name = 'ai_fallback_notified';
+
 -- ============================================================
 -- 5. analytics.ai_route_health
 -- ============================================================

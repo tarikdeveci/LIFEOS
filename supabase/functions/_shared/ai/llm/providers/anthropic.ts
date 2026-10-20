@@ -5,7 +5,7 @@
 import Anthropic from 'npm:@anthropic-ai/sdk'
 
 import { LlmError } from '../types.ts'
-import type { LlmRequest, ProviderResult, ResolvedModel } from '../types.ts'
+import type { LlmRequest, LlmUsage, ProviderResult, ResolvedModel } from '../types.ts'
 
 const TIMEOUT_MS = 90_000
 
@@ -49,6 +49,8 @@ function buildBody(model: ResolvedModel, request: LlmRequest): Record<string, un
 }
 
 function classify(err: unknown): LlmError {
+  // Adaptorun kendi hatasi (kullanim bilgisi dahil) oldugu gibi gecer.
+  if (err instanceof LlmError) return err
   const status = typeof record(err)['status'] === 'number' ? (record(err)['status'] as number) : null
   const message = err instanceof Error ? err.message : 'Anthropic cagrisi basarisiz'
   // Durum yoksa ag ya da zaman asimi; 429 ve 5xx (529 asiri yuk dahil) gecici.
@@ -56,12 +58,28 @@ function classify(err: unknown): LlmError {
   return new LlmError(message, status, retryable)
 }
 
+function toUsage(usage: Record<string, unknown>): LlmUsage {
+  return {
+    input: count(usage['input_tokens']),
+    output: count(usage['output_tokens']),
+    cacheRead: count(usage['cache_read_input_tokens']),
+    cacheWrite: count(usage['cache_creation_input_tokens']),
+  }
+}
+
 function parse(response: unknown): ProviderResult {
   const body = record(response)
   const usage = record(body['usage'])
   // Eksik icerik ya da kullanim sifir maliyetli basari sayilmaz: gecici hata, yedek calissin.
-  if (!Array.isArray(body['content']) || !isCount(usage['input_tokens']) || !isCount(usage['output_tokens'])) {
-    throw new LlmError('Anthropic yaniti gecersiz: icerik ya da kullanim eksik', null, true)
+  const usageValid = isCount(usage['input_tokens']) && isCount(usage['output_tokens'])
+  if (!Array.isArray(body['content']) || !usageValid) {
+    // Kullanim gecerliyse harcama gercek: hata bunu tasir, defter yazar.
+    throw new LlmError(
+      'Anthropic yaniti gecersiz: icerik ya da kullanim eksik',
+      null,
+      true,
+      usageValid ? toUsage(usage) : null,
+    )
   }
   const blocks = body['content'].map(record)
   const text = blocks
@@ -74,12 +92,7 @@ function parse(response: unknown): ProviderResult {
   return {
     text,
     toolInput: input,
-    usage: {
-      input: count(usage['input_tokens']),
-      output: count(usage['output_tokens']),
-      cacheRead: count(usage['cache_read_input_tokens']),
-      cacheWrite: count(usage['cache_creation_input_tokens']),
-    },
+    usage: toUsage(usage),
     stopReason: stop === 'max_tokens' ? 'max_tokens' : stop === 'tool_use' ? 'tool' : 'end',
   }
 }

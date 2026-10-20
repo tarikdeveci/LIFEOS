@@ -100,12 +100,15 @@ export interface LlmResult extends ProviderResult {
 export class LlmError extends Error {
   status: number | null
   retryable: boolean
+  /** Saglayici token harcadi ama icerik kullanilamadi: harcama gercek, deftere yazilir. */
+  usage: LlmUsage | null
 
-  constructor(message: string, status: number | null, retryable: boolean) {
+  constructor(message: string, status: number | null, retryable: boolean, usage: LlmUsage | null = null) {
     super(message)
     this.name = 'LlmError'
     this.status = status
     this.retryable = retryable
+    this.usage = usage
   }
 }
 

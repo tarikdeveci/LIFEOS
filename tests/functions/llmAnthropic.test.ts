@@ -110,3 +110,21 @@ test('anthropic: eksik kullanım ya da içerik geçici hata sayılır', async ()
     )
   }
 })
+
+test('anthropic: geçerli kullanımlı geçersiz içerik hatası kullanımı taşır', async () => {
+  const fake = capture({ usage: { input_tokens: 7, output_tokens: 3, cache_read_input_tokens: 2 } })
+  await assert.rejects(
+    callAnthropic(opus, { system: 's', messages: [], maxTokens: 1 }, { create: fake.create }),
+    (e: unknown) =>
+      e instanceof LlmError
+      && e.retryable
+      && e.usage?.input === 7
+      && e.usage.output === 3
+      && e.usage.cacheRead === 2,
+  )
+  const noUsage = capture({ content: [] })
+  await assert.rejects(
+    callAnthropic(opus, { system: 's', messages: [], maxTokens: 1 }, { create: noUsage.create }),
+    (e: unknown) => e instanceof LlmError && e.usage === null,
+  )
+})

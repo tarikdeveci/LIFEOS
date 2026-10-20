@@ -45,21 +45,36 @@ export async function generate(
   async function run(model: ResolvedModel, mode: LlmResult['mode']): Promise<LlmResult> {
     const call = providers[model.provider]
     if (!call) throw new LlmError(`Bilinmeyen saglayici: ${model.provider}`, null, false)
-    const provider = await call(model, request)
-    const result: LlmResult = {
+    const describe = (provider: ProviderResult): LlmResult => ({
       ...provider,
       route,
       modelId: model.id,
       apiModel: model.apiModel,
       costUsd: costUsd(model, provider.usage),
       mode,
+    })
+    const record = async (result: LlmResult) => {
+      try {
+        await options.onResult?.(result)
+      } catch (err) {
+        // Defter hatasi kullanicinin istegini bozmaz.
+        console.error('AI sonuc kaydi basarisiz:', err instanceof Error ? err.message : err)
+      }
     }
+
+    let provider: ProviderResult
     try {
-      await options.onResult?.(result)
+      provider = await call(model, request)
     } catch (err) {
-      // Defter hatasi kullanicinin basarili istegini bozmaz.
-      console.error('AI sonuc kaydi basarisiz:', err instanceof Error ? err.message : err)
+      // Token harcandi ama icerik kullanilamadi: yedek calissa da bu deneme
+      // de faturalanir, deftere bos metinli ayri bir cagri olarak yazilir.
+      if (err instanceof LlmError && err.usage) {
+        await record(describe({ text: '', toolInput: null, usage: err.usage, stopReason: 'end' }))
+      }
+      throw err
     }
+    const result = describe(provider)
+    await record(result)
     return result
   }
 
