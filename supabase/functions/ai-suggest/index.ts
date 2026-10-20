@@ -10,6 +10,7 @@
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
 import type { Lang } from '../_shared/ai/coach.ts'
+import { notifyFallbackOnce, type NoticeClient } from '../_shared/ai/fallbackNotice.ts'
 import { bindRoute, getRouter } from '../_shared/ai/llm/index.ts'
 import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import { isIsoDate, localDate } from '../_shared/ai/muscleLoad.ts'
@@ -74,6 +75,13 @@ serve(async (req: Request) => {
     ledger = new AiLedger(supabase, user.id, type, access.tier, settleClient)
 
     const lang: Lang = language === 'en' ? 'en' : 'tr'
+
+    // Bütçe doldu ve hafif modele geçildi: kullanıcıya ayda bir kez haber ver.
+    // Hata fırlatmaz; isteği geciktirse de düşürmez.
+    if (access.overBudget && access.tier !== 'free') {
+      const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      await notifyFallbackOnce(admin as unknown as NoticeClient, user.id, lang)
+    }
     const langInstr = lang === 'en' ? 'Respond in English.' : 'Türkçe yanıt ver.'
     const today = isIsoDate(clientToday) ? clientToday : localDate(await userTimeZone(supabase, user.id))
 

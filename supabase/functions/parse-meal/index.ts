@@ -26,6 +26,7 @@ import {
 } from '../_shared/nutrition/adapters/llm.ts'
 import { createOpenAIEmbedder } from '../_shared/nutrition/adapters/openai.ts'
 import type { ParseMealResult } from '../_shared/nutrition/types.ts'
+import { notifyFallbackOnce, type NoticeClient } from '../_shared/ai/fallbackNotice.ts'
 import { bindRoute, getRouter } from '../_shared/ai/llm/index.ts'
 import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
 import { planMealAi } from './plan.ts'
@@ -119,6 +120,12 @@ serve(async (req: Request) => {
     const access = await resolveAiAccess(authClient, user.id, 'parse_meal')
     const { pro, useModel: modelTierAvailable, limited: budgetLimited } = planMealAi(access)
     const overBudget = access.allowed && access.overBudget
+
+    // Hafif modele geçildi: kullanıcıya ayda bir kez haber ver. İstek gövdesinde
+    // dil alanı yok, bildirim Türkçe gider.
+    if (overBudget && pro) {
+      await notifyFallbackOnce(supabase as unknown as NoticeClient, user.id, 'tr')
+    }
 
     // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
     // göre birkaç model çağrısı yapıyor; hepsi toplanıp tek `ai_used` satırı
