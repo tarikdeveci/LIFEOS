@@ -176,7 +176,7 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
       return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
 
     default:
-      // Diğer event tipleri (TEST, PRODUCT_CHANGE vb.) — logla ve geç
+      // Diğer event tipleri (TEST, PRODUCT_CHANGE vb.): logla ve geç
       return { action: 'skip', level: 'log', message: `Unhandled RevenueCat event type: ${event.type} for user ${userId} via ${source}` }
   }
 }
