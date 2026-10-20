@@ -8,9 +8,9 @@
 //              tek noktası), ömür boyu 3 kez. Sayaç migration 052'deki
 //              ai_allowance() içinde.
 //   • Deneme : Pro gibi, bütçesi AI_TRIAL_BUDGET_USD.
-//   • Pro    : aylık bütçe kullanıcının ödediği fiyatla ölçeklenir. Bütçe
-//              aşılınca sohbetler ucuz modele, öğün ayrıştırma kural katmanına
-//              düşer. Bütçenin AI_HARD_CAP_FACTOR katında sohbetler durur (429).
+//   • Pro    : aylık bütçe net gelirle ölçeklenir. Bütçe aşılınca tüm rotalar
+//              yedek (ucuz) modele düşer. Bu ayki maliyet AI_ABUSE_CAP_USD'yi
+//              geçerse istekler durur (429), deneme dahil.
 //
 // Maliyet her model yanıtının `usage` alanından hesaplanıp `events.ai_used`
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
@@ -63,14 +63,16 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-// Kullanıcının ödediği AYLIK fiyatın (USD) bu oranı AI'a gidebilir. Fiyat
-// bilinmiyorsa (web/PayTR, fiyatı henüz yazılmamış eski abonelik) taban bütçe.
+// Bütçe kullanıcının NET aylık gelirinin (vergi ve mağaza payı düşülmüş,
+// subscriptions.net_monthly_usd) bu oranıdır. Net gelir bilinmiyorsa sabit
+// varsayılan. Elle verilen hesaplar ai_budget_override_usd ile sabitlenir.
 // Hepsi `supabase secrets set` ile koda dokunmadan ayarlanır; ayar için
 // analytics.ai_cost_by_user görünümüne bakılır.
-const BUDGET_SHARE = envNumber('AI_BUDGET_SHARE', 0.5)
-const MIN_BUDGET_USD = envNumber('AI_MIN_BUDGET_USD', 1)
+const BUDGET_SHARE = envNumber('AI_BUDGET_SHARE', 0.4)
+const DEFAULT_BUDGET_USD = envNumber('AI_DEFAULT_BUDGET_USD', 0.38)
 const TRIAL_BUDGET_USD = envNumber('AI_TRIAL_BUDGET_USD', 0.5)
-const HARD_CAP_FACTOR = envNumber('AI_HARD_CAP_FACTOR', 3)
+// Sert sınır yerine kötüye kullanım koruması: bu ayki toplam maliyet bunu geçerse 429.
+const ABUSE_CAP_USD = envNumber('AI_ABUSE_CAP_USD', 5)
 
 function isActivePro(row: Record<string, unknown> | null): boolean {
   const active = row?.['status'] === 'pro_monthly' || row?.['status'] === 'pro_annual'
@@ -78,11 +80,17 @@ function isActivePro(row: Record<string, unknown> | null): boolean {
   return active && periodEnd !== null && new Date(periodEnd) > new Date()
 }
 
+function positiveNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function monthlyBudgetUsd(row: Record<string, unknown> | null): number {
-  const price = Number(row?.['price_usd'])
-  if (!Number.isFinite(price) || price <= 0) return MIN_BUDGET_USD
-  const monthly = row?.['status'] === 'pro_annual' ? price / 12 : price
-  return Math.max(MIN_BUDGET_USD, monthly * BUDGET_SHARE)
+  const override = positiveNumber(row?.['ai_budget_override_usd'])
+  if (override !== null) return override
+  const net = positiveNumber(row?.['net_monthly_usd'])
+  return net !== null ? net * BUDGET_SHARE : DEFAULT_BUDGET_USD
 }
 
 interface Allowance {
@@ -135,7 +143,7 @@ export async function resolveAiAccess(supabase: SupabaseLike, userId: string, ki
   const tier: AiTier = row?.['period_type'] === 'trial' ? 'trial' : 'pro'
   const budget = tier === 'trial' ? TRIAL_BUDGET_USD : monthlyBudgetUsd(row)
 
-  if (allowance.monthCostUsd >= budget * HARD_CAP_FACTOR) {
+  if (allowance.monthCostUsd >= ABUSE_CAP_USD) {
     return {
       allowed: false,
       tier,
