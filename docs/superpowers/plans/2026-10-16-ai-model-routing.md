@@ -21,7 +21,7 @@
 - Sağlayıcı çağrı zaman aşımı 90 sn; Anthropic SDK `maxRetries: 1`.
 - Takvim ayı UTC (`ai_allowance()` ile aynı pencere).
 - Testler: `pnpm test`. Edge function tip kontrolü Deno olmadığı için scratchpad `tsc` ile (bkz. Görev 14, Adım 1). Web: `pnpm typecheck`.
-- Migration numarası 071 (yazım anında hiçbir dalda 071+ yok; commit öncesi `git fetch` ile tekrar kontrol).
+- Migration numarası 072 (071 başka dalda alınmış; commit öncesi `git fetch` ile tekrar kontrol).
 - `db push`, function deploy ve secret ayarı yalnız bu oturumun sohbetinde kullanıcı onayıyla.
 
 ## Review Focus
@@ -34,10 +34,10 @@
 
 ---
 
-### Task 1: Migration 071 (tablolar, kolonlar, görünüm, ilk veri)
+### Task 1: Migration 072 (tablolar, kolonlar, görünüm, ilk veri)
 
 **Files:**
-- Create: `supabase/migrations/071_ai_model_routing.sql`
+- Create: `supabase/migrations/072_ai_model_routing.sql`
 
 **Interfaces:**
 - Produces: tablolar `ai_models(id, provider, api_model, base_url, api_key_secret, input_per_mtok, output_per_mtok, cached_input_per_mtok, extra_params, enabled)`, `ai_model_routes(route, primary_model, fallback_model, updated_at)`; `subscriptions.net_monthly_usd`, `subscriptions.ai_budget_override_usd`; `events` adına `ai_fallback_notified`; görünüm `analytics.ai_route_health`.
@@ -70,7 +70,7 @@ Expected: `CHECK (name IN ('paywall_view','ai_used', ...))`. Yeni kısıt bu lis
 
 - [ ] **Step 3: Yerel PostgreSQL'de iki kez uygula** (bellek notu `local-postgres-migration-test`: scratchpad'de `initdb`, Supabase rol taklitleri, canlı şema DDL'i)
 
-Run: `psql -p 54399 -U postgres -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/071_ai_model_routing.sql` (iki kez)
+Run: `psql -p 54399 -U postgres -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/072_ai_model_routing.sql` (iki kez)
 Expected: iki çalıştırma da hatasız; `select count(*) from ai_model_routes` → 13.
 
 - [ ] **Step 4: Kısıt testleri**
@@ -80,7 +80,7 @@ Run (her biri hata vermeli): `insert into ai_models(id,provider,api_model,api_ke
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/071_ai_model_routing.sql
+git add supabase/migrations/072_ai_model_routing.sql
 git commit -m "feat(db): ai_models ve ai_model_routes tablolari, net gelir kolonlari"
 ```
 
@@ -118,8 +118,8 @@ test('defaults: her rota tanımlı ve modelleri katalogda', () => {
     if (fb) assert.ok(ids.has(fb), r)
   }
 })
-test('defaults: migration 071 ilk verisiyle aynı', () => {
-  const sql = readFileSync('supabase/migrations/071_ai_model_routing.sql', 'utf8')
+test('defaults: migration 072 ilk verisiyle aynı', () => {
+  const sql = readFileSync('supabase/migrations/072_ai_model_routing.sql', 'utf8')
   for (const r of AI_ROUTES) {
     const { primary, fallback } = DEFAULT_ROUTES[r]
     assert.match(sql, new RegExp(`\\('${r}',\\s*'${primary}',\\s*${fallback ? `'${fallback}'` : 'NULL'}\\)`), r)
@@ -578,7 +578,7 @@ Expected: bu dalda değişen dosyalarda hata yok.
 
 - [ ] **Step 3: Migration dry-run, kullanıcı onayı, push**
 
-Run: `npx supabase db push --dry-run` → yalnız `071_ai_model_routing.sql`. Onaydan sonra `echo Y | npx supabase db push`, ardından `pnpm db:types` ve `npx supabase db query --linked "select route, primary_model, fallback_model from ai_model_routes order by route"` → 13 satır. Tip dosyası commit edilir.
+Run: `npx supabase db push --dry-run` → yalnız `072_ai_model_routing.sql`. Onaydan sonra `echo Y | npx supabase db push`, ardından `pnpm db:types` ve `npx supabase db query --linked "select route, primary_model, fallback_model from ai_model_routes order by route"` → 13 satır. Tip dosyası commit edilir.
 
 - [ ] **Step 4: Secret'lar (onaylı)**
 

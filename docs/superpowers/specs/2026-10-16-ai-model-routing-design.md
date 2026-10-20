@@ -61,7 +61,7 @@ Düşük trafikte prompt önbelleği yazılıp okunmadan siliniyor, kazancı şi
 
 ## 4. Tasarım
 
-### 4.1 Tablolar (migration 071)
+### 4.1 Tablolar (migration 072)
 
 **`ai_models`**: model kataloğu.
 
@@ -291,7 +291,7 @@ bazında çağrı sayısı, toplam ve ortalama maliyet, `parse_ok` oranı, yedek
 
 ## 6. Yayın sırası
 
-1. Migration 071 (tablolar, kolonlar, görünüm, ilk veri) yerelde denenir, sonra
+1. Migration 072 (tablolar, kolonlar, görünüm, ilk veri) yerelde denenir, sonra
    kullanıcı onayıyla `db push`; ardından `pnpm db:types`.
 2. Secret'lar: `AI_KEY_ANTHROPIC`, `AI_KEY_GEMINI` (ücretli katman, eğitimde
    kullanılmaz), bütçe ayarları.
