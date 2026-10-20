@@ -12,7 +12,24 @@ type Client = ConstructorParameters<typeof AiLedger>[0]
 interface RpcCall { name: string; args: Record<string, unknown> | undefined }
 interface Insert { values: Record<string, unknown> }
 
-const MESSAGE = { model: 'claude-opus-5', usage: { input_tokens: 1000, output_tokens: 500 } }
+type Result = Parameters<Ledger['add']>[0]
+
+const MESSAGE: Result = {
+  text: '',
+  toolInput: null,
+  usage: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 },
+  stopReason: 'end',
+  route: 'replan',
+  modelId: 'opus-5',
+  apiModel: 'claude-opus-5',
+  costUsd: 0.0175,
+  mode: 'primary',
+}
+
+async function record(ledger: Ledger, result: Result): Promise<void> {
+  ledger.add(result)
+  await ledger.flush()
+}
 
 /** Kullanıcı istemcisi: rpc ve events insert'ünü kaydeder. `reserve` rezervasyon cevabıdır. */
 function userClient(reserve: { data: unknown; error?: { message: string } | null }) {
@@ -60,7 +77,7 @@ test('ücretsiz: model çağrısından önce rezervasyon, yanıttan sonra aynı 
   assert.deepEqual(user.rpcs, [{ name: 'reserve_ai_use', args: { p_kind: 'life_setup' } }])
   assert.equal(service.calls.length, 0, 'çağrı gelmeden satır kapanmaz')
 
-  await ledger.record(MESSAGE)
+  await record(ledger, MESSAGE)
   assert.equal(user.inserts.length, 0, 'ayrıca yeni satır yazılmaz')
   assert.equal(service.calls.length, 1)
   assert.equal(service.calls[0]?.name, 'settle_ai_use')
@@ -83,7 +100,7 @@ test('ücretsiz: ayrıştırılamayan yanıt hak yakmaz, kind FREE_KINDS dışı
   const ledger = new AiLedger(userClient({ data: 7 }).client, 'u1', 'life_setup', 'free', service.client)
   await ledger.begin()
   ledger.markFailed()
-  await ledger.record(MESSAGE)
+  await record(ledger, MESSAGE)
 
   const kind = props(service.calls[0])['kind'] as string
   assert.equal(kind, failedKind('life_setup'))
@@ -91,11 +108,11 @@ test('ücretsiz: ayrıştırılamayan yanıt hak yakmaz, kind FREE_KINDS dışı
   assert.ok((props(service.calls[0])['cost_usd'] as number) > 0)
 })
 
-test('ücretsiz: stop_reason max_tokens hak yakmaz', async () => {
+test('ücretsiz: stopReason max_tokens hak yakmaz', async () => {
   const service = serviceClient()
   const ledger = new AiLedger(userClient({ data: 7 }).client, 'u1', 'replan', 'free', service.client)
   await ledger.begin()
-  await ledger.record({ ...MESSAGE, stop_reason: 'max_tokens' })
+  await record(ledger, { ...MESSAGE, stopReason: 'max_tokens' })
   assert.equal(props(service.calls[0])['kind'], 'replan_failed')
 })
 
@@ -114,7 +131,7 @@ test('ücretsiz: kapatma geçici hatada tekrar denenir', async () => {
   const service = serviceClient(2)
   const ledger = new AiLedger(userClient({ data: 3 }).client, 'u1', 'replan', 'free', service.client)
   await ledger.begin()
-  await quiet(() => ledger.record(MESSAGE))
+  await quiet(() => record(ledger, MESSAGE))
   assert.equal(service.calls.length, 3)
 })
 
@@ -132,7 +149,7 @@ test('Pro ve deneme: begin hiçbir şey yapmaz, satır çağrıdan sonra insert 
     const ledger = new AiLedger(user.client, 'u1', 'replan', tier)
     assert.equal(await ledger.begin(), true)
     assert.equal(user.rpcs.length, 0)
-    await ledger.record({ ...MESSAGE, stop_reason: 'max_tokens' })
+    await record(ledger, { ...MESSAGE, stopReason: 'max_tokens' })
     assert.equal(user.inserts.length, 1)
     const row = user.inserts[0]?.values
     assert.equal(row?.['name'], 'ai_used')
@@ -153,10 +170,58 @@ test('eşzamanlılık: veritabanı atomik ayırır, N paralel istekten yalnızca
     const ledger = new AiLedger(shared, 'u1', 'life_setup', 'free', serviceClient().client)
     if (!await ledger.begin()) return 402
     modelCalls += 1
-    await ledger.record(MESSAGE)
+    await record(ledger, MESSAGE)
     return 200
   }
   const statuses = await Promise.all(Array.from({ length: 8 }, request))
   assert.equal(modelCalls, 3)
   assert.equal(statuses.filter((s) => s === 402).length, 5)
+})
+
+test('ledger: yeni alanlar', async () => {
+  const user = userClient({ data: 1 })
+  const ledger = new AiLedger(user.client, 'u1', 'meal', 'pro')
+  ledger.add({ ...MESSAGE, route: 'meal_extract', costUsd: 0.0123456 })
+  ledger.add({
+    ...MESSAGE,
+    route: 'meal_verify',
+    mode: 'fallback',
+    text: 'abc',
+    toolInput: { a: 1 },
+    apiModel: 'claude-sonnet-5',
+    costUsd: 0.0001,
+  })
+  await ledger.flush()
+  const row = user.inserts[0]?.values['props'] as Record<string, unknown>
+  assert.equal(row['calls'], 2)
+  assert.equal(row['mode'], 'fallback')
+  assert.equal(row['text_chars'], 3 + JSON.stringify({ a: 1 }).length)
+  assert.equal(row['parse_ok'], true)
+  assert.equal(row['route'], 'meal_extract,meal_verify')
+  assert.equal(row['model'], 'claude-opus-5,claude-sonnet-5')
+  assert.equal(row['cost_usd'], 0.012446)
+})
+
+test('ledger: markFailed parse_ok false, max_tokens da', async () => {
+  const user = userClient({ data: 1 })
+  const a = new AiLedger(user.client, 'u1', 'replan', 'pro')
+  a.add(MESSAGE)
+  a.markFailed()
+  await a.flush()
+  const b = new AiLedger(user.client, 'u1', 'replan', 'pro')
+  b.add({ ...MESSAGE, stopReason: 'max_tokens' })
+  await b.flush()
+  assert.equal((user.inserts[0]?.values['props'] as Record<string, unknown>)['parse_ok'], false)
+  assert.equal((user.inserts[1]?.values['props'] as Record<string, unknown>)['parse_ok'], false)
+})
+
+test('ledger: mode() çağrı yoksa null, flush sonrası sıfırlanır', async () => {
+  const ledger = new AiLedger(userClient({ data: 1 }).client, 'u1', 'replan', 'pro')
+  assert.equal(ledger.mode(), null)
+  ledger.add(MESSAGE)
+  assert.equal(ledger.mode(), 'primary')
+  ledger.add({ ...MESSAGE, mode: 'fallback' })
+  assert.equal(ledger.mode(), 'fallback')
+  await ledger.flush()
+  assert.equal(ledger.mode(), null)
 })

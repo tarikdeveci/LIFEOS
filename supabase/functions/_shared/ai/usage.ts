@@ -16,6 +16,7 @@
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
 
 import { FREE_KINDS } from './freeKinds.ts'
+import type { LlmResult } from './llm/types.ts'
 
 interface QueryError {
   message: string
@@ -146,43 +147,6 @@ export async function resolveAiAccess(supabase: SupabaseLike, userId: string, ki
   return { allowed: true, tier, overBudget: allowance.monthCostUsd >= budget }
 }
 
-/** Anthropic yanıtının maliyet için gereken kısmı. */
-export interface MeteredMessage {
-  model: string
-  usage: {
-    input_tokens: number
-    output_tokens: number
-    cache_creation_input_tokens?: number | null
-    cache_read_input_tokens?: number | null
-  }
-  /** 'max_tokens': çıktı yarım kaldı. Ücretsiz hak bu yanıt için yanmaz. */
-  stop_reason?: string | null
-}
-
-// USD / 1M token. Önbellek yazımı (5 dk) girdi fiyatının 1,25 katı, okuması
-// 0,1 katı. Düşünme token'ları çıktıya dahil gelir ve çıktı fiyatından ödenir.
-function pricePerMTok(model: string): { input: number; output: number } {
-  if (/opus-(4-[5-9]|5)/.test(model)) return { input: 5, output: 25 }
-  if (/sonnet-5/.test(model)) return { input: 2, output: 10 }
-  if (/sonnet/.test(model)) return { input: 3, output: 15 }
-  if (/haiku/.test(model)) return { input: 1, output: 5 }
-  // Bilinmeyen ya da eski Opus: pahalı say, bütçe sessizce gevşemesin.
-  return { input: 15, output: 75 }
-}
-
-export function costUsd(message: MeteredMessage): number {
-  const price = pricePerMTok(message.model)
-  const usage = message.usage
-  const cacheWrite = usage.cache_creation_input_tokens ?? 0
-  const cacheRead = usage.cache_read_input_tokens ?? 0
-  return (
-    usage.input_tokens * price.input
-    + cacheWrite * price.input * 1.25
-    + cacheRead * price.input * 0.1
-    + usage.output_tokens * price.output
-  ) / 1_000_000
-}
-
 /** Ücretsiz katmanda başarısız çağrının `kind`'ı: FREE_KINDS dışında, hak saymaz. */
 export function failedKind(kind: string): string {
   return `${kind}_failed`
@@ -212,7 +176,10 @@ export class AiLedger {
   private cacheReadTokens = 0
   private cacheWriteTokens = 0
   private cost = 0
+  private textChars = 0
   private readonly models = new Set<string>()
+  private readonly routes = new Set<string>()
+  private fellBack = false
   private reservationId: number | null = null
   private failed = false
 
@@ -276,15 +243,24 @@ export class AiLedger {
     await this.settle(this.buildProps(true))
   }
 
-  add(message: MeteredMessage): void {
+  /** Bu istekte yedek model çalıştıysa 'fallback', yalnız birinci modelse 'primary', çağrı yoksa null. */
+  mode(): 'primary' | 'fallback' | null {
+    if (this.calls === 0) return null
+    return this.fellBack ? 'fallback' : 'primary'
+  }
+
+  add(result: LlmResult): void {
     this.calls += 1
-    this.inputTokens += message.usage.input_tokens
-    this.outputTokens += message.usage.output_tokens
-    this.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0
-    this.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0
-    this.cost += costUsd(message)
-    this.models.add(message.model)
-    if (message.stop_reason === 'max_tokens') this.failed = true
+    this.inputTokens += result.usage.input
+    this.outputTokens += result.usage.output
+    this.cacheReadTokens += result.usage.cacheRead
+    this.cacheWriteTokens += result.usage.cacheWrite
+    this.cost += result.costUsd
+    this.textChars += result.text.length + (result.toolInput ? JSON.stringify(result.toolInput).length : 0)
+    this.models.add(result.apiModel)
+    this.routes.add(result.route)
+    if (result.mode === 'fallback') this.fellBack = true
+    if (result.stopReason === 'max_tokens') this.failed = true
   }
 
   private buildProps(reset: boolean): Record<string, unknown> {
@@ -292,6 +268,10 @@ export class AiLedger {
       kind: this.failed && this.reservationId !== null ? failedKind(this.kind) : this.kind,
       tier: this.tier,
       model: [...this.models].join(','),
+      route: [...this.routes].join(','),
+      mode: this.mode(),
+      text_chars: this.textChars,
+      parse_ok: !this.failed,
       calls: this.calls,
       input_tokens: this.inputTokens,
       output_tokens: this.outputTokens,
@@ -307,7 +287,10 @@ export class AiLedger {
       this.cacheReadTokens = 0
       this.cacheWriteTokens = 0
       this.cost = 0
+      this.textChars = 0
       this.models.clear()
+      this.routes.clear()
+      this.fellBack = false
     }
     return props
   }
@@ -394,11 +377,5 @@ export class AiLedger {
       }
     }
     return false
-  }
-
-  /** Tek çağrılı rotalar için: ekle ve hemen yaz. */
-  async record(message: MeteredMessage): Promise<void> {
-    this.add(message)
-    await this.flush()
   }
 }
