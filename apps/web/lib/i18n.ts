@@ -27,7 +27,7 @@ const translations = {
     // Stats
     stat_tasks: 'Start without a card',
     stat_ai: 'Type your meal in your own words, AI works out the macros',
-    stat_platforms: 'The same plan on iPhone and web',
+    stat_platforms: 'The same plan on phone and web',
 
     // Features
     features_title: 'How the day gets built',
@@ -104,15 +104,15 @@ const translations = {
     cta_button: 'Create Free Account →',
 
     // Footer
-    mobile_eyebrow: 'iPhone & iPad',
+    mobile_eyebrow: 'iPhone & Android',
     mobile_title: 'Your whole system, in your pocket',
-    mobile_subtitle: 'The LifeOS mobile app is live on the App Store. Tasks, day plan, nutrition and workouts stay in sync with your web dashboard in real time.',
+    mobile_subtitle: 'The LifeOS mobile app is live on the App Store and Google Play. Tasks, day plan, nutrition and workouts stay in sync with your web dashboard in real time.',
     mobile_point_1: 'Plan your day and check tasks off wherever you are',
     mobile_point_2: 'Log meals in seconds and follow your macros',
-    mobile_point_3: 'Apple Health sync: steps, sleep and active energy',
+    mobile_point_3: 'Apple Health and Health Connect sync: steps, sleep and active energy',
     mobile_point_4: 'Reminders that fire before every time block',
     mobile_appstore: 'Download on the App Store',
-    mobile_android_soon: 'Android version coming soon',
+    mobile_googleplay: 'Get it on Google Play',
     mobile_shot_tasks: 'LifeOS mobile task list',
     mobile_shot_planning: 'LifeOS mobile day plan',
     mobile_shot_nutrition: 'LifeOS mobile nutrition tracking',
@@ -801,7 +801,7 @@ const translations = {
 
     stat_tasks: 'Kart istemeden başla',
     stat_ai: 'Öğününü kendi cümlenle yaz, makroları AI hesaplasın',
-    stat_platforms: 'iPhone ve web’de aynı plan',
+    stat_platforms: 'Telefonda ve web’de aynı plan',
 
     features_title: 'Gün nasıl kuruluyor',
     features_subtitle: 'Üç adım. Uygulamanın geri kalanı bunların üstüne oturuyor.',
@@ -872,15 +872,15 @@ const translations = {
     cta_subtitle: 'Kredi kartı gerekmez. Dakikalar içinde kurulum.',
     cta_button: 'Ücretsiz Hesap Oluştur →',
 
-    mobile_eyebrow: 'iPhone ve iPad',
+    mobile_eyebrow: 'iPhone ve Android',
     mobile_title: 'Tüm sistemin cebinde',
-    mobile_subtitle: "LifeOS mobil uygulaması App Store'da yayında. Görevler, günlük plan, beslenme ve antrenman web panonla anlık olarak senkron kalır.",
+    mobile_subtitle: "LifeOS mobil uygulaması App Store ve Google Play'de yayında. Görevler, günlük plan, beslenme ve antrenman web panonla anlık olarak senkron kalır.",
     mobile_point_1: 'Nerede olursan ol gününü planla, görevleri kapat',
     mobile_point_2: 'Öğünlerini saniyeler içinde gir, makrolarını takip et',
-    mobile_point_3: 'Apple Health senkronu: adım, uyku ve aktif kalori',
+    mobile_point_3: 'Apple Health ve Health Connect senkronu: adım, uyku ve aktif kalori',
     mobile_point_4: 'Her zaman bloğundan önce çalan hatırlatıcılar',
     mobile_appstore: "App Store'dan indir",
-    mobile_android_soon: 'Android sürümü yakında',
+    mobile_googleplay: "Google Play'den indir",
     mobile_shot_tasks: 'LifeOS mobil görev listesi',
     mobile_shot_planning: 'LifeOS mobil günlük plan',
     mobile_shot_nutrition: 'LifeOS mobil beslenme takibi',

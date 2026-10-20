@@ -116,7 +116,7 @@ export default function LandingPage() {
             {[
               { value: '₺0', label: t.stat_tasks },
               { value: 'AI', label: t.stat_ai },
-              { value: 'iOS + Web', label: t.stat_platforms },
+              { value: 'iOS + Android', label: t.stat_platforms },
             ].map(({ value, label }, i) => (
               <Reveal key={value} delay={i * 0.1} y={16}>
                 <p className="bg-gradient-to-r from-indigo-300 to-violet-300 bg-clip-text text-2xl font-black text-transparent md:text-4xl">{value}</p>
