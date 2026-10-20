@@ -15,6 +15,8 @@ export interface RevenueCatEvent {
   is_trial_conversion?: boolean
   /** CANCELLATION: iade `CUSTOMER_SUPPORT` ile gelir. */
   cancel_reason?: string
+  /** Event'in RevenueCat'te oluştuğu an (ms). */
+  event_timestamp_ms?: number
   /** 'SANDBOX' | 'PRODUCTION' */
   environment?: string
 }
@@ -55,6 +57,8 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
   const userId = event.app_user_id
   const source = mapStore(event.store)
   const nowIso = now.toISOString()
+  // Karşılaştırma referansı: event'in oluştuğu an (gecikmiş teslimde doğru sonuç).
+  const nowMs = event.event_timestamp_ms ?? now.getTime()
 
   switch (event.type) {
     case 'INITIAL_PURCHASE':
@@ -112,20 +116,61 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
       return { action: 'upsert', row }
     }
 
-    case 'CANCELLATION':
-      // İade (müşteri desteği) dönem sonunu beklemez: Pro hemen kapanır.
+    case 'CANCELLATION': {
       if (event.cancel_reason === 'CUSTOMER_SUPPORT') {
-        return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
+        // İade. Google Play erişimi kesmeden iade edebilir: bitiş gelecekteyse
+        // Pro o tarihe kadar sürer, değilse hemen kapanır.
+        if (!event.expiration_at_ms || event.expiration_at_ms <= nowMs) {
+          return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
+        }
+        return {
+          action: 'update',
+          patch: {
+            current_period_end: new Date(event.expiration_at_ms).toISOString(),
+            cancel_at_period_end: true,
+            cancelled_at: nowIso,
+            updated_at: nowIso,
+          },
+        }
       }
       return {
         action: 'update',
         patch: { cancel_at_period_end: true, cancelled_at: nowIso, updated_at: nowIso },
       }
+    }
 
     // İptal edip dönem bitmeden geri alan kullanıcı. Denemede sık: kullanıcı
-    // "unutmayayım" diye hemen iptal eder, sonra vazgeçer.
-    case 'UNCANCELLATION':
+    // "unutmayayım" diye hemen iptal eder, sonra vazgeçer. App Store iadesi
+    // geri alındığında da gelir; iade dalı free yazmış olabileceğinden dönem
+    // sürüyorsa Pro geri yazılır.
+    case 'UNCANCELLATION': {
+      const plan = planFromProductId(event.product_id)
+      if (plan && event.expiration_at_ms && event.expiration_at_ms > nowMs) {
+        return {
+          action: 'update',
+          patch: {
+            plan,
+            status: plan,
+            current_period_end: new Date(event.expiration_at_ms).toISOString(),
+            cancel_at_period_end: false,
+            cancelled_at: null,
+            is_sandbox: event.environment === 'SANDBOX',
+            updated_at: nowIso,
+          },
+        }
+      }
       return { action: 'update', patch: { cancel_at_period_end: false, cancelled_at: null, updated_at: nowIso } }
+    }
+
+    // Dönem uzatıldı (destek/telafi): yalnız bitiş tarihi değişir.
+    case 'SUBSCRIPTION_EXTENDED':
+      if (!event.expiration_at_ms) {
+        return { action: 'skip', level: 'warn', message: `Ignoring SUBSCRIPTION_EXTENDED without expiration_at_ms for user ${userId}` }
+      }
+      return {
+        action: 'update',
+        patch: { current_period_end: new Date(event.expiration_at_ms).toISOString(), updated_at: nowIso },
+      }
 
     case 'EXPIRATION':
       return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }

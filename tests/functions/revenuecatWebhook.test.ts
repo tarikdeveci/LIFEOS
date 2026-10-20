@@ -28,6 +28,61 @@ test('iade (CUSTOMER_SUPPORT) Pro\'yu hemen kapatir', () => {
   assert.equal('cancel_at_period_end' in d.patch, false)
 })
 
+test('iade, bitis gelecekteyse Pro o tarihe kadar surer (Play)', () => {
+  const exp = NOW.getTime() + 10 * 86_400_000
+  const d = decideRow(
+    { type: 'CANCELLATION', app_user_id: USER, cancel_reason: 'CUSTOMER_SUPPORT', expiration_at_ms: exp, event_timestamp_ms: NOW.getTime() },
+    NOW,
+  )
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal('plan' in d.patch, false)
+  assert.equal(d.patch['cancel_at_period_end'], true)
+  assert.equal(d.patch['current_period_end'], new Date(exp).toISOString())
+})
+
+test('iade, bitis gecmisteyse free', () => {
+  const d = decideRow(
+    { type: 'CANCELLATION', app_user_id: USER, cancel_reason: 'CUSTOMER_SUPPORT', expiration_at_ms: NOW.getTime() - 1000, event_timestamp_ms: NOW.getTime() },
+    NOW,
+  )
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal(d.patch['plan'], 'free')
+})
+
+test('UNCANCELLATION gelecekteki bitisle plani geri yazar', () => {
+  const exp = NOW.getTime() + 20 * 86_400_000
+  const d = decideRow(
+    { type: 'UNCANCELLATION', app_user_id: USER, product_id: 'PRO_2', expiration_at_ms: exp, event_timestamp_ms: NOW.getTime(), environment: 'SANDBOX' },
+    NOW,
+  )
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal(d.patch['plan'], 'pro_annual')
+  assert.equal(d.patch['status'], 'pro_annual')
+  assert.equal(d.patch['current_period_end'], new Date(exp).toISOString())
+  assert.equal(d.patch['cancel_at_period_end'], false)
+  assert.equal(d.patch['is_sandbox'], true)
+})
+
+test('UNCANCELLATION bitis yoksa yalniz iptal isaretini kaldirir', () => {
+  const d = decideRow({ type: 'UNCANCELLATION', app_user_id: USER, product_id: 'PRO_1' }, NOW)
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal('plan' in d.patch, false)
+  assert.equal(d.patch['cancel_at_period_end'], false)
+})
+
+test('SUBSCRIPTION_EXTENDED yalniz bitis tarihini gunceller', () => {
+  const exp = NOW.getTime() + 40 * 86_400_000
+  const d = decideRow({ type: 'SUBSCRIPTION_EXTENDED', app_user_id: USER, expiration_at_ms: exp }, NOW)
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.deepEqual(Object.keys(d.patch).sort(), ['current_period_end', 'updated_at'])
+  assert.equal(d.patch['current_period_end'], new Date(exp).toISOString())
+})
+
 test('normal iptal donem sonunda biter', () => {
   const d = decideRow({ type: 'CANCELLATION', app_user_id: USER, cancel_reason: 'UNSUBSCRIBE' }, NOW)
   assert.equal(d.action, 'update')
