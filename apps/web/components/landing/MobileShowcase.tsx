@@ -7,6 +7,8 @@ import { MagneticLink, Reveal, SectionHeading } from './primitives'
 
 // App Store Connect kaydi: apps/mobile/eas.json -> submit.production.ios.ascAppId
 const APP_STORE_URL = 'https://apps.apple.com/tr/app/lifeos/id6789708836'
+// Play Console paket adi: apps/mobile/app.json -> android.package
+const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=tr.lifeos.app'
 
 interface MobileShowcaseProps {
   t: {
@@ -18,7 +20,7 @@ interface MobileShowcaseProps {
     mobile_point_3: string
     mobile_point_4: string
     mobile_appstore: string
-    mobile_android_soon: string
+    mobile_googleplay: string
     mobile_shot_tasks: string
     mobile_shot_nutrition: string
     mobile_shot_planning: string
@@ -86,8 +88,18 @@ export function MobileShowcase({ t, tr }: MobileShowcaseProps) {
                   <span className="text-sm">{t.mobile_appstore}</span>
                 </span>
               </MagneticLink>
-              {/* Play Store yayini henuz yok; olmayan magazaya link vermiyoruz. */}
-              <span className="text-xs text-white/35">{t.mobile_android_soon}</span>
+              <MagneticLink href={GOOGLE_PLAY_URL} external className="items-center gap-3 rounded-2xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-white/90">
+                <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#00D7FE" d="M3.6 1.8 13.4 12 3.6 22.2c-.4-.2-.6-.7-.6-1.2V3c0-.5.2-1 .6-1.2z" />
+                  <path fill="#FFCE00" d="m16.8 8.6 3.5 2c1 .6 1 2.2 0 2.8l-3.5 2L13.4 12z" />
+                  <path fill="#FF3A44" d="M16.8 15.4 13.4 12 3.6 22.2c.3.2.8.2 1.3-.1z" />
+                  <path fill="#00F076" d="M4.9 1.9c-.5-.3-1-.3-1.3-.1L13.4 12l3.4-3.4z" />
+                </svg>
+                <span className="flex flex-col leading-tight">
+                  <span className="text-[10px] font-normal text-black/50">Google Play</span>
+                  <span className="text-sm">{t.mobile_googleplay}</span>
+                </span>
+              </MagneticLink>
             </div>
           </Reveal>
         </div>
