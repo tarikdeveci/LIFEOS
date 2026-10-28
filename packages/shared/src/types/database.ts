@@ -1455,6 +1455,7 @@ export type Database = {
           current_period_end: string | null
           current_period_start: string | null
           id: string
+          is_sandbox: boolean
           iyzico_customer_reference_code: string | null
           iyzico_subscription_reference_code: string | null
           iyzico_token: string | null
@@ -1477,6 +1478,7 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          is_sandbox?: boolean
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
@@ -1499,6 +1501,7 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          is_sandbox?: boolean
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
