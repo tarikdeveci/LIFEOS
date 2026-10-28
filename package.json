@@ -23,6 +23,7 @@
     "db:corpus": "node scripts/import-food-corpus.mjs",
     "db:embed": "node scripts/embed-foods.mjs",
     "eval:nutrition": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/run.ts",
+    "eval:ai": "node --no-warnings --experimental-strip-types --import ./tests/support/register.mjs scripts/ai-eval/run.ts",
     "audit:foods": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/audit-catalog.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore"
   },

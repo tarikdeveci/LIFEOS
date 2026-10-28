@@ -3,6 +3,7 @@
 //   pnpm eval:nutrition                      # canlı Supabase (global food_items)
 //   pnpm eval:nutrition -- --foods x.json    # çevrimdışı sözlük fixture'ı
 //   pnpm eval:nutrition -- --case X02        # tek vaka, ayrıntılı
+//   pnpm eval:nutrition -- --model <id>      # model hattı (--catalog <dosya> ile ek modeller)
 //
 // Harness'in tek işi şu soruyu ölçülebilir kılmak: "doğruluk değişti mi, ve neden?"
 // Beklenen kalori ETİKETTE YAZMAZ — her vakada (yiyecek, gramaj) etiketinden ve
@@ -13,8 +14,11 @@
 // Ölçülen hat DETERMİNİSTİK hattır: kural çıkarıcı, doğrulayıcı yok, gram tahmini
 // yok. Model katmanı bilerek dışarıda — amaç, modelsiz tabanın nereye kadar
 // gittiğini ve bir regresyonun modelden mi kuraldan mı geldiğini ayırabilmek.
+// --model verilirse çıkarıcı, doğrulayıcı ve gram tahmini o modelle kurulur
+// (DEFAULT_MODELS ya da --catalog, anahtar process.env'den); bayraksız çıktı aynıdır.
 
 import { readFileSync } from 'node:fs'
+import { register } from 'node:module'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,9 +29,13 @@ import type {
   AliasTarget,
   CorpusFood,
   CuratedFood,
+  Extractor,
   FoodRepo,
   ParseMealResult,
+  PortionEstimator,
+  Verifier,
 } from '../../supabase/functions/_shared/nutrition/types.ts'
+import type { LlmCall } from '../../supabase/functions/_shared/ai/llm/types.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '../..')
@@ -53,6 +61,8 @@ interface Args {
   foods?: string
   corpus: string
   case?: string
+  model?: string
+  catalog?: string
 }
 
 function parseArgs(): Args {
@@ -64,8 +74,52 @@ function parseArgs(): Args {
     if (flag === '--foods' && value) { args.foods = resolve(process.cwd(), value); i++ }
     else if (flag === '--corpus' && value) { args.corpus = resolve(process.cwd(), value); i++ }
     else if (flag === '--case' && value) { args.case = value.toUpperCase(); i++ }
+    else if (flag === '--model' && value) { args.model = value; i++ }
+    else if (flag === '--catalog' && value) { args.catalog = resolve(process.cwd(), value); i++ }
   }
   return args
+}
+
+// ============================
+// Model hattı (--model)
+// ============================
+
+interface ModelPipeline {
+  label: string
+  extractor: Extractor
+  verifier: Verifier
+  portionEstimator: PortionEstimator
+  costUsd(): number
+}
+
+async function modelPipeline(modelId: string, catalog: string | null): Promise<ModelPipeline> {
+  // Sağlayıcı adaptörleri npm: ve uzantısız importlar kullanır; çözücü yalnız bu modda kaydedilir.
+  register('../../tests/support/ts-resolve.mjs', import.meta.url)
+  const { bindModel, readCatalog, resolveModel } = await import('../ai-eval/run.ts')
+  const { createLlmExtractor, createLlmPortionEstimator, createLlmVerifier } = await import(
+    '../../supabase/functions/_shared/nutrition/adapters/llm.ts'
+  )
+  const spec = readCatalog(catalog).find((m) => m.id === modelId)
+  if (!spec) throw new Error(`Model bulunamadı: ${modelId}`)
+  const model = resolveModel(spec)
+  if (!model.apiKey) throw new Error(`${spec.apiKeySecret} ortamda tanımlı değil`)
+
+  let spent = 0
+  const call = (route: 'meal_extract' | 'meal_verify' | 'meal_portion'): LlmCall => {
+    const bound = bindModel(model, route)
+    return async (request) => {
+      const result = await bound(request)
+      spent += result.costUsd
+      return result
+    }
+  }
+  return {
+    label: `model: ${model.id} (${model.apiModel})`,
+    extractor: createLlmExtractor(call('meal_extract')),
+    verifier: createLlmVerifier(call('meal_verify')),
+    portionEstimator: createLlmPortionEstimator(call('meal_portion')),
+    costUsd: () => spent,
+  }
 }
 
 function loadEnvFile(name: string): Record<string, string> {
@@ -335,7 +389,8 @@ async function main() {
 
   const curated = await repo.curated()
   const byName = new Map(curated.map((food) => [food.name, food]))
-  const extractor = createRulesExtractor()
+  const pipeline = args.model ? await modelPipeline(args.model, args.catalog ?? null) : null
+  const extractor = pipeline?.extractor ?? createRulesExtractor()
 
   const cases = args.case ? suite.cases.filter((c) => c.id === args.case) : suite.cases
   if (cases.length === 0) {
@@ -358,8 +413,8 @@ async function main() {
     const result = await parseMeal(testCase.input, {
       repo: caseRepo,
       extractor,
-      verifier: null,
-      portionEstimator: null,
+      verifier: pipeline?.verifier ?? null,
+      portionEstimator: pipeline?.portionEstimator ?? null,
     })
     results.push(evaluate(testCase, result, byName, performance.now() - started))
   }
@@ -373,7 +428,8 @@ async function main() {
 
   console.log(`\nLifeOS beslenme değerlendirmesi — ${results.length} vaka (${suite.version})`)
   console.log(`Kaynak: ${source}`)
-  console.log(`Çıkarıcı: ${extractor.name} · doğrulayıcı: yok · gram tahmini: yok\n`)
+  if (pipeline) console.log(`Çıkarıcı: ${extractor.name} · ${pipeline.label}\n`)
+  else console.log(`Çıkarıcı: ${extractor.name} · doğrulayıcı: yok · gram tahmini: yok\n`)
 
   const rows: [string, string][] = [
     ['vaka geçme oranı', percent(passed.length / results.length)],
@@ -385,6 +441,7 @@ async function main() {
     ['soru üreten vaka', percent(results.filter((r) => r.result.questions.length > 0).length / results.length)],
     ['gecikme p50 / p95', `${quantile(latencies, 0.5).toFixed(1)} ms / ${quantile(latencies, 0.95).toFixed(1)} ms`],
   ]
+  if (pipeline) rows.push(['model maliyeti (USD)', pipeline.costUsd().toFixed(4)])
   for (const [label, value] of rows) console.log(`  ${label.padEnd(28)} ${value}`)
 
   const taxonomy = new Map<string, number>()

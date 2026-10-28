@@ -1,0 +1,14 @@
+[
+  { "text": "yarın sabah süt ve ekmek almam lazım, bir de akşam annemi araması gerek", "expect_count": 2 },
+  { "text": "Bu hafta çok yoğunum. Cumaya kadar sunumu bitirmem lazım, salı günü diş randevum var, bir de kargo iadesini yapmam gerek. Ah, spor salonu üyeliğini de yenilemeliyim.", "expect_count": 4 },
+  { "text": "faturalar: elektrik, su, internet. hepsini ay bitmeden ödemeliyim", "expect_count": 3 },
+  { "text": "Bugün hava çok güzel, keyfim yerinde. Sadece akşam çamaşırları asmayı unutmayayım.", "expect_count": 1 },
+  { "text": "toplantı notlarını ekibe gönder, müşteriye teklif hazırla, teklifi perşembe gönder, bütçe tablosunu güncelle, yeni stajyerle tanışma ayarla", "expect_count": 4 },
+  { "text": "kitap okumak istiyorum ama zamanım yok, neyse. haftaya pazartesi kütüphaneye kitapları iade etmem lazım", "expect_count": 1 },
+  { "text": "evde yapılacaklar: mutfak lavabosu tıkalı, banyonun lambası yanmıyor, salondaki perdeyi yıkat, balkonu süpür, saksıları sula", "expect_count": 5 },
+  { "text": "cumartesi doğum günü partisi var, hediye almam lazım. pastayı da cuma sipariş etmeliyim. davetiye listesini kardeşime sor", "expect_count": 3 },
+  { "text": "kafam karışık, işler üst üste bindi. hiçbir şey yapasım yok açıkçası", "expect_count": 0 },
+  { "text": "Raporu yaz. Raporu yazmayı unutma! Bir de rapor için grafikleri hazırla. Akşam 7'de yoga dersi var.", "expect_count": 3 },
+  { "text": "araba muayenesi gelecek ay, sigorta da yenilenecek, bu hafta lastik basıncını kontrol ettir, cam suyunu doldur, yağ değişimi için servisle konuş, ehliyet fotokopisini çek", "expect_count": 6 },
+  { "text": "sabah 9'da doktor, öğlen 12:30'da Ayşe ile yemek, 15:00'te müşteri görüşmesi, akşam 20:00'de yüzme", "expect_count": 4 }
+]

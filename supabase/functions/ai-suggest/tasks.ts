@@ -1,18 +1,20 @@
 // supabase/functions/ai-suggest/tasks.ts
 // Görev rotaları: brain_dump (serbest metinden görev listesi) ve task_priority (WSJF skoru önerisi).
+// Prompt kurucular ve ayrıştırıcılar ihraç edilir: scripts/ai-eval aynı isteği aynı ayrıştırıcıyla ölçer.
 
+import type { Lang } from '../_shared/ai/coach.ts'
+import type { LlmRequest } from '../_shared/ai/llm/types.ts'
 import type { RouteContext } from './request.ts'
 
-export async function handleBrainDump(route: RouteContext): Promise<Response> {
-  const { generate, ledger, langInstr, today, json } = route
-  const { user_message } = route.body
+export interface PriorityTask {
+  title: string
+  description?: string | null
+  tags?: string[] | null
+  due_date?: string | null
+}
 
-  // Sesle ya da elle dökülen serbest metin → temiz görev listesi. İstemci dönen
-  // listeyi sanitizeBrainDumpItems ile yeniden doğrular ve onay ekranında gösterir.
-  const text = typeof user_message === 'string' ? user_message.trim().slice(0, 4000) : ''
-  if (!text) return json({ error: 'Metin boş' }, 400)
-
-  const result = await generate({
+export function brainDumpRequest(text: string, today: string, langInstr: string): LlmRequest {
+  return {
     maxTokens: 2048,
     system: `Kullanıcı aklındaki işleri dağınık, konuşma diliyle döktü. Bunu yapılacak görevlere çevir.
 Bugün: ${today} (YYYY-MM-DD). Göreli tarihleri ("yarın", "cuma", "haftaya") bu güne göre çöz.
@@ -25,33 +27,24 @@ Sadece JSON döndür:
 {"tasks":[{"title":"...","scheduled_date":"YYYY-MM-DD veya yok","due_date":"YYYY-MM-DD veya yok","start_time":"HH:MM veya yok","estimated_minutes":N veya yok,"tags":["..."]}]}
 Bilinmeyen alanı hiç yazma.`,
     messages: [{ role: 'user', content: text }],
-  })
+  }
+}
 
+/** Model yanıtındaki görev listesi; JSON yoksa ya da bozuksa null. */
+export function parseBrainDump(text: string): unknown[] | null {
   let tasks: unknown = []
   try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/)
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('no json')
     tasks = (JSON.parse(jsonMatch[0]) as { tasks?: unknown }).tasks ?? []
   } catch {
-    ledger.markFailed()
-    return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
+    return null
   }
-  return json({ tasks: Array.isArray(tasks) ? tasks.slice(0, 30) : [] })
+  return Array.isArray(tasks) ? tasks.slice(0, 30) : []
 }
 
-export async function handleTaskPriority(route: RouteContext, taskId: string): Promise<Response> {
-  const { supabase, generate, ledger, lang, json } = route
-
-  // Tek görev için WSJF skoru önerisi
-  const { data: task } = await supabase
-    .from('tasks')
-    .select('title, description, tags, due_date')
-    .eq('id', taskId)
-    .single()
-
-  if (!task) return json({ error: 'Görev bulunamadı' }, 404)
-
-  const result = await generate({
+export function taskPriorityRequest(task: PriorityTask, lang: Lang): LlmRequest {
+  return {
     maxTokens: 512,
     system: `Sen bir görev önceliklendirme asistanısın. WSJF (Weighted Shortest Job First) metodunu kullanıyorsun.
 Parametreler (1-5 arası):
@@ -73,9 +66,11 @@ Etiketler: ${task.tags?.join(', ') ?? 'Yok'}
 Son tarih: ${task.due_date ?? 'Yok'}`,
       },
     ],
-  })
+  }
+}
 
-  const text = result.text
+/** Yanıttaki öneri nesnesi; JSON yoksa boş nesne, bozuksa metin `reasoning` olarak döner. */
+export function parseTaskPriority(text: string): unknown {
   let suggestion: unknown = {}
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/)
@@ -83,6 +78,43 @@ Son tarih: ${task.due_date ?? 'Yok'}`,
   } catch {
     suggestion = { reasoning: text }
   }
+  return suggestion
+}
+
+export async function handleBrainDump(route: RouteContext): Promise<Response> {
+  const { generate, ledger, langInstr, today, json } = route
+  const { user_message } = route.body
+
+  // Sesle ya da elle dökülen serbest metin → temiz görev listesi. İstemci dönen
+  // listeyi sanitizeBrainDumpItems ile yeniden doğrular ve onay ekranında gösterir.
+  const text = typeof user_message === 'string' ? user_message.trim().slice(0, 4000) : ''
+  if (!text) return json({ error: 'Metin boş' }, 400)
+
+  const result = await generate(brainDumpRequest(text, today, langInstr))
+
+  const tasks = parseBrainDump(result.text)
+  if (tasks === null) {
+    ledger.markFailed()
+    return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
+  }
+  return json({ tasks })
+}
+
+export async function handleTaskPriority(route: RouteContext, taskId: string): Promise<Response> {
+  const { supabase, generate, ledger, lang, json } = route
+
+  // Tek görev için WSJF skoru önerisi
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('title, description, tags, due_date')
+    .eq('id', taskId)
+    .single()
+
+  if (!task) return json({ error: 'Görev bulunamadı' }, 404)
+
+  const result = await generate(taskPriorityRequest(task, lang))
+
+  const suggestion = parseTaskPriority(result.text)
   if (Object.keys(suggestion as object).length === 0) ledger.markFailed()
 
   return json({ suggestion })

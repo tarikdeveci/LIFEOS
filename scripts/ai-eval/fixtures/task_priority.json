@@ -1,0 +1,14 @@
+[
+  { "title": "Elektrik faturasını öde", "description": "Son ödeme günü geçerse gecikme faizi işliyor.", "tags": ["ev", "fatura"], "due_date": "2026-11-03" },
+  { "title": "Çeyrek sonu satış raporunu hazırla", "description": "Yönetim toplantısında sunulacak, üç bölgenin rakamları birleştirilecek.", "tags": ["iş", "rapor"], "due_date": "2026-11-06" },
+  { "title": "Diş kontrolü için randevu al", "description": null, "tags": ["sağlık"], "due_date": null },
+  { "title": "Mutfak dolabının menteşesini değiştir", "description": "Kapak sarkıyor ama kullanılabiliyor.", "tags": ["ev"], "due_date": null },
+  { "title": "Pasaport yenileme başvurusu", "description": "Yurt dışı yolculuğu 6 hafta sonra, pasaportun süresi doluyor.", "tags": ["resmi", "seyahat"], "due_date": "2026-11-20" },
+  { "title": "Yeni çalışanın oryantasyon planını yaz", "description": "Pazartesi başlıyor, ilk hafta programı hazır değil.", "tags": ["iş", "ekip"], "due_date": "2026-11-08" },
+  { "title": "Eski fotoğrafları buluta yedekle", "description": "Telefonun hafızası dolmak üzere.", "tags": ["kişisel"], "due_date": null },
+  { "title": "Kira sözleşmesini yenile", "description": "Ev sahibi yeni artış oranını bekliyor, sözleşme ay sonunda bitiyor.", "tags": ["ev", "resmi"], "due_date": "2026-11-30" },
+  { "title": "Sunucu sertifikasını yenile", "description": "SSL sertifikasının süresi üç gün sonra doluyor, dolarsa site açılmaz.", "tags": ["iş", "altyapı"], "due_date": "2026-11-05" },
+  { "title": "Haftalık market listesini çıkar", "description": null, "tags": ["ev"], "due_date": "2026-11-02" },
+  { "title": "İngilizce kursuna kaydol", "description": "Erken kayıt indirimi cuma günü bitiyor.", "tags": ["öğrenme"], "due_date": "2026-11-06" },
+  { "title": "Arabanın kışlık lastiklerini taktır", "description": "Hafta sonu kar yağışı bekleniyor.", "tags": ["araba"], "due_date": "2026-11-07" }
+]
