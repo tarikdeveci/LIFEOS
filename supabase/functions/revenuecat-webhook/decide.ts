@@ -23,7 +23,8 @@ export interface RevenueCatEvent {
 
 export type Decision =
   | { action: 'upsert'; row: Record<string, unknown> }
-  | { action: 'update'; patch: Record<string, unknown> }
+  /** maxEnd: satır yalnız bitişi bu andan ileri değilse güncellenir (eşzamanlı yenilemeye karşı). */
+  | { action: 'update'; patch: Record<string, unknown>; maxEnd?: string }
   | { action: 'skip'; level: 'warn' | 'error' | 'log'; message: string }
 
 export function mapStore(store: string | undefined): string {
@@ -88,6 +89,7 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
   }
 
   const stale = isStale(event, existing)
+  const maxEnd = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : undefined
   const skipStale: Decision = {
     action: 'skip',
     level: 'warn',
@@ -178,6 +180,7 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
       return {
         action: 'update',
         patch: { cancel_at_period_end: true, cancelled_at: nowIso, updated_at: nowIso },
+        maxEnd,
       }
     }
 
@@ -188,7 +191,9 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
     case 'UNCANCELLATION': {
       if (stale) return skipStale
       const plan = planFromProductId(event.product_id)
-      if (plan && event.expiration_at_ms && event.expiration_at_ms > nowMs) {
+      // Erişim açarken gerçek ana bakılır: dönem bittikten sonra teslim edilen
+      // eski olay Pro'yu geri açmamalı.
+      if (plan && event.expiration_at_ms && event.expiration_at_ms > now.getTime()) {
         return {
           action: 'update',
           patch: {
@@ -200,9 +205,10 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
             is_sandbox: event.environment === 'SANDBOX',
             updated_at: nowIso,
           },
+          maxEnd,
         }
       }
-      return { action: 'update', patch: { cancel_at_period_end: false, cancelled_at: null, updated_at: nowIso } }
+      return { action: 'update', patch: { cancel_at_period_end: false, cancelled_at: null, updated_at: nowIso }, maxEnd }
     }
 
     // Dönem uzatıldı (destek/telafi): yalnız bitiş tarihi değişir.
@@ -214,11 +220,12 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
       return {
         action: 'update',
         patch: { current_period_end: new Date(event.expiration_at_ms).toISOString(), updated_at: nowIso },
+        maxEnd,
       }
 
     case 'EXPIRATION':
       if (stale) return skipStale
-      return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
+      return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso }, maxEnd }
 
     default:
       // Diğer event tipleri (TEST, PRODUCT_CHANGE vb.): logla ve geç

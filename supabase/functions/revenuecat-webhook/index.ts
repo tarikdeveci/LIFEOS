@@ -85,7 +85,10 @@ Deno.serve(async (req) => {
       break
     }
     case 'update': {
-      const { error } = await supabase.from('subscriptions').update(decision.patch).eq('user_id', userId)
+      let query = supabase.from('subscriptions').update(decision.patch).eq('user_id', userId)
+      // Okuma ile yazma arasında gelen yenileme bitişi ileri attıysa eski olay yazılmaz.
+      if (decision.maxEnd) query = query.or(`current_period_end.is.null,current_period_end.lte.${decision.maxEnd}`)
+      const { error } = await query
       if (error) return dbFailure(event.type, userId, error.message)
       break
     }

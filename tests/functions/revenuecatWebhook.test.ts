@@ -206,3 +206,30 @@ test('eski normal iptal geri alinmis aboneligi yeniden iptal etmez', () => {
   const d = decideRow({ type: 'CANCELLATION', app_user_id: USER, expiration_at_ms: NOW.getTime() - DAY }, NOW, ACTIVE_PROD)
   assert.equal(d.action, 'skip')
 })
+
+test('EXPIRATION yazimi bitis kosuluyla yapilir (eszamanli yenileme)', () => {
+  const end = NOW.getTime() - 1000
+  const d = decideRow({ type: 'EXPIRATION', app_user_id: USER, expiration_at_ms: end }, NOW)
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal(d.maxEnd, new Date(end).toISOString())
+})
+
+test('iade bitis kosuluna tabi degil', () => {
+  const d = decideRow({ type: 'CANCELLATION', app_user_id: USER, cancel_reason: 'CUSTOMER_SUPPORT', expiration_at_ms: NOW.getTime() - DAY }, NOW)
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal(d.maxEnd, undefined)
+})
+
+test('donem bittikten sonra teslim edilen UNCANCELLATION Pro acmaz', () => {
+  const exp = NOW.getTime() - DAY
+  const d = decideRow(
+    { type: 'UNCANCELLATION', app_user_id: USER, product_id: 'PRO_1', expiration_at_ms: exp, event_timestamp_ms: exp - 5 * DAY },
+    NOW,
+    { plan: 'free', current_period_end: new Date(exp).toISOString(), is_sandbox: false },
+  )
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal('plan' in d.patch, false)
+})
