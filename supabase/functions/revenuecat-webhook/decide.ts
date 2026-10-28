@@ -53,18 +53,58 @@ export function normalizePeriodType(value: string | undefined): string | null {
   return PERIOD_TYPES.has(lower) ? lower : null
 }
 
-export function decideRow(event: RevenueCatEvent, now: Date): Decision {
+/** Kullanıcının olaydan önceki satırı (yoksa null). */
+export interface ExistingRow {
+  plan: string | null
+  current_period_end: string | null
+  is_sandbox: boolean | null
+}
+
+// RevenueCat olayları sırasız ve tekrar teslim edilebilir. Olayın bitişi
+// satırdakinden eskiyse olay, satırı yazan yenilemeden öncesine aittir.
+function isStale(event: RevenueCatEvent, existing: ExistingRow | null): boolean {
+  if (!existing?.current_period_end || !event.expiration_at_ms) return false
+  return Date.parse(existing.current_period_end) > event.expiration_at_ms
+}
+
+export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingRow | null = null): Decision {
   const userId = event.app_user_id
   const source = mapStore(event.store)
   const nowIso = now.toISOString()
   // Karşılaştırma referansı: event'in oluştuğu an (gecikmiş teslimde doğru sonuç).
   const nowMs = event.event_timestamp_ms ?? now.getTime()
 
+  // Sandbox olayı süren üretim aboneliğine dokunmaz (TestFlight ile deneyen
+  // ödeyen kullanıcı free'ye düşmesin, üretim satırı sandbox'a dönmesin).
+  if (
+    event.environment === 'SANDBOX' &&
+    existing?.is_sandbox === false &&
+    existing.plan !== null &&
+    existing.plan !== 'free' &&
+    existing.current_period_end !== null &&
+    Date.parse(existing.current_period_end) > nowMs
+  ) {
+    return { action: 'skip', level: 'warn', message: `Ignoring SANDBOX ${event.type} for user ${userId}: production subscription active` }
+  }
+
+  const stale = isStale(event, existing)
+  const skipStale: Decision = {
+    action: 'skip',
+    level: 'warn',
+    message: `Ignoring stale ${event.type} for user ${userId}: row ends after event expiration`,
+  }
+
   switch (event.type) {
     case 'INITIAL_PURCHASE':
     case 'RENEWAL': {
       if (!event.expiration_at_ms) {
         return { action: 'skip', level: 'warn', message: `Ignoring ${event.type} without expiration_at_ms for user ${userId}` }
+      }
+
+      // Eşit bitişte satır free ise olay iade/bitişten önceki teslimin tekrarıdır.
+      if (stale || (existing?.plan === 'free' && existing.current_period_end !== null &&
+        Date.parse(existing.current_period_end) === event.expiration_at_ms)) {
+        return skipStale
       }
 
       const plan = planFromProductId(event.product_id)
@@ -133,6 +173,8 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
           },
         }
       }
+      // İadeye sıra kontrolü yok: geç gelen iade de Pro'yu kapatmalı.
+      if (stale) return skipStale
       return {
         action: 'update',
         patch: { cancel_at_period_end: true, cancelled_at: nowIso, updated_at: nowIso },
@@ -144,6 +186,7 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
     // geri alındığında da gelir; iade dalı free yazmış olabileceğinden dönem
     // sürüyorsa Pro geri yazılır.
     case 'UNCANCELLATION': {
+      if (stale) return skipStale
       const plan = planFromProductId(event.product_id)
       if (plan && event.expiration_at_ms && event.expiration_at_ms > nowMs) {
         return {
@@ -167,12 +210,14 @@ export function decideRow(event: RevenueCatEvent, now: Date): Decision {
       if (!event.expiration_at_ms) {
         return { action: 'skip', level: 'warn', message: `Ignoring SUBSCRIPTION_EXTENDED without expiration_at_ms for user ${userId}` }
       }
+      if (stale) return skipStale
       return {
         action: 'update',
         patch: { current_period_end: new Date(event.expiration_at_ms).toISOString(), updated_at: nowIso },
       }
 
     case 'EXPIRATION':
+      if (stale) return skipStale
       return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
 
     default:

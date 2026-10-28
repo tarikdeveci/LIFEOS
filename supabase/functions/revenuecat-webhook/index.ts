@@ -6,7 +6,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-import { decideRow, type RevenueCatEvent } from './decide.ts'
+import { decideRow, type ExistingRow, type RevenueCatEvent } from './decide.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -64,7 +64,16 @@ Deno.serve(async (req) => {
     return new Response('OK', { status: 200 })
   }
 
-  const decision = decideRow(event, new Date())
+  // Karar mevcut satıra bakar: sırasız gelen eski olay ve sandbox olayı
+  // süren aboneliği ezmesin (decide.ts).
+  const { data: existing, error: readError } = await supabase
+    .from('subscriptions')
+    .select('plan, current_period_end, is_sandbox')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (readError) return dbFailure(event.type, userId, readError.message)
+
+  const decision = decideRow(event, new Date(), existing as ExistingRow | null)
 
   switch (decision.action) {
     case 'skip':

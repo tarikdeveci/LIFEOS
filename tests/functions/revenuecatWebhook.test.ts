@@ -127,3 +127,82 @@ test('EXPIRATION free yazar', () => {
   if (d.action !== 'update') return
   assert.equal(d.patch['plan'], 'free')
 })
+
+const DAY = 86_400_000
+const ACTIVE_PROD = {
+  plan: 'pro_monthly',
+  current_period_end: new Date(NOW.getTime() + 30 * DAY).toISOString(),
+  is_sandbox: false,
+}
+
+test('eski EXPIRATION yenilenmis aboneligi kapatmaz', () => {
+  const d = decideRow(
+    { type: 'EXPIRATION', app_user_id: USER, expiration_at_ms: NOW.getTime() - DAY, event_timestamp_ms: NOW.getTime() },
+    NOW,
+    ACTIVE_PROD,
+  )
+  assert.equal(d.action, 'skip')
+})
+
+test('guncel EXPIRATION free yazar', () => {
+  const end = NOW.getTime() - 1000
+  const d = decideRow(
+    { type: 'EXPIRATION', app_user_id: USER, expiration_at_ms: end, event_timestamp_ms: NOW.getTime() },
+    NOW,
+    { ...ACTIVE_PROD, current_period_end: new Date(end).toISOString() },
+  )
+  assert.equal(d.action, 'update')
+})
+
+test('tekrar teslim edilen eski RENEWAL bitisi geri cekmez', () => {
+  const d = decideRow(purchase({ type: 'RENEWAL', expiration_at_ms: NOW.getTime() + 2 * DAY }), NOW, ACTIVE_PROD)
+  assert.equal(d.action, 'skip')
+})
+
+test('iadeden sonra ayni RENEWAL tekrar gelirse Pro geri acilmaz', () => {
+  const exp = NOW.getTime() + 30 * DAY
+  const d = decideRow(purchase({ type: 'RENEWAL', expiration_at_ms: exp }), NOW, {
+    plan: 'free',
+    current_period_end: new Date(exp).toISOString(),
+    is_sandbox: false,
+  })
+  assert.equal(d.action, 'skip')
+})
+
+test('bitmis abonelikten sonra yeni alim yazilir', () => {
+  const d = decideRow(purchase(), NOW, { plan: 'free', current_period_end: new Date(NOW.getTime() - DAY).toISOString(), is_sandbox: false })
+  assert.equal(d.action, 'upsert')
+})
+
+test('sandbox olayi suren uretim aboneligine dokunmaz', () => {
+  for (const event of [
+    purchase({ environment: 'SANDBOX', expiration_at_ms: NOW.getTime() + 60 * DAY }),
+    { type: 'EXPIRATION', app_user_id: USER, environment: 'SANDBOX', expiration_at_ms: NOW.getTime() + 60 * DAY },
+    { type: 'CANCELLATION', app_user_id: USER, environment: 'SANDBOX', cancel_reason: 'CUSTOMER_SUPPORT' },
+  ]) {
+    assert.equal(decideRow(event, NOW, ACTIVE_PROD).action, 'skip', event.type)
+  }
+})
+
+test('sandbox alim bitmis uretim satirina ve sandbox satirina yazilir', () => {
+  const sandbox = purchase({ environment: 'SANDBOX' })
+  const expired = { ...ACTIVE_PROD, current_period_end: new Date(NOW.getTime() - DAY).toISOString() }
+  assert.equal(decideRow(sandbox, NOW, expired).action, 'upsert')
+  assert.equal(decideRow(sandbox, NOW, { ...ACTIVE_PROD, current_period_end: null, plan: null, is_sandbox: true }).action, 'upsert')
+})
+
+test('gec gelen iade, satir daha ileri bitisli olsa da Pro kapatir', () => {
+  const d = decideRow(
+    { type: 'CANCELLATION', app_user_id: USER, cancel_reason: 'CUSTOMER_SUPPORT', expiration_at_ms: NOW.getTime() - DAY, event_timestamp_ms: NOW.getTime() },
+    NOW,
+    ACTIVE_PROD,
+  )
+  assert.equal(d.action, 'update')
+  if (d.action !== 'update') return
+  assert.equal(d.patch['plan'], 'free')
+})
+
+test('eski normal iptal geri alinmis aboneligi yeniden iptal etmez', () => {
+  const d = decideRow({ type: 'CANCELLATION', app_user_id: USER, expiration_at_ms: NOW.getTime() - DAY }, NOW, ACTIVE_PROD)
+  assert.equal(d.action, 'skip')
+})
