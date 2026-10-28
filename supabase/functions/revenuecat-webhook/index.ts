@@ -7,11 +7,18 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { decideRow, type ExistingRow, type RevenueCatEvent } from './decide.ts'
+import { DEFAULT_NET_RATES, envRate, type NetRates } from './net.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
+
+// Olayda vergi ya da mağaza payı oranı yoksa kullanılır.
+const NET_RATES: NetRates = {
+  tax: envRate(Deno.env.get('AI_DEFAULT_TAX_PCT'), DEFAULT_NET_RATES.tax),
+  commission: envRate(Deno.env.get('AI_DEFAULT_COMMISSION_PCT'), DEFAULT_NET_RATES.commission),
+}
 
 interface RevenueCatPayload {
   event: RevenueCatEvent
@@ -73,7 +80,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (readError) return dbFailure(event.type, userId, readError.message)
 
-  const decision = decideRow(event, new Date(), existing as ExistingRow | null)
+  const decision = decideRow(event, new Date(), existing as ExistingRow | null, NET_RATES)
 
   switch (decision.action) {
     case 'skip':

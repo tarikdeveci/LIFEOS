@@ -19,14 +19,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
 import { createRulesExtractor, parseMeal } from '../_shared/nutrition/index.ts'
 import { createSupabaseFoodRepo, type SupabaseLike } from '../_shared/nutrition/repo.ts'
 import {
-  createAnthropicExtractor,
-  createAnthropicFoodEstimator,
-  createAnthropicPortionEstimator,
-  createAnthropicVerifier,
-} from '../_shared/nutrition/adapters/anthropic.ts'
+  createLlmExtractor,
+  createLlmFoodEstimator,
+  createLlmPortionEstimator,
+  createLlmVerifier,
+} from '../_shared/nutrition/adapters/llm.ts'
 import { createOpenAIEmbedder } from '../_shared/nutrition/adapters/openai.ts'
 import type { ParseMealResult } from '../_shared/nutrition/types.ts'
-import { AiLedger, resolveAiAccess, type MeteredMessage } from '../_shared/ai/usage.ts'
+import { notifyFallbackOnce, type NoticeClient } from '../_shared/ai/fallbackNotice.ts'
+import { bindRoute, getRouter } from '../_shared/ai/llm/index.ts'
+import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
+import { planMealAi } from './plan.ts'
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -36,26 +39,10 @@ const ALLOWED_ORIGINS = [
 ]
 
 // Ogun basina model cagrisi sayisi KALEM SAYISIYLA carpiliyor: 1 cikarici +
-// kalem basina 2'ye kadar dogrulayici + 1 gram tahmini. Dort kalemlik bir ogun
-// 10+ cagri demek. Bu yuzden model secimi rol bazli: hepsini ayni (en pahali)
-// modelde tutmak, dar kapsamli bir siniflandirma icin uretim maliyetini
-// gereksiz yere kat kat artiriyor.
-//
-// Roller ve neden bu ayrim:
-//   cikarici  — serbest Turkce metni kalemlere ayirir. Hatasi tum ogune yayilir,
-//               guclu model.
-//   dogrulayici — KAPALI listeden secim yapar; sema (enum + strict) liste disi
-//               cevabi imkansiz kilar ve yanlis satir yine guven tavanina ve
-//               kullanici onayina takilir. Riski yapisal olarak sinirli, hacmi
-//               en yuksek rol: burasi tasarrufun asil yeri.
-//   gram tahmini — "1 porsiyon" kac gram. Dar, sinirli risk.
-//   yiyecek tahmini — sozlukte HIC olmayan yiyecek icin referans satir uretir.
-//               En yuksek bahis, guclu model.
-//
-// Hepsi tek tek ortam degiskeniyle ezilebilir; NUTRITION_MODEL hepsini birden
-// ezer (eski davranisa donmek icin tek dugme).
-const DEFAULT_MODEL = 'claude-opus-4-6'
-const DEFAULT_CHEAP_MODEL = 'claude-sonnet-5'
+// kalem basina 2'ye kadar dogrulayici + 1 gram tahmini. Rol bazli model secimi
+// (cikarici ve yiyecek tahmini guclu, dogrulayici ve gram tahmini ucuz model) ve
+// butce asiminda yedek modele gecis artik ai_models / ai_model_routes tablolarinda
+// (meal_extract, meal_verify, meal_portion, meal_estimate); burada model adi yok.
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') ?? ''
@@ -127,24 +114,26 @@ serve(async (req: Request) => {
       { embedder },
     )
 
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
-    const model = Deno.env.get('NUTRITION_MODEL') ?? DEFAULT_MODEL
-    const cheapModel = Deno.env.get('NUTRITION_MODEL')
-      ?? Deno.env.get('NUTRITION_VERIFY_MODEL')
-      ?? DEFAULT_CHEAP_MODEL
     // Kapı ve bütçe kararı ai-suggest ile aynı yerden (_shared/ai/usage.ts).
-    // Aylık AI bütçesini aşan Pro ya da deneme kullanıcısı kural katmanına
-    // düşer: öğün kaydı hiçbir koşulda durmaz, yalnızca model katmanı kapanır.
+    // Aylık bütçe aşımı modeli kapatmaz, ucuz yedek modele geçirir; yalnızca
+    // sert sınır kural katmanına düşürür: öğün kaydı hiçbir koşulda durmaz.
     const access = await resolveAiAccess(authClient, user.id, 'parse_meal')
-    const pro = access.tier !== 'free'
-    const budgetLimited = pro && (!access.allowed || access.overBudget)
-    const modelTierAvailable = pro && !budgetLimited && apiKey.length > 0
+    const { pro, useModel: modelTierAvailable, limited: budgetLimited } = planMealAi(access)
+    const overBudget = access.allowed && access.overBudget
 
     // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
     // göre birkaç model çağrısı yapıyor; hepsi toplanıp tek `ai_used` satırı
     // olarak yazılır. Model katmanı çalışmadıysa satır yazılmaz.
     const ledger = new AiLedger(authClient, user.id, 'parse_meal', access.tier)
-    const onMessage = (message: MeteredMessage) => ledger.add(message)
+    let model: string | null = null
+    const call = (route: 'meal_extract' | 'meal_verify' | 'meal_portion' | 'meal_estimate') =>
+      bindRoute(getRouter(), route, {
+        overBudget,
+        onResult: (result) => {
+          ledger.add(result)
+          if (route === 'meal_extract') model = result.apiModel
+        },
+      })
 
     let result: ParseMealResult | null = null
     let aiError: string | null = null
@@ -153,13 +142,13 @@ serve(async (req: Request) => {
       try {
         result = await parseMeal(raw_input, {
           repo,
-          extractor: createAnthropicExtractor({ apiKey, model, onMessage }),
-          verifier: createAnthropicVerifier({ apiKey, model: cheapModel, onMessage }),
-          portionEstimator: createAnthropicPortionEstimator({ apiKey, model: cheapModel, onMessage }),
+          extractor: createLlmExtractor(call('meal_extract')),
+          verifier: createLlmVerifier(call('meal_verify')),
+          portionEstimator: createLlmPortionEstimator(call('meal_portion')),
           // Son basamak: hiçbir katmanın tanımadığı yiyecek için referans
           // değer üretir ve kişisel sözlüğe yazar. Kullanıcı onaylamadan
           // öğüne yazılmaz (ESTIMATE_CONFIDENCE_CAP < AUTO_THRESHOLD).
-          foodEstimator: createAnthropicFoodEstimator({ apiKey, model, onMessage }),
+          foodEstimator: createLlmFoodEstimator(call('meal_estimate')),
         })
       } catch (error) {
         // 23 Ağustos dersi: kredi bittiğinde beslenme tamamen ölmemeli.
@@ -168,6 +157,12 @@ serve(async (req: Request) => {
       }
       // Katman yarıda düştüyse de o ana kadarki çağrılar faturalandı.
       await ledger.flush()
+
+      // Yedek model gerçekten sonuç verdiyse kullanıcıya ayda bir kez haber ver.
+      // İstek gövdesinde dil alanı yok, bildirim Türkçe gider.
+      if (result && aiError === null && overBudget && pro && ledger.mode() === 'fallback') {
+        await notifyFallbackOnce(supabase as unknown as NoticeClient, user.id, 'tr')
+      }
     }
 
     if (!result) {
@@ -192,6 +187,8 @@ serve(async (req: Request) => {
         // 'budget': bu ayki AI bütçesi doldu, ay başında yenilenir.
         error: aiError ?? (budgetLimited ? 'budget' : null),
         model: modelTierAvailable && aiError === null ? model : null,
+        // 'fallback': bütçe aşımında ya da birinci model düşünce yedek model çalıştı.
+        mode: ledger.mode(),
         // Semantik arama ayrı bir sağlayıcıya bağlı; kapalıysa kullanıcıya
         // gösterilen soru sayısı artar ve sebebini bilmek gerekir.
         semantic: embedder !== null,

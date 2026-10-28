@@ -3,13 +3,12 @@
 
 import { buildPlannerPrompt, parsePlannerResult, type PlannerTask } from '../_shared/ai/planner.ts'
 import { DEFAULT_PLANNING_RULES } from '../_shared/ai/planningRules.ts'
-import { CHAT_EFFORT, LEGACY_MODEL, firstText } from './model.ts'
 import { loadPlanningRules, loadRoutineContext } from './planningContext.ts'
 import { readReplanInput, type ReplanBlock, type RouteContext } from './request.ts'
 import { busyBlocks } from './time.ts'
 
 export async function handleDailyPlan(route: RouteContext): Promise<Response> {
-  const { supabase, userId, client, ledger, langInstr, today, json } = route
+  const { supabase, userId, generate, ledger, langInstr, today, json } = route
   const { date, existing_blocks, buffer_minutes } = route.body
 
   // Günlük plan önerileri
@@ -58,13 +57,8 @@ export async function handleDailyPlan(route: RouteContext): Promise<Response> {
     : '  (Blok yok)'
   const bufferNote = buffer_minutes && buffer_minutes > 0 ? `Görevler arasına ${buffer_minutes} dakika buffer ekle.` : ''
 
-  const response = await client.messages.create({
-    model: LEGACY_MODEL,
-    // Sonnet 5'te dusunme varsayilan olarak acik ve ayni max_tokens
-    // butcesini paylasiyor. Bu rota JSON dondurmek zorunda; butce
-    // dusunmeye giderse cikti yarim kalir ve ayrıştırma patlar.
-    thinking: { type: 'disabled' as const },
-    max_tokens: 1500,
+  const result = await generate({
+    maxTokens: 1500,
     system: `Sen LifeOS kişisel yaşam asistanısın. Kullanıcının günlük planlamasına yardımcı oluyorsun.
 ${langInstr} Kısa ve net öneriler sun. Emoji kullan.
 Yanıtını SADECE şu JSON formatında ver:
@@ -97,9 +91,8 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
       },
     ],
   })
-  await ledger.record(response)
 
-  const text = firstText(response)
+  const text = result.text
   let suggestions: unknown[] = []
   try {
     const jsonMatch = text.match(/\[[\s\S]*\]/)
@@ -107,12 +100,13 @@ Mevcut bloklara çakışma olmasın. Çalışma saatleri 08:00–22:00.`,
   } catch {
     suggestions = [{ type: 'general', message: text }]
   }
+  if (suggestions.length === 0) ledger.markFailed()
 
   return json({ suggestions })
 }
 
 export async function handleReplan(route: RouteContext): Promise<Response> {
-  const { supabase, userId, body, client, chatModel, ledger, lang, today, json } = route
+  const { supabase, userId, body, generate, ledger, lang, today, json } = route
   const { energy_level, buffer_minutes } = body
 
   // İstemci girdisi hak ayrılmadan doğrulanır: ret ücretsiz hakkı yakmaz.
@@ -192,20 +186,15 @@ export async function handleReplan(route: RouteContext): Promise<Response> {
   // Ücretsiz katmanda hak model çağrısından ÖNCE atomik ayrılır (usage.ts).
   if (!await ledger.begin()) return json({ error: 'AI access requires Pro', code: 'pro_required' }, 402)
 
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
-    // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
-    max_tokens: 7500,
-    system,
-    messages,
-  })
-  await ledger.record(response)
+  // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+  // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+  const result = await generate({ system, messages, maxTokens: 7500 })
 
   const knownIds = new Set(blocks.flatMap((b) => (b.id ? [b.id] : [])))
-  return json(parsePlannerResult(firstText(response), knownIds, {
+  const plan = parsePlannerResult(result.text, knownIds, {
     protectedBlocks: routineContext.protectedBlocks,
     lang,
-  }))
+  })
+  if (!plan.message && plan.actions.length === 0) ledger.markFailed()
+  return json(plan)
 }

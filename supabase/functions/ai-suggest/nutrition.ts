@@ -2,7 +2,6 @@
 // Beslenme koçu sohbeti (nutrition_chat) ve istemciden gelen makro ile öğün verisinin normalleştirilmesi.
 
 import { buildNutritionCoachPrompt, parseNutritionCoachResult, type Macros } from '../_shared/ai/coach.ts'
-import { CHAT_EFFORT, firstText } from './model.ts'
 import { normalizeHistory, type RouteContext } from './request.ts'
 import { shiftDate } from './time.ts'
 
@@ -65,7 +64,7 @@ function normalizeMeals(raw: unknown): MealSummary[] {
 }
 
 export async function handleNutritionChat(route: RouteContext): Promise<Response> {
-  const { supabase, userId, body, client, chatModel, ledger, lang, today, json } = route
+  const { supabase, userId, body, generate, ledger, lang, today, json } = route
   const { user_message, current_time, nutrition_context } = body
 
   const ctx = nutrition_context ?? {}
@@ -142,19 +141,13 @@ export async function handleNutritionChat(route: RouteContext): Promise<Response
     userMessage: user_message?.trim() || 'Ne yiyebilirim?',
   })
 
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
-    // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
-    max_tokens: 4500,
-    system,
-    messages,
-  })
-  await ledger.record(response)
+  // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+  // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+  const response = await generate({ system, messages, maxTokens: 4500 })
 
-  const result = parseNutritionCoachResult(firstText(response))
+  const result = parseNutritionCoachResult(response.text)
   if (!result.message) {
+    ledger.markFailed()
     result.message = 'Yanıt oluşturulamadı, tekrar dene.'
   }
   return json(result)

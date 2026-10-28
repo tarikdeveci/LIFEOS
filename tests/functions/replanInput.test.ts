@@ -104,11 +104,10 @@ test('replan rotası: geçersiz girdi 400, veritabanına, hakka ve modele dokunm
   const trap = (name: string) => new Proxy({}, { get: () => { touched.push(name); throw new Error(`${name} kullanılmamalı`) } })
   const route = {
     supabase: trap('supabase'),
-    client: trap('model'),
+    generate: trap('model'),
     ledger: trap('ledger'),
     userId: 'u1',
     body: body({ user_message: 'a'.repeat(REPLAN_MESSAGE_MAX + 1) }),
-    chatModel: 'claude-opus-5',
     lang: 'tr',
     langInstr: '',
     today: '2026-10-10',

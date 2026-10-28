@@ -23,15 +23,17 @@
     "db:corpus": "node scripts/import-food-corpus.mjs",
     "db:embed": "node scripts/embed-foods.mjs",
     "eval:nutrition": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/run.ts",
+    "eval:ai": "node --no-warnings --experimental-strip-types --import ./tests/support/register.mjs scripts/ai-eval/run.ts",
     "audit:foods": "node --no-warnings --experimental-strip-types scripts/nutrition-eval/audit-catalog.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore"
   },
   "devDependencies": {
-    "turbo": "^2.9.14",
-    "typescript": "~5.9.2",
+    "@anthropic-ai/sdk": "0.124.0",
+    "next": "^15.5.24",
     "prettier": "^3.4.2",
     "rimraf": "^6.0.1",
-    "next": "^15.5.24"
+    "turbo": "^2.9.14",
+    "typescript": "~5.9.2"
   },
   "pnpm": {
     "overrides": {
