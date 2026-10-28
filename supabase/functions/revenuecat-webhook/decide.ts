@@ -1,5 +1,7 @@
 // RevenueCat event'ini subscriptions satırına çeviren saf mantık (test edilebilir).
 
+import { DEFAULT_NET_RATES, netMonthlyUsd, type NetRates } from './net.ts'
+
 export interface RevenueCatEvent {
   type: string
   app_user_id: string
@@ -19,6 +21,9 @@ export interface RevenueCatEvent {
   event_timestamp_ms?: number
   /** 'SANDBOX' | 'PRODUCTION' */
   environment?: string
+  /** Fiyattan düşülen vergi ve mağaza payı oranları (0 ile 1 arası, tahmini). */
+  tax_percentage?: number | null
+  commission_percentage?: number | null
 }
 
 export type Decision =
@@ -68,7 +73,12 @@ function isStale(event: RevenueCatEvent, existing: ExistingRow | null): boolean 
   return Date.parse(existing.current_period_end) > event.expiration_at_ms
 }
 
-export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingRow | null = null): Decision {
+export function decideRow(
+  event: RevenueCatEvent,
+  now: Date,
+  existing: ExistingRow | null = null,
+  netRates: NetRates = DEFAULT_NET_RATES,
+): Decision {
   const userId = event.app_user_id
   const source = mapStore(event.store)
   const nowIso = now.toISOString()
@@ -151,9 +161,17 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
       }
       if (event.is_trial_conversion === true) row['trial_converted_at'] = nowIso
 
-      // AI bütçesi ödenen fiyatla ölçekleniyor. Denemede fiyat 0 geliyor;
-      // 0 ile ezersek dönüşümden sonra bütçe tabana düşer.
+      // Brüt fiyat analiz için. Denemede fiyat 0 geliyor; 0 ile ezilmez.
       if (typeof event.price === 'number' && event.price > 0) row['price_usd'] = event.price
+
+      // AI bütçesi net gelirin payı. Sandbox gerçek gelir değil: değer silinir,
+      // bütçe varsayılana düşer. Deneme ve bilinmeyen fiyatta mevcut değer kalır.
+      if (event.environment === 'SANDBOX') {
+        row['net_monthly_usd'] = null
+      } else {
+        const net = netMonthlyUsd(event, plan, netRates)
+        if (net !== null) row['net_monthly_usd'] = net
+      }
 
       return { action: 'upsert', row }
     }
@@ -163,7 +181,7 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
         // İade. Google Play erişimi kesmeden iade edebilir: bitiş gelecekteyse
         // Pro o tarihe kadar sürer, değilse hemen kapanır.
         if (!event.expiration_at_ms || event.expiration_at_ms <= nowMs) {
-          return { action: 'update', patch: { plan: 'free', status: 'free', updated_at: nowIso } }
+          return { action: 'update', patch: { plan: 'free', status: 'free', net_monthly_usd: null, updated_at: nowIso } }
         }
         return {
           action: 'update',
@@ -171,6 +189,8 @@ export function decideRow(event: RevenueCatEvent, now: Date, existing: ExistingR
             current_period_end: new Date(event.expiration_at_ms).toISOString(),
             cancel_at_period_end: true,
             cancelled_at: nowIso,
+            // Para geri ödendi: kalan günlerde bütçe varsayılana düşer.
+            net_monthly_usd: null,
             updated_at: nowIso,
           },
         }

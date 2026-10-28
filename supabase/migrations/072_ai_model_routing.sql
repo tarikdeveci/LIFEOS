@@ -85,6 +85,19 @@ ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS net_monthly_usd numeric,
   ADD COLUMN IF NOT EXISTS ai_budget_override_usd numeric;
 
+-- Mevcut RevenueCat aboneleri: price_usd (islemin brut USD fiyati) varsayilan
+-- oranlarla (vergi 0,167, magaza payi 0,15) aylik nete cevrilir. Sandbox gercek
+-- gelir degil. Iptal ya da iade izi tasiyan satir (cancelled_at) iade edilmis
+-- olabilir: doldurulmaz, varsayilan butcede kalir. Yeni olaylar webhook'tan
+-- kesin oranlarla yazar.
+UPDATE public.subscriptions
+SET net_monthly_usd = price_usd * (1 - 0.167 - 0.15) / CASE WHEN status = 'pro_annual' THEN 12 ELSE 1 END
+WHERE net_monthly_usd IS NULL
+  AND price_usd > 0
+  AND is_sandbox = false
+  AND cancelled_at IS NULL
+  AND status IN ('pro_monthly', 'pro_annual');
+
 -- ============================================================
 -- 4. events: yedek mod bildirimi
 -- ============================================================
