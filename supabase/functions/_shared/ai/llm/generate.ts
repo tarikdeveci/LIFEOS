@@ -78,10 +78,12 @@ export async function generate(
     return result
   }
 
-  // Butce bitti: ayarli yedek, yoksa koddaki ucuz model; hic ucuz model yoksa birinci.
-  // Tablo rotaya zaten koddaki ucuz modelden ucuz bir model atadiysa o kalir.
-  const cheaper = cheap && cheap.outputPerMtok < primary.outputPerMtok ? cheap : null
-  const budgetModel = fallback ?? cheaper
+  // Butce bitti: birinciden ucuz olan ayarli yedek, yoksa koddaki ucuz model; ikisi de
+  // pahaliysa birinci kalir. Birinci ucuz saglayicida (Gemini), yedek Anthropic'te
+  // olabilir: butceyi asan kullanici pahali yedege kaymaz, hata aninda yine yedege gecer.
+  const cheaperThanPrimary = (model: ResolvedModel | null) =>
+    model && model.outputPerMtok < primary.outputPerMtok ? model : null
+  const budgetModel = cheaperThanPrimary(fallback) ?? cheaperThanPrimary(cheap)
   if (options.overBudget && budgetModel) return run(budgetModel, 'fallback')
   try {
     return await run(primary, 'primary')

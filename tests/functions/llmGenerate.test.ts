@@ -187,3 +187,24 @@ test('generate: bütçe aşımında birinci zaten ucuzsa pahalı varsayılana ge
   assert.equal(result.mode, 'primary')
   assert.deepEqual(p.calls, ['sonnet-5-nothink'])
 })
+
+test('generate: bütçe aşımında ayarlı yedek birinciden pahalıysa birinci kalır, hata anında yedek yine denenir', async () => {
+  const ok = providers(async () => OK)
+  const result = await generate(routerOf('sonnet-5-nothink', 'opus-5'), 'brain_dump', REQUEST, {
+    overBudget: true,
+    providers: ok.providers,
+  })
+  assert.equal(result.mode, 'primary')
+  assert.deepEqual(ok.calls, ['sonnet-5-nothink'])
+
+  const failing = providers(async (model) => {
+    if (model.id === 'sonnet-5-nothink') throw new LlmError('kapali', 503, true)
+    return OK
+  })
+  const rescued = await generate(routerOf('sonnet-5-nothink', 'opus-5'), 'brain_dump', REQUEST, {
+    overBudget: true,
+    providers: failing.providers,
+  })
+  assert.equal(rescued.mode, 'fallback')
+  assert.deepEqual(failing.calls, ['sonnet-5-nothink', 'opus-5'])
+})
