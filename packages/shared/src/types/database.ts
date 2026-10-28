@@ -39,6 +39,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_model_routes: {
+        Row: {
+          fallback_model: string | null
+          primary_model: string
+          route: string
+          updated_at: string
+        }
+        Insert: {
+          fallback_model?: string | null
+          primary_model: string
+          route: string
+          updated_at?: string
+        }
+        Update: {
+          fallback_model?: string | null
+          primary_model?: string
+          route?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_model_routes_fallback_model_fkey"
+            columns: ["fallback_model"]
+            isOneToOne: false
+            referencedRelation: "ai_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_model_routes_primary_model_fkey"
+            columns: ["primary_model"]
+            isOneToOne: false
+            referencedRelation: "ai_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_models: {
+        Row: {
+          api_key_secret: string
+          api_model: string
+          base_url: string | null
+          cached_input_per_mtok: number | null
+          enabled: boolean
+          extra_params: Json
+          id: string
+          input_per_mtok: number
+          output_per_mtok: number
+          provider: string
+        }
+        Insert: {
+          api_key_secret: string
+          api_model: string
+          base_url?: string | null
+          cached_input_per_mtok?: number | null
+          enabled?: boolean
+          extra_params?: Json
+          id: string
+          input_per_mtok: number
+          output_per_mtok: number
+          provider: string
+        }
+        Update: {
+          api_key_secret?: string
+          api_model?: string
+          base_url?: string | null
+          cached_input_per_mtok?: number | null
+          enabled?: boolean
+          extra_params?: Json
+          id?: string
+          input_per_mtok?: number
+          output_per_mtok?: number
+          provider?: string
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string | null
@@ -1448,6 +1523,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          ai_budget_override_usd: number | null
           cancel_at_period_end: boolean | null
           cancelled_at: string | null
           created_at: string | null
@@ -1455,9 +1531,11 @@ export type Database = {
           current_period_end: string | null
           current_period_start: string | null
           id: string
+          is_sandbox: boolean
           iyzico_customer_reference_code: string | null
           iyzico_subscription_reference_code: string | null
           iyzico_token: string | null
+          net_monthly_usd: number | null
           paytr_merchant_oid: string | null
           period_type: string | null
           plan: string
@@ -1470,6 +1548,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_budget_override_usd?: number | null
           cancel_at_period_end?: boolean | null
           cancelled_at?: string | null
           created_at?: string | null
@@ -1477,9 +1556,11 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          is_sandbox?: boolean
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
+          net_monthly_usd?: number | null
           paytr_merchant_oid?: string | null
           period_type?: string | null
           plan?: string
@@ -1492,6 +1573,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_budget_override_usd?: number | null
           cancel_at_period_end?: boolean | null
           cancelled_at?: string | null
           created_at?: string | null
@@ -1499,9 +1581,11 @@ export type Database = {
           current_period_end?: string | null
           current_period_start?: string | null
           id?: string
+          is_sandbox?: boolean
           iyzico_customer_reference_code?: string | null
           iyzico_subscription_reference_code?: string | null
           iyzico_token?: string | null
+          net_monthly_usd?: number | null
           paytr_merchant_oid?: string | null
           period_type?: string | null
           plan?: string

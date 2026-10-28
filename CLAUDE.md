@@ -3,6 +3,15 @@
 ## Proje Nedir?
 LifeOS kişisel bir yaşam işletim sistemi. Görev yönetimi (WSJF önceliklendirme), günlük zaman planlaması (time blocks), beslenme takibi ve Claude AI destekli karar yardımını birleştirir.
 
+## Kurallar
+Her oturum ve her ajan (`ajan`, Codex, alt agent) iş başında `docs/rules/` altındaki dosyaları okur;
+ajan görev metnine ilgili dosya yolları yazılır:
+- `docs/rules/WORKFLOW.md`: her değişikliğin geçtiği 10 kapı ve roller.
+- `docs/rules/DESIGN.md`: tokens, yazı boyutu, dokunma alanı, tema, ortak bileşenler, async durumlar.
+- `docs/rules/UX.md`: navigasyon, pop up, form, girdi, dil, sadelik, silme, kullanıcının önceki kararları.
+
+Kod bu dosyalarla çelişiyorsa kural geçerlidir; kural yanlışsa önce kural dosyası düzeltilir.
+
 ## Monorepo Yapısı
 ```
 lifeos/

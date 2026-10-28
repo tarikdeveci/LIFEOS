@@ -50,8 +50,18 @@ export default function GizlilikKvkkPage() {
       <Section title="4. Verilerin Aktarımı">
         <p>
           Verileriniz yalnızca hizmetin sunulması için gerekli olan hizmet sağlayıcılarla paylaşılır:
-          ödeme altyapısı (PayTR), bulut altyapı sağlayıcısı (Supabase) ve yapay zeka özelliklerinin
-          çalışması için ilgili işleme hizmetleri. Bu aktarımlar KVKK m.8 ve m.9'a uygun şekilde yapılır.
+          ödeme altyapısı (PayTR), bulut altyapı sağlayıcısı (Supabase) ve aşağıda belirtilen yapay
+          zeka sağlayıcıları. Bu aktarımlar KVKK m.8 ve m.9'a uygun şekilde yapılır.
+        </p>
+        <p>
+          <strong className="text-white/80">Yapay zeka sağlayıcıları:</strong> Bir yapay zeka özelliğini
+          kullandığınızda (örneğin öğün metnini çözümleme, görev önceliklendirme, günlük plan veya antrenman
+          önerisi), yalnızca o işlem için gereken içerik (girdiğiniz metin ve ilgili görev, plan, beslenme veya
+          antrenman bilgileri) Anthropic PBC (Claude) veya Google LLC (Gemini API) altyapısında işlenir. Hangi
+          sağlayıcının kullanılacağı özelliğe göre değişir. Ham sağlık verileri bu sağlayıcılara gönderilmez.
+          Her iki sağlayıcı da ücretli ticari API koşullarıyla kullanılır; bu koşullar kapsamında gönderilen
+          içerik sağlayıcıların modellerini eğitmek için kullanılmaz, yalnızca kötüye kullanımı önleme amacıyla
+          sınırlı bir süre saklanabilir. Bu sağlayıcıların sunucuları yurt dışında (ABD ve diğer ülkeler) bulunur.
         </p>
       </Section>
 

@@ -2,9 +2,9 @@
 // İstek gövdesi, rotaların paylaştığı bağlam ve sohbet geçmişinin normalleştirilmesi.
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
-import type Anthropic from 'npm:@anthropic-ai/sdk'
 import type { ChatTurn, Lang } from '../_shared/ai/coach.ts'
 import type { WorkoutCatalogEntry } from '../_shared/ai/workoutCoach.ts'
+import type { LlmCall } from '../_shared/ai/llm/types.ts'
 import type { AiLedger } from '../_shared/ai/usage.ts'
 import { isIsoDate } from '../_shared/ai/muscleLoad.ts'
 
@@ -53,15 +53,14 @@ export interface SuggestRequest {
 
 /**
  * Rota işleyicilerinin ortak bağlamı. İstemciler index.ts'te istek başına bir kez
- * kurulur; rotalar aynı supabase ve Anthropic istemcisini, aynı defteri paylaşır.
+ * kurulur; rotalar aynı supabase istemcisini, aynı model çağrısını ve aynı defteri paylaşır.
  */
 export interface RouteContext {
   supabase: SupabaseClient
   userId: string
   body: SuggestRequest
-  client: Anthropic
-  /** Bütçe durumuna göre seçilmiş sohbet modeli (CHAT_MODEL ya da BUDGET_CHAT_MODEL). */
-  chatModel: string
+  /** Rotaya bağlı model çağrısı: model seçimi, yedek ve defter kaydı katmanın içinde. */
+  generate: LlmCall
   ledger: AiLedger
   lang: Lang
   langInstr: string
@@ -176,4 +175,15 @@ export function readReplanInput(body: SuggestRequest): ReplanInput {
     history,
     blocks,
   }
+}
+
+/**
+ * Yanıt gövdesine `ai_mode` ekler: bu istekte yedek (hafif) model çalıştıysa
+ * 'fallback', yalnız birinci model çalıştıysa 'primary'. Yalnız düz nesne
+ * gövdeye eklenir (diziler olduğu gibi kalır, eski istemciler bozulmaz) ve model
+ * hiç çağrılmadıysa (`mode` null) alan yoktur.
+ */
+export function withAiMode(body: unknown, mode: 'primary' | 'fallback' | null): unknown {
+  if (mode === null || body === null || typeof body !== 'object' || Array.isArray(body)) return body
+  return { ...(body as Record<string, unknown>), ai_mode: mode }
 }

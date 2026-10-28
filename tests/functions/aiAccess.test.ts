@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // usage.ts modül yüklenirken Deno.env okur. Boş ortam: bütçeler varsayılan
-// (pay 0,5; taban 1 USD; deneme 0,5 USD; sert sınır 3 kat).
+// (pay 0,4; varsayılan 0,38 USD; deneme 0,5 USD; kötüye kullanım sınırı 5 USD).
 Object.assign(globalThis, { Deno: { env: { get: () => undefined } } })
 const { resolveAiAccess } = await import('../../supabase/functions/_shared/ai/usage.ts')
 const { FREE_KINDS } = await import('../../supabase/functions/_shared/ai/freeKinds.ts')
@@ -123,61 +123,57 @@ test('süresi geçmiş, tarihsiz ya da Pro olmayan abonelik ücretsiz sayılır'
 
 // ---------- deneme ----------
 
-test('deneme: bütçe 0,5 USD; aşınca ucuz model, 3 katında 429', async () => {
-  const trial = pro({ period_type: 'trial', price_usd: 20 })
+test('deneme: bütçe 0,5 USD (net gelirden bağımsız); aşınca ucuz model', async () => {
+  const trial = pro({ period_type: 'trial', net_monthly_usd: 10 })
   const at = (cost: number) => resolveAiAccess(client({ subscription: trial, monthCost: cost, freeLeft: 0 }), 'u1', 'nutrition_chat')
 
   assert.deepEqual(await at(0.49), { allowed: true, tier: 'trial', overBudget: false })
   assert.deepEqual(await at(0.5), { allowed: true, tier: 'trial', overBudget: true })
-  assert.deepEqual(await at(1.49), { allowed: true, tier: 'trial', overBudget: true })
-  const capped = await at(1.5)
-  assert.equal(capped.allowed, false)
-  if (!capped.allowed) {
-    assert.equal(capped.status, 429)
-    assert.equal(capped.code, 'ai_budget_exhausted')
-    assert.equal(capped.tier, 'trial')
-  }
 })
 
 // ---------- Pro ----------
 
-test('Pro: aylık fiyatın yarısı bütçe, 3 katında 429', async () => {
-  const sub = pro({ price_usd: 10 })
+test('bütçe: override öncelikli', async () => {
+  const sub = pro({ ai_budget_override_usd: 3, net_monthly_usd: 1 })
   const at = (cost: number) => resolveAiAccess(client({ subscription: sub, monthCost: cost }), 'u1', 'daily_plan')
-
-  assert.deepEqual(await at(4.99), { allowed: true, tier: 'pro', overBudget: false })
-  assert.deepEqual(await at(5), { allowed: true, tier: 'pro', overBudget: true })
-  assert.equal((await at(14.99)).allowed, true)
-  const capped = await at(15)
-  assert.equal(capped.allowed, false)
-  if (!capped.allowed) assert.equal(capped.status, 429)
+  assert.deepEqual(await at(2.9), { allowed: true, tier: 'pro', overBudget: false })
+  assert.deepEqual(await at(3), { allowed: true, tier: 'pro', overBudget: true })
 })
 
-test('Pro yıllık: fiyat 12 aya bölünür', async () => {
-  const sub = pro({ status: 'pro_annual', price_usd: 120 })
+test('bütçe: net × 0,4', async () => {
+  const sub = pro({ net_monthly_usd: 0.96 })
   const at = (cost: number) => resolveAiAccess(client({ subscription: sub, monthCost: cost }), 'u1', 'daily_plan')
-  // 120 / 12 = 10, yarısı 5 USD.
-  assert.deepEqual(await at(4.99), { allowed: true, tier: 'pro', overBudget: false })
-  assert.deepEqual(await at(5), { allowed: true, tier: 'pro', overBudget: true })
-  assert.equal((await at(15)).allowed, false)
+  assert.deepEqual(await at(0.38), { allowed: true, tier: 'pro', overBudget: false })
+  assert.deepEqual(await at(0.385), { allowed: true, tier: 'pro', overBudget: true })
 })
 
-test('Pro: fiyat bilinmiyor ya da bozuksa taban bütçe 1 USD', async () => {
-  for (const price of [undefined, null, 0, -5, 'abc']) {
-    const sub = pro({ price_usd: price })
-    const under = await resolveAiAccess(client({ subscription: sub, monthCost: 0.99 }), 'u1', 'daily_plan')
-    const over = await resolveAiAccess(client({ subscription: sub, monthCost: 1 }), 'u1', 'daily_plan')
-    const capped = await resolveAiAccess(client({ subscription: sub, monthCost: 3 }), 'u1', 'daily_plan')
-    assert.deepEqual(under, { allowed: true, tier: 'pro', overBudget: false }, String(price))
-    assert.deepEqual(over, { allowed: true, tier: 'pro', overBudget: true }, String(price))
-    assert.equal(capped.allowed, false, String(price))
+test('bütçe: net yoksa ya da bozuksa varsayılan 0,38', async () => {
+  for (const net of [undefined, null, 0, -1, 'abc']) {
+    const sub = pro({ net_monthly_usd: net })
+    const under = await resolveAiAccess(client({ subscription: sub, monthCost: 0.37 }), 'u1', 'daily_plan')
+    const over = await resolveAiAccess(client({ subscription: sub, monthCost: 0.38 }), 'u1', 'daily_plan')
+    assert.deepEqual(under, { allowed: true, tier: 'pro', overBudget: false }, String(net))
+    assert.deepEqual(over, { allowed: true, tier: 'pro', overBudget: true }, String(net))
   }
 })
 
-test('Pro: ucuz plan taban bütçenin altına inmez', async () => {
-  // 1 USD'lik plan: yarısı 0,5 ama taban 1.
-  const access = await resolveAiAccess(client({ subscription: pro({ price_usd: 1 }), monthCost: 0.9 }), 'u1', 'daily_plan')
-  assert.deepEqual(access, { allowed: true, tier: 'pro', overBudget: false })
+test('bütçe: price_usd artık etkilemez', async () => {
+  const access = await resolveAiAccess(client({ subscription: pro({ price_usd: 120 }), monthCost: 0.38 }), 'u1', 'daily_plan')
+  assert.deepEqual(access, { allowed: true, tier: 'pro', overBudget: true })
+})
+
+test('kötüye kullanım: 5 USD (deneme dahil)', async () => {
+  for (const sub of [pro(), pro({ period_type: 'trial' })]) {
+    const below = await resolveAiAccess(client({ subscription: sub, monthCost: 4.99 }), 'u1', 'daily_plan')
+    assert.equal(below.allowed, true)
+    assert.equal(below.allowed && below.overBudget, true)
+    const capped = await resolveAiAccess(client({ subscription: sub, monthCost: 5 }), 'u1', 'daily_plan')
+    assert.equal(capped.allowed, false)
+    if (!capped.allowed) {
+      assert.equal(capped.status, 429)
+      assert.equal(capped.code, 'ai_budget_exhausted')
+    }
+  }
 })
 
 test('Pro: ücretsiz hak sayısı Pro kararını etkilemez, tüm rotalar açık', async () => {
@@ -193,7 +189,7 @@ test('Pro: sayaç okunamazsa açık kalır (maliyet 0 sayılır)', async () => {
 })
 
 test('Pro: maliyet PostgREST\'ten metin olarak gelse de sayılır', async () => {
-  const access = await resolveAiAccess(client({ subscription: pro({ price_usd: 10 }), monthCost: '15.2' }), 'u1', 'daily_plan')
+  const access = await resolveAiAccess(client({ subscription: pro(), monthCost: '5.2' }), 'u1', 'daily_plan')
   assert.equal(access.allowed, false)
 })
 
