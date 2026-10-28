@@ -1,6 +1,6 @@
 # Misafir modu (mobil) tasarımı
 
-Tarih: 2026-10-20 (rev. 2, Codex incelemesi sonrası). Kapsam: `apps/mobile`, `supabase/` (migration, iki edge function), `apps/web/lib/api` ve üç web API rotası (sunucu kapıları, bölüm 9), `packages/shared` içinde küçük bir olay adı eklemesi. Web arayüzü değişmez (web anonim girişi açmıyor).
+Tarih: 2026-10-20 (rev. 2, Codex incelemesi sonrası; rev. 3, 2026-10-28: açık sorular sahibin kararıyla kapandı, bölüm 18). Kapsam: `apps/mobile`, `supabase/` (migration, iki edge function), `apps/web/lib/api` ve üç web API rotası (sunucu kapıları, bölüm 9), web kayıt formlarında onay bekleme durumu (bölüm 6.6), `packages/shared` içinde küçük bir olay adı eklemesi. Web anonim girişi açmıyor.
 
 Bu belge kod değil, tasarımdır. Satır numaraları `origin/develop` üzerinde okunan koda göre verilmiştir.
 
@@ -20,9 +20,11 @@ Başarı ölçütleri:
 
 - Mekanizma: `supabase.auth.signInAnonymously()`. Misafir gerçek bir `auth.users` satırı, `auth.uid() = user_id` RLS'i ve tüm tablolar değişmez. Veri taşıma yok.
 - Yükseltme: kayıt ekranı `signUp` yerine misafir kullanıcıda `updateUser` ile e-posta ve şifreyi bağlar, `uid` korunur. Ayrıntı (iki adım, devam ettirilebilir) bölüm 6.4 ve 6.5.
+- Mobilde tek kayıt yolu budur: oturumu olmayan kullanıcı da kayıt ekranında önce misafir olur (`signInAnonymously`), sonra aynı yükseltmeden geçer. Mobilde `signUp` kalkar (2026-10-28).
+- "Confirm email" üretimde AÇILIR. Hesabın `ready` olması, AI ve entegrasyonlar onaylı e-posta ister; onay gelene kadar kullanıcı misafir aşamasındadır ve ücretsiz özellikleri kullanır (2026-10-28).
 - Misafir MEVCUT bir hesaba giriş yaparsa misafir verisi geride kalır (seçenek a). Her seferinde, veri olsun olmasın, önceden net uyarı gösterilir (bölüm 7). Birleştirme fonksiyonu yok.
-- Hesap gerektiren anlar: satın alma/paywall, AI özellikleri, entegrasyonlar (Google Takvim, Todoist). Ayrıca ayarlarda ve veri girişinden sonra yedekleme hatırlatma kartı.
-- Bu kapılar yalnızca istemcide değil SUNUCUDA da zorlanır: AI edge function'ları, Google Takvim ve Todoist rotaları kalıcı hesap ister (bölüm 9). İstemci kapısı kullanıcı deneyimi, sunucu kapısı güvenlik sınırıdır.
+- Hesap gerektiren anlar: satın alma/paywall, AI özellikleri, entegrasyonlar (Google Takvim, Todoist, Apple Hatırlatıcılar içe aktarma). Ayrıca ayarlarda ve veri girişinden sonra yedekleme hatırlatma kartı.
+- Bu kapılar yalnızca istemcide değil SUNUCUDA da zorlanır: AI edge function'ları, Google Takvim ve Todoist rotaları kalıcı ve e-postası onaylı hesap ister (bölüm 9). İstemci kapısı kullanıcı deneyimi, sunucu kapısı güvenlik sınırıdır. Apple Hatırlatıcılar içe aktarmasının sunucu rotası yok, kapısı yalnızca istemcidedir.
 - Görev, planlama, beslenme kaydı, antrenman hesapsız çalışır.
 - Temizlik: 30+ gün etkin olmayan anonim kullanıcıları haftalık cron siler.
 - Dashboard'da "Allow anonymous sign-ins" açılır (sahibi yapar), ama yalnızca sunucu kapıları canlıya çıktıktan sonra (bölüm 16).
@@ -42,7 +44,10 @@ Başarı ölçütleri:
 11. Supabase dokümanı: anonim kullanıcı `authenticated` rolünü kullanır, JWT'de `is_anonymous` claim'i var; e-posta ile kalıcıya çevirmek için "manual linking" açık olmalı, e-posta doğrulanır, sonra şifre `updateUser` ile verilir; anonim giriş için IP başına varsayılan 30 istek/saat sınırı var; otomatik temizlik yok. Kaynak: https://supabase.com/docs/guides/auth/auth-anonymous
 12. Google Takvim ve Todoist işleri edge function değil, `apps/web` altındaki Next.js API rotaları: `app/api/integrations/google/{start,callback,complete,disconnect}`, `app/api/import/todoist`. Hepsi `authenticateRequest` (`apps/web/lib/api/auth.ts:8-18`) ile oturum doğrular; mobil Bearer jetonuyla çağırır. Bu fonksiyon `is_anonymous` döndürmüyor, yani bugün bir misafir JWT'si bu rotalara geçer. `complete` kendi kapısını `completeHandoff` (`lib/integrations/handoff.ts:57`) içinde yapıyor. `integrations` tablosunda INSERT politikası yok (`056_integrations.sql:40-44`: yalnızca SELECT ve DELETE), yani bağlantı satırları yalnızca bu rotalar üzerinden (admin istemci) yazılabilir: rotaları kapatmak yeterli.
 13. Diğer edge function'lar (`calendar-sync`, `send-email`, `daily-digest`, `event-notifications`) kullanıcı JWT'siyle çağrılmıyor: service role / cron ile çalışıyorlar (`calendar-sync/index.ts:4` "yalnızca service_role"). `revenuecat-webhook` kendi secret'ıyla doğruluyor. Kullanıcı JWT'siyle erişilebilen tek edge function'lar `ai-suggest`, `parse-meal`, `daily-report`, `delete-account`.
-14. `070_` numaralı migration zaten var (`070_drop_integrations_sync.sql`). `071_` (RevenueCat `is_sandbox`) ve `072_` (AI model yönlendirme, `events_name_check` içine `ai_fallback_notified` ekliyor) başka dallarda ayrıldı. Bu işin migration'ı `073_`; `events_name_check` yeniden tanımlanırken `ai_fallback_notified` korunmalı.
+14. `070_` numaralı migration zaten var (`070_drop_integrations_sync.sql`). `071_` (RevenueCat `is_sandbox`) ve `072_` (AI model yönlendirme, `events_name_check` içine `ai_fallback_notified` ekliyor) başka dallarda ayrıldı. Bu işin migration'ı `073_`; `events_name_check` yeniden tanımlanırken `ai_fallback_notified` korunmalı. (`074_` güvenlik migration'ı için ayrıldı.)
+15. Canlı Auth durumu (2026-10-28 sorgusu): "Confirm email" KAPALI. 52 e-posta hesabının hepsi onaylı ve şifreli; onay e-postası neredeyse hiç gitmemiş (`confirmation_sent_at` yalnızca 1 satırda dolu). Google ile açılmış 6 hesap var ve bunların 5'inde şifre YOK (`encrypted_password` boş). Mobilde Google girişi yok (`signInWithOAuth` yalnızca web `LoginForm.tsx`).
+16. Confirm email açılınca `signUp` oturum döndürmez. Web'in iki kayıt formu (`RegisterForm.tsx:23`, `LoginForm.tsx:103`) `data.user` varsa doğrudan `/dashboard`'a gidiyor ve onay bekleme durumu göstermiyor; eski mobil `register.tsx:30-31` de yalnızca `!data.user` durumunda bilgi veriyor, yani oturumsuz başarılı kayıtta ekranda hiçbir şey olmuyor.
+17. Supabase'in yerleşik e-posta servisi yalnızca organizasyonun ekip adreslerine ve saatte birkaç e-posta gönderir. Kod akışı (6.5) ve Confirm email özel SMTP olmadan çalışmaz. Özel SMTP'nin kurulu olup olmadığı veriden kesin değil (2026-10-22'de sahip dışı bir adrese sıfırlama e-postası gitmiş görünüyor, ama adres ekip üyesi olabilir); Dashboard'dan bakılır (bölüm 16). Edge function secret'ı `RESEND_API_KEY` tanımlı değil, ama Auth SMTP ayarı ondan bağımsızdır.
 
 ## 4. Yeni ilk açılış akışı
 
@@ -77,8 +82,8 @@ Yeni: `apps/mobile/src/contexts/AuthContext.tsx`, `SubscriptionProvider`'ın üs
 type AccountStage =
   | 'guest'          // is_anonymous, bekleyen e-posta yok
   | 'pending_email'  // is_anonymous ve Auth'ta new_email var (kod bekleniyor)
-  | 'needs_password' // kalıcı kullanıcı ama user_metadata.password_set !== true
-  | 'ready'          // kalıcı ve password_set === true
+  | 'needs_password' // kalıcı, OAuth kimliği yok ve user_metadata.password_set !== true
+  | 'ready'          // kalıcı, e-postası onaylı ve (password_set === true ya da OAuth kimliği var)
 
 interface AuthState {
   session: Session | null
@@ -92,7 +97,9 @@ export function useAuth(): AuthState
 
 - Kaynak Auth'un kendisidir, yerel depo değil. `is_anonymous` oturumla birlikte gelir. `new_email` JWT'de yok: anonim oturum açılışında ve `AppState` `active` olduğunda bir kez `supabase.auth.getUser()` (sunucuya gider) çağrılır; `user.new_email` doluysa `pending_email`. Ağ yoksa son bilinen aşama (`AsyncStorage`, yalnızca ipucu) kullanılır, ağ gelince Auth'a göre düzeltilir.
 - `password_set` Auth'un `user_metadata` alanında tutulur (cihazlar arası ve yeniden kurulumdan sağ çıkar). `undefined` ve `false` aynı: `needs_password`. `user_metadata` istemci tarafından yazılabilir, yani bu bir GÜVENLİK sınırı değil, kullanıcıyı şifre belirlemeye yönlendiren bir UX bayrağıdır. Sunucu kapıları (bölüm 9) yalnızca `is_anonymous`'a bakar.
-- Eski kalıcı kullanıcılar `password_set` taşımaz. Bu yüzden migration, yükseltme tek çağrıyla yapılmadan ÖNCE mevcut kalıcı kullanıcılara bayrağı yazar (bölüm 12'deki geriye dönük doldurma). `signUp` yolu da bundan sonra `data: { password_set: true }` gönderir. Mobil sürümde ek önlem: kalıcı kullanıcıda bayrak yoksa önce bir kez `refreshSession()` çağrılır (eski JWT'deki metadata bayat olabilir), hâlâ yoksa `needs_password`.
+- Eski kalıcı kullanıcılar `password_set` taşımaz. Bu yüzden migration, yükseltme tek çağrıyla yapılmadan ÖNCE mevcut kalıcı kullanıcılara bayrağı yazar (bölüm 12'deki geriye dönük doldurma). Mobilde `signUp` kalktığı için bayrağı bundan sonra yalnızca iki yer yazar: yükseltmenin şifre adımı (6.5) ve web'in iki kayıt formu (`signUp` `options.data.password_set = true`, bölüm 6.6). Mobil sürümde ek önlem: kalıcı kullanıcıda bayrak yoksa önce bir kez `refreshSession()` çağrılır (eski JWT'deki metadata bayat olabilir), hâlâ yoksa `needs_password`.
+- OAuth kullanıcıları: `user.identities` içinde `email` dışında bir sağlayıcı (bugün yalnızca web'den `google`) varsa şifre şartı aranmaz, kullanıcı `ready` sayılır. Sebep: canlıda şifresiz 5 Google hesabı var (bulgu 15); bunlar bir gün mobilde açılırsa yanlışlıkla şifre adımına düşmemeli.
+- Onaylı e-posta: `ready` için `user.email_confirmed_at` dolu olmalı (2026-10-28 kararı). Confirm email açıkken anonim kullanıcı ancak kodu doğrulayınca kalıcı olur, yani bu koşul yükseltme yolunda kendiliğinden sağlanır; mevcut 58 kalıcı hesabın hepsinde dolu. Kontrol yine de türetimde ve sunucuda yazılır (bölüm 9), ayar ileride kapanırsa doğrulanmamış hesap `ready` olmasın diye. Kalıcı ama onaysız kullanıcı (yalnızca web `signUp` sonrası onay bekleyen) mobilde oturum alamaz, bu yüzden ayrı bir aşamaya gerek yok.
 - `_layout.tsx` kendi `session` state'ini bırakıp `useAuth()` kullanır; yan etkiler (push, RevenueCat, odak kalıcılığı, çıkış temizliği) `_layout`'ta kalır. `SubscriptionContext` `userId` ve `stage`'i `useAuth()`'tan alır, kendi dinleyicisini bırakır.
 - Aşama geçişleri: `USER_UPDATED` olayı ve `refreshSession()` sonrası yeniden hesaplanır. Başka cihazda/tarayıcıda doğrulama yapılırsa yerel oturum eskidir; `pending_email` durumdayken `AppState` `active` olunca ve "Onayladım" düğmesinde `refreshSession()` + `getUser()` çağrılır.
 - Kapılar (bölüm 6), RevenueCat (bölüm 8) ve paywall yalnızca `stage === 'ready'` iken açılır. `guest`, `pending_email` ve `needs_password` aşamaları uygulamayı ücretsiz özelliklerle kullanmaya devam eder.
@@ -122,7 +129,7 @@ function useRequireAccount(): { stage: AccountStage | null; requireAccount(reaso
 | Tüm AI düğmeleri | `useProGate.ts:11` (8 çağrı yeri, bulgu 1) | `requireAccount('ai')` |
 | Profil: üyelik satırı | `app/(tabs)/profile.tsx:343-345` (`/paywall`) | `ready` değilse `requireAccount('paywall')` |
 | Paywall rotası (savunma) | `app/paywall.tsx`, ekran açılışı | `ready` değilken doğrudan açılırsa (derin bağlantı, eski yığın) `router.replace` ile kapıya yönlendir, planlar yüklenmez |
-| Entegrasyonlar | `src/components/settings/IntegrationsLink.tsx:15` ve `app/(tabs)/settings/integrations.tsx` | Google Takvim bağlama ve Todoist içe aktarma eylemlerinde `requireAccount('integration')`. Apple Hatırlatıcılar içe aktarması yerel olduğu için serbest kalır (açık soru 4) |
+| Entegrasyonlar | `src/components/settings/IntegrationsLink.tsx:15` ve `app/(tabs)/settings/integrations.tsx` | Google Takvim bağlama, Todoist içe aktarma ve Apple Hatırlatıcılar içe aktarma (`importReminders`, `integrations.tsx:49`) eylemlerinde `requireAccount('integration')`. Hatırlatıcıların sunucu rotası yok, kapı yalnızca istemcide (2026-10-28 kararı) |
 | Entegrasyon sağlayıcı rotası | `app/integrations/[provider].tsx` | açılışta aynı koruma |
 | Yedekleme hatırlatması | profil ekranında kart + Bugün ekranında banner (6.3) | düğme `register`'a gider |
 
@@ -139,13 +146,14 @@ function useRequireAccount(): { stage: AccountStage | null; requireAccount(reaso
 Mod, `useAuth().stage`'e göre belirlenir.
 
 - Yükseltme modu (`guest`): `signUp` (`:26`) yerine `supabase.auth.updateUser({ email, data: { display_name, timezone } })`. Başlık "Hesabını kaydet", alt metin "Verilerin bu hesaba bağlanır." Şifre alanı da toplanır ("En az 8 karakter" ipucu `:64`, yükseltmede min 8 doğrulaması eklenir) ama şifre bu adımda SUNUCUYA GÖNDERİLMEZ: yalnızca bileşen belleğinde tutulur (diske yazılmaz, günlüğe girmez) ve e-posta doğrulandıktan sonra 6.5'teki bitiş adımında kullanılır.
-- Normal mod (oturum yok, login'den gelen): bugünkü `signUp` davranışı kalır; tek fark `options.data.password_set = true` eklenmesi.
+- Oturum yok (login'den gelen, çıkış yapmış): `signUp` KALKAR, ayrı bir "normal mod" yok (2026-10-28 kararı, tek kayıt yolu). Gönder'e basınca önce `bootstrapGuest()` (`signInAnonymously`, bölüm 4) çalışır, oturum gelince aynı `updateUser({ email, data })` çağrısıyla yükseltme moduna devam edilir; ekran ve metin yükseltme moduyla aynıdır. Kullanıcı kodu doğrulayana kadar misafir aşamasındadır: ücretsiz özellikler açık; AI, Pro ve entegrasyonlar kapalı. Bu kayıtlar da anonim giriş IP sınırına sayılır (bölüm 14.3).
+- `signInAnonymously` başarısız olursa (ağ yok, 429, anonim giriş kapalı) hata ekranda, formun altında gösterilir ve girdiler korunur (UX 3); `signUp`'a geri düşülmez. Sonuç: anonim giriş anahtarı kapatılırsa yeni mobil sürümde kayıt da durur (giriş ve web kaydı çalışır). Kill switch kullanımı buna göre tartılır (bölüm 14.2 ve 16).
 - `user_profiles` yazımı: `updateUser`'ın `data` alanı yalnızca `raw_user_meta_data`'yı değiştirir; `handle_new_user` yeniden çalışmaz. Bu yüzden hesap `ready` olunca `user_profiles.update({ display_name })` (`profiles_update` politikası kullanıcıya izin veriyor, `014:60-63`) çağrılır. Saat dilimi `notification_preferences.timezone`'a `syncTimezone` ile zaten yazılıyor (`setup.ts:26-48`).
 - E-posta zaten kayıtlıysa `updateUser` hata döner: ekranda "Bu e-posta kayıtlı. Giriş yaparsan misafir verilerin geride kalır" metni ve "Giriş yap" düğmesi (bölüm 7'deki uyarı akışına gider). Hata kodu eşleşmesi Adım 0'da doğrulanır (bölüm 15).
 
 ### 6.5 Yükseltme adımları, bekleyen durum ve devam ettirme
 
-Bilinmeyen: üretimde "Confirm email" açık mı. `config.toml` `enable_confirmations = false` (`:25`) yalnızca yerel geliştirme. Tasarım iki duruma da dayanıklı. Yükseltme iki aşamalıdır (Supabase'in dokümanlanmış akışı: önce e-posta doğrulanır, sonra şifre verilir) ve HER aşaması uygulama kapanıp açıldığında kaldığı yerden sürer. Ana kural: durum Auth'tan türetilir, yerel depo yalnızca ipucudur.
+Canlı durum: "Confirm email" bugün KAPALI (bulgu 15). Karar (2026-10-28): AÇILIR, anonim girişle aynı anda (bölüm 16). Açıkken yükseltmede kod adımı (aşama 2) her zaman çalışır. `config.toml` `enable_confirmations = false` (`:25`) yalnızca yerel geliştirme; Adım 0 ve yerel ortam için `true` yapılır ki canlıyla aynı olsun. Yükseltme iki aşamalıdır (Supabase'in dokümanlanmış akışı: önce e-posta doğrulanır, sonra şifre verilir) ve HER aşaması uygulama kapanıp açıldığında kaldığı yerden sürer. Ana kural: durum Auth'tan türetilir, yerel depo yalnızca ipucudur.
 
 | Aşama | Auth'taki karşılığı | Ekran |
 |---|---|---|
@@ -154,7 +162,7 @@ Bilinmeyen: üretimde "Confirm email" açık mı. `config.toml` `enable_confirma
 | 3. Şifre belirle | `is_anonymous` false ve `password_set !== true` (`needs_password`) | "Şifreni belirle" adımı |
 | 4. Hazır | `is_anonymous` false ve `password_set === true` (`ready`) | yok |
 
-1. Aşama 1 sonrası `updateUser` yanıtındaki `data.user` okunur: `user.email === girilenEposta` ve `is_anonymous` false ise doğrulama gerekmedi (otomatik onay açık), doğrudan aşama 3'e geçilir. `user.new_email === girilenEposta` ise aşama 2.
+1. Aşama 1 sonrası `updateUser` yanıtındaki `data.user` okunur: `user.new_email === girilenEposta` ise aşama 2 (Confirm email açıkken beklenen tek dal). `user.email === girilenEposta` ve `is_anonymous` false ise e-posta doğrulanmadan onaylanmış demektir; bu yalnızca Confirm email kapalıyken olur. Akış bozulmasın diye aşama 3'e geçilir, ama bu durum ayarın kapandığını gösterir ve yayın sonrası kontrolde aranır (bölüm 16 madde 6).
 2. Aşama 2: "E-postana gelen 6 haneli kodu gir". Kod `supabase.auth.verifyOtp({ email, token, type: 'email_change' })` ile doğrulanır. Bağlantı yerine kod seçildi çünkü `_layout.tsx` yalnızca `reset-password` derin bağlantısını işliyor (`:38`). "Kodu tekrar gönder" `supabase.auth.resend({ type: 'email_change', email })` ile, 60 sn bekleme ile (`login.tsx:14` `RESET_COOLDOWN_SECONDS` kalıbı). Kodun süresi dolarsa aynı düğme çalışır. Uygulama bu ekranda kapanırsa yeniden açılışta `getUser()` `new_email`'i döndürür ve aynı ekran açılır; e-posta adresi `new_email`'den gelir (yerel depodan değil), kullanıcıdan tekrar istenmez.
 3. Aşama 3 ("Şifreni belirle"): kullanıcı doğrulanıp kalıcı olur olmaz bu adım açılır. Aşama 1'de girilen şifre hâlâ bellekteyse (uygulama kapanmadıysa) önceden doldurulmuş gelir ve tek dokunuşla onaylanır; bellekte yoksa (uygulama kapandı, başka cihazda doğrulandı) kullanıcıdan şifre YENİDEN istenir. "Ek giriş gerekmez" vaadi verilmez; şifre yeniden girişi kabul edilmiş bir durumdur. Çağrı: `updateUser({ password, data: { password_set: true } })` (şifre ve bayrak tek çağrıda, atomik). Başarılı olunca `refreshSession()` ve `stage` `ready` olur.
 4. `needs_password` aşamasındaki kullanıcı uygulamayı ücretsiz özelliklerle kullanabilir; ama her açılışta (en çok günde bir kez) Bugün ekranında "Şifreni belirle" kartı çıkar, kapı (`requireAccount`) doğrudan bu adımı açar ve RevenueCat `logIn`'i ile paywall bu adım bitene kadar çalışmaz. Böylece şifresiz kalıcı hesap oluşamaz ya da fark edilmeden kalmaz.
@@ -162,6 +170,13 @@ Bilinmeyen: üretimde "Confirm email" açık mı. `config.toml` `enable_confirma
 6. Başarısızlık yolları: `updateUser` yanıtı ağ hatası verirse aşama değişmez, ekran yeniden denenebilir kalır. `verifyOtp` yanlış kodda hatayı gösterir, aşama değişmez. Bekleyen e-postanın yanlış yazıldığı fark edilirse "E-postayı değiştir" aynı ekranda `updateUser({ email })` ile aşama 1'i yeniden çalıştırır.
 7. Adım 0'ın (bölüm 15) doğrulayacağı noktalar: `updateUser({ email })` sonrası `new_email` ve `is_anonymous` değerleri, `verifyOtp type:'email_change'` sonrası `is_anonymous`'ın `false` olması, `updateUser({ password, data })` çağrısının kalıcı kullanıcıda şifre değişikliği için ek doğrulama istememesi (güvenli şifre değişikliği açıksa `reauthentication` gerekebilir), JWT'de `is_anonymous` claim'inin `refreshSession()` sonrası güncellenmesi.
 8. Sahibin yapacağı: dashboard'da "Change email address" şablonu `{{ .Token }}` içermeli (Authentication > Email Templates). Varsayılan şablon yalnızca bağlantı içerir.
+
+### 6.6 Web kayıt formları (Confirm email açılınca)
+
+Web anonim giriş açmaz, `signUp` kalır. Ama Confirm email açılınca `signUp` oturum döndürmez (bulgu 16) ve bugünkü formlar kullanıcıyı oturumsuz `/dashboard`'a gönderir. İki formda (`RegisterForm.tsx:23`, `LoginForm.tsx:103`) aynı küçük değişiklik:
+- `options.emailRedirectTo: ${origin}/auth/callback?next=/dashboard` (callback zaten `exchangeCodeForSession` yapıyor, `auth/callback/route.ts:33`) ve `options.data.password_set = true`.
+- `data.session` boşsa `/dashboard`'a gidilmez; formun yerinde "E-postana gelen bağlantıyla hesabını onayla" durumu ve "Tekrar gönder" (`supabase.auth.resend({ type: 'signup', email })`, 60 sn bekleme) gösterilir. `data.session` doluysa (Confirm email kapalı) bugünkü davranış.
+- Bu değişiklik Confirm email açılmadan ÖNCE web yayınıyla canlıya çıkar (bölüm 16). "Confirm signup" şablonu bağlantılı varsayılan şablondur, değiştirilmez.
 
 ## 7. Giriş ekranı değişiklikleri (misafir mevcut hesaba giriyor)
 
@@ -187,13 +202,14 @@ Kural: `Purchases.logIn(userId)` yalnızca `stage === 'ready'` (kalıcı kullan�
 4. `isPro` türetimi: `stage === 'ready' && (dbPro || (sdkReady && storePro))`. Diğer tüm aşamalarda `false` (`SubscriptionContext.tsx:179` bu hale gelir). Misafirde `refreshStore` hiç çağrılmaz, durum `FREE_STATE`.
 5. Satın alma ve geri yükleme: `canPurchase = stage === 'ready' && sdkUserId === userId`. `sdkUserId` kuyruk görevi bittiğinde `getAppUserID()` ile güncellenen state'tir. Paywall'da satın alma ve "Satın alımları geri yükle" düğmeleri `canPurchase` olana kadar devre dışı ve kısa bir yükleniyor durumu gösterir. Ayrıca `purchasePlan` ve `restorePurchases` (`purchases.ts:187`, `:203`) çağrıdan hemen önce `getAppUserID()`'yi güncel kullanıcıyla karşılaştırır; uyuşmazsa `'unavailable'` döner. Böylece iki kullanıcının hızlı geçişinde satın alma yanlış kimliğe yazılamaz.
 6. Yükseltme: `stage` `ready` olunca (şifre belirlenip bayrak yazıldıktan sonra) madde 2'deki etki `logIn(uid)`'i bir kez çalıştırır. Aynı `uid` olduğu için kimlik birleştirme gerekmez. E-posta doğrulanmış ama şifre henüz belirlenmemişse RevenueCat'e hiç dokunulmaz.
-7. Paywall: `ready` olmayan aşamalarda açılmaz (6.2). Hesap açıldıktan sonra deneme teklifi: kayıt başarılı olunca bir kez paywall (`source: 'post_signup'`) açılması SHOULD, ilk sürümde zorunlu değil (açık soru 3).
+7. Paywall: `ready` olmayan aşamalarda açılmaz (6.2). Hesap açılınca, `stage` bu kullanıcı için ilk kez `ready` olduğunda, paywall bir kez açılır (`source: 'post_signup'`), MUST (2026-10-28 kararı). "Bir kez" kullanıcıya bağlı anahtarla tutulur (`AsyncStorage`, `lifeos_post_signup_paywall:<uid>`); yalnızca misafirden yükseltmede tetiklenir, mevcut hesaba girişte değil. RevenueCat kimliği eşleşmeden (`canPurchase`, madde 5) düğmeler pasif kalır, ekran yine açılır. `paywall_view` olayının `source` değerleri arasına `post_signup` eklenir.
+8. Hesap açıldıktan sonraki hatırlatmalar (2026-10-28 kararı, dört kanal da seçildi, hepsi sıklık sınırlı): AI özelliğine dokununca o özelliğin somut faydasını anlatan metin; işe yarayacağı anda tek satır ipucu (ör. öğünü elle girerken "Tek cümleyle yaz, AI ayırsın"); günlük bildirim havuzunda haftada en çok bir AI fayda satırı (`daily-digest/copy.ts` havuz deseni); Bugün ekranında kart (UX 6: önce emülatörde ekranın bugünkü hali tartılır). Sahibin notu: AI özelliklerinin faydası yeterince anlatılmıyor; paywall ve teklif metinleri somut fayda söyler. Bu madde misafir modunun parçası değil, ayrı spec ve iş (bölüm 17); misafir modu yalnızca `post_signup` paywall'ını getirir.
 
 ## 9. Sunucu kapıları (kalıcı hesap şartı)
 
-Genel kural: kullanıcı JWT'siyle erişilen ve para harcayan ya da üçüncü tarafı çağıran her sunucu girişi `user.is_anonymous === true` ise reddeder: HTTP 403, gövde `{ code: 'account_required' }`. Mobil istemci kapısı bunun önünde durur ama güvenlik sınırı sunucudur. `password_set` sunucuda kontrol edilmez (istemci tarafından yazılabilir bir bayrak, bölüm 5).
+Genel kural: kullanıcı JWT'siyle erişilen ve para harcayan ya da üçüncü tarafı çağıran her sunucu girişi `user.is_anonymous === true` ya da `!user.email_confirmed_at` ise reddeder: HTTP 403, gövde `{ code: 'account_required' }`. Onaysız e-posta şartı 2026-10-28 kararıdır (bölüm 18, madde 1): web'de `signUp` yapıp bağlantıya basmayan kullanıcı oturum almaz, ama Confirm email açılmadan önce oluşmuş ya da ayar kapalıyken doğrulamasız onaylanmış bir hesap bu şartla yakalanır. Mobil istemci kapısı bunun önünde durur ama güvenlik sınırı sunucudur. `password_set` sunucuda kontrol edilmez (istemci tarafından yazılabilir bir bayrak, bölüm 5).
 
-Not: `feature/ai-model-routing` dalı `ai-suggest` ve `parse-meal`'ı yeniden yazıyor. AI edge function eklemeleri o dal develop'a girdikten SONRA uygulanır; mobil kapı buna bağlı değildir. Web rotası eklemeleri bu dala bağlı değildir ve ondan önce yayınlanabilir.
+Not: `feature/ai-model-routing` develop'a girdi (#37); satır numaraları aşağıda o halden alındı. Web rotası eklemeleri AI fonksiyonlarına bağlı değildir ve önce yayınlanabilir.
 
 | Giriş | Tür | Kural |
 |---|---|---|
@@ -210,14 +226,14 @@ Not: `feature/ai-model-routing` dalı `ai-suggest` ve `parse-meal`'ı yeniden ya
 | `calendar-sync`, `send-email`, `daily-digest`, `event-notifications`, `revenuecat-webhook` | cron / service role / secret | kullanıcı JWT'siyle erişilemez, kapı gerekmez. Yalnızca `send-email`'in e-postası olmayan satırı atladığı implementer tarafından doğrulanır |
 
 Web rotaları uygulaması (bulgu 12):
-- `apps/web/lib/api/auth.ts` `authenticateRequest` dönüşüne `isAnonymous: user.is_anonymous === true` ekler. Çerez yolu ve Bearer yolu aynı `user` nesnesinden okur.
-- Aynı dosyaya küçük bir yardımcı: `requirePermanent(auth)`. `auth.isAnonymous` ise `NextResponse.json({ ok: false, error: 'Hesap gerekli', code: 'account_required' }, { status: 403 })` döner, değilse `null`. Her rota `authenticateRequest` sonrası (`401` kontrolünden hemen sonra) bunu çağırır. `payment/create` ve `api-keys` kendi `supabase.auth.getUser()` kullandığı için `user.is_anonymous` doğrudan okunur.
+- `apps/web/lib/api/auth.ts` `authenticateRequest` dönüşüne `isAnonymous: user.is_anonymous === true` ve `emailConfirmed: Boolean(user.email_confirmed_at)` ekler. Çerez yolu ve Bearer yolu aynı `user` nesnesinden okur.
+- Aynı dosyaya küçük bir yardımcı: `requirePermanent(auth)`. `auth.isAnonymous || !auth.emailConfirmed` ise `NextResponse.json({ ok: false, error: 'Hesap gerekli', code: 'account_required' }, { status: 403 })` döner, değilse `null`. Her rota `authenticateRequest` sonrası (`401` kontrolünden hemen sonra) bunu çağırır. `payment/create` ve `api-keys` kendi `supabase.auth.getUser()` kullandığı için `user.is_anonymous` ve `user.email_confirmed_at` doğrudan okunur.
 - Başka bir yazma yolu yok: `integrations` tablosunda INSERT politikası bulunmuyor (`056:40-44`), `oauth_states` ve `calendar_*` tabloları yalnızca admin istemciyle yazılıyor (RLS açık). Rotalar kapanınca misafir bağlantı kuramaz.
 - Mobil: entegrasyon ekranları rotadan `403 account_required` alırsa `requireAccount('integration')` ile kapıyı açar (eski bir sürümün kapısı olmasa bile sunucu korur).
 
 AI edge function eklemeleri:
-- `ai-suggest/index.ts`: `auth.getUser()` sonrası (`:55`), `resolveAiAccess`'ten ÖNCE (`:62`): `if (user.is_anonymous) return json({ error: 'Account required', code: 'account_required' }, 403)`. `resolveAiAccess` imzası değişmez; misafirin ücretsiz 3 plan hakkına erişmesi bu satırla kapanır.
-- `parse-meal/index.ts`: `getUser()` sonrası (`:105`) 403 DÖNME. `pro` hesabını şuna çevir: `const pro = !user.is_anonymous && access.tier !== 'free'` (`:139`). Misafirde model katmanı kapalı, kural katmanı çalışır, öğün kaydı durmaz.
+- `ai-suggest/index.ts`: `auth.getUser()` sonrası (`:53`), `resolveAiAccess`'ten ÖNCE (`:62`): `if (user.is_anonymous || !user.email_confirmed_at) return json({ error: 'Account required', code: 'account_required' }, 403)`. `resolveAiAccess` imzası değişmez; misafirin ücretsiz 3 plan hakkına erişmesi bu satırla kapanır.
+- `parse-meal/index.ts`: `getUser()` sonrası (`:91`) 403 DÖNME. Misafirde ya da e-postası onaysız kullanıcıda `planMealAi(access)` (`:121`) sonucu model katmanını kapatacak biçimde ezilir: `pro` ve `useModel` false olur. Kural katmanı çalışır, öğün kaydı durmaz. Ezme `planMealAi`'ın içine değil çağrı yerine yazılır (fonksiyon saf kalsın, testleri değişmesin).
 - Mobil `callAiSuggest` (`apps/mobile/src/lib/ai.ts:55-57`) 402 ve 403'ü `pro_required` olarak eşliyor. 403 gövdesindeki `code === 'account_required'` ayrıştırılır ve `AiAccessError`'a yeni bir kod eklenir: `'account_required'`. Böylece `planning.tsx:259` misafirde paywall açmaz, kapıyı açar. Bu mobil değişiklik bağımsızdır ve sunucu kapısından önce de güvenle yayınlanabilir.
 - `shared/supabase/reports.ts:61` ve `lifeSetup.ts:35` `supabase.functions.invoke` kullanıyor ve hata alırsa fırlatıyor; çağıran ekranlar zaten `requirePro` arkasında, ek işlem yok.
 
@@ -243,7 +259,7 @@ Analitik (değişmez yaşam döngüsü olayları):
 - Sorun: `events` hem `ON DELETE CASCADE` (bulgu 5) hem de istemci tarafından yazılabilir. İstemciden yazılan bir `guest_started`, hesap silinince/temizlik cron'u çalışınca kaybolur ve dönüşüm oranı şişer (silinenler paydadan düşer); ayrıca sahte olay yazılabilir.
 - Çözüm, migration `073_` içinde:
   1. `events_name_check` üç ad kazanır: `account_gate_shown` (istemci yazar; props `reason`, `stage`), `guest_started` ve `account_upgraded` (yalnızca veritabanı yazar).
-  2. `events.user_id` NULL alabilir ve FK `ON DELETE SET NULL` olur. Silinen kullanıcının olay satırı kalır, kimlik bağı kopar (`props` zaten kişisel veri içermiyor, `040:35`). Bu, mevcut kalıcı kullanıcıların hesap silmesi için de geçerli olur (açık soru 6).
+  2. `events.user_id` NULL alabilir ve FK `ON DELETE SET NULL` olur. Silinen kullanıcının olay satırı kalır, kimlik bağı kopar (`props` zaten kişisel veri içermiyor, `040:35`). Bu, mevcut kalıcı kullanıcıların hesap silmesi için de geçerli olur (kabul, 2026-10-28).
   3. `events_insert_own` politikası sıkılaştırılır: `WITH CHECK (auth.uid() = user_id AND name NOT IN ('guest_started', 'account_upgraded'))`. İstemci bu iki olayı yazamaz.
   4. `auth.users` üzerinde `SECURITY DEFINER` iki tetikleyici: `AFTER INSERT ... WHEN (NEW.is_anonymous)` -> `guest_started`; `AFTER UPDATE OF is_anonymous ... WHEN (OLD.is_anonymous AND NOT NEW.is_anonymous)` -> `account_upgraded` (props: `{ guest_age_days }`). Anonim girişi ve e-posta doğrulama sonrası `is_anonymous` geçişi Supabase tarafında bu sütunlara yazıldığı için istemci hiç rol oynamaz. Tetikleyicinin gerçekten çalıştığı Adım 0'da yerel/staging ortamında doğrulanır (bölüm 15).
 - Dönüşüm sorgusu: `analytics.guest_conversion` görünümü, hafta bazında `count(*) FILTER (WHERE name = 'guest_started')` ve `account_upgraded` sayıları. Silinen kullanıcılar sayıdan düşmez.
@@ -262,7 +278,7 @@ WHERE NOT is_anonymous
   AND COALESCE(encrypted_password, '') <> ''
   AND raw_user_meta_data->>'password_set' IS NULL;
 ```
-Hiç şifresi olmayan kalıcı hesap bugün yok (uygulama yalnızca e-posta+şifre kullanıyor); olsaydı `needs_password` adımı onları doğru yönlendirirdi. `auth.users`'a postgres rolüyle yazılabildiği ve `handle_new_user`'ın yalnızca INSERT'te çalıştığı yerel şema kopyasında doğrulanır.
+Şifresiz kalıcı hesap var: canlıda 6 Google hesabından 5'i şifresiz (bulgu 15). Doldurma onlara yazmaz; onları `needs_password`'e düşürmeyen şey bölüm 5'teki OAuth kuralıdır (email dışı kimliği olan kalıcı kullanıcı `ready`). `auth.users`'a postgres rolüyle yazılabildiği ve `handle_new_user`'ın yalnızca INSERT'te çalıştığı yerel şema kopyasında doğrulanır.
 
 **Temizlik**: pg_cron doğrudan SQL çalıştırır, `net.http_post` ve gömülü anahtar gerekmez. Silme koşulu SİLME İFADESİNİN İÇİNDE yeniden değerlendirilir, böylece aday seçimi ile silme arasında etkinlik ya da yükseltme olursa satır silinmez.
 
@@ -315,7 +331,7 @@ SELECT cron.schedule('purge-stale-guests', '30 3 * * 1', $$SELECT public.purge_s
 
 **CASCADE doğrulaması** (migration dosyaları tarandı): kullanıcıya bağlı tüm tablolar `auth.users(id) ON DELETE CASCADE`: `user_profiles`, `tasks`, `time_blocks`, `daily_plans` (001); `nutrition_targets`, `meals`, `food_items` (002); `workouts` (005); `subscriptions`, `payment_history` (013); `workout_programs` (016); `notification_preferences`, `push_tokens` (019); `health_daily`, `health_settings` (028); `api_keys` (029); `notification_log` (031); `food_aliases`, `portion_memory` (032); `nutrition_feedback` (033); `events` (040; bölüm 11'de `SET NULL`'a çevriliyor); `weight_logs` (049); `calendar_feeds` (050); `routines`, `routine_exceptions`, `routine_completions` (054); `integrations` (056); `oauth_states`, `calendar_sync_outbox`, `calendar_busy` (057); `goals` (059); `focus_sessions` (060); `daily_reports` (065); `goal_entries` (066). Alt tablolar (`task_details`, `workout_sets`, `program_days`, `program_exercises`) üst satır üzerinden zincirleme silinir.
 
-CASCADE OLMAYAN iki istisna: `food_gaps.user_id` `ON DELETE SET NULL` (`032_nutrition_resolution.sql:93`) ve, bu tasarımla, `events.user_id`. Silinen misafirin çözülemeyen yiyecek ifadeleri `user_id = NULL` ile kalır; küratörlük kuyruğu olduğu için bilinçli olabilir, ama ifade serbest metin (açık soru 5). Depolama (`storage`) kullanılmıyor (mobil, shared ve migration'larda `storage.from` yok). Başka FK'siz `user_id` kolonu bulunamadı; implementer migration sırasında `information_schema` ile canlı şemada bir kez daha doğrular.
+CASCADE OLMAYAN iki istisna: `food_gaps.user_id` `ON DELETE SET NULL` (`032_nutrition_resolution.sql:93`) ve, bu tasarımla, `events.user_id`. Silinen misafirin çözülemeyen yiyecek ifadeleri `user_id = NULL` ile kalır; küratörlük kuyruğu olduğu için bu davranış kalır (kabul, 2026-10-28; 032 davranışı değişmez). Depolama (`storage`) kullanılmıyor (mobil, shared ve migration'larda `storage.from` yok). Başka FK'siz `user_id` kolonu bulunamadı; implementer migration sırasında `information_schema` ile canlı şemada bir kez daha doğrular.
 
 ## 13. i18n metinleri
 
@@ -358,21 +374,21 @@ CASCADE OLMAYAN iki istisna: `food_gaps.user_id` `ON DELETE SET NULL` (`032_nutr
 ## 14. Kenar durumlar
 
 1. Çevrimdışı ilk açılış: `signInAnonymously` başarısız, login ekranı + "Misafir olarak devam et" yeniden dener. Ağ gelince çalışır; ek kuyruk yok.
-2. Anonim girişin kapalı olması (dashboard anahtarı kapalı): aynı hata yolu, uygulama bugünkü gibi login ekranına düşer. Anahtar aynı zamanda kill switch olarak kullanılır (bölüm 16).
-3. IP başına 30/saat sınırı: operatör CGNAT'ı arkasında çok kullanıcı aynı IP'yi paylaşabilir. Aşılırsa 429, hata yolu 1 ile aynı. Sınır lansmanda varsayılanda kalır, 429 gözlenirse yükseltilir (açık soru 1).
+2. Anonim girişin kapalı olması (dashboard anahtarı kapalı): aynı hata yolu, uygulama bugünkü gibi login ekranına düşer. Anahtar aynı zamanda kill switch olarak kullanılır (bölüm 16). Mobilde tek kayıt yolu anonim giriş olduğu için (6.4) anahtar kapanınca yeni mobil sürümde kayıt da durur: kayıt formu hatayı formun altında gösterir, mevcut hesaba giriş çalışır. Kill switch'i çekmenin bedeli budur.
+3. IP başına 30/saat sınırı: operatör CGNAT'ı arkasında çok kullanıcı aynı IP'yi paylaşabilir. Aşılırsa 429, hata yolu 1 ile aynı. Sınır 30/saat kalır, 429 görülürse yükseltilir (2026-10-28 kararı). Doğrudan kayıtlar da artık anonim girişten geçtiği için bu sınıra sayılır.
 4. Yeniden kurulum: oturum `SecureStore`'da; Android'de kurulumla silinir, misafir verisine erişim kaybolur (yeni misafir). iOS Keychain kurulum sonrası oturumu koruyabilir (platform davranışı; oturum varsa 4. bölümdeki ilk dal zaten devreye girer). Bu sınırlama yedekleme kartının varlık nedeni; ek çözüm yok.
 5. Odak durumu ve widget anlık görüntüsü kullanıcıya bağlı anahtarlarla tutuluyor (`persistFocus(AsyncStorage, userId)`, `_layout.tsx:62`); yükseltmede `uid` aynı kaldığı için bir şey kaybolmaz. Kullanıcı değişince bölüm 7'deki sıfırlama çalışır.
 6. Yükseltme sırasında `user.email` hâlâ null olabilir (bekleyen durum): profil e-posta alanı boş, rozet "Misafir".
 7. Yükseltme herhangi bir aşamada kesilirse (uygulama kapandı, çağrı yarıda, başka cihazda doğrulama): bekleyen durum yerel depodan değil Auth'tan türetildiği için (bölüm 5 ve 6.5) yeniden açılışta doğru adım gösterilir. Doğrulanmış ama şifresiz kalıcı kullanıcı `needs_password` olarak yakalanır; RevenueCat ve paywall bu aşamada kapalıdır. Çağrının sunucuda tamamlanıp yanıtın kaybolduğu durum da aynı yolla çözülür (bir sonraki `getUser()` gerçeği söyler).
 8. Misafir tek cihazlı (kasıtlı). Aynı hesapla ikinci cihazda giriş normal akış.
 9. Misafir sayısı büyürse `auth.users` şişer: cron haftalık, LIMIT 1000 ile partiler halinde siler; birikme olursa sonraki hafta devam eder.
-10. Web: `lifeos.tr` anonim giriş açmıyor, ekran/kod değişikliği yok (yalnızca üç API rotasına sunucu kapısı eklenir, bölüm 9). Mobil misafir web'de giriş yapamaz (şifresi yok), beklenen.
+10. Web: `lifeos.tr` anonim giriş açmıyor. Değişiklik yalnızca API rotalarına sunucu kapısı (bölüm 9) ve kayıt formlarına onay bekleme durumu (6.6). Mobil misafir web'de giriş yapamaz (şifresi yok), beklenen.
 11. Hızlı hesap değişimi (A çıkar, B girer, yanıtlar sıra dışı gelir): bölüm 7 (eşzamanlı sıfırlama), bölüm 8 madde 1 ve 3 (kuyruk ve eski yanıtı yok sayma) birlikte bunu kapsar; test planında ayrı vaka.
 
 ## 15. Test planı
 
 Birim (projedeki mevcut test yapısına göre):
-- Aşama türetimi (`deriveAccountStage`, saf fonksiyon): `is_anonymous` + `new_email` -> `pending_email`; kalıcı + bayrak yok -> `needs_password`; kalıcı + `password_set: true` -> `ready`; `undefined` ve `false` eşdeğer.
+- Aşama türetimi (`deriveAccountStage`, saf fonksiyon): `is_anonymous` + `new_email` -> `pending_email`; kalıcı + bayrak yok -> `needs_password`; kalıcı + `password_set: true` -> `ready`; `undefined` ve `false` eşdeğer; kalıcı + şifresiz + `identities` içinde `google` -> `ready` (OAuth kuralı); kalıcı + `password_set: true` + `email_confirmed_at` boş -> `ready` DEĞİL.
 - `useRequireAccount`: `guest` -> hesap kapısı, `pending_email` -> kod adımı, `needs_password` -> şifre adımı, `ready` -> `true`; her biri olay yazar.
 - `useProGate.requirePro`: `ready` olmayan her aşamada paywall değil kapı; `ready` free'de paywall; Pro'da `true`.
 - RevenueCat kuyruğu: (a) `stage !== 'ready'` iken `logIn` hiç çağrılmaz; (b) A -> B hızlı değişim: `logIn(A)` bitmeden B istenirse A'nın görevi iptal/ezilir, SDK kimliği B ile biter, A'nın gecikmiş müşteri bilgisi state'e yazılmaz; (c) `logOut` ve `logIn` iç içe çalışmaz (sahte `Purchases` ile sıra kaydı); (d) `canPurchase` SDK kimliği eşleşene kadar false, `purchasePlan` eşleşmezse `'unavailable'`.
@@ -380,54 +396,62 @@ Birim (projedeki mevcut test yapısına göre):
 - `bootstrapGuest`: tek sefer çalışır; `lifeos_had_session` varsa çağrılmaz.
 - Misafir -> giriş uyarısı: oturum anonimse her zaman gösterilir (veri sorgusu yok), oturum yoksa gösterilmez.
 - `callAiSuggest`: 403 + `account_required` -> `AiAccessError('account_required')`; 402 -> `pro_required`.
-- Web rotaları: `authenticateRequest` anonim JWT'de `isAnonymous: true` döner; `google/start`, `google/complete`, `import/todoist`, `payment/create`, `api-keys` anonim jetonla 403 `account_required`; kalıcı jetonla mevcut davranış; `google/disconnect` anonim jetonla da çalışır.
+- Web rotaları: `authenticateRequest` anonim JWT'de `isAnonymous: true` döner; `google/start`, `google/complete`, `import/todoist`, `payment/create`, `api-keys` anonim jetonla ve e-postası onaysız kalıcı jetonla 403 `account_required`; onaylı kalıcı jetonla mevcut davranış; `google/disconnect` anonim jetonla da çalışır.
+- Web kayıt formları (6.6): `signUp` `session: null` dönünce `/dashboard`'a gidilmiyor, onay bekleme durumu ve "Tekrar gönder" görünüyor; `session` dolu dönünce bugünkü davranış; `options.data.password_set === true` ve `emailRedirectTo` gönderiliyor.
 - Edge function (Deno yok, bkz. proje hafızası "edge-function-typecheck-gap"): scratchpad `tsc` ile tip kontrolü; kapı mantığı saf fonksiyona (`isAiBlockedForGuest(user)`) çıkarılırsa node ile birim testlenir.
 - Migration (yerel PostgreSQL 18 + canlı şema katalog kopyası): (1) 31 gün önceye tarihlenmiş misafir silinir, alt tablolar CASCADE ile gider, `food_gaps` istisnası ve `events` `SET NULL` doğrulanır; 29 gün önce olan silinmez; 31 gün önce oluşmuş ama `sessions` kaydı yeni olan silinmez. (2) Yarış: iki oturumda, birinde `purge_stale_guests` çalışırken diğerinde aynı misafirin `is_anonymous = false` UPDATE'i ve `last_sign_in_at` güncellemesi; yükseltilen ya da etkin olan satır silinmez. (3) `password_set` doldurma yalnızca şifreli kalıcı kullanıcıya yazar, anonimlere yazmaz, tekrar çalıştırınca değişmez. (4) `guest_started` tetikleyicisi anonim INSERT'te, `account_upgraded` `is_anonymous` true -> false UPDATE'inde tam bir satır yazar; istemci rolüyle bu iki adı INSERT etmek reddedilir.
 
 Emülatör adımları (`windows-local-android-build` yöntemi):
-0. Adım 0 (spike, kod yazmadan önce, yaklaşık 30 dk), YEREL SUPABASE (`supabase start`) ya da ayrı bir geçici/staging Supabase projesinde. ÜRETİMDE ANONİM GİRİŞ AÇILMAZ. Docker kurulu değilse ayrı geçici proje kullanılır (ücretsiz katman yeterli). Yerelde `config.toml`'a `enable_anonymous_sign_ins = true` ve `enable_manual_linking = true`, e-postalar yerel Inbucket'tan okunur. Doğrulanacaklar: (a) `updateUser({ email })` sonrası `new_email` ve `is_anonymous` değerleri, (b) `verifyOtp type:'email_change'` ile `is_anonymous` false oluyor mu ve `account_upgraded` tetikleyicisi çalışıyor mu, (c) `updateUser({ password, data: { password_set: true } })` kalıcı kullanıcıda ek yeniden doğrulama istiyor mu, (d) JWT claim yenilemesi için `refreshSession` gerekiyor mu, (e) kayıtlı e-postada hata kodu/mesajı, (f) uygulamayı iki aşama arasında kapatıp açınca `getUser()` ile bekleyen durumun doğru türediği. Sonuca göre 6.4 ve 6.5 kesinleşir.
+0. Adım 0 (spike, kod yazmadan önce, yaklaşık 30 dk), YEREL SUPABASE (`supabase start`) ya da ayrı bir geçici/staging Supabase projesinde. ÜRETİMDE ANONİM GİRİŞ AÇILMAZ. Docker kurulu değilse ayrı geçici proje kullanılır (ücretsiz katman yeterli). Yerelde `config.toml`'a `enable_anonymous_sign_ins = true` ve `enable_manual_linking = true`, e-postalar yerel Inbucket'tan okunur. Doğrulanacaklar: (a) `updateUser({ email })` sonrası `new_email` ve `is_anonymous` değerleri, (b) `verifyOtp type:'email_change'` ile `is_anonymous` false oluyor mu ve `account_upgraded` tetikleyicisi çalışıyor mu, (c) `updateUser({ password, data: { password_set: true } })` kalıcı kullanıcıda ek yeniden doğrulama istiyor mu, (d) JWT claim yenilemesi için `refreshSession` gerekiyor mu, (e) kayıtlı e-postada hata kodu/mesajı, (f) uygulamayı iki aşama arasında kapatıp açınca `getUser()` ile bekleyen durumun doğru türediği, (g) Confirm email AÇIKKEN (`enable_confirmations = true`) anonim `updateUser({ email })` kod gönderiyor ve `new_email` dalına düşüyor mu; KAPALIYKEN e-posta doğrulamasız onaylanıp kullanıcı doğrudan kalıcı oluyor mu (6.5 madde 1'in iki dalı), (h) eski mobil `register.tsx` (`signUp`) Confirm email açıkken ekranda ne gösteriyor (bulgu 16; bölüm 16 madde 4'teki pencerenin bedeli). Sonuca göre 6.4 ve 6.5 kesinleşir.
 1. Temiz kurulum, hesap yok: giriş ekranı görünmeden onboarding açılır. Görev ekle, öğün kaydet, antrenman başlat.
 2. Bildirim izin penceresi onboarding sonuna kadar açılmaz.
 3. Her AI düğmesine bas (8 çağrı yeri): hepsi hesap kapısı açar, paywall açılmaz. Profil üyelik satırı kapıyı açar. `adb` ile `paywall` rotasını derin bağlantıyla aç: kapıya yönlenir.
-4. Entegrasyonlar: Google/Todoist eylemi kapı açar; Apple Hatırlatıcılar içe aktarma çalışır. Misafir jetonuyla web rotalarına doğrudan `curl`: 403 `account_required`.
+4. Entegrasyonlar: Google, Todoist ve Apple Hatırlatıcılar eylemi kapı açar (2026-10-28 kararı). Misafir jetonuyla web rotalarına doğrudan `curl`: 403 `account_required`.
 5. Yedekleme kartı profilde var; Bugün'de 3. görevden sonra banner çıkar, kapatınca 7 gün susar.
-6. Yükseltme, kesintisiz: e-posta + şifre, kod ekranı, kod gir, şifre onayı. Görevler yerinde, `uid` aynı, "Misafir" rozeti kayboldu, RevenueCat `logIn` şifre belirlendikten sonra bir kez çalıştı (log). Paywall artık açılıyor.
+6. Yükseltme, kesintisiz: e-posta + şifre, kod ekranı, kod gir, şifre onayı. Görevler yerinde, `uid` aynı, "Misafir" rozeti kayboldu, RevenueCat `logIn` şifre belirlendikten sonra bir kez çalıştı (log). `post_signup` paywall'ı bir kez açıldı; uygulamayı kapatıp açınca tekrar açılmıyor. Paywall artık açılıyor.
+6b. Oturumsuz kayıt (login ekranından "Kayıt ol"): `signUp` çağrılmıyor, `signInAnonymously` ve `updateUser({ email })` üzerinden kod ekranına gidiliyor (ağ isteği logu). Kod girilene kadar AI ve entegrasyonlar kapıda, görev ve öğün kaydı çalışıyor. Anonim giriş anahtarı kapalıyken aynı form hatayı formun altında gösteriyor, girdiler korunuyor.
 7. Yükseltme, kesintili: (a) kod ekranındayken uygulamayı öldür/aç: aynı ekran, e-posta `new_email`'den geliyor; (b) kodu girdikten sonra, şifre adımında öldür/aç: "Şifreni belirle" kartı ve adımı çıkıyor, şifre yeniden isteniyor, o ana kadar paywall ve AI kapıda, RevenueCat anonim; (c) başka cihazda doğrula, uygulamaya dön: `refreshSession` ile aşama ilerliyor.
 8. Kayıtlı e-posta ile yükseltme dene: çakışma mesajı ve uyarılı giriş yolu.
 9. Misafirken mevcut hesaba giriş: uyarı HER ZAMAN çıkıyor (veri olsa da olmasa da, onboarding ilk slayttan da). Giriş sonrası misafir görevleri görünmüyor, hesabın görevleri görünüyor, önceki misafirin odak/widget durumu temizlenmiş, Pro görünümü önceki kullanıcıdan taşınmamış.
 10. Kalıcı hesap A'dan çıkış, B'ye giriş (Pro ve Pro olmayan): B'de Pro bilgisi A'dan geçmiyor, paywall düğmeleri SDK kimliği B olana kadar pasif.
 11. Misafir çıkış: güçlü uyarı, ardından login ekranı; "Misafir olarak devam et" yeni boş misafir açar.
 12. Misafir "Tüm verilerimi sil": `delete-account` 200, login ekranı.
-13. Sunucu kapısı (deploy edildikten sonra): misafir JWT'siyle `curl` ile `ai-suggest` 403 `account_required`; `parse-meal` 200 kural katmanı yanıtı, model çağrılmadı.
+13. Sunucu kapısı (deploy edildikten sonra): misafir JWT'siyle ve e-postası onaysız kalıcı kullanıcının JWT'siyle `curl` ile `ai-suggest` 403 `account_required`; `parse-meal` 200 kural katmanı yanıtı, model çağrılmadı.
+13b. Şifresiz Google hesabı (canlıdaki 5 hesabın durumu; test için ayrı bir test hesabıyla): mobilde açılınca `ready`, şifre adımı görmüyor.
 14. Eski kalıcı kullanıcı (geriye dönük doldurma sonrası) uygulamayı açar: şifre adımı görmez.
 15. Uçak modu ile ilk açılış: login + misafir düğmesi, ağ gelince çalışır.
 
 ## 16. Yayına alma sırası ((SAHİP) işaretli adımlar sahibin işi)
 
 1. Adım 0 spike'ı yerel Supabase ya da ayrı bir staging projesinde (bölüm 15). Üretim projesinde anonim giriş bu aşamada AÇILMAZ.
-2. Sunucu kapıları ve migration canlıya, anonim giriş açılmadan ÖNCE:
-   - `feature/ai-model-routing` develop'a girer; ardından AI kapısı (bölüm 9) ayrı küçük bir PR ile eklenir ve deploy edilir (`supabase functions deploy ai-suggest parse-meal`, SAHİP ya da sohbetteki onayıyla ajan).
-   - Web API rotası kapıları (bölüm 9: `authenticateRequest` + `requirePermanent`) web yayınıyla canlıya çıkar.
+2. (SAHİP) Authentication > SMTP Settings'te özel SMTP kurulu mu bakılır (bulgu 17). Kurulu değilse Confirm email açılmadan önce kurulur (ör. Resend SMTP); yerleşik SMTP ekip dışı adreslere göndermez ve saatte birkaç e-postayla sınırlıdır, Confirm email açıkken bu kayıtları durdurur.
+3. Sunucu kapıları, web formları ve migration canlıya, dashboard ayarları değişmeden ÖNCE:
+   - AI kapısı (bölüm 9) ayrı küçük bir PR ile eklenir ve deploy edilir (`supabase functions deploy ai-suggest parse-meal`, SAHİP ya da sohbetteki onayıyla ajan). Routing değişikliği develop'a girdi (#37), bekleyen bağımlılık yok.
+   - Web API rotası kapıları (bölüm 9: `authenticateRequest` + `requirePermanent`) ve web kayıt formlarının onay bekleme durumu (6.6) web yayınıyla canlıya çıkar. Formlar önce çıkmazsa Confirm email açıldığı anda web kaydı oturumsuz `/dashboard`'a gider (bulgu 16).
    - `db push` (SAHİP onayıyla, proje hafızasındaki dry-run önce kuralı): `073_` migration'ı (olay adları, `events` değişikliği, `password_set` doldurma, tetikleyiciler, temizlik fonksiyonu ve cron). Sonra `pnpm db:types` ve tip commit'i. Doldurma bu adımda çalıştığı için mevcut kullanıcılar yeni mobil sürümde şifre adımı görmez.
-3. Dashboard (SAHİP), ancak madde 2 tamamlandıktan sonra: "Allow anonymous sign-ins" AÇIK; "Allow manual linking" AÇIK; anonim giriş IP sınırı varsayılanda (30/saat) KALIR; "Change email address" e-posta şablonuna `{{ .Token }}` ekle. `supabase/config.toml` `[auth]` altına eşleşen yerel ayarlar da yazılır (`enable_anonymous_sign_ins = true`, `enable_manual_linking = true`) ki yerel ortam canlıyla aynı olsun.
-4. Mobil sürüm: yeni EAS build (SAHİP "build al" derse). Anonim giriş anahtarı kapalıyken yeni sürüm bugünkü gibi login ekranına düşer; yani anahtar kill switch'tir: sorun çıkarsa kapatmak yeni açılışları login ekranına döndürür, mevcut misafirler çalışmaya devam eder. Sunucu kapıları (madde 2) sürümden önce yayında olduğu için eski/yeni hiçbir mobil sürüm kapıyı atlayamaz.
-5. Yayın sonrası ilk hafta: `account_upgraded` / `guest_started` oranı (`analytics.guest_conversion`), `account_gate_shown` dağılımı, 429 sayısı, cron'un ilk koşusunda silinen sayısı (beklenen: ilk 30 günde sıfır).
+4. Dashboard (SAHİP), madde 2 ve 3 tamamlandıktan sonra ve yeni mobil build incelemeye gönderilmeden ÖNCE, üçü birlikte: "Confirm email" AÇIK; "Allow anonymous sign-ins" AÇIK; "Allow manual linking" AÇIK. Ayrıca anonim giriş IP sınırı 30/saat KALIR; "Change email address" şablonuna `{{ .Token }}` eklenir. `supabase/config.toml` `[auth]` altına eşleşen yerel ayarlar yazılır (`enable_anonymous_sign_ins = true`, `enable_manual_linking = true`, `[auth.email] enable_confirmations = true`) ki yerel ortam canlıyla aynı olsun. Sıranın sebebi: yeni mobil sürüm anonim giriş olmadan kayıt yapamaz (6.4), inceleme ekibi de kayıt dener. Bedeli: bu andan yeni sürüm yayına girene kadar eski mobil sürümde `signUp` sonrası ekranda bir şey olmuyor (bulgu 16); pencere mağaza inceleme süresi kadardır. Adım 0 (h) bu pencerede kullanıcının ne gördüğünü ölçer.
+5. Mobil sürüm: yeni EAS build (SAHİP "build al" derse). Anonim giriş anahtarı kill switch'tir: kapatmak yeni açılışları login ekranına döndürür, mevcut misafirler çalışmaya devam eder, ama yeni sürümde mobil kayıt da durur (bölüm 14 madde 2). Sunucu kapıları (madde 3) sürümden önce yayında olduğu için eski/yeni hiçbir mobil sürüm kapıyı atlayamaz.
+6. Yayın sonrası ilk hafta: `account_upgraded` / `guest_started` oranı (`analytics.guest_conversion`), `account_gate_shown` dağılımı, 429 sayısı, cron'un ilk koşusunda silinen sayısı (beklenen: ilk 30 günde sıfır). Doğrulamasız yükseltme kontrolü: yeni kalıcı hesaplarda `email_confirmed_at` ile `confirmation_sent_at` ya da `email_change_sent_at` birlikte dolu olmalı; ikisi de boş bir yükseltme, Confirm email'in kapandığını gösterir (6.5 madde 1).
 
 ## 17. Kapsam dışı (bilinçli)
 
 - Misafir -> mevcut hesap veri birleştirme (karar a).
 - Apple/Google ile giriş ve `linkIdentity` (ayrı iş, şimdilik e-posta).
 - CAPTCHA/Turnstile (React Native'de WebView gerektirir; koruma: sunucu kapıları, IP sınırı, 30 gün temizliği).
-- Web'de misafir modu (web arayüzü anonim giriş açmaz; yalnızca web API rotalarına sunucu kapısı eklenir).
+- Web'de misafir modu (web arayüzü anonim giriş açmaz, `signUp` ile kalır; yalnızca web API rotalarına sunucu kapısı ve kayıt formlarına onay bekleme durumu eklenir). Mobilde `signUp` kalkar (6.4).
+- AI faydasını anlatan hatırlatmalar ve paywall/teklif metinlerinin yeniden yazımı (bölüm 8 madde 8): ayrı spec ve iş. Misafir modu yalnızca `post_signup` paywall'ını getirir.
 - Cron/service-role fonksiyonlarına (`calendar-sync`, `send-email`, `daily-digest`, `event-notifications`) kapı eklemek: kullanıcı JWT'siyle erişilemiyorlar.
 - Misafir için "verilerimi indir".
 - Misafir kullanım sınırı (ör. en fazla N görev): ilk sürümde yok. Not: anonim hesaplar ücretsiz oluşturulabildiği için yazma suistimali (çok sayıda tek kullanımlık hesapla veri yazmak) mümkün; ilk sürümde yalnızca IP sınırı ve 30 gün temizliği koruyor, gözlemlenirse sonraki sürümde sınır eklenir.
 
-## 18. Sahibin cevaplaması gereken açık sorular
+## 18. Sahibin kararları (2026-10-28)
 
-1. Anonim giriş IP sınırı (varsayılan 30/saat) yükseltilsin mi? Risk iki yönlü: düşük sınır CGNAT arkasındaki gerçek kullanıcıları (kampanya günü) 429 ile engelleyebilir; yüksek sınır ise tek kullanımlık hesapla yazma suistimalini (veritabanını çöp satırla doldurma, entegrasyon dışı sunucu kaynağı tüketme) kolaylaştırır. Önerim: lansmanda varsayılan 30/saat'te kal, yalnızca gerçek 429 gözlenirse yükselt (örneğin 100). CAPTCHA yok.
-2. Üretimde "Confirm email" açık mı? Bekleyen ekranın ne sıklıkta görüneceğini belirler; tasarım iki durumda da çalışıyor, bloklayıcı değil.
-3. Hesap açıldıktan hemen sonra deneme (paywall) teklifi bir kez gösterilsin mi (bölüm 8, madde 7)? Önerim evet; ilk sürümde kapalı bırakıp ölçüme göre açmak da kabul.
-4. Apple Hatırlatıcılar içe aktarması misafire serbest kalsın mı (önerim: evet, yerel veri) yoksa tüm entegrasyonlar ekranı mı kilitlensin?
-5. `food_gaps.phrase` serbest metin; misafir silinince `user_id` NULL kalıp ifade korunuyor. Kabul mü, yoksa silinen kullanıcıda satırlar da silinsin mi (cascade'e çevirmek ayrı migration)?
-6. Dönüşüm ölçümü için `events.user_id` `ON DELETE SET NULL` olur (bölüm 11): bu, mevcut kalıcı kullanıcıların hesap silmesinden sonra da kimliksiz olay satırlarının (kişisel veri içermeyen, yalnızca ad ve zaman) kalması demek. Kabul mü, yoksa `guest_started`/`account_upgraded` için ayrı, FK'siz bir sayaç tablosu mu tercih edilir (`events` cascade kalır, ek tablo gerekir)?
+Rev. 2'deki altı açık soru ve inceleme sırasında çıkan bir soru sahibin seçimiyle kapandı:
+
+1. Confirm email AÇILIR. Hesabın `ready` olması, AI ve entegrasyonlar onaylı e-posta ister (bölüm 5, 6.5, 9). Sıra: bölüm 16 madde 2 ile 4.
+2. Mobilde doğrudan kayıt da misafir yolundan geçer: `signInAnonymously`, ardından `updateUser({ email })`; `signUp` mobilde kalkar (6.4). Kod girilene kadar ücretsiz özellikler açık, AI, Pro ve entegrasyonlar kapalı; IP sınırına sayılır.
+3. Anonim giriş IP sınırı 30/saat kalır, 429 görülürse yükseltilir (bölüm 14 madde 3).
+4. Hesap açılınca paywall bir kez (`post_signup`, MUST, bölüm 8 madde 7). Ardından dört kanalın hepsiyle sıklık sınırlı AI fayda hatırlatması; ayrıntısı ayrı spec (bölüm 8 madde 8, bölüm 17).
+5. Apple Hatırlatıcılar içe aktarması hesap ister (6.2; yalnızca istemci kapısı).
+6. `food_gaps` satırları silinen kullanıcıda kimliksiz kalır (032 davranışı, bölüm 12).
+7. `events.user_id` `ON DELETE SET NULL` kabul; ayrı sayaç tablosu yok (bölüm 11).
