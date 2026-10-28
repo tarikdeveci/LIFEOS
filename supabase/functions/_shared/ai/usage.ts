@@ -188,6 +188,9 @@ export class AiLedger {
   private readonly models = new Set<string>()
   private readonly routes = new Set<string>()
   private fellBack = false
+  // Istegin tamami icin: flush partiyi sifirlar ama bildirim ve yanit modu flush'tan sonra okur.
+  private requestCalls = 0
+  private requestFellBack = false
   private reservationId: number | null = null
   private failed = false
 
@@ -253,12 +256,13 @@ export class AiLedger {
 
   /** Bu istekte yedek model çalıştıysa 'fallback', yalnız birinci modelse 'primary', çağrı yoksa null. */
   mode(): 'primary' | 'fallback' | null {
-    if (this.calls === 0) return null
-    return this.fellBack ? 'fallback' : 'primary'
+    if (this.requestCalls === 0) return null
+    return this.requestFellBack ? 'fallback' : 'primary'
   }
 
   add(result: LlmResult): void {
     this.calls += 1
+    this.requestCalls += 1
     this.inputTokens += result.usage.input
     this.outputTokens += result.usage.output
     this.cacheReadTokens += result.usage.cacheRead
@@ -267,7 +271,10 @@ export class AiLedger {
     this.textChars += result.text.length + (result.toolInput ? JSON.stringify(result.toolInput).length : 0)
     this.models.add(result.apiModel)
     this.routes.add(result.route)
-    if (result.mode === 'fallback') this.fellBack = true
+    if (result.mode === 'fallback') {
+      this.fellBack = true
+      this.requestFellBack = true
+    }
     if (result.stopReason === 'max_tokens') this.failed = true
   }
 
@@ -277,7 +284,7 @@ export class AiLedger {
       tier: this.tier,
       model: [...this.models].join(','),
       route: [...this.routes].join(','),
-      mode: this.mode(),
+      mode: this.calls === 0 ? null : this.fellBack ? 'fallback' : 'primary',
       text_chars: this.textChars,
       parse_ok: !this.failed,
       calls: this.calls,

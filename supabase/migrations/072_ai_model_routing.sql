@@ -107,20 +107,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS events_ai_fallback_month_uq
 -- ============================================================
 -- Rota, model, mod ve ay bazinda: cagri, maliyet, ayristirma basarisi ve
 -- dusunme payi (gorunen cikti karakteri / cikti token'i).
+-- events_insert_own kullanicinin kendi ai_used satirini yazmasina izin verir:
+-- tur kontrolsuz cast tek bir bozuk satirla gorunumu hataya dusururdu (052 ile ayni koruma).
 CREATE OR REPLACE VIEW analytics.ai_route_health AS
+WITH typed AS (
+  SELECT
+    created_at,
+    props->>'route' AS route,
+    props->>'model' AS model,
+    props->>'mode'  AS mode,
+    CASE WHEN jsonb_typeof(props->'cost_usd') = 'number' THEN (props->>'cost_usd')::numeric END           AS cost_usd,
+    CASE WHEN jsonb_typeof(props->'parse_ok') = 'boolean' THEN ((props->>'parse_ok')::boolean)::int END    AS parse_ok,
+    CASE WHEN jsonb_typeof(props->'text_chars') = 'number' THEN (props->>'text_chars')::numeric END       AS text_chars,
+    CASE WHEN jsonb_typeof(props->'output_tokens') = 'number' THEN (props->>'output_tokens')::numeric END AS output_tokens
+  FROM public.events
+  WHERE name = 'ai_used'
+)
 SELECT
   date_trunc('month', created_at)                              AS month,
-  props->>'route'                                              AS route,
-  props->>'model'                                              AS model,
-  props->>'mode'                                               AS mode,
+  route,
+  model,
+  mode,
   count(*)                                                     AS calls,
-  round(sum((props->>'cost_usd')::numeric), 4)                 AS cost_usd,
-  round(avg((props->>'cost_usd')::numeric), 6)                 AS avg_cost_usd,
-  round(avg(((props->>'parse_ok')::boolean)::int), 4)          AS parse_ok_rate,
-  round(sum((props->>'text_chars')::numeric)
-        / NULLIF(sum((props->>'output_tokens')::numeric), 0), 4) AS chars_per_output_token
-FROM public.events
-WHERE name = 'ai_used'
+  round(sum(cost_usd), 4)                                      AS cost_usd,
+  round(avg(cost_usd), 6)                                      AS avg_cost_usd,
+  round(avg(parse_ok), 4)                                      AS parse_ok_rate,
+  round(sum(text_chars) / NULLIF(sum(output_tokens), 0), 4)    AS chars_per_output_token
+FROM typed
 GROUP BY 1, 2, 3, 4
 ORDER BY 1 DESC, cost_usd DESC NULLS LAST;
 

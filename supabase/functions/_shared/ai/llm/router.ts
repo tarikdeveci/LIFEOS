@@ -127,8 +127,9 @@ export function createRouter(deps: RouterDeps): AiRouter {
     return apiKey ? { ...spec, apiKey } : null
   }
 
-  function defaultModel(id: string | null): ResolvedModel | null {
-    if (id === null) return null
+  function defaultModel(id: string | null, disabled: ReadonlySet<string>): ResolvedModel | null {
+    // Tabloda kapatilan model koddaki varsayilan uzerinden geri gelmez.
+    if (id === null || disabled.has(id)) return null
     return withKey(DEFAULT_MODELS.find((m) => m.id === id))
   }
 
@@ -137,6 +138,7 @@ export function createRouter(deps: RouterDeps): AiRouter {
       const catalog = await readCatalog()
       const defaults = DEFAULT_ROUTES[route]
       const row = catalog?.routes.find((r) => r.route === route) ?? null
+      const disabled = new Set((catalog?.models ?? []).filter((m) => !m.enabled).map((m) => m.id))
 
       let primary: ResolvedModel | null = null
       let fallback: ResolvedModel | null = null
@@ -156,13 +158,20 @@ export function createRouter(deps: RouterDeps): AiRouter {
       }
       if (!primary) {
         // Satir yok, tablo okunamadi ya da model kullanilamaz: koddaki esleme.
-        primary = defaultModel(defaults.primary)
-        fallback = defaultModel(defaults.fallback)
+        primary = defaultModel(defaults.primary, disabled)
+        fallback = defaultModel(defaults.fallback, disabled)
+        if (!primary && fallback) {
+          primary = fallback
+          fallback = null
+        }
       }
       if (!primary) {
         throw new LlmError(`'${route}' rotasi icin model anahtari tanimli degil`, null, false)
       }
-      return { primary, fallback, cheap: defaultModel(defaults.fallback) }
+      // Butce asiminda kullanilacak ucuz model: varsayilan yedek; rotanin yedegi yoksa
+      // varsayilan birinci zaten ucuz modeldir (tablo pahali bir model atamis olabilir).
+      const cheap = defaultModel(defaults.fallback, disabled) ?? defaultModel(defaults.primary, disabled)
+      return { primary, fallback, cheap }
     },
   }
 }

@@ -82,13 +82,18 @@ test('generate: yedek yoksa hata aynen', async () => {
   )
   assert.deepEqual(p.calls, ['opus-5'])
 
-  const fatal = new LlmError('400', 400, false)
-  const q = providers(async () => { throw fatal })
-  await assert.rejects(
-    generate(routerOf('opus-5', 'sonnet-5'), 'replan', REQUEST, { overBudget: false, providers: q.providers }),
-    (e: unknown) => e === fatal,
-  )
-  assert.deepEqual(q.calls, ['opus-5'])
+})
+
+test('generate: kalıcı hatada da yedek denenir (kredi bitti, model kalktı, anahtar iptal)', async () => {
+  for (const status of [400, 401, 403, 404]) {
+    const q = providers(async (model) => {
+      if (model.id === 'opus-5') throw new LlmError(String(status), status, false)
+      return OK
+    })
+    const result = await generate(routerOf('opus-5', 'sonnet-5'), 'replan', REQUEST, { overBudget: false, providers: q.providers })
+    assert.equal(result.mode, 'fallback', String(status))
+    assert.deepEqual(q.calls, ['opus-5', 'sonnet-5'])
+  }
 })
 
 test('generate: maliyet', async () => {
@@ -171,4 +176,14 @@ test('generate: kullanımsız hata deftere yazılmaz, başarıda çift sayım yo
     onResult: (r) => results.push(r),
   })
   assert.equal(results.length, 1)
+})
+
+test('generate: bütçe aşımında birinci zaten ucuzsa pahalı varsayılana geçilmez', async () => {
+  const p = providers(async () => OK)
+  const result = await generate(routerOf('sonnet-5-nothink', null, 'opus-5'), 'daily_plan', REQUEST, {
+    overBudget: true,
+    providers: p.providers,
+  })
+  assert.equal(result.mode, 'primary')
+  assert.deepEqual(p.calls, ['sonnet-5-nothink'])
 })

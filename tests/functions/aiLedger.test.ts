@@ -215,13 +215,20 @@ test('ledger: markFailed parse_ok false, max_tokens da', async () => {
   assert.equal((user.inserts[1]?.values['props'] as Record<string, unknown>)['parse_ok'], false)
 })
 
-test('ledger: mode() çağrı yoksa null, flush sonrası sıfırlanır', async () => {
-  const ledger = new AiLedger(userClient({ data: 1 }).client, 'u1', 'replan', 'pro')
+test('ledger: mode() çağrı yoksa null, flush sonrası da isteğin modunu verir', async () => {
+  const user = userClient({ data: 1 })
+  const ledger = new AiLedger(user.client, 'u1', 'replan', 'pro')
   assert.equal(ledger.mode(), null)
   ledger.add(MESSAGE)
   assert.equal(ledger.mode(), 'primary')
   ledger.add({ ...MESSAGE, mode: 'fallback' })
   assert.equal(ledger.mode(), 'fallback')
+  // Bildirim ve yanıt flush'tan sonra okur: yedek bilgisi kaybolmamalı.
   await ledger.flush()
-  assert.equal(ledger.mode(), null)
+  assert.equal(ledger.mode(), 'fallback')
+  // Sonraki parti kendi modunu yazar, isteğin modu yedek kalır.
+  ledger.add(MESSAGE)
+  await ledger.flush()
+  assert.equal((user.inserts[1]?.values['props'] as Record<string, unknown>)['mode'], 'primary')
+  assert.equal(ledger.mode(), 'fallback')
 })

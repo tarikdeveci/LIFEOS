@@ -79,13 +79,17 @@ export async function generate(
   }
 
   // Butce bitti: ayarli yedek, yoksa koddaki ucuz model; hic ucuz model yoksa birinci.
-  const budgetModel = fallback ?? cheap
+  // Tablo rotaya zaten koddaki ucuz modelden ucuz bir model atadiysa o kalir.
+  const cheaper = cheap && cheap.outputPerMtok < primary.outputPerMtok ? cheap : null
+  const budgetModel = fallback ?? cheaper
   if (options.overBudget && budgetModel) return run(budgetModel, 'fallback')
   try {
     return await run(primary, 'primary')
   } catch (err) {
-    // Yedek yoksa bugunku hata davranisi aynen: ikinci deneme yok.
-    if (fallback && err instanceof LlmError && err.retryable) return run(fallback, 'fallback')
+    // Yedek yoksa bugunku hata davranisi aynen: ikinci deneme yok. Kalici hatalar
+    // (kredi bitti 400, anahtar iptal 401/403, model kalkti 404) da yedege gecer:
+    // yedek baska saglayicida olabilir, beslenme ve oneriler tek hesaba bagli kalmasin.
+    if (fallback && err instanceof LlmError) return run(fallback, 'fallback')
     throw err
   }
 }

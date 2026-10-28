@@ -136,3 +136,30 @@ test('router: openai_compat satırı Anthropic anahtarını kullanamaz', async (
   // Birinci reddedildi, ayarli yedek (anthropic) one gecti.
   assert.equal(primary.id, 'sonnet-5-nothink')
 })
+
+test('router: tabloda kapatılan model koddaki varsayılanla geri gelmez', async () => {
+  const opus = model({ id: 'opus-5', provider: 'anthropic', base_url: null, api_key_secret: 'AI_KEY_ANTHROPIC', enabled: false })
+  const router = createRouter({
+    load: async () => ({ models: [opus], routes: [{ route: 'replan', primary_model: 'opus-5', fallback_model: null }] }),
+    env,
+  })
+  const { primary, fallback, cheap } = await router.resolve('replan')
+  assert.equal(primary.id, 'sonnet-5')
+  assert.equal(fallback, null)
+  assert.equal(cheap?.id, 'sonnet-5')
+
+  // Rotanın varsayılan modellerinin hepsi kapalıysa sessizce çalışmaz, hata verir.
+  const sonnet = model({ id: 'sonnet-5', provider: 'anthropic', base_url: null, api_key_secret: 'AI_KEY_ANTHROPIC', enabled: false })
+  const allOff = createRouter({ load: async () => ({ models: [opus, sonnet], routes: [] }), env })
+  await assert.rejects(allOff.resolve('replan'))
+})
+
+test('router: varsayılan yedeği olmayan rotada cheap varsayılan birinci modeldir', async () => {
+  const router = createRouter({
+    load: async () => ({ models: [model({ id: 'gemini-x' })], routes: [{ route: 'daily_plan', primary_model: 'gemini-x', fallback_model: null }] }),
+    env,
+  })
+  const { primary, cheap } = await router.resolve('daily_plan')
+  assert.equal(primary.id, 'gemini-x')
+  assert.equal(cheap?.id, 'sonnet-5-nothink')
+})
