@@ -112,7 +112,7 @@ export default function TabsLayout() {
   useRealtimeSync()
 
   return (
-    <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
+    <Tabs tabBar={() => <FloatingTabBar />} backBehavior="history" screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="today"     options={{ title: t.tab_today }} />
       <Tabs.Screen name="planning"  options={{ title: t.tab_planning }} />
       <Tabs.Screen name="tasks"     options={{ title: t.tab_tasks }} />
