@@ -6,7 +6,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
-/** Profildeki "Entegrasyonlar" satırı; profile.tsx zaten 500 satırı aştığı için ayrı dosya. */
+/** Ayarlar ekranındaki "Entegrasyonlar" satırı. */
 export function IntegrationsLink() {
   const { colors } = useTheme()
   const { t } = useLang()
