@@ -1,4 +1,6 @@
+import type { ComponentProps } from 'react'
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle, type StyleProp } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, radius, fontSize, fontWeight, spacing } from '../../theme/tokens'
 
@@ -14,6 +16,8 @@ interface Props {
   disabled?: boolean
   style?: StyleProp<ViewStyle>
   fullWidth?: boolean
+  icon?: ComponentProps<typeof Ionicons>['name']
+  accessibilityLabel?: string
 }
 
 const sizeMap = {
@@ -31,6 +35,8 @@ export function Button({
   disabled = false,
   style,
   fullWidth = false,
+  icon,
+  accessibilityLabel,
 }: Props) {
   const { colors, isDark } = useTheme()
   const s = sizeMap[size]
@@ -55,6 +61,8 @@ export function Button({
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       style={[
         {
           backgroundColor: bg[variant],
@@ -74,6 +82,7 @@ export function Button({
       ]}
     >
       {loading && <ActivityIndicator size="small" color={textColor[variant]} />}
+      {!loading && icon && <Ionicons name={icon} size={s.fontSize + 2} color={textColor[variant]} />}
       <Text style={{ fontSize: s.fontSize, fontWeight: fontWeight.semibold, color: textColor[variant] }}>
         {label}
       </Text>
