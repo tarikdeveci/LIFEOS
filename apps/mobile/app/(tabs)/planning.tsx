@@ -317,7 +317,12 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   // Sabah bildirimi `?ritual=1` ile açar (notifications/setup.ts); ritüel bittiyse tekrar sorma.
   const { ritual } = useLocalSearchParams<{ ritual?: string }>()
   const ritualPending = !!dailyPlan && !dailyPlan.ritual_completed_at
-  useEffect(() => { if (ritual === '1' && ritualPending) setShowPlanSheet(true) }, [ritual, ritualPending])
+  // Açınca parametre temizlenir: sekme geçmişi (fullHistory) geri dönüşte ziyaretin `ritual=1`'ini geri yükleyip sayfayı yeniden açmasın.
+  useEffect(() => {
+    if (ritual !== '1' || !ritualPending) return
+    setShowPlanSheet(true)
+    router.setParams({ ritual: undefined })
+  }, [ritual, ritualPending])
 
   // Bugün için tek giriş "Günü planla" penceresi; ritüel bugüne özel olduğundan başka günde doğrudan AI.
   function openPlanning() {
