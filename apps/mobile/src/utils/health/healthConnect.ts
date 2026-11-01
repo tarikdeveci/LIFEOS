@@ -15,14 +15,16 @@ import type { DayRange, HealthReadResult } from './types'
 type HealthConnectModule = typeof import('react-native-health-connect')
 type Permission = { accessType: 'read' | 'write'; recordType: string }
 
+/**
+ * Mesafe ve nabız (Distance, HeartRate, RestingHeartRate) bilerek yok: Play
+ * 1.0.3'ü "asgari kapsam" maddesinden reddetti (2026-10-13). Yeni bir tür
+ * eklemeden önce verisiz cihazda da görünen bir ekranı olmalı.
+ */
 const READ_PERMISSIONS: Permission[] = [
   { accessType: 'read', recordType: 'Steps' },
-  { accessType: 'read', recordType: 'Distance' },
   { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
   { accessType: 'read', recordType: 'ExerciseSession' },
   { accessType: 'read', recordType: 'SleepSession' },
-  { accessType: 'read', recordType: 'RestingHeartRate' },
-  { accessType: 'read', recordType: 'HeartRate' },
   { accessType: 'read', recordType: 'Weight' },
 ]
 
@@ -89,16 +91,13 @@ export async function readDay(range: DayRange): Promise<HealthReadResult> {
       endTime: range.end.toISOString(),
     }
 
-    const [steps, distance, activeEnergy, exercise, restingHr, heartRate, sleep] = await Promise.all([
+    const [steps, activeEnergy, exercise, sleep] = await Promise.all([
       aggregateNumber(hc, 'Steps', between, (r) => (r as { COUNT_TOTAL?: number }).COUNT_TOTAL ?? null),
-      aggregateNumber(hc, 'Distance', between, (r) => (r as { DISTANCE?: { inMeters: number } }).DISTANCE?.inMeters ?? null),
       aggregateNumber(hc, 'ActiveCaloriesBurned', between, (r) => (r as { ACTIVE_CALORIES_TOTAL?: { inKilocalories: number } }).ACTIVE_CALORIES_TOTAL?.inKilocalories ?? null),
       aggregateNumber(hc, 'ExerciseSession', between, (r) => {
         const seconds = (r as { EXERCISE_DURATION_TOTAL?: { inSeconds: number } }).EXERCISE_DURATION_TOTAL?.inSeconds
         return seconds == null ? null : seconds / 60
       }),
-      aggregateNumber(hc, 'RestingHeartRate', between, averageBpm),
-      aggregateNumber(hc, 'HeartRate', between, averageBpm),
       readSleep(hc, sleepWindow),
     ])
 
@@ -108,30 +107,18 @@ export async function readDay(range: DayRange): Promise<HealthReadResult> {
       date: range.date,
       source: 'health_connect',
       steps: roundOrNull(steps),
-      distance_m: roundOrNull(distance, 2),
       active_energy_kcal: roundOrNull(activeEnergy, 2),
       exercise_minutes: roundOrNull(exercise),
       workout_count: exerciseCount,
       sleep_minutes: sleep.minutes,
       sleep_start: sleep.start,
       sleep_end: sleep.end,
-      resting_heart_rate: roundOrNull(restingHr, 1),
-      avg_heart_rate: roundOrNull(heartRate, 1),
     }
 
     return { ok: true, metrics }
   } catch {
     return { ok: false, reason: 'denied' }
   }
-}
-
-/**
- * Kütüphane ölçüm olmayan aralıkta BPM_AVG'yi boş değil 0 döndürür. 0 nabız
- * health_daily kısıtına (en az 20) takılıp günün bütün senkronunu düşürüyordu;
- * saati olmayan herkes bu durumda. 0 burada "ölçüm yok" demek.
- */
-export function averageBpm(result: unknown): number | null {
-  return (result as { BPM_AVG?: number }).BPM_AVG || null
 }
 
 type TimeRange = { operator: 'between'; startTime: string; endTime: string }
