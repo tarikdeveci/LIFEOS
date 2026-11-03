@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { useTaskStore, valueScoreForGoal } from '@lifeos/shared'
+import { useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
@@ -39,6 +39,10 @@ export default function TaskDetailScreen() {
   const [saving, setSaving] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  const [editingDuration, setEditingDuration] = useState(false)
+  const [durationDraft, setDurationDraft] = useState('')
+  // UX.md 2: hata uyarıyla değil, ilgili alanın altında gösterilir.
+  const [inlineError, setInlineError] = useState<{ at: 'wsjf' | 'date' | 'duration'; message: string } | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReasoning, setAiReasoning] = useState<string | null>(null)
 
@@ -79,8 +83,8 @@ export default function TaskDetailScreen() {
     if (!task || !titleDraft.trim()) return
     setSaving(true)
     try {
-      await updateTask(supabase, task.id, { title: titleDraft.trim() })
-      setTask((p) => p ? { ...p, title: titleDraft.trim() } : null)
+      const updated = await updateTask(supabase, task.id, { title: titleDraft.trim() })
+      setTask(updated)
       setEditingTitle(false)
     } catch { Alert.alert('Hata', 'Başlık kaydedilemedi') }
     finally { setSaving(false) }
@@ -89,10 +93,12 @@ export default function TaskDetailScreen() {
   async function handleWsjf(field: string, value: number) {
     if (!task) return
     setSaving(true)
+    setInlineError(null)
     try {
-      await updateTask(supabase, task.id, { [field]: value })
-      setTask((p) => p ? { ...p, [field]: value } : null)
-    } finally { setSaving(false) }
+      const updated = await updateTask(supabase, task.id, { [field]: value })
+      setTask(updated)
+    } catch { setInlineError({ at: 'wsjf', message: 'Değer kaydedilemedi, tekrar dene.' }) }
+    finally { setSaving(false) }
   }
 
   async function handleGoal(goalId: string | null) {
@@ -100,8 +106,8 @@ export default function TaskDetailScreen() {
     const patch = { goal_id: goalId, value_score: valueScoreForGoal(task.value_score, goalId) }
     setSaving(true)
     try {
-      await updateTask(supabase, task.id, patch)
-      setTask((p) => p ? { ...p, ...patch } : null)
+      const updated = await updateTask(supabase, task.id, patch)
+      setTask(updated)
     } catch { Alert.alert('Hata', 'Hedef kaydedilemedi') }
     finally { setSaving(false) }
   }
@@ -122,13 +128,46 @@ export default function TaskDetailScreen() {
         const updates: Record<string, number> = {}
         for (const f of fields) { if (typeof s[f] === 'number') updates[f] = s[f] as number }
         if (Object.keys(updates).length > 0) {
-          await updateTask(supabase, task.id, updates)
-          setTask((p) => p ? { ...p, ...updates } : null)
+          const updated = await updateTask(supabase, task.id, updates)
+          setTask(updated)
         }
       }
     } catch { setAiReasoning('AI önerisi alınamadı.') }
     finally { setAiLoading(false) }
   }
+
+  async function handleDate(dateStr: string | null) {
+    if (!task) return
+    setSaving(true)
+    setInlineError(null)
+    try {
+      const updated = await updateTask(supabase, task.id, { scheduled_date: dateStr })
+      setTask(updated)
+    } catch { setInlineError({ at: 'date', message: 'Tarih kaydedilemedi, tekrar dene.' }) }
+    finally { setSaving(false) }
+  }
+
+  async function handleDurationSave() {
+    if (!task) return
+    const val = Number(durationDraft.trim())
+    if (!Number.isInteger(val) || val < 5 || val > 600) {
+      setInlineError({ at: 'duration', message: 'Süre 5 ile 600 dakika arasında olmalı.' })
+      return
+    }
+    setSaving(true)
+    setInlineError(null)
+    try {
+      const updated = await updateTask(supabase, task.id, { estimated_minutes: val })
+      setTask(updated)
+      setEditingDuration(false)
+    } catch { setInlineError({ at: 'duration', message: 'Süre kaydedilemedi, tekrar dene.' }) }
+    finally { setSaving(false) }
+  }
+
+  const errorFor = (at: 'wsjf' | 'date' | 'duration') =>
+    inlineError?.at === at
+      ? <Text style={{ fontSize: fontSize.xs, color: palette.danger, marginTop: spacing[1] }}>{inlineError.message}</Text>
+      : null
 
   function handleDelete() {
     Alert.alert('Görevi Sil', 'Bu görevi kalıcı olarak silmek istediğine emin misin?', [
@@ -166,7 +205,7 @@ export default function TaskDetailScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
         <GlassCard>
@@ -230,6 +269,7 @@ export default function TaskDetailScreen() {
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiReasoning}</Text>
             </View>
           )}
+          {errorFor('wsjf')}
 
           <View style={{ gap: spacing[4] }}>
             {WSJF_FIELDS.map((field) => {
@@ -261,9 +301,72 @@ export default function TaskDetailScreen() {
         <GlassCard>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Detaylar</Text>
           <View style={{ gap: spacing[3] }}>
-            {task.scheduled_date && <DetailRow label="Tarih" value={task.scheduled_date} />}
+            {/* Tarih - Faz 3'te DatePicker eklenecek */}
+            <View>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>Tarih</Text>
+              <View style={{ flexDirection: 'row', gap: spacing[2], flexWrap: 'wrap' }}>
+                {(() => {
+                  const todayStr = todayDate()
+                  const tomorrowStr = shiftIsoDate(todayStr, 1)
+                  const isToday = task.scheduled_date === todayStr
+                  const isTomorrow = task.scheduled_date === tomorrowStr
+                  const isNone = !task.scheduled_date
+                  // Süre formu açıkken anında kayıt Kaydet/İptal ile karışmasın (UX.md 3).
+                  const chipsDisabled = editingDuration || saving
+
+                  return (
+                    <>
+                      {!isNone && !isToday && !isTomorrow && (
+                        <View style={{ minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: '#fff' }}>{task.scheduled_date}</Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(todayStr)}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isToday ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isToday ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isToday ? '#fff' : colors.textPrimary }}>Bugün</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(tomorrowStr)}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isTomorrow ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isTomorrow ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isTomorrow ? '#fff' : colors.textPrimary }}>Yarın</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(null)}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isNone ? colors.bgSurface : colors.glassInner, borderWidth: 1, borderColor: isNone ? colors.border : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isNone ? colors.textPrimary : colors.textMuted }}>Tarihsiz</Text>
+                      </TouchableOpacity>
+                    </>
+                  )
+                })()}
+              </View>
+              {errorFor('date')}
+            </View>
+
             {task.due_date && <DetailRow label="Son Tarih" value={task.due_date} color={palette.danger} />}
-            {task.estimated_minutes && <DetailRow label="Süre" value={`${task.estimated_minutes} dk`} />}
+
+            {editingDuration ? (
+              <View style={{ gap: spacing[2] }}>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Süre (dakika)</Text>
+                <Input value={durationDraft} onChangeText={setDurationDraft} keyboardType="number-pad" autoFocus />
+                {errorFor('duration')}
+                <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+                  <Button label="İptal" onPress={() => { setEditingDuration(false); setInlineError(null) }} variant="ghost" style={{ flex: 1 }} />
+                  <Button label="Kaydet" onPress={handleDurationSave} style={{ flex: 1 }} />
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => { setDurationDraft(String(task.estimated_minutes ?? 30)); setEditingDuration(true) }} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <DetailRow label="Süre" value={task.estimated_minutes ? `${task.estimated_minutes} dk` : 'Belirtilmedi'} />
+              </TouchableOpacity>
+            )}
+
             {(task.tags?.length ?? 0) > 0 && (
               <View>
                 <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>Etiketler</Text>

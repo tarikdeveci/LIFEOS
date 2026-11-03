@@ -38,7 +38,7 @@ interface TaskState {
   clearSelectedTask: () => void
   addTask: (supabase: Supabase, userId: string, input: CreateTaskInput) => Promise<Task>
   addTasks: (supabase: Supabase, userId: string, inputs: CreateTaskInput[]) => Promise<Task[]>
-  updateTask: (supabase: Supabase, taskId: string, updates: UpdateTaskInput) => Promise<void>
+  updateTask: (supabase: Supabase, taskId: string, updates: UpdateTaskInput) => Promise<Task>
   deleteTask: (supabase: Supabase, taskId: string) => Promise<void>
   setStatus: (supabase: Supabase, taskId: string, status: TaskStatus) => Promise<void>
   reorderTasks: (supabase: Supabase, taskIds: string[]) => Promise<void>
@@ -102,7 +102,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   updateTask: async (supabase, taskId, updates) => {
-    // Optimistic update
+    const previous = get().tasks.find((t) => t.id === taskId)
+    const prevSelected = get().selectedTask
+
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
       selectedTask:
@@ -110,7 +112,33 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           ? { ...state.selectedTask, ...updates }
           : state.selectedTask,
     }))
-    await updateTask(supabase, taskId, updates)
+
+    try {
+      // Sunucu satırı GENERATED priority_score'u taşır; birleştirme task_details'i korur.
+      const updated = await updateTask(supabase, taskId, updates)
+      set((state) => ({
+        tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, ...updated } : t)),
+        selectedTask:
+          state.selectedTask?.id === taskId
+            ? { ...state.selectedTask, ...updated }
+            : state.selectedTask,
+      }))
+      return updated
+    } catch (err) {
+      // Yalnız bu isteğin alanlarını geri al; arada başarıyla kaydedilen başka alan ezilmesin.
+      const revert = (source: Task | null | undefined): Partial<Task> =>
+        source
+          ? Object.fromEntries(Object.keys(updates).map((k) => [k, source[k as keyof Task]]))
+          : {}
+      set((state) => ({
+        tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, ...revert(previous) } : t)),
+        selectedTask:
+          state.selectedTask?.id === taskId && prevSelected?.id === taskId
+            ? { ...state.selectedTask, ...revert(prevSelected) }
+            : state.selectedTask,
+      }))
+      throw err
+    }
   },
 
   deleteTask: async (supabase, taskId) => {

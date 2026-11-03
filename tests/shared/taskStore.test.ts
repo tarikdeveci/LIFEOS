@@ -45,3 +45,48 @@ test('addTask: Realtime olayı gelmediyse yeni görev listenin başına eklenir'
 
   assert.deepEqual(useTaskStore.getState().tasks.map((t) => t.id), ['t1', 't0'])
 })
+
+type UpdateTaskClient = Parameters<ReturnType<typeof useTaskStore.getState>['updateTask']>[0]
+
+/** update().eq().select().single() zincirini taklit eden sahte istemci. */
+function updateClient(result: { data: Task | null; error: Error | null }) {
+  const client = {
+    from: () => ({
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => result,
+          }),
+        }),
+      }),
+    }),
+  }
+  return client as unknown as UpdateTaskClient
+}
+
+test('updateTask: sunucunun hesapladığı priority_score store\'a yazılır, task_details korunur', async () => {
+  const before = { id: 't1', title: 't1', value_score: 3, priority_score: 1.5, task_details: { notes: 'n' } } as unknown as Task
+  useTaskStore.setState({ tasks: [before], selectedTask: before })
+  const server = { id: 't1', title: 't1', value_score: 5, priority_score: 1.83 } as unknown as Task
+
+  const updated = await useTaskStore.getState().updateTask(updateClient({ data: server, error: null }), 't1', { value_score: 5 })
+
+  assert.equal(updated.priority_score, 1.83)
+  const state = useTaskStore.getState()
+  assert.equal(state.tasks[0]?.priority_score, 1.83)
+  assert.equal(state.selectedTask?.priority_score, 1.83)
+  assert.deepEqual(state.selectedTask?.task_details, { notes: 'n' })
+})
+
+test('updateTask: sunucu hata verirse eski değerler geri gelir ve hata fırlatılır', async () => {
+  const before = { id: 't1', title: 't1', value_score: 3, priority_score: 1.5 } as unknown as Task
+  useTaskStore.setState({ tasks: [before], selectedTask: before })
+
+  await assert.rejects(
+    useTaskStore.getState().updateTask(updateClient({ data: null, error: new Error('ağ') }), 't1', { value_score: 5 }),
+  )
+
+  const state = useTaskStore.getState()
+  assert.equal(state.tasks[0]?.value_score, 3)
+  assert.equal(state.selectedTask?.value_score, 3)
+})
