@@ -271,7 +271,7 @@ export default function TasksScreen() {
 
       <BrainDumpSheet visible={showBrain} onClose={() => setShowBrain(false)} userId={userId} isPro={isPro} requirePro={requirePro} />
 
-      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.tasks_new} scrollable>
+      <BottomSheet visible={showAdd} onClose={() => { setShowAdd(false); setDraft(emptyDraft()) }} title={t.tasks_new} scrollable>
         <View style={{ gap: spacing[3] }}>
           <Input label={t.task_field_title} value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
           {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
