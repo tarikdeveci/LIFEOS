@@ -1,17 +1,19 @@
 import { TextInput, TouchableOpacity, View, Text, type TextInputProps, type ViewStyle, type StyleProp } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { useTheme } from '../../contexts/ThemeContext'
-import { radius, fontSize, spacing } from '../../theme/tokens'
+import { palette, radius, fontSize, spacing } from '../../theme/tokens'
 
 interface BaseProps extends TextInputProps {
   label?: string
   containerStyle?: StyleProp<ViewStyle>
+  /** Doluysa alanın altında hata metni olarak gösterilir. */
+  error?: string
 }
 
 /** onClear verilirse kutu doluyken sağda bir temizle (×) düğmesi çıkar; ekran okuyucu etiketi zorunlu. */
 type Props = BaseProps & ({ onClear?: undefined; clearLabel?: undefined } | { onClear: () => void; clearLabel: string })
 
-export function Input({ label, containerStyle, style, onClear, clearLabel, ...props }: Props) {
+export function Input({ label, containerStyle, style, onClear, clearLabel, error, ...props }: Props) {
   const { colors } = useTheme()
   const showClear = !!onClear && !!props.value
 
@@ -29,7 +31,7 @@ export function Input({ label, containerStyle, style, onClear, clearLabel, ...pr
             {
               backgroundColor: colors.inputBg,
               borderWidth: 1,
-              borderColor: colors.inputBorder,
+              borderColor: error ? palette.danger : colors.inputBorder,
               borderRadius: radius.lg,
               paddingHorizontal: spacing[4],
               paddingVertical: 13,
@@ -53,6 +55,11 @@ export function Input({ label, containerStyle, style, onClear, clearLabel, ...pr
           </TouchableOpacity>
         )}
       </View>
+      {!!error && (
+        <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.sm, color: palette.danger, marginTop: spacing[1] }}>
+          {error}
+        </Text>
+      )}
     </View>
   )
 }

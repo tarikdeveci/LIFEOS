@@ -22,7 +22,7 @@ import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/toke
 interface Props {
   userId: string
   /** Hedef değişince beslenme ekranının kendi hedefini tazelemesi için. */
-  onTargetChanged: () => void
+  onDataChanged: () => void
 }
 
 const RANGES = [30, 90] as const
@@ -70,9 +70,9 @@ function signedKg(delta: number): string {
  * (utils/adaptiveTdee.ts). Tartı Apple Health/Health Connect'ten gelir;
  * cihazı olmayan kullanıcı burada elle girer.
  */
-export function AdaptiveTdeeCard({ userId, onTargetChanged }: Props) {
+export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
   const { colors } = useTheme()
-  const { state, busy, saveWeight, removeWeight, applyProposal } = useWeightTracking(userId, onTargetChanged)
+  const { state, busy, saveWeight, removeWeight, applyProposal } = useWeightTracking(userId, onDataChanged)
   const [range, setRange] = useState<Range>(30)
   const [historyOpen, setHistoryOpen] = useState(false)
 
