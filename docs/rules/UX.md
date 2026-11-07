@@ -5,9 +5,15 @@ madde sırasıdır (`docs/KALAN_ADIMLAR.md`). Görsel değerler ve bileşen seç
 
 ## 1. Navigasyon
 
-- Geri, ekranın açıldığı yere döner. Alt sayfadan geri için `router.back()`; geçmiş yoksa
-  (`!router.canGoBack()`, ör. bildirimden açılış) mantıksal üst sekmeye `router.replace(...)`.
-  "Geri" düğmesi sabit bir rotaya `push` etmez (#12, #16). Örnek: `app/exercise/[id].tsx` geri düğmesi.
+- Geri, ekranın açıldığı yere döner; geçmiş yoksa (ör. bildirimden açılış) mantıksal üst ekrana gider.
+  "Geri" düğmesi sabit bir rotaya `push` etmez (#12, #16). Ekranda elle `router.back()` yazılmaz:
+  düğme için `BackButton`, metinli geri için `useGoBack()` kullanılır. Üst ekran eşlemesi
+  `src/navigation/backRoutes.ts` içinde; yeni alt sayfanın üstü Bugün değilse oraya eklenir.
+- Ana sekme dışındaki her ekranda sol üstte geri düğmesi vardır.
+- Sol kenardan sağa kaydırmak geri gider. Bu kök düzendeki `SwipeBack` ile bütün ekranlara kendiliğinden
+  gelir, ekran başına kod yazılmaz. Kapalı olduğu yerler (ana sekmeler, giriş, onboarding, paywall)
+  `backRoutes.ts` içindeki listededir; yeni bir ekranda kapatmak gerekiyorsa oraya eklenir.
+  Ekranın içinde sol kenardan başlayan başka bir kaydırma hareketi yazılmaz.
 - Android donanım geri tuşu ekrandaki geri ile aynı yere gider. Açık sheet önce sheet'i kapatır
   (`Modal onRequestClose`), ekranı değil.
 - Bir özet kart veya başlık dokunulabilir görünüyorsa dokununca kendi sekmesine/ayrıntısına gider (#3).
@@ -19,7 +25,8 @@ madde sırasıdır (`docs/KALAN_ADIMLAR.md`). Görsel değerler ve bileşen seç
 - Sheet (`BottomSheet`): form, seçim, ayrıntı; bulunulan bağlam korunur.
 - Uyarı (`Alert`): sadece geri alınamaz onay ("Silinsin mi?") ve izin için ayarlara yönlendirme.
   Bilgi vermek veya hata göstermek için uyarı açılmaz; ekranda gösterilir (`DESIGN.md` 6).
-- Sheet aşağı çekilerek, arka plana dokunarak ve Android geri tuşuyla kapanır (#6, #17).
+- Sheet üst bardan (tutamaç ve başlık) aşağı çekilerek, arka plana dokunarak ve Android geri tuşuyla
+  kapanır (#6, #17). Çekme içerikte başlamaz: liste kaydırması ve girdilerle çakışır.
   Kapatmak İptal'dir: hiçbir şey yazılmaz.
 - Klavye açılınca odaktaki alan ve Kaydet görünür kalır; klavye içeriği örtmez (#26).
 - Sheet içinde sheet açılmaz; ikinci adım gerekiyorsa aynı sheet'in içeriği değişir veya ayrı ekran açılır.

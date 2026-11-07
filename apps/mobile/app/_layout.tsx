@@ -18,6 +18,7 @@ import { persistWidgetSnapshot } from '@/src/widgets/storage'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
+import { SwipeBack } from '@/src/navigation/SwipeBack'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -116,15 +117,17 @@ function AppNavigator() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="exercise/[id]" />
-        <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
-      </Stack>
+      <SwipeBack>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="exercise/[id]" />
+          <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
+        </Stack>
+      </SwipeBack>
     </>
   )
 }

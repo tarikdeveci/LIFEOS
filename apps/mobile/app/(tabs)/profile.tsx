@@ -18,6 +18,7 @@ import { PhysicalInfoSheet, NutritionTargetsSheet } from '@/src/components/profi
 import type { ProfileState, NutritionState } from '@/src/components/profile/ProfileSheets'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { Button } from '@/src/components/ui/Button'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -314,9 +315,10 @@ export default function ProfileScreen() {
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[6] }}>
-          {t.profile_title}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
+          <BackButton />
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.profile_title}</Text>
+        </View>
 
         {/* User card */}
         <GlassCard style={{ marginBottom: spacing[4] }}>

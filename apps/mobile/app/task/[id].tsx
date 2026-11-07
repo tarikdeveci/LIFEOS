@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { useGoBack } from '@/src/navigation/useGoBack'
 import { useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import type { Task, TaskStatus } from '@lifeos/shared'
@@ -31,6 +32,7 @@ const WSJF_FIELDS = [
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const goBack = useGoBack()
   const { colors } = useTheme()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
@@ -184,7 +186,7 @@ export default function TaskDetailScreen() {
     <ScreenBackground>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[4] }}>
         <Text style={{ color: colors.textMuted }}>Görev bulunamadı</Text>
-        <Button label="Geri Dön" onPress={() => router.back()} variant="secondary" />
+        <Button label="Geri Dön" onPress={goBack} variant="secondary" />
       </View>
     </ScreenBackground>
   )
@@ -193,7 +195,7 @@ export default function TaskDetailScreen() {
     <ScreenBackground edges={['top']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <TouchableOpacity onPress={goBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="chevron-back" size={20} color={palette.accent} />
           <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>Geri</Text>
         </TouchableOpacity>
