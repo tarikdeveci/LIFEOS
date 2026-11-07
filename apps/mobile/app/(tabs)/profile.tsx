@@ -314,19 +314,9 @@ export default function ProfileScreen() {
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3], marginBottom: spacing[6] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-            {t.profile_title}
-          </Text>
-          <Button
-            label={t.settings_title}
-            icon="settings-outline"
-            accessibilityLabel={t.settings_open}
-            onPress={() => router.push('/(tabs)/settings' as never)}
-            variant="secondary"
-            style={{ minHeight: 44 }}
-          />
-        </View>
+        <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginBottom: spacing[6] }}>
+          {t.profile_title}
+        </Text>
 
         {/* User card */}
         <GlassCard style={{ marginBottom: spacing[4] }}>

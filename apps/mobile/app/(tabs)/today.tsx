@@ -134,20 +134,20 @@ export default function TodayScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
             <TouchableOpacity
-              onPress={() => router.push('/(tabs)/settings' as never)}
-              accessibilityRole="button"
-              accessibilityLabel={t.settings_open}
-              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => router.push('/(tabs)/profile')}
               accessibilityRole="button"
               accessibilityLabel={t.profile_title}
               style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
             >
               <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/settings' as never)}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings_open}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
