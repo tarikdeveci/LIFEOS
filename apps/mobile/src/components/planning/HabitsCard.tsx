@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, Alert } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
 import { habitDoneDays, habitWeekProgress, isRoutineActiveOn, todayDate, useRoutineStore } from '@lifeos/shared'

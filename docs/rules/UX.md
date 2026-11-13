@@ -14,6 +14,11 @@ madde sırasıdır (`docs/KALAN_ADIMLAR.md`). Görsel değerler ve bileşen seç
   gelir, ekran başına kod yazılmaz. Kapalı olduğu yerler (ana sekmeler, giriş, onboarding, paywall)
   `backRoutes.ts` içindeki listededir; yeni bir ekranda kapatmak gerekiyorsa oraya eklenir.
   Ekranın içinde sol kenardan başlayan başka bir kaydırma hareketi yazılmaz.
+- Ana sekmeler arasında yatay kaydırma sıradaki veya önceki sekmeye gider, iki uçta başa sarmaz
+  (`SwipeTabs`, kullanıcı isteği 2026-11-07). Sekme içine yeni yatay liste eklenirse `ScrollView`
+  `react-native-gesture-handler`'dan alınır, yoksa bu hareket listeyi keser.
+  Android hareketli gezinmede kenardan başlayan kaydırma da aynı geçişi yapar; Bugün'de sol kenar
+  uygulamadan çıkar.
 - Android donanım geri tuşu ekrandaki geri ile aynı yere gider. Açık sheet önce sheet'i kapatır
   (`Modal onRequestClose`), ekranı değil.
 - Bir özet kart veya başlık dokunulabilir görünüyorsa dokununca kendi sekmesine/ayrıntısına gider (#3).
