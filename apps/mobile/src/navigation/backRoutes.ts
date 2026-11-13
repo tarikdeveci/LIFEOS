@@ -21,6 +21,7 @@ function isUnder(pathname: string, route: string): boolean {
 
 /** Geçmiş yokken (bildirimden, bağlantıdan soğuk açılış) ekranın mantıksal üstü. */
 export function backFallback(pathname: string): string {
+  if (pathname === '/register' || pathname === '/reset-password') return '/(auth)/login'
   if (pathname.startsWith('/settings/')) return '/(tabs)/settings'
   if (pathname.startsWith('/integrations/')) return '/(tabs)/settings/integrations'
   if (isUnder(pathname, '/exercise')) return '/(tabs)/workout'

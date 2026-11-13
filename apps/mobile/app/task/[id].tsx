@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { useLocalSearchParams, router } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { useGoBack } from '@/src/navigation/useGoBack'
 import { useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
@@ -16,7 +16,7 @@ import { Button } from '@/src/components/ui/Button'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useProGate } from '@/src/hooks/useProGate'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
 const STATUS_LABELS: Record<TaskStatus, string> = { backlog: 'Backlog', planned: 'Planlandı', in_progress: 'Devam', blocked: 'Bloke', done: 'Tamam', deferred: 'Ertelendi' }
@@ -174,7 +174,7 @@ export default function TaskDetailScreen() {
   function handleDelete() {
     Alert.alert('Görevi Sil', 'Bu görevi kalıcı olarak silmek istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => { if (!task) return; await deleteTask(supabase, task.id); router.back() } },
+      { text: 'Sil', style: 'destructive', onPress: async () => { if (!task) return; await deleteTask(supabase, task.id); goBack() } },
     ])
   }
 
@@ -201,7 +201,7 @@ export default function TaskDetailScreen() {
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
           {saving && <ActivityIndicator size="small" color={palette.accent} />}
-          <TouchableOpacity onPress={handleDelete}>
+          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityLabel="Görevi sil">
             <Ionicons name="trash-outline" size={20} color={palette.danger} />
           </TouchableOpacity>
         </View>

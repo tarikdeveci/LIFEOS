@@ -8,7 +8,7 @@ import { ProgressionHint } from './ProgressionHint'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { supabase } from '../../lib/supabase'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
 interface Props {
   workout: Workout
@@ -176,7 +176,8 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
                 <TouchableOpacity onPress={() => void toggleSet(focused, set)} disabled={savingId !== null} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name={set.completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={32} color={set.completed ? palette.success : colors.textSubtle} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => void deleteSet(set)} hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}>
+                {/* Sol taraf dar kalır: hemen solundaki tamamla düğmesine taşarsa set yanlışlıkla silinir. */}
+                <TouchableOpacity onPress={() => void deleteSet(set)} hitSlop={{ ...hitSlopFor(18), left: 6 }}>
                   <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
                 </TouchableOpacity>
               </View>

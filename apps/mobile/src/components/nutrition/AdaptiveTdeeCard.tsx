@@ -17,7 +17,7 @@ import { WeightChart } from './WeightChart'
 import { WeightEntry } from './WeightEntry'
 import { useWeightTracking } from '../../hooks/useWeightTracking'
 import { useTheme } from '../../contexts/ThemeContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
 interface Props {
   userId: string
@@ -185,7 +185,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                         onPress={() => removeWeight(entry.date, label)}
                         disabled={busy !== null}
                         accessibilityLabel={`${label} tartısını sil`}
-                        hitSlop={8}
+                        hitSlop={hitSlopFor(16)}
                         style={{ marginLeft: spacing[3] }}
                       >
                         <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />

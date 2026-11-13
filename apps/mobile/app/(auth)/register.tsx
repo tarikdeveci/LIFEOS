@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
-import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -9,10 +8,12 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { useGoBack } from '@/src/navigation/useGoBack'
 
 export default function RegisterScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const goBack = useGoBack()
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -65,7 +66,7 @@ export default function RegisterScreen() {
 
             <Button label={loading ? 'Hesap oluşturuluyor...' : 'Kayıt Ol'} onPress={handleRegister} loading={loading} fullWidth />
 
-            <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacing[4] }}>
+            <TouchableOpacity onPress={goBack} style={{ marginTop: spacing[4] }}>
               <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
                 Hesabın var mı?{' '}
                 <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>Giriş yap</Text>

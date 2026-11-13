@@ -12,6 +12,11 @@ test('geçmiş yokken alt sayfa kendi üstüne döner', () => {
   assert.equal(backFallback('/integrations/google'), '/(tabs)/settings/integrations')
 })
 
+test('kayıt ve şifre yenileme geçmiş yoksa girişe döner', () => {
+  assert.equal(backFallback('/register'), '/(auth)/login')
+  assert.equal(backFallback('/reset-password'), '/(auth)/login')
+})
+
 test('bilinmeyen yeni ekran Bugün ekranına döner', () => {
   assert.equal(backFallback('/yeni-ekran'), '/(tabs)/today')
   assert.equal(backFallback('/tasks-archive'), '/(tabs)/today')
