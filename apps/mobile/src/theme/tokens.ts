@@ -10,6 +10,16 @@ export const radius = {
   full: 9999,
 }
 
+/** Dokunulabilen her öğenin asgari kenarı (DESIGN: 44x44, #39). */
+export const MIN_TOUCH = 44
+
+/** Görseli küçük ikon düğmesini 44x44'e tamamlayan hitSlop; yükseklik verilmezse kare. */
+export function hitSlopFor(width: number, height = width): { top: number; bottom: number; left: number; right: number } {
+  const x = Math.max(0, Math.ceil((MIN_TOUCH - width) / 2))
+  const y = Math.max(0, Math.ceil((MIN_TOUCH - height) / 2))
+  return { top: y, bottom: y, left: x, right: x }
+}
+
 export const spacing = {
   1: 4,
   2: 8,

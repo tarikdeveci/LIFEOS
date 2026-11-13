@@ -17,12 +17,12 @@ import { WeightChart } from './WeightChart'
 import { WeightEntry } from './WeightEntry'
 import { useWeightTracking } from '../../hooks/useWeightTracking'
 import { useTheme } from '../../contexts/ThemeContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
 interface Props {
   userId: string
   /** Hedef değişince beslenme ekranının kendi hedefini tazelemesi için. */
-  onTargetChanged: () => void
+  onDataChanged: () => void
 }
 
 const RANGES = [30, 90] as const
@@ -70,9 +70,9 @@ function signedKg(delta: number): string {
  * (utils/adaptiveTdee.ts). Tartı Apple Health/Health Connect'ten gelir;
  * cihazı olmayan kullanıcı burada elle girer.
  */
-export function AdaptiveTdeeCard({ userId, onTargetChanged }: Props) {
+export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
   const { colors } = useTheme()
-  const { state, busy, saveWeight, removeWeight, applyProposal } = useWeightTracking(userId, onTargetChanged)
+  const { state, busy, saveWeight, removeWeight, applyProposal } = useWeightTracking(userId, onDataChanged)
   const [range, setRange] = useState<Range>(30)
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -185,7 +185,7 @@ export function AdaptiveTdeeCard({ userId, onTargetChanged }: Props) {
                         onPress={() => removeWeight(entry.date, label)}
                         disabled={busy !== null}
                         accessibilityLabel={`${label} tartısını sil`}
-                        hitSlop={8}
+                        hitSlop={hitSlopFor(16)}
                         style={{ marginLeft: spacing[3] }}
                       >
                         <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { formatWeightKg } from '@lifeos/shared'
-import { WEIGHT_LOG_MAX_KG, WEIGHT_LOG_MIN_KG } from '@lifeos/shared/supabase'
+import { BODY_LIMITS, formatWeightKg } from '@lifeos/shared'
 import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+
+const { min: MIN_KG, max: MAX_KG } = BODY_LIMITS.weightKg
 
 interface Props {
   /** Başlangıç değeri: son tartı, hiç tartı yoksa profildeki kilo, o da yoksa null. */
@@ -38,13 +39,13 @@ export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }:
   const [text, setText] = useState(initialKg !== null ? formatWeightKg(initialKg) : '')
 
   const parsed = parseKg(text)
-  const valid = Number.isFinite(parsed) && parsed >= WEIGHT_LOG_MIN_KG && parsed <= WEIGHT_LOG_MAX_KG
+  const valid = Number.isFinite(parsed) && parsed >= MIN_KG && parsed <= MAX_KG
   const unchanged = savedToday && initialKg !== null && valid && Math.round(parsed * 10) === Math.round(initialKg * 10)
 
   function step(delta: number) {
     const base = Number.isFinite(parsed) ? parsed : initialKg ?? FALLBACK_KG
     const next = Math.round((base + delta) * 10) / 10
-    setText(formatWeightKg(Math.min(WEIGHT_LOG_MAX_KG, Math.max(WEIGHT_LOG_MIN_KG, next))))
+    setText(formatWeightKg(Math.min(MAX_KG, Math.max(MIN_KG, next))))
   }
 
   function stepButton(icon: 'remove' | 'add', delta: number, label: string) {
@@ -85,7 +86,7 @@ export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }:
       </View>
       {text.trim() !== '' && !valid && (
         <Text style={{ fontSize: fontSize.xs, color: palette.danger, textAlign: 'center' }}>
-          {WEIGHT_LOG_MIN_KG} ile {WEIGHT_LOG_MAX_KG} kg arasında bir değer gir.
+          {MIN_KG} ile {MAX_KG} kg arasında bir değer gir.
         </Text>
       )}
       <Button

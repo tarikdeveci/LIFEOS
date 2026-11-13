@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { router, useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import * as WebBrowser from 'expo-web-browser'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -13,6 +13,7 @@ import { supabase } from '@/src/lib/supabase'
 import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { useGoBack } from '@/src/navigation/useGoBack'
 
 // Apple'in standart EULA'si — ASC'de ozel bir sozlesme tanimli degil.
 const EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'
@@ -40,6 +41,7 @@ export default function PaywallScreen() {
   const { lang } = useLang()
   const subscription = useSubscriptionStatus()
   const tr = lang === 'tr'
+  const goBack = useGoBack()
   // Ekranı kim açtı: 'onboarding' (ilk açılış), 'free_limit' (ücretsiz AI
   // planlama hakkı bitti) ya da yok (profil, Pro kilidi).
   const { source } = useLocalSearchParams<{ source?: string }>()
@@ -96,7 +98,7 @@ export default function PaywallScreen() {
               ? `Ücretsiz denemen başladı. ${trialDuration(trial, tr)} boyunca AI özellikleri açık.`
               : `Your free trial has started. AI features are unlocked for ${trialDuration(trial, tr)}.`)
           : (tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.'),
-        [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
+        [{ text: tr ? 'Devam' : 'Continue', onPress: goBack }],
       )
     } else if (outcome === 'error') {
       Alert.alert(tr ? 'Satın alma tamamlanamadı' : 'Purchase failed', tr ? 'Lütfen tekrar dene.' : 'Please try again.')
@@ -116,7 +118,7 @@ export default function PaywallScreen() {
       Alert.alert(
         tr ? 'Geri yüklendi' : 'Restored',
         tr ? 'Pro üyeliğin geri yüklendi.' : 'Your Pro membership has been restored.',
-        [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
+        [{ text: tr ? 'Devam' : 'Continue', onPress: goBack }],
       )
     } else if (outcome === 'nothing') {
       Alert.alert(tr ? 'Kayıt bulunamadı' : 'Nothing to restore', tr ? 'Bu hesapta aktif bir Pro aboneliği bulunamadı.' : 'No active Pro subscription found for this account.')
@@ -164,7 +166,7 @@ export default function PaywallScreen() {
   return (
     <ScreenBackground>
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: spacing[5], paddingTop: spacing[2] }}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel={tr ? 'Kapat' : 'Close'}>
+        <TouchableOpacity onPress={goBack} hitSlop={12} accessibilityLabel={tr ? 'Kapat' : 'Close'}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
@@ -302,7 +304,7 @@ export default function PaywallScreen() {
             ücretsiz sürümü gerçek ve kullanıcı neyi kaçırdığını bilmeli. */}
         {fromOnboarding && !subscription.isPro && (
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={goBack}
             accessibilityRole="button"
             style={{ alignItems: 'center', paddingVertical: spacing[2], marginBottom: spacing[3] }}
           >

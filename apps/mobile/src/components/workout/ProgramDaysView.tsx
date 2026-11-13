@@ -4,7 +4,7 @@ import { isExerciseAvailable } from '@lifeos/shared'
 import type { EquipmentKey, ProgramEquipmentFit, WorkoutProgram } from '@lifeos/shared'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 import { exerciseName } from './labels'
 import { activeDays, programDayLabel } from './programDays'
 
@@ -112,7 +112,7 @@ export function ProgramDaysView({
                       {ex.sets}×{ex.reps ?? '-'} · {ex.rest_seconds}{t.coach_rest_sec}
                     </Text>
                     {isOwnProgram && (
-                      <TouchableOpacity onPress={() => onRemoveExercise(ex.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <TouchableOpacity onPress={() => onRemoveExercise(ex.id)} hitSlop={hitSlopFor(17)}>
                         <Ionicons name="close-circle" size={17} color={colors.textSubtle} />
                       </TouchableOpacity>
                     )}

@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
-import { calculateTDEE, suggestMacrosFromTDEE, useNutritionStore } from '@lifeos/shared'
+import { calculateTDEE, formatWeightKg, parseDecimal, suggestMacrosFromTDEE, todayDate, useNutritionStore } from '@lifeos/shared'
+import type { BodyMetrics } from '@lifeos/shared'
+import { patchProfilePreferences, upsertWeightLog } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { unregisterPushTokenAsync } from '@/src/notifications/setup'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
@@ -16,6 +18,7 @@ import { PhysicalInfoSheet, NutritionTargetsSheet } from '@/src/components/profi
 import type { ProfileState, NutritionState } from '@/src/components/profile/ProfileSheets'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { Button } from '@/src/components/ui/Button'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -67,6 +70,8 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false)
   const [showPhysical, setShowPhysical] = useState(false)
   const [showNutrition, setShowNutrition] = useState(false)
+  // Fiziksel bilgilerden yazılan tartı kilo kartına yansısın diye kart yeniden kurulur.
+  const [weightRevision, setWeightRevision] = useState(0)
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -119,47 +124,57 @@ export default function ProfileScreen() {
 
   useEffect(() => { void load() }, [load])
 
-  /** Kilo kartından hedef güncellenince hem buradaki hedef kartı hem beslenme ekranı tazelenir. */
-  function handleTargetChanged() {
+  /** Kilo kartından tartı ya da hedef değişince hem bu ekranın kartları hem beslenme ekranı tazelenir. */
+  function handleWeightDataChanged() {
     void load()
     if (userId) void fetchDayNutrition(supabase, userId)
   }
 
-  async function savePhysical() {
-    if (!userId) return
+  async function savePhysical(draft: ProfileState, metrics: BodyMetrics): Promise<boolean> {
+    if (!userId) return false
     setSaving(true)
     try {
-      const { error } = await supabase.from('user_profiles').upsert({
-        id: userId,
-        preferences: {
-          height_cm:      parseFloat(profile.height)  || null,
-          body_weight_kg: parseFloat(profile.weight)  || null,
-          age:            parseInt(profile.age)        || null,
-          gender:         profile.gender,
-          fitness_goal:   profile.fitnessGoal,
-          activity_level: profile.activityLevel,
-        },
-      }, { onConflict: 'id' })
-      if (error) throw error
+      await patchProfilePreferences(supabase, userId, {
+        ...metrics,
+        weight_kg: null, // eski anahtar: kalırsa silinen kilo geri döner
+        gender:         draft.gender,
+        fitness_goal:   draft.fitnessGoal,
+        activity_level: draft.activityLevel,
+      })
+      const weightKg = metrics.body_weight_kg
+      if (weightKg !== null && weightKg !== parseDecimal(profile.weight)) {
+        await upsertWeightLog(supabase, userId, { date: todayDate(), weight_kg: weightKg, source: 'manual' })
+        setWeightRevision((n) => n + 1)
+      }
+      setProfile((p) => ({
+        ...p,
+        height: metrics.height_cm === null ? '' : String(metrics.height_cm),
+        weight: weightKg === null ? '' : String(weightKg),
+        age: metrics.age === null ? '' : String(metrics.age),
+        gender: draft.gender,
+        fitnessGoal: draft.fitnessGoal,
+        activityLevel: draft.activityLevel,
+      }))
       setShowPhysical(false)
       Alert.alert('Kaydedildi', 'Fiziksel bilgilerin güncellendi.')
-    } catch (e) {
-      Alert.alert('Hata', 'Profil kaydedilemedi')
+      return true
+    } catch {
+      return false
     } finally {
       setSaving(false)
     }
   }
 
-  async function saveNutrition() {
-    if (!userId) return
+  async function saveNutrition(draft: NutritionState): Promise<boolean> {
+    if (!userId) return false
     setSaving(true)
     try {
       const payload = {
-        calories:  parseFloat(nutrition.calories) || 2000,
-        protein_g: parseFloat(nutrition.protein)  || 150,
-        carbs_g:   parseFloat(nutrition.carbs)    || 250,
-        fat_g:     parseFloat(nutrition.fat)      || 70,
-        fiber_g:   parseFloat(nutrition.fiber)    || 30,
+        calories:  parseFloat(draft.calories) || 2000,
+        protein_g: parseFloat(draft.protein)  || 150,
+        carbs_g:   parseFloat(draft.carbs)    || 250,
+        fat_g:     parseFloat(draft.fat)      || 70,
+        fiber_g:   parseFloat(draft.fiber)    || 30,
         is_active: true,
       }
       const { data: existing } = await supabase
@@ -174,23 +189,31 @@ export default function ProfileScreen() {
         : await supabase.from('nutrition_targets').insert({ user_id: userId, ...payload })
 
       if (error) throw error
+      setNutrition({
+        calories: String(payload.calories),
+        protein: String(payload.protein_g),
+        carbs: String(payload.carbs_g),
+        fat: String(payload.fat_g),
+        fiber: String(payload.fiber_g),
+      })
       setShowNutrition(false)
       Alert.alert('Kaydedildi', 'Beslenme hedeflerin güncellendi.')
+      return true
     } catch {
-      Alert.alert('Hata', 'Hedefler kaydedilemedi')
+      return false
     } finally {
       setSaving(false)
     }
   }
 
-  function calculateNutritionTargets() {
+  function calculateNutritionTargets(): NutritionState | null {
     const height = parseFloat(profile.height)
     const weight = parseFloat(profile.weight)
     const age = parseInt(profile.age, 10)
 
     if (!Number.isFinite(height) || !Number.isFinite(weight) || !Number.isFinite(age) || height <= 0 || weight <= 0 || age <= 0) {
       Alert.alert('Eksik bilgi', 'Kalori hesaplamak icin boy, kilo ve yas bilgilerini doldur.')
-      return
+      return null
     }
 
     const activityLevel =
@@ -217,13 +240,13 @@ export default function ProfileScreen() {
     })
     const suggested = suggestMacrosFromTDEE(tdee, goal)
 
-    setNutrition({
+    return {
       calories: String(suggested.calories),
       protein: String(suggested.protein_g),
       carbs: String(suggested.carbs_g),
       fat: String(suggested.fat_g),
       fiber: String(suggested.fiber_g),
-    })
+    }
   }
 
   function handleSignOut() {
@@ -292,18 +315,9 @@ export default function ProfileScreen() {
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3], marginBottom: spacing[6] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-            {t.profile_title}
-          </Text>
-          <Button
-            label={t.settings_title}
-            icon="settings-outline"
-            accessibilityLabel={t.settings_open}
-            onPress={() => router.push('/(tabs)/settings' as never)}
-            variant="secondary"
-            style={{ minHeight: 44 }}
-          />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
+          <BackButton />
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.profile_title}</Text>
         </View>
 
         {/* User card */}
@@ -343,7 +357,7 @@ export default function ProfileScreen() {
         </GlassCard>
 
         {/* Vücut: günlük tartı ve sağlık verisi. Tartı hatırlatması bu ekrana açılır. */}
-        {userId && <AdaptiveTdeeCard userId={userId} onTargetChanged={handleTargetChanged} />}
+        {userId && <AdaptiveTdeeCard userId={userId} key={weightRevision} onDataChanged={handleWeightDataChanged} />}
 
         {health.settings?.enabled && (
           <HealthCard
@@ -362,9 +376,9 @@ export default function ProfileScreen() {
         <SectionCard title={lang === 'tr' ? 'Fiziksel Bilgiler' : 'Physical Info'} icon="body-outline" onEdit={() => setShowPhysical(true)} style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             <InfoChip label="Boy" value={profile.height ? `${profile.height} cm` : '—'} />
-            <InfoChip label="Kilo" value={profile.weight ? `${profile.weight} kg` : '—'} />
+            <InfoChip label="Kilo" value={profile.weight ? `${formatWeightKg(Number(profile.weight))} kg` : '—'} />
             <InfoChip label="Yaş" value={profile.age || '—'} />
-            <InfoChip label="Cinsiyet" value={profile.gender === 'female' ? 'Kadin' : 'Erkek'} />
+            <InfoChip label="Cinsiyet" value={profile.gender === 'female' ? t.profile_gender_female : t.profile_gender_male} />
             <InfoChip label="Hedef" value={FITNESS_GOALS.find((g) => g.key === profile.fitnessGoal)?.label ?? '—'} />
             <InfoChip label="Aktivite" value={ACTIVITY_LEVELS.find((a) => a.key === profile.activityLevel)?.label ?? '—'} />
           </View>
@@ -435,12 +449,12 @@ export default function ProfileScreen() {
 
       <PhysicalInfoSheet
         visible={showPhysical} onClose={() => setShowPhysical(false)}
-        profile={profile} setProfile={setProfile} goals={FITNESS_GOALS} levels={ACTIVITY_LEVELS}
+        profile={profile} goals={FITNESS_GOALS} levels={ACTIVITY_LEVELS}
         saving={saving} onSave={savePhysical}
       />
       <NutritionTargetsSheet
         visible={showNutrition} onClose={() => setShowNutrition(false)}
-        nutrition={nutrition} setNutrition={setNutrition} saving={saving}
+        nutrition={nutrition} saving={saving}
         onCalculate={calculateNutritionTargets} onOpenUrl={openExternalUrl} onSave={saveNutrition}
       />
     </ScreenBackground>

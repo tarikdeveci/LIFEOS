@@ -7,7 +7,7 @@ import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
-import { BackButton } from '@/src/components/report/ReportStates'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { CsvImportSheet } from '@/src/components/workout/CsvImportSheet'
 import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
 import { SupportCard } from '@/src/components/settings/SupportCard'
@@ -46,11 +46,6 @@ export default function SettingsScreen() {
     void loadUser()
   }, [])
 
-  function goBack() {
-    if (router.canGoBack()) router.back()
-    else router.replace('/(tabs)/profile' as never)
-  }
-
   async function openExternalUrl(url: string) {
     try {
       await Linking.openURL(url)
@@ -63,7 +58,7 @@ export default function SettingsScreen() {
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
-          <BackButton onPress={goBack} />
+          <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.settings_title}</Text>
         </View>
 

@@ -5,7 +5,7 @@ import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
 interface Props {
   visible: boolean
@@ -49,7 +49,7 @@ export function CreateProgramSheet({ visible, onClose, name, onChangeName, dayNa
               containerStyle={{ flex: 1 }}
             />
             {dayNames.length > 1 && (
-              <TouchableOpacity onPress={() => onChangeDayNames((days) => days.filter((_, index) => index !== i))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => onChangeDayNames((days) => days.filter((_, index) => index !== i))} hitSlop={hitSlopFor(20)}>
                 <Ionicons name="close-circle" size={20} color={colors.textSubtle} />
               </TouchableOpacity>
             )}

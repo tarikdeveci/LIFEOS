@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { supabase } from '@/src/lib/supabase'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -244,9 +245,7 @@ function ReviewScreen() {
       <View style={{ flex: 1 }}>
         {/* Header */}
         <View style={{ height: BAR_HEIGHT, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4] }}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1, textAlign: 'center' }}>{t.review_title}</Text>
           <View style={{ width: 44 }} />
         </View>

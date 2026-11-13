@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, View, TouchableOpacity, ScrollView, Text, Keyboard, Platform, useWindowDimensions } from 'react-native'
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { radius, spacing, fontSize, fontWeight } from '../../theme/tokens'
+import { sheetDragOffset, shouldCloseSheet } from './sheetDrag'
+
+const SETTLE_MS = 180
+// Ekran onClose'u reddedebilir (içe aktarma sürerken). Bu süre sonunda hâlâ açıksa sheet yerine döner.
+const CLOSE_CHECK_MS = 150
 
 interface Props {
   visible: boolean
@@ -38,8 +45,42 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
     return () => { show.remove(); hide.remove() }
   }, [])
 
+  const translateY = useSharedValue(0)
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }))
+
+  const latest = useRef({ onClose, visible })
+  latest.current = { onClose, visible }
+
+  useEffect(() => {
+    if (visible) translateY.value = 0
+  }, [visible, translateY])
+
+  const closeFromDrag = useCallback(() => {
+    latest.current.onClose()
+    setTimeout(() => {
+      if (latest.current.visible) translateY.value = withTiming(0, { duration: SETTLE_MS })
+    }, CLOSE_CHECK_MS)
+  }, [translateY])
+
+  // Hareket yalnız tutamaç ve başlık barında başlar: içerikteki kaydırma ve girdilerle çakışmaz.
+  const drag = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(8)
+        .onUpdate((event) => {
+          translateY.value = sheetDragOffset(event.translationY)
+        })
+        .onEnd((event) => {
+          if (shouldCloseSheet(event.translationY, event.velocityY)) runOnJS(closeFromDrag)()
+          else translateY.value = withTiming(0, { duration: SETTLE_MS })
+        }),
+    [closeFromDrag, translateY],
+  )
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      {/* Modal ayrı bir pencere: kök düzendeki hareket kökü buraya ulaşmaz. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       {/*
         paddingBottom pushes the flex-end anchor up above the keyboard.
         The sheet's bottom edge lands exactly at the keyboard top.
@@ -53,8 +94,8 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
         />
 
         {/* Sheet */}
-        <View
-          style={{
+        <Animated.View
+          style={[{
             backgroundColor: colors.bgElevated,
             borderTopLeftRadius: radius['2xl'],
             borderTopRightRadius: radius['2xl'],
@@ -63,8 +104,10 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
             borderRightWidth: 1,
             borderColor: colors.glassBorder,
             maxHeight: sheetMaxHeight,
-          }}
+          }, sheetStyle]}
         >
+          <GestureDetector gesture={drag}>
+          <View collapsable={false}>
           {/* Handle */}
           <View style={{ alignItems: 'center', paddingTop: spacing[3] }}>
             <View style={{ width: 36, height: 4, borderRadius: radius.full, backgroundColor: colors.border }} />
@@ -79,6 +122,8 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
               </TouchableOpacity>
             </View>
           )}
+          </View>
+          </GestureDetector>
 
           {/* Content */}
           {scrollable ? (
@@ -95,8 +140,9 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
               {children}
             </View>
           )}
-        </View>
+        </Animated.View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   )
 }

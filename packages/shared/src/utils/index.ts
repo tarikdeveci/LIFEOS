@@ -26,6 +26,7 @@ export * from './externalTasks'
 export * from './quickParse'
 export * from './planningRules'
 export * from './lifeSetup'
+export * from './bodyMetrics'
 
 export * from './focus'
 export * from './liveWorkout'
