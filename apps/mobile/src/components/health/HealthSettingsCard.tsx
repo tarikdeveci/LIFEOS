@@ -47,9 +47,18 @@ export function HealthSettingsCard({ userId }: Props) {
     if (!userId) return
     const ok = await connect(userId)
     if (!ok) {
+      // connect() availability'yi store'a yazar; kapanıştaki `available` eski kalır.
+      const unavailable = useHealthStore.getState().available === false
+      // Reddedilmiş izinde sistem diyaloğu bir daha çıkmıyor (#15): ayarlara giden yol ver.
       Alert.alert(
         providerName,
-        (available === false ? t.health_unavailable : t.health_permission_denied).replace('{provider}', providerName),
+        (unavailable ? t.health_unavailable : t.health_permission_denied).replace('{provider}', providerName),
+        unavailable
+          ? undefined
+          : [
+              { text: t.cancel, style: 'cancel' },
+              { text: t.health_open_settings.replace('{provider}', providerName), onPress: openSystemSettings },
+            ],
       )
     } else {
       setExpanded(true)
