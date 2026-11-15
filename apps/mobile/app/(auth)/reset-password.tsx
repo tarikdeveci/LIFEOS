@@ -42,7 +42,7 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <ScreenBackground edges={['top', 'bottom']}>
+    <ScreenBackground edges={['top', 'bottom']} avoidKeyboard={false}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', padding: spacing[5] }}>
         <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.acc_create_new_password}</Text>

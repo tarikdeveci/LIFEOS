@@ -37,6 +37,7 @@ import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useKeyboardScrollIntoView } from '@/src/hooks/useKeyboardScrollIntoView'
 import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
@@ -67,6 +68,7 @@ export default function NutritionScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
+  const scrollRef = useKeyboardScrollIntoView()
   const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
 
   const MEAL_TYPES: { key: MealType; label: string }[] = [
@@ -632,6 +634,7 @@ export default function NutritionScreen() {
   return (
     <ScreenBackground>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}

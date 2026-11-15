@@ -7,6 +7,7 @@ import type { BodyMetrics } from '@lifeos/shared'
 import { patchProfilePreferences, upsertWeightLog } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useKeyboardScrollIntoView } from '@/src/hooks/useKeyboardScrollIntoView'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { useAuth } from '@/src/contexts/AuthContext'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
@@ -44,6 +45,7 @@ export default function ProfileScreen() {
   const { colors } = useTheme()
   const { lang, t } = useLang()
   const bottomPadding = useBottomTabPadding()
+  const scrollRef = useKeyboardScrollIntoView()
 
   const ACTIVITY_LEVELS = [
     { key: 'sedentary', label: t.acc_act_sedentary, sub: t.acc_act_sedentary_sub },
@@ -309,7 +311,7 @@ export default function ProfileScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
           <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.profile_title}</Text>
