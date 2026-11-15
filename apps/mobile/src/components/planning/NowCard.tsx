@@ -5,7 +5,7 @@ import { formatDuration, minutesToClock, type DayPosition } from '@lifeos/shared
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
 interface Props {
   position: DayPosition
@@ -37,7 +37,7 @@ export function NowCard({ position, blockColors, blockLabels, onJumpToNow, child
           <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: accent, letterSpacing: 0.6 }}>{t.plan_now_badge}</Text>
           <Text style={{ flex: 1, fontSize: fontSize.xs, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>{minutesToClock(nowMinute)}</Text>
           {onJumpToNow && (activeBlock || nextBlock) ? (
-            <TouchableOpacity onPress={onJumpToNow} hitSlop={10} accessibilityLabel={t.plan_jump_to_now}>
+            <TouchableOpacity onPress={onJumpToNow} hitSlop={hitSlopFor(18)} accessibilityRole="button" accessibilityLabel={t.plan_jump_to_now}>
               <Ionicons name="locate-outline" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           ) : null}
