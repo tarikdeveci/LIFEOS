@@ -8,6 +8,7 @@ import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } 
 import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore, useTaskStore } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Input } from '@/src/components/ui/Input'
+import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
@@ -446,8 +447,8 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         <View style={{ gap: spacing[3] }}>
           <Input label={t.field_title} value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t.plan_block_placeholder} autoFocus />
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.field_start} value={draft.start_time} onChangeText={(v) => setDraft((d) => ({ ...d, start_time: v }))} placeholder="09:00" containerStyle={{ flex: 1 }} />
-            <Input label={t.field_end} value={draft.end_time} onChangeText={(v) => setDraft((d) => ({ ...d, end_time: v }))} placeholder="10:00" containerStyle={{ flex: 1 }} />
+            <TimeField label={t.field_start} value={draft.start_time} onChange={(v) => setDraft((d) => ({ ...d, start_time: v }))} defaultTime="09:00" containerStyle={{ flex: 1 }} />
+            <TimeField label={t.field_end} value={draft.end_time} onChange={(v) => setDraft((d) => ({ ...d, end_time: v }))} defaultTime={draft.start_time || '10:00'} containerStyle={{ flex: 1 }} />
           </View>
           <View>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Tür</Text>

@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { WEEKDAY_ORDER, estimateWorkoutMinutes } from '@lifeos/shared'
 import type { WorkoutProgram } from '@lifeos/shared'
 import { Input } from '../ui/Input'
+import { DateField, TimeField } from '../ui/PickerField'
 import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
@@ -57,8 +58,8 @@ export function ProgramPlannerView({
       </TouchableOpacity>
 
       <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-        <Input label={t.wk_start_date} value={startDate} onChangeText={onChangeStartDate} placeholder="2026-09-08" containerStyle={{ flex: 1.5 }} />
-        <Input label={t.wk_time} value={time} onChangeText={onChangeTime} placeholder="18:00" containerStyle={{ flex: 1 }} />
+        <DateField label={t.wk_start_date} value={startDate} onChange={onChangeStartDate} containerStyle={{ flex: 1.5 }} />
+        <TimeField label={t.wk_time} value={time} onChange={onChangeTime} defaultTime="18:00" containerStyle={{ flex: 1 }} />
         <Input label={t.wk_weeks} value={weeks} onChangeText={onChangeWeeks} keyboardType="number-pad" containerStyle={{ flex: 0.8 }} />
       </View>
 
