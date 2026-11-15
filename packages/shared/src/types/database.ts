@@ -2112,6 +2112,16 @@ export type Database = {
           routine_id: string
         }[]
       }
+      paytr_settle_payment: {
+        Args: {
+          p_amount: number
+          p_error_message?: string
+          p_net_monthly_usd?: number
+          p_oid: string
+          p_status: string
+        }
+        Returns: string
+      }
       purge_stale_guests: { Args: { p_limit?: number }; Returns: number }
       record_food_gap: {
         Args: { p_phrase: string; p_reason: string; p_user: string }
