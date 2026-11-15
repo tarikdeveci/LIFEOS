@@ -130,7 +130,8 @@ serve(async (req: Request) => {
     // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
     // göre birkaç model çağrısı yapıyor; hepsi toplanıp tek `ai_used` satırı
     // olarak yazılır. Model katmanı çalışmadıysa satır yazılmaz.
-    const ledger = new AiLedger(authClient, user.id, 'parse_meal', access.tier)
+    // Satırı service role yazar (078: kullanıcı `ai_used` ekleyemez).
+    const ledger = new AiLedger(authClient, user.id, 'parse_meal', access.tier, supabase)
     let model: string | null = null
     const call = (route: 'meal_extract' | 'meal_verify' | 'meal_portion' | 'meal_estimate') =>
       bindRoute(getRouter(), route, {

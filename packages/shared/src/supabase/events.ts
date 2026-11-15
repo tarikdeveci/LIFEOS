@@ -4,8 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 type Supabase = SupabaseClient<any>
 
 /**
- * Ölçülen olaylar. Küme migration 040'taki CHECK kısıtıyla birebir aynı —
- * buraya yeni bir ad eklemek tek başına yetmez, migration da gerekir.
+ * İstemcinin yazabildiği olaylar. Küme migration 078'deki events_insert_own
+ * izin listesiyle birebir aynı; buraya yeni bir ad eklemek tek başına yetmez,
+ * migration da gerekir. `ai_used` sunucuda (service role) yazılır.
  *
  * Liste kasıtlı olarak kısa. Kayıt, ilk plan, tamamlanan görev ve kaydedilen
  * öğün zaten kendi tablolarında tarihleriyle duruyor; onlar `analytics`
@@ -18,7 +19,6 @@ type Supabase = SupabaseClient<any>
  */
 export type EventName =
   | 'paywall_view'
-  | 'ai_used'
   | 'account_gate_shown'
 
 type EventProps = Record<string, string | number | boolean | null>
