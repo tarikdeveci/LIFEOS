@@ -18,11 +18,15 @@ site_url = "https://lifeos.tr"
 additional_redirect_urls = ["http://localhost:3000", "https://lifeos.tr", "https://www.lifeos.tr", "https://lifeos.tr/auth/callback", "lifeos://", "lifeos://**"]
 jwt_expiry = 3600
 enable_signup = true
+# Misafir modu (spec 2026-10-20 bölüm 16 madde 4): canlıda üçü birlikte açılır,
+# yerel ortam canlıyla aynı kalsın.
+enable_anonymous_sign_ins = true
+enable_manual_linking = true
 
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+enable_confirmations = true
 
 [storage]
 enabled = true
