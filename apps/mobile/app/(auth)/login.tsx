@@ -3,6 +3,11 @@ import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platf
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { supabase } from '@/src/lib/supabase'
+import { registerForPushNotificationsAsync, unregisterPushTokenAsync } from '@/src/notifications/setup'
+import { bootstrapGuest } from '@/src/auth/bootstrap'
+import { loadGuestSwitchWarning } from '@/src/auth/guestData'
+import { joinCountedParts } from '@/src/auth/switchWarning'
+import { useAuth } from '@/src/contexts/AuthContext'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -17,6 +22,9 @@ const RESET_COOLDOWN_SECONDS = 60
 export default function LoginScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const { session, userId, isAnonymous } = useAuth()
+  const [guestLoading, setGuestLoading] = useState(false)
+  const [guestError, setGuestError] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,14 +36,51 @@ export default function LoginScreen() {
     return () => clearTimeout(timer)
   }, [resetCooldown])
 
-  async function handleLogin() {
-    if (!email || !password) return
+  async function signIn() {
     setLoading(true)
     try {
+      // Misafir oturumun push token'ı oturum değişmeden silinir (silme RLS altında çalışır).
+      if (isAnonymous) await unregisterPushTokenAsync()
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-      if (error) Alert.alert(t.acc_login_failed, error.message)
+      if (error) {
+        Alert.alert(t.acc_login_failed, error.message)
+        if (isAnonymous) void registerForPushNotificationsAsync({ prompt: false })
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleLogin() {
+    if (!email || !password) return
+    // Misafirken mevcut hesaba girmek misafir verisini geride bırakır: önce neyin kaybolacağı söylenir.
+    if (isAnonymous && userId) {
+      setLoading(true)
+      const warning = await loadGuestSwitchWarning(userId)
+      setLoading(false)
+      if (warning.kind !== 'none') {
+        const partLabels = { tasks: t.switch_warn_tasks, meals: t.switch_warn_meals, blocks: t.switch_warn_blocks, workouts: t.switch_warn_workouts }
+        const body = warning.kind === 'counted'
+          ? t.switch_warn_counted.replace('{items}', joinCountedParts(warning, (key, n) => partLabels[key].replace('{n}', String(n)), t.switch_warn_and))
+          : t.switch_warn_body
+        Alert.alert(t.switch_warn_title, body, [
+          { text: t.switch_warn_cancel, style: 'cancel' },
+          { text: t.switch_warn_confirm, style: 'destructive', onPress: () => void signIn() },
+        ])
+        return
+      }
+    }
+    await signIn()
+  }
+
+  async function handleGuest() {
+    setGuestLoading(true)
+    setGuestError(false)
+    try {
+      // Oturum açılınca kök yönlendirme kullanıcıyı içeri alır.
+      if (!(await bootstrapGuest())) setGuestError(true)
+    } finally {
+      setGuestLoading(false)
     }
   }
 
@@ -133,6 +178,18 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
           </GlassCard>
+
+          {/* Oturum yoksa (çıkış yapmış ya da ilk açılış başarısız) misafir olarak da başlanabilir. */}
+          {!session && (
+            <View style={{ marginTop: spacing[4] }}>
+              <Button label={t.guest_continue} onPress={handleGuest} loading={guestLoading} variant="secondary" fullWidth />
+              {guestError && (
+                <Text accessibilityRole="alert" style={{ marginTop: spacing[2], textAlign: 'center', fontSize: fontSize.sm, color: palette.danger }}>
+                  {t.guest_start_failed}
+                </Text>
+              )}
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>

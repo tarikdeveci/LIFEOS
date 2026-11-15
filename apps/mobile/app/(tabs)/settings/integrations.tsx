@@ -14,6 +14,7 @@ import { Input } from '@/src/components/ui/Input'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 const WEB_BASE = 'https://lifeos.tr'
@@ -28,6 +29,7 @@ export default function IntegrationsScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
+  const { requireAccount, accountReady, stage } = useRequireAccount()
   const [userId, setUserId] = useState<string | null>(null)
   const [items, setItems] = useState<Integration[] | null>(null)
   const [token, setToken] = useState('')
@@ -41,6 +43,11 @@ export default function IntegrationsScreen() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  // Doğrudan bağlantıyla (OAuth dönüşü, derin bağlantı) gelen hesapsız kullanıcı da kapıya yönlenir.
+  useEffect(() => {
+    if (stage && !accountReady) requireAccount('integration', { replace: true })
+  }, [stage, accountReady, requireAccount])
 
   const done = (r: { created: number; updated: number }) =>
     Alert.alert(t.integ_import_done.replace('{created}', String(r.created)).replace('{updated}', String(r.updated)))

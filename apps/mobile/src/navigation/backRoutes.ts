@@ -13,6 +13,7 @@ const NO_SWIPE_ROUTES = [
   '/reset-password',
   '/onboarding',
   '/paywall',
+  '/account-gate',
 ]
 
 function isUnder(pathname: string, route: string): boolean {

@@ -6,9 +6,12 @@ import { calculateTDEE, formatWeightKg, parseDecimal, suggestMacrosFromTDEE, tod
 import type { BodyMetrics } from '@lifeos/shared'
 import { patchProfilePreferences, upsertWeightLog } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
-import { unregisterPushTokenAsync } from '@/src/notifications/setup'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { useAuth } from '@/src/contexts/AuthContext'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
+import { useSignOut } from '@/src/hooks/useSignOut'
+import { AccountCards } from '@/src/components/profile/AccountCards'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
@@ -66,6 +69,9 @@ export default function ProfileScreen() {
   })
   const [userId, setUserId] = useState<string | null>(null)
   const subscription = useSubscriptionStatus()
+  const { stage, isAnonymous } = useAuth()
+  const { requireAccount } = useRequireAccount()
+  const handleSignOut = useSignOut()
   const health = useHealthStore()
   const fetchDayNutrition = useNutritionStore((state) => state.fetchDayNutrition)
   const [saving, setSaving] = useState(false)
@@ -254,22 +260,6 @@ export default function ProfileScreen() {
     }
   }
 
-  function handleSignOut() {
-    Alert.alert(t.acc_logout_title, t.acc_logout_confirm, [
-      { text: t.acc_cancel, style: 'cancel' },
-      {
-        text: t.acc_logout_btn,
-        style: 'destructive',
-        onPress: async () => {
-          // Token oturum kapanmadan silinmeli: silme RLS altında çalışıyor,
-          // signOut'tan sonra kimlik kalmaz ve satır cihazda asılı kalır.
-          await unregisterPushTokenAsync()
-          await supabase.auth.signOut()
-        },
-      },
-    ])
-  }
-
   async function openExternalUrl(url: string) {
     try {
       await Linking.openURL(url)
@@ -333,14 +323,16 @@ export default function ProfileScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{profile.displayName || t.acc_user}</Text>
-              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{profile.email}</Text>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{isAnonymous ? t.guest_badge : profile.email}</Text>
             </View>
           </View>
         </GlassCard>
 
+        <AccountCards stage={stage} />
+
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <TouchableOpacity
-            onPress={() => router.push('/paywall')}
+            onPress={() => { if (requireAccount('paywall')) router.push('/paywall') }}
             activeOpacity={0.75}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[3] }}
           >
@@ -442,7 +434,7 @@ export default function ProfileScreen() {
           <View style={{ height: 1, backgroundColor: colors.border }} />
           <TouchableOpacity onPress={handleDeleteAccount} disabled={deleting} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing[3] }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.danger }}>{deleting ? (lang === 'tr' ? 'Hesap siliniyor...' : 'Deleting account...') : (lang === 'tr' ? 'Hesabı kalıcı olarak sil' : 'Permanently delete account')}</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.danger }}>{deleting ? (lang === 'tr' ? 'Hesap siliniyor...' : 'Deleting account...') : (isAnonymous ? t.guest_delete_title : (lang === 'tr' ? 'Hesabı kalıcı olarak sil' : 'Permanently delete account'))}</Text>
               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{lang === 'tr' ? 'Tüm LifeOS verilerini geri alınamaz biçimde siler' : 'Permanently removes all LifeOS data'}</Text>
             </View>
             <Ionicons name="trash-outline" size={17} color={palette.danger} />

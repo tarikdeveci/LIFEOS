@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/src/lib/supabase'
-import { isPro as storeEntitlementActive } from '@/src/utils/purchases'
+import { getRevenueCatUserId, isPro as storeEntitlementActive, syncRevenueCatIdentity } from '@/src/utils/purchases'
+import { useAuth } from '@/src/contexts/AuthContext'
 
 export interface SubscriptionState {
   isPro: boolean
@@ -9,6 +10,8 @@ export interface SubscriptionState {
   status: string
   periodEnd: string | null
   isLoading: boolean
+  /** Mağaza SDK'sının kimliği bu kullanıcı olduğunda satın alma ve geri yükleme açılır */
+  canPurchase: boolean
   refresh: () => Promise<void>
   /**
    * Mağaza satın alması sonrası `subscriptions` satırının yazılmasını bekler.
@@ -34,12 +37,13 @@ const FREE_STATE = {
 const SubscriptionContext = createContext<SubscriptionState>({
   ...FREE_STATE,
   isLoading: true,
+  canPurchase: false,
   refresh: async () => {},
   waitForBackendSync: async () => false,
 })
 
 /** Provider'in ic durumu — aksiyonlar haric, yalnizca veri alanlari */
-type SubscriptionData = Omit<SubscriptionState, 'refresh' | 'waitForBackendSync'>
+type SubscriptionData = Omit<SubscriptionState, 'refresh' | 'waitForBackendSync' | 'canPurchase'>
 
 function stateFromRow(row: Record<string, unknown> | null | undefined): SubscriptionData {
   const active = row?.['status'] === 'pro_monthly' || row?.['status'] === 'pro_annual'
@@ -55,33 +59,44 @@ function stateFromRow(row: Record<string, unknown> | null | undefined): Subscrip
   }
 }
 
+// Her sonuç sahibinin kimliğiyle saklanır. Kullanıcı değiştiği an, yeni kullanıcının sonucu gelmeden önce,
+// eski sahibin hiçbir değeri okunmaz: A hesabının Pro görünümü B'ye bir an bile sızmaz.
+interface OwnedData { uid: string; data: SubscriptionData }
+interface OwnedStore { uid: string; pro: boolean; sdkUserId: string | null }
+
 interface Props {
   children: React.ReactNode
 }
 
 export function SubscriptionProvider({ children }: Props) {
-  const [userId, setUserId] = useState<string | null>(null)
-  const [state, setState] = useState<SubscriptionData>({
-    ...FREE_STATE,
-    isLoading: true,
-  })
+  const { userId, stage } = useAuth()
+  const ready = stage === 'ready'
+  const [owned, setOwned] = useState<OwnedData | null>(null)
   // Store (RevenueCat) tarafindaki hak. Supabase satiri PayTR web akisindan,
   // bu ise App Store / Play satin almasindan gelir; ikisinden biri yeterli.
-  // Boylece magazadan satin alan kullanici webhook'u beklemeden Pro olur.
-  const [storePro, setStorePro] = useState(false)
+  const [store, setStore] = useState<OwnedStore | null>(null)
 
-  const refreshStore = useCallback(async () => {
-    setStorePro(await storeEntitlementActive().catch(() => false))
+  const ownedNow = ready && owned && owned.uid === userId ? owned.data : null
+  const storeNow = ready && store && store.uid === userId ? store : null
+
+  // Mağaza kimliğini kuyrukla eşitler, sonra hakkı yalnızca SDK kimliği bu kullanıcıysa okur.
+  const syncStore = useCallback(async (target: string | null, isCurrent: () => boolean) => {
+    await syncRevenueCatIdentity(target)
+    if (!isCurrent() || !target) return
+    const sdkUserId = await getRevenueCatUserId()
+    const pro = sdkUserId === target ? await storeEntitlementActive().catch(() => false) : false
+    if (isCurrent()) setStore({ uid: target, pro, sdkUserId })
   }, [])
 
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      setState({ ...FREE_STATE, isLoading: false })
-      setStorePro(false)
-      return
-    }
+  useEffect(() => {
+    let active = true
+    void syncStore(ready ? userId : null, () => active)
+    return () => { active = false }
+  }, [userId, ready, syncStore])
 
-    void refreshStore()
+  const refresh = useCallback(async () => {
+    if (!userId || !ready) return
+    void syncStore(userId, () => true)
 
     const { data } = await supabase
       .from('subscriptions')
@@ -89,43 +104,18 @@ export function SubscriptionProvider({ children }: Props) {
       .eq('user_id', userId)
       .maybeSingle()
 
-    setState(stateFromRow(data as Record<string, unknown> | null))
-  }, [userId, refreshStore])
-
-  // Son bilinen kullanici. Ayni kullanici icin gelen TOKEN_REFRESHED / SIGNED_IN
-  // olaylari userId'yi degistirmez, dolayisiyla `refresh` yeniden kosmaz. Eskiden
-  // bu olaylarda isLoading true'ya cekiliyor ve bir daha false olmuyordu: token
-  // yenilenince (yaklasik saatte bir) Pro kapili dugmeler sessizce kilitleniyordu
-  // (koc dugmesi "Sohbet" gorunup basilmiyordu).
-  const knownUserId = useRef<string | null | undefined>(undefined)
-
-  useEffect(() => {
-    const applyUser = (nextId: string | null) => {
-      if (nextId === knownUserId.current) return
-      knownUserId.current = nextId
-      setUserId(nextId)
-      if (!nextId) setState({ ...FREE_STATE, isLoading: false })
-      else setState((current) => ({ ...current, isLoading: true }))
-    }
-
-    supabase.auth.getUser().then(({ data }) => applyUser(data.user?.id ?? null))
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      applyUser(session?.user.id ?? null)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
+    setOwned({ uid: userId, data: stateFromRow(data as Record<string, unknown> | null) })
+  }, [userId, ready, syncStore])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId || !ready) return
 
     const applyRow = (row: unknown) => {
-      setState(stateFromRow(row as Record<string, unknown> | null))
+      setOwned({ uid: userId, data: stateFromRow(row as Record<string, unknown> | null) })
     }
 
     const channelTopic = `subscription-global-${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -144,7 +134,7 @@ export function SubscriptionProvider({ children }: Props) {
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
-        () => setState({ ...FREE_STATE, isLoading: false }),
+        () => applyRow(null),
       )
 
     channel.subscribe()
@@ -152,10 +142,10 @@ export function SubscriptionProvider({ children }: Props) {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [userId])
+  }, [userId, ready])
 
   const waitForBackendSync = useCallback(async (timeoutMs = 12_000): Promise<boolean> => {
-    if (!userId) return false
+    if (!userId || !ready) return false
 
     const deadline = Date.now() + timeoutMs
     for (;;) {
@@ -167,18 +157,21 @@ export function SubscriptionProvider({ children }: Props) {
 
       const next = stateFromRow(data as Record<string, unknown> | null)
       if (next.isPro) {
-        setState(next)
+        setOwned({ uid: userId, data: next })
         return true
       }
       if (Date.now() >= deadline) return false
       await new Promise((resolve) => setTimeout(resolve, 1_500))
     }
-  }, [userId])
+  }, [userId, ready])
 
-  const value = useMemo<SubscriptionState>(
-    () => ({ ...state, isPro: state.isPro || storePro, refresh, waitForBackendSync }),
-    [state, storePro, refresh, waitForBackendSync],
-  )
+  const value = useMemo<SubscriptionState>(() => {
+    const db = ownedNow ?? { ...FREE_STATE, isLoading: ready }
+    const canPurchase = ready && storeNow !== null && storeNow.sdkUserId === userId
+    // Misafir ve onaysız aşamalarda Pro hiçbir koldan açılmaz.
+    const isPro = ready && (db.isPro || (canPurchase && storeNow?.pro === true))
+    return { ...db, isPro, canPurchase, refresh, waitForBackendSync }
+  }, [ownedNow, storeNow, ready, userId, refresh, waitForBackendSync])
 
   return (
     <SubscriptionContext.Provider value={value}>
