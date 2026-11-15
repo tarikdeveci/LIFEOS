@@ -12,7 +12,7 @@ import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 import { GoalProgressEntries } from './GoalProgressEntries'
 import { GoalSteps } from './GoalSteps'
 
@@ -85,7 +85,7 @@ export function GoalsCard({ userId }: Props) {
   }
 
   const chip = (active: boolean) => ({
-    paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.md, borderWidth: 1,
+    paddingHorizontal: spacing[3], minHeight: MIN_TOUCH, justifyContent: 'center' as const, borderRadius: radius.md, borderWidth: 1,
     backgroundColor: active ? palette.accent : colors.glassInner,
     borderColor: active ? palette.accent : colors.border,
   })
@@ -95,7 +95,7 @@ export function GoalsCard({ userId }: Props) {
       <CollapsibleTitle title={t.goals_title} summary={summary} open={open} onToggle={() => setOpen((v) => !v)}
         onAdd={() => setSheet(true)} addLabel={t.goals_add} />
 
-      {open && error && !loadFailed && <Text style={{ color: palette.danger, fontSize: fontSize.xs }}>{t.goals_error}</Text>}
+      {open && error && !loadFailed && <Text style={{ color: palette.danger, fontSize: fontSize.sm }}>{t.goals_error}</Text>}
 
       {open && loadFailed && (
         <TouchableOpacity onPress={() => void fetchGoals(supabase, userId)} style={{ alignItems: 'center', paddingVertical: spacing[3] }}>
@@ -119,14 +119,16 @@ export function GoalsCard({ userId }: Props) {
           return (
             <View key={g.id}>
             <TouchableOpacity onLongPress={() => confirmDelete(g.id)} delayLongPress={400}
+              // Satır tek odak olursa içindeki Sil düğmesi ekran okuyucuya ulaşmaz.
+              accessible={false}
               style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
               <View style={{ width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${tint}18` }}>
                 <Text style={{ fontSize: 18 }}>{g.icon ?? '🎯'}</Text>
               </View>
               <View style={{ flex: 1, gap: 6 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }} numberOfLines={1}>{g.title}</Text>
-                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: done ? palette.success : colors.textMuted, fontVariant: ['tabular-nums'] }}>
+                  <Text style={{ flex: 1, fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }} numberOfLines={1}>{g.title}</Text>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: done ? palette.success : colors.textMuted, fontVariant: ['tabular-nums'] }}>
                     {done ? '✓ ' : ''}{p?.current ?? 0}/{p?.total ?? g.target ?? 0}{g.unit ? ` ${g.unit}` : ''}
                   </Text>
                 </View>
@@ -134,6 +136,11 @@ export function GoalsCard({ userId }: Props) {
                   <View style={{ height: 6, borderRadius: 3, width: `${pct}%`, backgroundColor: tint }} />
                 </View>
               </View>
+              {/* Silme yalnız uzun basışta gizliydi; görünür düğme, onay yine sorulur. */}
+              <TouchableOpacity onPress={() => confirmDelete(g.id)} accessibilityRole="button" accessibilityLabel={t.ux_goal_delete.replace('{name}', g.title)}
+                style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', marginRight: -spacing[2] }}>
+                <Ionicons name="trash-outline" size={18} color={colors.textSubtle} />
+              </TouchableOpacity>
             </TouchableOpacity>
             {g.target != null && g.count_mode && <GoalProgressEntries goal={g} userId={userId} />}
             <GoalSteps goal={g} userId={userId} />
@@ -154,7 +161,8 @@ export function GoalsCard({ userId }: Props) {
           <Input label={t.goals_tags} value={draft.tags} onChangeText={(v) => patch({ tags: v })} placeholder={t.misc_sports_running} />
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
             {(['tasks', 'hours', 'units'] as const).map((m) => (
-              <TouchableOpacity key={m} onPress={() => patch({ countMode: m })} style={chip(draft.countMode === m)}>
+              <TouchableOpacity key={m} onPress={() => patch({ countMode: m })} style={chip(draft.countMode === m)}
+                accessibilityRole="radio" accessibilityState={{ selected: draft.countMode === m }}>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.countMode === m ? '#fff' : colors.textMuted }}>
                   {m === 'tasks' ? t.goals_count_tasks : m === 'hours' ? t.goals_count_hours : t.goal_count_units}
                 </Text>

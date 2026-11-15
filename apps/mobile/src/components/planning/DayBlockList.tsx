@@ -31,6 +31,8 @@ interface Props {
   blockColors: Record<string, string>
   blockLabels: Record<string, string>
   onDelete: (blockId: string) => void
+  /** Bloğa dokunmak düzenleme sayfasını açar. */
+  onEdit: (block: TimeBlock) => void
   /** Bloğu tek dokunuşla tamamlandı/geri al. */
   onToggleDone: (blockId: string, done: boolean) => void
   /**
@@ -69,7 +71,7 @@ const clockMinute = (iso: string) => {
  * araya "şu an" çizgisi girer.
  */
 export function DayBlockList({
-  blocks, events, busy, isToday, now, blockColors, blockLabels, onDelete, onToggleDone, onNowAnchorLayout, header, emptyContent,
+  blocks, events, busy, isToday, now, blockColors, blockLabels, onDelete, onEdit, onToggleDone, onNowAnchorLayout, header, emptyContent,
 }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
@@ -155,6 +157,7 @@ export function DayBlockList({
         color={blockColors[block.block_type] ?? palette.accent}
         typeLabel={blockLabels[block.block_type] ?? block.block_type}
         onDelete={() => onDelete(block.id)}
+        onEdit={() => onEdit(block)}
         onToggleDone={() => onToggleDone(block.id, !block.completed_at)}
         onLayoutY={index === activeIndex ? reportAnchor : undefined}
         minHeight={spanPx(timing.endMinute - timing.startMinute)}
@@ -227,13 +230,14 @@ interface BlockRowProps {
   color: string
   typeLabel: string
   onDelete: () => void
+  onEdit: () => void
   onToggleDone: () => void
   onLayoutY?: (y: number) => void
   /** Süreyle orantılı en küçük yükseklik. */
   minHeight: number
 }
 
-function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onToggleDone, onLayoutY, minHeight }: BlockRowProps) {
+function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onEdit, onToggleDone, onLayoutY, minHeight }: BlockRowProps) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
 
@@ -260,8 +264,21 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
+      onPress={onEdit}
       onLongPress={confirmDelete}
       delayLongPress={400}
+      accessibilityRole="button"
+      // Satır tek odak: tür, süre ve kalan süre de etikette okunur (simge olmadan).
+      accessibilityLabel={[
+        t.ux_plan_block_a11y.replace('{name}', block.label ?? typeLabel).replace('{start}', block.start_time.slice(0, 5)).replace('{end}', block.end_time.slice(0, 5)),
+        ...meta.slice(0, 2),
+        ...(status ? [status] : []),
+      ].join(', ')}
+      accessibilityHint={t.ux_plan_edit_block}
+      accessibilityState={{ checked: isDone }}
+      // Satır tek odak olduğu için içindeki onay kutusu ve uzun basış eylem olarak okunur.
+      accessibilityActions={[{ name: 'toggle', label: isDone ? t.ux_plan_mark_undone : t.ux_plan_mark_done }, { name: 'delete', label: t.delete }]}
+      onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'toggle') onToggleDone(); else if (e.nativeEvent.actionName === 'delete') confirmDelete() }}
       onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight,
