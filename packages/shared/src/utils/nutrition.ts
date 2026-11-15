@@ -52,27 +52,43 @@ export function calculateTDEE(params: {
   return Math.round(bmr * ACTIVITY_MULTIPLIERS[activity_level])
 }
 
+/** Hedefin harcamaya oranı: yağ yakımında açık, kas kazanımında fazla. */
+export function goalCalorieFactor(goal: FitnessGoal): number {
+  if (goal === 'fat_loss') return 0.8
+  if (goal === 'muscle_gain') return 1.1
+  return 1
+}
+
 /**
- * TDEE ve hedefe göre makro önerisi üret
+ * Makrolardan kalori (Atwater): 4 x protein + 4 x karbonhidrat + 9 x yağ.
+ * Kalori hedefinin tek doğruluk kaynağı makrolardır (#11).
+ */
+export function caloriesFromMacros(protein_g: number, carbs_g: number, fat_g: number): number {
+  return Math.round(4 * protein_g + 4 * carbs_g + 9 * fat_g)
+}
+
+/**
+ * TDEE ve hedefe göre makro önerisi üret. Dönen kalori yuvarlanmış makrolardan
+ * hesaplanır, böylece kaydedilen hedef makrolarla birebir tutar.
  */
 export function suggestMacrosFromTDEE(
   tdee: number,
   goal: FitnessGoal,
 ): { calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number } {
-  let calories = tdee
-
-  if (goal === 'fat_loss') calories = Math.round(tdee * 0.8)
-  if (goal === 'muscle_gain') calories = Math.round(tdee * 1.1)
+  const target = Math.round(tdee * goalCalorieFactor(goal))
 
   const proteinRatio = goal === 'fat_loss' ? 0.35 : goal === 'muscle_gain' ? 0.30 : 0.25
   const fatRatio = 0.25
   const carbRatio = 1 - proteinRatio - fatRatio
 
+  const protein_g = Math.round((target * proteinRatio) / 4)
+  const carbs_g = Math.round((target * carbRatio) / 4)
+  const fat_g = Math.round((target * fatRatio) / 9)
   return {
-    calories,
-    protein_g: Math.round((calories * proteinRatio) / 4),
-    carbs_g: Math.round((calories * carbRatio) / 4),
-    fat_g: Math.round((calories * fatRatio) / 9),
+    calories: caloriesFromMacros(protein_g, carbs_g, fat_g),
+    protein_g,
+    carbs_g,
+    fat_g,
     fiber_g: goal === 'fat_loss' ? 35 : 25,
   }
 }

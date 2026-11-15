@@ -19,7 +19,7 @@
  */
 
 import { shiftIsoDate } from './date'
-import { calculateTDEE, suggestMacrosFromTDEE, type ActivityLevel, type FitnessGoal } from './nutrition'
+import { calculateTDEE, goalCalorieFactor, suggestMacrosFromTDEE, type ActivityLevel, type FitnessGoal } from './nutrition'
 
 // ============================
 // Sabitler
@@ -490,8 +490,7 @@ export function initialExpenditureEstimate(
     })
   }
   if (targetCalories && targetCalories > 0) {
-    const goalFactor = suggestMacrosFromTDEE(1000, profile?.goal ?? 'general').calories / 1000
-    return Math.round(targetCalories / goalFactor)
+    return Math.round(targetCalories / goalCalorieFactor(profile?.goal ?? 'general'))
   }
   return FALLBACK_EXPENDITURE
 }

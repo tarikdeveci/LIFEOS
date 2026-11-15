@@ -30,6 +30,8 @@ import { Button } from '@/src/components/ui/Button'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { FoodChoiceAmount } from '@/src/components/nutrition/FoodChoiceAmount'
+import { ManualMacroForm } from '@/src/components/nutrition/ManualMacroForm'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -107,10 +109,8 @@ export default function NutritionScreen() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Elle ekleme akışı — model çağrısı yok, ücretsiz kullanıcı için de açık.
-  const [addMode, setAddMode] = useState<'text' | 'search'>('text')
+  const [addMode, setAddMode] = useState<'text' | 'search' | 'manual'>('text')
   const [pendingChoice, setPendingChoice] = useState<FoodSearchResult | null>(null)
-  const [pendingGrams, setPendingGrams] = useState('')
-  const [addingChoice, setAddingChoice] = useState(false)
 
   /**
    * Kendi yaptığın yemeği kişisel veritabanına kaydetme.
@@ -180,11 +180,9 @@ export default function NutritionScreen() {
    * satırından hesaplanır; model çağrısı yok, bu yüzden ücretsiz kullanıcıda da
    * çalışır. Kullanıcı satırı bizzat seçtiği için ayrıca onay istenmez.
    */
-  async function handleAddChoice() {
-    if (!pendingChoice || !userId) return
-    const typed = Number(pendingGrams)
-    const grams = Number.isFinite(typed) && typed > 0 ? typed : pendingChoice.default_grams
-    setAddingChoice(true)
+  /** Seçilen besini gramajıyla öğüne ekler; hata kartın içinde gösterilir. */
+  async function handleAddChoice(grams: number): Promise<boolean> {
+    if (!pendingChoice || !userId) return false
     try {
       const item = await buildItemFromChoice(supabase, pendingChoice, grams)
       appendParsedItem(item)
@@ -197,20 +195,23 @@ export default function NutritionScreen() {
           : { corpus_fdc_id: pendingChoice.id })
       await savePortionMemory(supabase, userId, pendingChoice.label, grams)
       setPendingChoice(null)
-      setPendingGrams('')
       setFoodSearch('')
       setFoodResults([])
+      return true
     } catch {
-      Alert.alert(t.nut_err_add_food_title, t.nut_err_add_food_msg)
-    } finally {
-      setAddingChoice(false)
+      return false
     }
+  }
+
+  /** Elle girilen kalem (#25): onay gerektirmez, kullanıcının kendi değeri. */
+  function handleAddManual(item: MealItem) {
+    appendParsedItem(item)
+    setItemApprovals((approvals) => [...approvals, true])
   }
 
   function openManualAdd(choice: FoodSearchResult) {
     setAddMode('search')
     setPendingChoice(choice)
-    setPendingGrams(String(choice.default_grams))
     setShowAdd(true)
   }
 
@@ -755,7 +756,6 @@ export default function NutritionScreen() {
           setParseVersion(null)
           setAiDegraded(null)
           setPendingChoice(null)
-          setPendingGrams('')
           setFoodSearch('')
           setFoodResults([])
         }}
@@ -780,6 +780,7 @@ export default function NutritionScreen() {
             {([
               { key: 'text' as const, label: t.nutr_mode_text, icon: 'create-outline' as const },
               { key: 'search' as const, label: t.nutr_mode_search, icon: 'search-outline' as const },
+              { key: 'manual' as const, label: t.ux_nutr_mode_manual, icon: 'calculator-outline' as const },
             ]).map(({ key, label, icon }) => (
               <TouchableOpacity
                 key={key}
@@ -816,6 +817,8 @@ export default function NutritionScreen() {
                 fullWidth
               />
             </>
+          ) : addMode === 'manual' ? (
+            <ManualMacroForm onAdd={handleAddManual} />
           ) : (
             <View style={{ gap: spacing[3] }}>
               <Input
@@ -826,39 +829,19 @@ export default function NutritionScreen() {
               />
 
               {pendingChoice ? (
-                <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, gap: spacing[3] }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing[2] }}>
-                    <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{pendingChoice.label}</Text>
-                    <TouchableOpacity onPress={() => { setPendingChoice(null); setPendingGrams('') }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                      <Ionicons name="close" size={16} color={colors.textSubtle} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-                    {pendingChoice.kcal_per_100g} kcal / 100 g
-                    {pendingChoice.source === 'corpus' ? ' · USDA' : ''}
-                  </Text>
-                  <Input
-                    label={t.nutr_grams}
-                    value={pendingGrams}
-                    onChangeText={setPendingGrams}
-                    keyboardType="numeric"
-                    placeholder={String(pendingChoice.default_grams)}
-                  />
-                  <Button
-                    label={t.nutr_add_to_meal}
-                    onPress={handleAddChoice}
-                    loading={addingChoice}
-                    variant="secondary"
-                    fullWidth
-                  />
-                </View>
+                <FoodChoiceAmount
+                  key={`${pendingChoice.source}-${pendingChoice.id}`}
+                  choice={pendingChoice}
+                  onAdd={handleAddChoice}
+                  onClear={() => setPendingChoice(null)}
+                />
               ) : foodResults.length > 0 ? (
                 <View style={{ gap: 2 }}>
                   {foodResults.map((food) => (
                     <FoodChoiceRow
                       key={`${food.source}-${food.id}`}
                       food={food}
-                      onPress={() => { setPendingChoice(food); setPendingGrams(String(food.default_grams)) }}
+                      onPress={() => setPendingChoice(food)}
                     />
                   ))}
                 </View>
