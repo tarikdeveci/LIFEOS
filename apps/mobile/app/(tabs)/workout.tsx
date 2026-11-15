@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
-import { isExerciseAvailable, todayDate, fromDateString, useWorkoutStore } from '@lifeos/shared'
+import { findProgramProgress, isExerciseAvailable, todayDate, fromDateString, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { EquipmentSheet } from '@/src/components/workout/EquipmentSheet'
@@ -14,6 +14,7 @@ import { LibraryTab } from '@/src/components/workout/LibraryTab'
 import { ProgramsTab } from '@/src/components/workout/ProgramsTab'
 import { HistoryTab } from '@/src/components/workout/HistoryTab'
 import { ProgramDaysView } from '@/src/components/workout/ProgramDaysView'
+import { programDayLabel } from '@/src/components/workout/programDays'
 import { ProgramExercisePickerView } from '@/src/components/workout/ProgramExercisePickerView'
 import { ProgramPlannerView } from '@/src/components/workout/ProgramPlannerView'
 import { CreateProgramSheet } from '@/src/components/workout/CreateProgramSheet'
@@ -28,8 +29,10 @@ import { useProGate } from '@/src/hooks/useProGate'
 import { useWorkoutSession } from '@/src/hooks/useWorkoutSession'
 import { useWorkoutPrograms } from '@/src/hooks/useWorkoutPrograms'
 import { useProgramPlanner } from '@/src/hooks/useProgramPlanner'
+import { useProgramEditor } from '@/src/hooks/useProgramEditor'
+import { ProgramEditView } from '@/src/components/workout/ProgramEditView'
 import { useWorkoutCoach } from '@/src/hooks/useWorkoutCoach'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
 
@@ -37,7 +40,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -66,6 +69,7 @@ export default function WorkoutScreen() {
 
   const programs = useWorkoutPrograms(userId)
   const { liveProgram } = programs
+  const editor = useProgramEditor(userId, liveProgram)
   const planner = useProgramPlanner({
     userId,
     liveProgram,
@@ -134,6 +138,10 @@ export default function WorkoutScreen() {
     />
   )
 
+  // Aktif program: en son programdan başlatılan antrenman; hareketi olmayan gün başlatılamaz.
+  const progress = findProgramProgress(allPrograms, workoutHistory, todayStr, (d) => programDayLabel(d, t))
+  const nextReady = progress && (progress.nextDay.exercises?.length ?? 0) > 0 ? progress : null
+
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - fromDateString(w.date).getTime()) / 86400000
     return diff <= 7
@@ -167,7 +175,7 @@ export default function WorkoutScreen() {
         {/* Tabs */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[5] }}>
           {TABS.map((t) => (
-            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={{ flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: 'center', backgroundColor: tab === t.key ? colors.bgSurface : 'transparent', ...(tab === t.key ? colors.shadowCard : {}) }}>
+            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }} style={{ flex: 1, minHeight: MIN_TOUCH, justifyContent: 'center', borderRadius: radius.md, alignItems: 'center', backgroundColor: tab === t.key ? colors.bgSurface : 'transparent', ...(tab === t.key ? colors.shadowCard : {}) }}>
               <Text style={{ fontSize: fontSize.sm, fontWeight: tab === t.key ? fontWeight.semibold : fontWeight.regular, color: tab === t.key ? colors.textPrimary : colors.textMuted }}>{t.label}</Text>
             </TouchableOpacity>
           ))}
@@ -182,6 +190,8 @@ export default function WorkoutScreen() {
             setsExpanded={setsExpanded}
             onToggleSets={() => setSetsExpanded((v) => !v)}
             onStart={() => session.setShowStart(true)}
+            nextProgramDay={nextReady ? { program: nextReady.program.name, day: programDayLabel(nextReady.nextDay, t) } : null}
+            onStartNext={() => { if (nextReady) void session.handleStartFromProgramDay(nextReady.program, nextReady.nextDay.id) }}
             onFinish={() => session.setShowFinish(true)}
             onDelete={session.handleDeleteWorkout}
             onAddSet={openSetModal}
@@ -227,6 +237,7 @@ export default function WorkoutScreen() {
             onEditEquipment={() => setShowEquipment(true)}
             onCreate={programs.openCreateProgram}
             onOpen={(program) => { programs.setSelectedProgram(program); programs.setExpandedDay(null) }}
+            active={progress ? { programId: progress.program.id, nextDay: programDayLabel(progress.nextDay, t) } : null}
           />
         )}
 
@@ -261,17 +272,20 @@ export default function WorkoutScreen() {
       */}
       <BottomSheet
         visible={!!programs.selectedProgram}
-        onClose={() => { programs.setSelectedProgram(null); programs.setExpandedDay(null); programs.setAddingToDay(null); planner.setPlanningProgram(false); programs.setAdaptingProgram(false) }}
-        title={programs.addingToDay ? t.wk_add_movement : planner.planningProgram ? t.wk_plan_program : programs.adaptingProgram ? t.wk_adapt_title : (liveProgram ? liveProgram.name : t.wk_program)}
+        onClose={() => { programs.setSelectedProgram(null); programs.setExpandedDay(null); programs.setAddingToDay(null); planner.setPlanningProgram(false); programs.setAdaptingProgram(false); editor.close() }}
+        title={editor.mode?.kind === 'names' ? t.ux_wk_edit_names : editor.mode?.kind === 'exercise' ? t.ux_wk_edit_exercise : programs.addingToDay ? t.wk_add_movement : planner.planningProgram ? t.wk_plan_program : programs.adaptingProgram ? t.wk_adapt_title : (liveProgram ? liveProgram.name : t.wk_program)}
         scrollable
         onBack={
-          programs.adaptingProgram && liveProgram && equipment !== null ? () => programs.setAdaptingProgram(false)
+          editor.open ? editor.close
+            : programs.adaptingProgram && liveProgram && equipment !== null ? () => programs.setAdaptingProgram(false)
             : programs.addingToDay ? programs.closeExercisePicker
               : planner.planningProgram ? () => planner.setPlanningProgram(false)
                 : undefined
         }
       >
-        {programs.adaptingProgram && liveProgram && equipment !== null ? (
+        {editor.open ? (
+          <ProgramEditView editor={editor} />
+        ) : programs.adaptingProgram && liveProgram && equipment !== null ? (
           <AdaptProgramView
             program={liveProgram}
             catalog={exercises}
@@ -329,6 +343,8 @@ export default function WorkoutScreen() {
             onPlan={() => planner.openProgramPlanner()}
             onAddMovement={programs.openExercisePicker}
             onRemoveExercise={(rowId) => void programs.handleRemoveProgramExercise(rowId)}
+            onEditExercise={editor.openExercise}
+            onEditNames={editor.openNames}
             onStartDay={(program, dayId) => void session.handleStartFromProgramDay(program, dayId)}
             onDelete={programs.handleDeleteProgram}
           />

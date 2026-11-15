@@ -33,6 +33,7 @@ import {
   createProgramExercise,
   deleteProgramExercise,
   updateProgramExercise,
+  updateWorkoutProgram, updateProgramDay,
   getWorkoutEquipment,
   saveWorkoutEquipment,
 } from '../supabase/workouts'
@@ -122,6 +123,10 @@ interface WorkoutState {
     input: { exercise_id: string; sets: number; reps: number | null; rest_seconds: number; order_index: number },
   ) => Promise<void>
   removeExerciseFromDay: (supabase: Supabase, userId: string, exerciseRowId: string) => Promise<void>
+  /** Program adı ve gün adları; yalnız değişenler yazılır; yarım kalan yazmada da liste tazelenir. */
+  renameProgram: (supabase: Supabase, userId: string, programId: string, name: string | null, days: { id: string; day_name: string }[]) => Promise<void>
+  /** Hareketin set, tekrar ve dinlenmesi ile gün içindeki yeni sırası (`reorderProgramExercises`). */
+  editProgramExercise: (supabase: Supabase, userId: string, exerciseRowId: string, values: { sets: number; reps: number | null; rest_seconds: number }, reorder: { id: string; order_index: number }[]) => Promise<void>
   /**
    * AI'ın yazdığı programı gün ve hareketleriyle birlikte tek adımda kaydeder.
    * addExerciseToDay'i döngüde çağırmak her hareket için listeyi tazeliyordu:
@@ -388,6 +393,23 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   removeExerciseFromDay: async (supabase, userId, exerciseRowId) => {
     await deleteProgramExercise(supabase, exerciseRowId)
     await get().fetchPrograms(supabase, userId)
+  },
+
+  renameProgram: async (supabase, userId, programId, name, days) => {
+    try {
+      await Promise.all([...(name !== null ? [updateWorkoutProgram(supabase, programId, { name })] : []), ...days.map((d) => updateProgramDay(supabase, d.id, { day_name: d.day_name }))])
+    } finally {
+      await get().fetchPrograms(supabase, userId)
+    }
+  },
+
+  editProgramExercise: async (supabase, userId, exerciseRowId, values, reorder) => {
+    try {
+      await updateProgramExercise(supabase, exerciseRowId, { ...values, order_index: reorder.find((r) => r.id === exerciseRowId)?.order_index })
+      await Promise.all(reorder.filter((r) => r.id !== exerciseRowId).map((r) => updateProgramExercise(supabase, r.id, { order_index: r.order_index })))
+    } finally {
+      await get().fetchPrograms(supabase, userId)
+    }
   },
 
   createProgramFromPlan: async (supabase, userId, plan) => {

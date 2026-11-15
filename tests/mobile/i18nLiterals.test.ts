@@ -87,10 +87,12 @@ test('Faz 4 modülleri kendi önekini taşıyor, ana tablodaki anahtarları ezmi
   const acc = await import('../../apps/mobile/src/i18nAccount.ts')
   const nut = await import('../../apps/mobile/src/i18nNutrition.ts')
   const misc = await import('../../apps/mobile/src/i18nMisc.ts')
+  const ux = await import('../../apps/mobile/src/i18nUx.ts')
   const mods: [string, Record<string, string>, Record<string, string>][] = [
     ['acc_', acc.accountEn, acc.accountTr],
     ['nut_', nut.nutritionEn, nut.nutritionTr],
     ['misc_', misc.miscEn, misc.miscTr],
+    ['ux_', ux.uxEn, ux.uxTr],
   ]
   for (const [prefix, en, tr] of mods) {
     assert.deepEqual(Object.keys(en).filter((k) => !k.startsWith(prefix)), [], `${prefix} öneki eksik`)

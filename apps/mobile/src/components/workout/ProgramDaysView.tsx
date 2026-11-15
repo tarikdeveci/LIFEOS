@@ -4,7 +4,8 @@ import { isExerciseAvailable } from '@lifeos/shared'
 import type { EquipmentKey, ProgramEquipmentFit, WorkoutProgram } from '@lifeos/shared'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor, MIN_TOUCH } from '../../theme/tokens'
+import { Button } from '../ui/Button'
 import { exerciseName } from './labels'
 import { activeDays, programDayLabel } from './programDays'
 
@@ -25,6 +26,9 @@ interface Props {
   onPlan: () => void
   onAddMovement: (dayId: string) => void
   onRemoveExercise: (rowId: string) => void
+  /** Kendi programında hareket satırına dokunmak: set, tekrar, dinlenme ve sıra. */
+  onEditExercise: (dayId: string, rowId: string) => void
+  onEditNames: () => void
   onStartDay: (program: WorkoutProgram, dayId: string) => void
   onDelete: (program: WorkoutProgram) => void
 }
@@ -32,7 +36,7 @@ interface Props {
 /** Program detayının ana görünümü: uyarla ve takvime ekle düğmeleri, açılır gün listesi. */
 export function ProgramDaysView({
   program, equipment, fit, canAdapt, isOwnProgram, expandedDay, onExpandDay, hasOpenWorkout, starting,
-  onAdapt, onPlan, onAddMovement, onRemoveExercise, onStartDay, onDelete,
+  onAdapt, onPlan, onAddMovement, onRemoveExercise, onEditExercise, onEditNames, onStartDay, onDelete,
 }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
@@ -99,25 +103,41 @@ export function ProgramDaysView({
             {isOpen && (
               <View style={{ paddingHorizontal: spacing[3], paddingBottom: spacing[3], gap: spacing[2] }}>
                 <View style={{ height: 1, backgroundColor: colors.border }} />
-                {exercises.map((ex, i) => (
-                  <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, width: 18 }}>{i + 1}.</Text>
-                    <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary }} numberOfLines={1}>
-                      {exerciseName(ex.exercise, lang, t)}
-                    </Text>
-                    {ex.exercise && !isExerciseAvailable(ex.exercise, equipment) && (
-                      <Ionicons name="alert-circle-outline" size={14} color={palette.warning} />
-                    )}
-                    <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-                      {ex.sets}×{ex.reps ?? '-'} · {ex.rest_seconds}{t.coach_rest_sec}
-                    </Text>
-                    {isOwnProgram && (
-                      <TouchableOpacity onPress={() => onRemoveExercise(ex.id)} hitSlop={hitSlopFor(17)}>
-                        <Ionicons name="close-circle" size={17} color={colors.textSubtle} />
+                {exercises.map((ex, i) => {
+                  const name = exerciseName(ex.exercise, lang, t)
+                  return (
+                    <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
+                      {/* Kendi programında satıra dokunmak hareketi düzenler; şablonda düz satır. */}
+                      <TouchableOpacity
+                        disabled={!isOwnProgram}
+                        onPress={() => onEditExercise(day.id, ex.id)}
+                        accessibilityRole={isOwnProgram ? 'button' : undefined}
+                        accessibilityLabel={isOwnProgram ? t.ux_wk_edit_ex_label.replace('{name}', name) : undefined}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: isOwnProgram ? MIN_TOUCH : undefined }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, width: 22 }}>{i + 1}.</Text>
+                        <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary }} numberOfLines={1}>{name}</Text>
+                        {ex.exercise && !isExerciseAvailable(ex.exercise, equipment) && (
+                          <Ionicons name="alert-circle-outline" size={14} color={palette.warning} />
+                        )}
+                        <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>
+                          {ex.sets}×{ex.reps ?? '-'} · {ex.rest_seconds}{t.coach_rest_sec}
+                        </Text>
+                        {isOwnProgram && <Ionicons name="create-outline" size={15} color={colors.textSubtle} />}
                       </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
+                      {isOwnProgram && (
+                        <TouchableOpacity
+                          onPress={() => onRemoveExercise(ex.id)}
+                          hitSlop={hitSlopFor(17)}
+                          accessibilityRole="button"
+                          accessibilityLabel={t.ux_wk_remove_ex.replace('{name}', name)}
+                        >
+                          <Ionicons name="close-circle" size={17} color={colors.textSubtle} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )
+                })}
 
                 {exCount === 0 && (
                   <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
@@ -130,23 +150,22 @@ export function ProgramDaysView({
                 {isOwnProgram && (
                   <TouchableOpacity
                     onPress={() => onAddMovement(day.id)}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingVertical: spacing[2], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderStrong }}
+                    accessibilityRole="button"
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], minHeight: MIN_TOUCH, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderStrong }}
                   >
                     <Ionicons name="add" size={16} color={palette.accent} />
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.wk_add_movement}</Text>
+                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.wk_add_movement}</Text>
                   </TouchableOpacity>
                 )}
 
                 {exCount > 0 && (
-                  <TouchableOpacity
-                    disabled={starting}
+                  <Button
+                    label={starting ? t.wk_starting : t.wk_start_with_day}
                     onPress={() => onStartDay(program as WorkoutProgram, day.id)}
-                    style={{ marginTop: spacing[1], paddingVertical: spacing[3], borderRadius: radius.lg, alignItems: 'center', backgroundColor: palette.accent, opacity: starting ? 0.5 : 1 }}
-                  >
-                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>
-                      {starting ? t.wk_starting : t.wk_start_with_day}
-                    </Text>
-                  </TouchableOpacity>
+                    loading={starting}
+                    fullWidth
+                    style={{ marginTop: spacing[1] }}
+                  />
                 )}
               </View>
             )}
@@ -155,7 +174,13 @@ export function ProgramDaysView({
       })}
 
       {isOwnProgram && program && (
-        <TouchableOpacity onPress={() => onDelete(program)} style={{ paddingVertical: spacing[3], alignItems: 'center' }}>
+        <TouchableOpacity onPress={onEditNames} accessibilityRole="button" style={{ flexDirection: 'row', gap: spacing[2], minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', marginTop: spacing[2] }}>
+          <Ionicons name="create-outline" size={16} color={palette.accent} />
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.ux_wk_edit_names}</Text>
+        </TouchableOpacity>
+      )}
+      {isOwnProgram && program && (
+        <TouchableOpacity onPress={() => onDelete(program)} accessibilityRole="button" style={{ minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.danger }}>{t.wk_delete_program}</Text>
         </TouchableOpacity>
       )}
