@@ -21,8 +21,10 @@ import {
   middayCopy,
   morningCopy,
   weightCopy,
+  withAiTip,
   withWeightLine,
 } from './copy.ts'
+import { AI_TIP_KIND, aiTipAudience, loadAiTipFacts, type AiTipAudience, type AiTipDb } from './aiTip.ts'
 import { buildEveningReport } from './evening.ts'
 import { loadMorningBrief } from './morning.ts'
 import { morningBriefCopy } from './reportCopy.ts'
@@ -33,7 +35,7 @@ const supabase = createClient(
 )
 
 type Slot = 'morning' | 'midday' | 'evening'
-type Kind = Slot | 'weight'
+type Kind = Slot | 'weight' | typeof AI_TIP_KIND
 
 // Kullanıcının kendi saat diliminde şu anki tarih/saat.
 // Sunucu UTC'de çalıştığı için new Date().getHours() ve toISOString() kullanılamaz:
@@ -308,7 +310,7 @@ Deno.serve(async () => {
   }
 
   const pushMessages: PushMessage[] = []
-  const bySlot: Record<Kind, number> = { morning: 0, midday: 0, evening: 0, weight: 0 }
+  const bySlot: Record<Kind, number> = { morning: 0, midday: 0, evening: 0, weight: 0, ai_tip: 0 }
   // Kilit push'tan önce yazılıyor; gönderim tutmazsa geri alınabilmesi için
   // kimin hangi türleri kilitlediği ve hangi token'lara yazıldığı saklanır.
   // Bir kullanıcı koşu başına tek bildirim alır, uid anahtar olarak yeterli.
@@ -382,11 +384,25 @@ Deno.serve(async () => {
     const mainLocked = slot !== null && content !== null && (await acquireLock(uid, slot, date))
     const weightLocked = weight !== null && (await acquireLock(uid, 'weight', date))
 
+    // AI tanıtım satırı yalnız ana bildirime eklenir (ek push yok), haftada en çok bir.
+    // Okuma ya da kilit hatası satırı atlar, özetin kendisi yine gider.
+    let aiTipLocked = false
+    let aiTipAudienceKind: AiTipAudience | null = null
+    if (mainLocked) {
+      try {
+        aiTipAudienceKind = aiTipAudience(await loadAiTipFacts(supabase as unknown as AiTipDb, uid), date)
+        aiTipLocked = aiTipAudienceKind !== null && (await acquireLock(uid, AI_TIP_KIND, date))
+      } catch (err) {
+        console.error(`ai tanitim satiri atlandi (${uid}):`, err instanceof Error ? err.message : err)
+      }
+    }
+
     let message: Copy
     let data: Record<string, string>
     if (mainLocked && slot && content) {
       // Aynı saatte iki push yerine tek push: tartı satırı özetin sonuna eklenir.
       message = weightLocked && weight ? withWeightLine(content, weight, ctx) : content
+      if (aiTipLocked && aiTipAudienceKind) message = withAiTip(message, aiTipAudienceKind, ctx)
       // Tür aynı kalır (eski istemcide tıklama aynı yere düşer); yeni istemci raporu açar.
       data = slot === 'evening' && reportDate
         ? { type: 'daily_digest_evening', report_date: reportDate }
@@ -411,6 +427,7 @@ Deno.serve(async () => {
     const kinds: Kind[] = []
     if (mainLocked && slot) kinds.push(slot)
     if (weightLocked) kinds.push('weight')
+    if (aiTipLocked) kinds.push(AI_TIP_KIND)
     locked.set(uid, { kinds, date, tokens: uniqueTokens })
     for (const kind of kinds) bySlot[kind]++
   }

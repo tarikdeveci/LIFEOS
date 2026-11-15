@@ -318,3 +318,30 @@ export function weightLine(d: WeightData, ctx: DayContext): string {
 export function withWeightLine(content: Copy, d: WeightData, ctx: DayContext): Copy {
   return { title: content.title, body: lines(content.body, weightLine(d, ctx)) }
 }
+
+// AI tanıtımı (#53). Karar ve sıklık: aiTip.ts. Her metin somut bir fayda söyler ve
+// yalnızca gerçekten var olan bir yeteneği vaat eder. 'new' kitlesi (AI'ı hiç
+// denememiş) yalnız ücretsiz hakkı olan yetenekleri görür (gün planı sohbeti, hayat planı
+// kurulumu) ve "ücretsiz" kelimesi doğrudur; 'tried' kitlesi Pro'ya özel yetenekleri görür.
+const AI_TIP_NEW = [
+  'Planın aksadı mı? Plan sohbetine yaz, AI günün kalan saatlerini yeniden dizsin. İlk denemeler ücretsiz.',
+  'Hayatını bir paragrafla anlat, AI rutinlerini, hedeflerini ve görevlerini kursun. İlk denemeler ücretsiz.',
+  'Yoğun gün mü? AI kalan saatlerine göre gününü baştan planlar. İlk denemeler ücretsiz.',
+  'Plan sohbetine "akşama toplantı çıktı" yaz, AI blokları senin yerine kaydırır. İlk denemeler ücretsiz.',
+] as const
+
+const AI_TIP_TRIED = [
+  'Pro ile AI öğününü yazdığın gibi çözer: porsiyonu ve makroları kendisi hesaplar.',
+  'Pro ile AI gün raporu günün verilerini okur ve yarın için tek bir öneri çıkarır.',
+  'Pro ile AI antrenman koçu programını hedefine ve ekipmanına göre yazar.',
+  'Aklındakileri tek mesajda yaz: Pro ile AI hepsini görevlere ve önceliğe çevirir.',
+] as const
+
+/** Günlük bildirime eklenen tek AI satırı; seed her gün bir sonraki metne geçer. */
+export function aiTipLine(audience: 'new' | 'tried', ctx: DayContext): string {
+  return pick(audience === 'new' ? AI_TIP_NEW : AI_TIP_TRIED, ctx.seed)
+}
+
+export function withAiTip(content: Copy, audience: 'new' | 'tried', ctx: DayContext): Copy {
+  return { title: content.title, body: lines(content.body, aiTipLine(audience, ctx)) }
+}
