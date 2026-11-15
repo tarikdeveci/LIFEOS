@@ -16,7 +16,7 @@ export interface BlockTiming {
   phase: BlockPhase
   /** Bloğun başlangıcı, gün içi dakika (0-1439) */
   startMinute: number
-  /** Bloğun bitişi, gün içi dakika. Gece yarısını aşan blok 1440'a sabitlenir. */
+  /** Bloğun başladığı gündeki bitişi, gün içi dakika. Gece yarısını aşan blok 1440'a sabitlenir. */
   endMinute: number
   /** Blok süresi (dakika). En az 1. */
   durationMinutes: number
@@ -77,9 +77,11 @@ export function blockTiming(
 ): BlockTiming {
   const startMinute = clockToMinutes(block.start_time)
   const rawEnd = clockToMinutes(block.end_time)
-  // 00:00 bitiş veya ters aralık = gece yarısına kadar süren blok
-  const endMinute = rawEnd <= startMinute ? 1440 : rawEnd
-  const durationMinutes = Math.max(1, endMinute - startMinute)
+  // Bitiş başlangıçtan küçük (veya 00:00) = blok ertesi gün biter. `trueEnd` gerçek bitiş
+  // (1440'ı aşabilir), `endMinute` bloğun BAŞLADIĞI gündeki yerleşimi (1440'a sabit).
+  const trueEnd = rawEnd > startMinute ? rawEnd : 1440 + rawEnd
+  const endMinute = Math.min(trueEnd, 1440)
+  const durationMinutes = Math.max(1, trueEnd - startMinute)
 
   if (nowMinute < startMinute) {
     return {
@@ -94,7 +96,7 @@ export function blockTiming(
     }
   }
 
-  if (nowMinute >= endMinute) {
+  if (nowMinute >= trueEnd) {
     return {
       phase: 'past',
       startMinute,
@@ -114,7 +116,7 @@ export function blockTiming(
     endMinute,
     durationMinutes,
     progress: elapsedMinutes / durationMinutes,
-    remainingMinutes: endMinute - nowMinute,
+    remainingMinutes: trueEnd - nowMinute,
     minutesUntilStart: 0,
     elapsedMinutes,
   }
@@ -129,7 +131,11 @@ export function blockTimingForDate(
   now: Date = new Date(),
 ): BlockTiming {
   const today = toDateString(now)
-  if (block.date < today) return blockTiming(block, 1440)
+  if (block.date < today) {
+    // Dünden başlayıp bugün biten gece bloğu hâlâ sürüyor olabilir.
+    const yesterday = toDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+    return blockTiming(block, block.date === yesterday ? 1440 + minutesOfDay(now) : 2880)
+  }
   if (block.date > today) return blockTiming(block, -1)
   return blockTiming(block, minutesOfDay(now))
 }

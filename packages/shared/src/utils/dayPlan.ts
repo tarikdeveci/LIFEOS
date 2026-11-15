@@ -27,7 +27,7 @@ export function taskMinutes(task: { estimated_minutes: number | null }): number 
 function toInterval(b: BlockLike): Interval {
   const start = clockToMinutes(b.start_time)
   const rawEnd = clockToMinutes(b.end_time)
-  // Gece yarısını aşan blok (end <= start) gün sonuna sabitlenir.
+  // Gece yarısını aşan blok (end <= start) başladığı günün sonuna sabitlenir; ertesi güne taşan kısım o günün planına girmez.
   return { start, end: rawEnd > start ? rawEnd : 1440 }
 }
 

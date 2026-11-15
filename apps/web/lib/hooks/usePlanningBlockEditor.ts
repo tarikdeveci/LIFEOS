@@ -131,7 +131,7 @@ export function usePlanningBlockEditor({ userId, refreshAfterRoutineChange }: Us
   // Sıradan blok tekrara çevrilirse blok silinir, aynı günden başlayan rutin kurulur.
   const handleSaveBlockEdit = useCallback(async () => {
     if (!selectedBlock) return
-    if (editBlockEnd <= editBlockStart) { showToast(t.plan_err_end_after_start, 'error'); return }
+    if (editBlockEnd === editBlockStart) { showToast(t.plan_err_end_after_start, 'error'); return }
     setSavingBlock(true)
     try {
       if (selectedBlock.routine_id && editScope === 'following') {

@@ -126,7 +126,16 @@ export function currentTime(): string {
 export function minutesBetween(startTime: string, endTime: string): number {
   const s = parseClockParts(startTime)
   const e = parseClockParts(endTime)
-  return e.h * 60 + e.m - (s.h * 60 + s.m)
+  const diff = e.h * 60 + e.m - (s.h * 60 + s.m)
+  // Bitiş başlangıçtan küçükse blok gece yarısını geçer (23:00 - 07:00 = 480).
+  return diff < 0 ? diff + 1440 : diff
+}
+
+/** Bitiş saati başlangıçtan küçükse blok ertesi gün biter (23:00 - 07:00). */
+export function crossesMidnight(startTime: string, endTime: string): boolean {
+  const s = parseClockParts(startTime)
+  const e = parseClockParts(endTime)
+  return e.h * 60 + e.m < s.h * 60 + s.m
 }
 
 /**

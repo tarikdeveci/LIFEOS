@@ -91,13 +91,20 @@ async function userTimeZone(userId: string): Promise<string> {
   return (data as { timezone?: string } | null)?.timezone ?? 'Europe/Istanbul'
 }
 
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function eventBody(block: BlockRow, timeZone: string) {
-  // Gece yarısını aşan blok (end <= start) gün sonunda biter.
-  const end = block.end_time > block.start_time ? block.end_time : '23:59:00'
+  // Gece yarısını aşan blok (end < start) ertesi gün biter; 00:00 bitişi de ertesi gün 00:00'dır.
+  const crosses = block.end_time <= block.start_time
+  const endDate = crosses ? nextDay(block.date) : block.date
   return {
     summary: `${block.completed_at ? '✓ ' : ''}${block.label ?? 'LifeOS'}`,
     start: { dateTime: `${block.date}T${block.start_time.slice(0, 8).padEnd(8, ':00')}`, timeZone },
-    end: { dateTime: `${block.date}T${end.slice(0, 8).padEnd(8, ':00')}`, timeZone },
+    end: { dateTime: `${endDate}T${block.end_time.slice(0, 8).padEnd(8, ':00')}`, timeZone },
     source: { title: 'LifeOS', url: 'https://lifeos.tr/planning' },
     extendedProperties: { private: { lifeos_block_id: block.id } },
   }

@@ -147,7 +147,9 @@ function toMinutes(time: string): number {
 }
 
 function blockMinutes(b: FactsBlock): number {
-  return Math.max(0, toMinutes(b.end_time) - toMinutes(b.start_time))
+  const diff = toMinutes(b.end_time) - toMinutes(b.start_time)
+  // Gece yarısını geçen blok (23:00 - 07:00): bitiş ertesi gün.
+  return diff < 0 ? diff + 1440 : diff
 }
 
 function hhmm(time: string): string {

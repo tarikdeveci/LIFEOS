@@ -106,9 +106,17 @@ export function foldLine(line: string): string {
   return chunks.join('\r\n')
 }
 
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function eventLines(block: FeedBlock, input: CalendarInput, stamp: string): string[] {
   const start = zonedToUtc(block.date, block.start, input.timeZone)
-  const end = zonedToUtc(block.date, block.end, input.timeZone)
+  // Bitiş başlangıçtan küçük veya eşitse (23:00 - 07:00, 00:00) blok ertesi gün biter.
+  const endDate = block.end <= block.start ? nextDay(block.date) : block.date
+  const end = zonedToUtc(endDate, block.end, input.timeZone)
   const updated = block.updatedAt ? new Date(block.updatedAt) : null
   return [
     'BEGIN:VEVENT',
