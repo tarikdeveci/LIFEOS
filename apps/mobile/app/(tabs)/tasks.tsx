@@ -10,6 +10,7 @@ import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
 import { BrainDumpSheet } from '@/src/components/tasks/BrainDumpSheet'
+import { AiHint } from '@/src/components/ai/AiHint'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
 import { DateField, TimeField } from '@/src/components/ui/PickerField'
@@ -22,6 +23,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useProGate } from '@/src/hooks/useProGate'
+import { useAiHint } from '@/src/hooks/useAiHint'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
 import { PriorityLabel } from '@/src/components/tasks/PriorityLabel'
 
@@ -55,7 +57,7 @@ export default function TasksScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { tasks, fetchTasks, addTask, setStatus } = useTaskStore()
+  const { tasks, fetchTasks, addTask, setStatus, error: tasksError } = useTaskStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('today')
   const [showAdd, setShowAdd] = useState(false)
@@ -66,6 +68,8 @@ export default function TasksScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [hideDone, setHideDone] = useState(true)
   const [showBrain, setShowBrain] = useState(false)
+  // İlk okuma bitmeden liste boş görünür; ipucu o arada çıkmasın.
+  const [loaded, setLoaded] = useState(false)
   const { isPro, requirePro } = useProGate(userId)
 
   // toISOString() UTC verir: UTC+3'te gece yarısı ile 03:00 arasında bir önceki
@@ -91,7 +95,7 @@ export default function TasksScreen() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) { setUserId(data.user.id); void fetchTasks(supabase, data.user.id) }
+      if (data.user) { setUserId(data.user.id); void fetchTasks(supabase, data.user.id).finally(() => setLoaded(true)) }
     })
   }, [fetchTasks])
 
@@ -129,6 +133,8 @@ export default function TasksScreen() {
 
   const done = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
   const open = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done').length
+  // Bugün açık görev yokken aklındakileri tek seferde dökmek işe yarar.
+  const brainHint = useAiHint('tasks', loaded && !tasksError && open === 0)
 
   // Kartın üstünden tamamlama. Detay ekranına girmeden bitirilemiyordu; bir
   // görevi kapatmak üç dokunuş + iki ekran geçişi demekti, kimse yapmıyordu.
@@ -227,6 +233,10 @@ export default function TasksScreen() {
             <StatCard label={t.tasks_completed} value={done} color={palette.success} />
             <StatCard label={t.tasks_total} value={tasks.length} />
           </View>
+
+          {brainHint.visible && (
+            <AiHint text={t.ai_hint_tasks} onClose={brainHint.close} onPress={() => { brainHint.use(); setShowBrain(true) }} />
+          )}
 
           <Segmented
             options={[{ key: 'today', label: t.today }, { key: 'week', label: t.week }, { key: 'all', label: t.all }]}
