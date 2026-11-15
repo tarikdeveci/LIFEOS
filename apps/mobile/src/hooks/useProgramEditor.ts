@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { reorderProgramExercises, useWorkoutStore } from '@lifeos/shared'
 import type { WorkoutProgram } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
@@ -19,6 +19,8 @@ export function useProgramEditor(userId: string | null, program: WorkoutProgram 
   const [position, setPosition] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Her açma ve kapamada artar: geç biten kayıt sonradan açılan formu kapatmaz.
+  const session = useRef(0)
 
   const workDays = [...(program?.days ?? [])].filter((d) => !d.is_rest).sort((a, b) => a.day_number - b.day_number)
   const editDay = mode?.kind === 'exercise' ? workDays.find((d) => d.id === mode.dayId) ?? null : null
@@ -29,7 +31,7 @@ export function useProgramEditor(userId: string | null, program: WorkoutProgram 
     if (!program) return
     setProgramName(program.name)
     setDayNames(Object.fromEntries(workDays.map((d) => [d.id, d.day_name ?? ''])))
-    setError(null); setMode({ kind: 'names' })
+    session.current += 1; setError(null); setMode({ kind: 'names' })
   }
 
   function openExercise(dayId: string, rowId: string) {
@@ -39,10 +41,10 @@ export function useProgramEditor(userId: string | null, program: WorkoutProgram 
     const row = rows[index]
     if (!row) return
     setSets(String(row.sets)); setReps(row.reps === null ? '' : String(row.reps)); setRest(String(row.rest_seconds))
-    setPosition(index + 1); setError(null); setMode({ kind: 'exercise', dayId, rowId })
+    session.current += 1; setPosition(index + 1); setError(null); setMode({ kind: 'exercise', dayId, rowId })
   }
 
-  function close() { setMode(null); setError(null) }
+  function close() { session.current += 1; setMode(null); setError(null) }
 
   async function saveNames() {
     if (!userId || !program || saving) return
@@ -67,12 +69,13 @@ export function useProgramEditor(userId: string | null, program: WorkoutProgram 
   }
 
   async function save(write: () => Promise<void>) {
+    const opened = session.current
     setSaving(true); setError(null)
     try {
       await write()
-      setMode(null)
+      if (session.current === opened) setMode(null)
     } catch {
-      setError(t.ux_wk_err_save)
+      if (session.current === opened) setError(t.ux_wk_err_save)
     } finally {
       setSaving(false)
     }

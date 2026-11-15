@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findProgramProgress, reorderProgramExercises } from '../../packages/shared/src/utils/programProgress.ts'
+import { findProgramProgress, reorderProgramExercises, settleAll } from '../../packages/shared/src/utils/programProgress.ts'
 import type { ProgramDay, Workout, WorkoutProgram } from '../../packages/shared/src/types/workout.ts'
 
 const day = (id: string, n: number, name: string, is_rest = false): ProgramDay =>
@@ -61,4 +61,18 @@ test('reorderProgramExercises: hareket taşınır, yalnız değişen satırlar d
 test('reorderProgramExercises: boşluklu ve tekrarlı sıra düzelir', () => {
   const rows = [{ id: 'a', order_index: 1 }, { id: 'b', order_index: 1 }, { id: 'c', order_index: 5 }]
   assert.deepEqual(reorderProgramExercises(rows, 'a', 1), [{ id: 'b', order_index: 2 }, { id: 'c', order_index: 3 }])
+})
+
+test('programProgress: atlanan ve ileri tarihli antrenman sırayı ilerletmez', () => {
+  const skipped = { ...workout('2026-11-14', 'PPL · Pull'), status: 'skipped' as const }
+  const history = [workout('2026-11-20', 'PPL · Legs'), skipped, workout('2026-11-13', 'PPL · Push')]
+  assert.equal(findProgramProgress([ppl], history, '2026-11-15', label)?.nextDay.id, 'b')
+})
+
+test('settleAll: bütün yazmalar bitmeden hata fırlatmaz', async () => {
+  let lateDone = false
+  const late = new Promise<void>((resolve) => setTimeout(() => { lateDone = true; resolve() }, 20))
+  await assert.rejects(settleAll([Promise.reject(new Error('x')), late]), /x/)
+  assert.equal(lateDone, true)
+  await settleAll([Promise.resolve(1)])
 })

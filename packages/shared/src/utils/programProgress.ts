@@ -14,6 +14,16 @@ import { fromDateString } from './date'
 /** Antrenman adında program adı ile gün adı arasındaki ayraç. */
 export const PROGRAM_DAY_SEPARATOR = ' · '
 
+/**
+ * Bütün yazmalar bitene kadar bekler, sonra ilk hatayı fırlatır. `Promise.all`
+ * ilk hatada döner ve kalan yazmalar ardından gelen yenilemeden sonra biter;
+ * ekran veritabanından eski kalır.
+ */
+export async function settleAll(writes: Promise<unknown>[]): Promise<void> {
+  const failed = (await Promise.allSettled(writes)).find((r) => r.status === 'rejected')
+  if (failed) throw (failed as PromiseRejectedResult).reason
+}
+
 export interface ProgramProgress {
   program: WorkoutProgram
   /** Sıradaki çalışma günü. */
@@ -50,6 +60,8 @@ export function findProgramProgress(
   for (const workout of sorted) {
     const age = (todayTime - fromDateString(workout.date).getTime()) / 86400000
     if (age > maxAgeDays) return null
+    // Atlanan antrenman yapılmamıştır, ileri tarihli olan henüz yapılmadı: sırayı ilerletmez.
+    if (workout.status === 'skipped' || age < 0) continue
     const name = workout.name?.trim()
     if (!name) continue
     const program = candidates.find((p) => name.startsWith(p.name + PROGRAM_DAY_SEPARATOR))

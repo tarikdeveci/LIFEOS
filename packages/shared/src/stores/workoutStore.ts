@@ -44,6 +44,7 @@ import { adaptationToPlan, replacementNote, type ProgramAdaptation } from '../ut
 import { computeWorkoutStreak, type WorkoutStreak } from '../utils/streak'
 import type { LoggedSet } from '../utils/muscles'
 import { RETENTION_WINDOW_DAYS } from '../utils/recovery'
+import { settleAll } from '../utils/programProgress'
 
 /**
  * Kas analitiği penceresi: güç hesabının istediği 60 gün. Denge (haftalık) ve
@@ -70,7 +71,6 @@ interface WorkoutState {
 
   // Programlar
   programs: WorkoutProgram[]
-
   /** Haftalık antrenman serisi — `fetchStreak` doldurur. */
   streak: WorkoutStreak
 
@@ -397,7 +397,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   renameProgram: async (supabase, userId, programId, name, days) => {
     try {
-      await Promise.all([...(name !== null ? [updateWorkoutProgram(supabase, programId, { name })] : []), ...days.map((d) => updateProgramDay(supabase, d.id, { day_name: d.day_name }))])
+      await settleAll([...(name !== null ? [updateWorkoutProgram(supabase, programId, { name })] : []), ...days.map((d) => updateProgramDay(supabase, d.id, { day_name: d.day_name }))])
     } finally {
       await get().fetchPrograms(supabase, userId)
     }
@@ -406,7 +406,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   editProgramExercise: async (supabase, userId, exerciseRowId, values, reorder) => {
     try {
       await updateProgramExercise(supabase, exerciseRowId, { ...values, order_index: reorder.find((r) => r.id === exerciseRowId)?.order_index })
-      await Promise.all(reorder.filter((r) => r.id !== exerciseRowId).map((r) => updateProgramExercise(supabase, r.id, { order_index: r.order_index })))
+      await settleAll(reorder.filter((r) => r.id !== exerciseRowId).map((r) => updateProgramExercise(supabase, r.id, { order_index: r.order_index })))
     } finally {
       await get().fetchPrograms(supabase, userId)
     }
