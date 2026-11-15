@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  autoPlace, dayCapacity, dropBlockMirrors, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes, syncBlocksWithTasks,
+  autoPlace, dayCapacity, dropBlockMirrors, freeIntervals, mergeIntervals, shiftRemaining, subtractIntervals, taskMinutes, syncBlocksWithTasks, splitMinimumDay, minimumEndTime,
 } from '../../packages/shared/src/utils/dayPlan.ts'
 
 test('subtractIntervals: kesişen kısım çıkar, kalan parçalar sıralı döner', () => {
@@ -158,4 +158,36 @@ test('syncBlocksWithTasks: görev durumuna göre blok tamamlanma saatini eşitle
   assert.equal(updates[0]?.completed_at, '2026-10-08T11:00Z')
   assert.equal(updates[1]?.id, 'b2')
   assert.equal(updates[1]?.completed_at, null)
+})
+
+test('splitMinimumDay: minimum modda korunan rutin dışındakiler closed havuzuna ayrılır', () => {
+  const routines = [
+    { id: 'r1', is_protected: true },
+    { id: 'r2', is_protected: false },
+  ]
+  const tasks = [
+    { id: 't1', routine_id: 'r1' }, // korunan
+    { id: 't2', routine_id: 'r2' }, // korunmayan
+    { id: 't3', routine_id: null }, // bağımsız (dokunulmaz)
+  ]
+  const blocks = [
+    { id: 'b1', routine_id: 'r1' }, // korunan
+    { id: 'b2', routine_id: 'r2' }, // korunmayan
+    { id: 'b3', routine_id: null }, // bağımsız (dokunulmaz)
+  ]
+
+  const { active, closed } = splitMinimumDay(blocks, tasks, routines)
+
+  assert.deepEqual(active.tasks.map(t => t.id), ['t1', 't3'])
+  assert.deepEqual(closed.tasks.map(t => t.id), ['t2'])
+
+  assert.deepEqual(active.blocks.map(b => b.id), ['b1', 'b3'])
+  assert.deepEqual(closed.blocks.map(b => b.id), ['b2'])
+})
+
+test('minimumEndTime: asgari süre bitişi kısaltır, yoksa ya da uzunsa bitiş aynı kalır', () => {
+  assert.equal(minimumEndTime('07:00', '08:00', 15), '07:15')
+  assert.equal(minimumEndTime('07:00', '08:00', null), '08:00')
+  assert.equal(minimumEndTime('07:00', '07:10', 30), '07:10')
+  assert.equal(minimumEndTime('23:30', '00:30', 20), '23:50')
 })

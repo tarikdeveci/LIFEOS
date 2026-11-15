@@ -229,6 +229,7 @@ export type Database = {
           date: string
           energy_level: number | null
           id: string
+          minimum_mode: boolean
           notes: string | null
           ritual_completed_at: string | null
           updated_at: string | null
@@ -240,6 +241,7 @@ export type Database = {
           date: string
           energy_level?: number | null
           id?: string
+          minimum_mode?: boolean
           notes?: string | null
           ritual_completed_at?: string | null
           updated_at?: string | null
@@ -251,6 +253,7 @@ export type Database = {
           date?: string
           energy_level?: number | null
           id?: string
+          minimum_mode?: boolean
           notes?: string | null
           ritual_completed_at?: string | null
           updated_at?: string | null

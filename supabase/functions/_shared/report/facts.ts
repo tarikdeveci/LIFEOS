@@ -54,6 +54,8 @@ export interface FactsRoutine {
   is_active: boolean
   starts_on: string
   ends_on: string | null
+  /** Asgari günde de beklenir (081). Okunmadıysa korumasız sayılır. */
+  is_protected?: boolean
 }
 
 export interface FactsCompletion {
@@ -92,6 +94,8 @@ export interface FactsInput {
   /** rutin id → biten oturum sayısı (yalnız sayaçlı rutinler). */
   progress: Readonly<Record<string, number>>
   generatedAt: string
+  /** O gün asgari gün (081): yalnız korumalı rutinler beklenir. */
+  minimum?: boolean
 }
 
 const AREAS: readonly string[] = ['career', 'health', 'personal', 'spiritual', 'social']
@@ -182,6 +186,15 @@ function byTime(a: DayItem, b: DayItem): number {
 
 // Saf hesap
 
+/**
+ * Öğe günün paydasına girer mi. Sayaçsız rutin hiç girmez; asgari günde korumasız
+ * rutinin öğesi beklenmez ama yapıldıysa esnek kazanım olarak görünür.
+ */
+function isExpected(routine: FactsRoutine | undefined, input: FactsInput): boolean {
+  if (routine?.is_untracked) return false
+  return !(input.minimum && routine && !routine.is_protected)
+}
+
 function taskItem(t: FactsTask, blocks: readonly FactsBlock[], input: FactsInput, routine: FactsRoutine | undefined): DayItem {
   // Göreve bağlı blok ayrı öğe olmaz: görev bloğun saatini ve süresini alır.
   const starts = blocks.map((b) => hhmm(b.start_time)).sort()
@@ -192,7 +205,7 @@ function taskItem(t: FactsTask, blocks: readonly FactsBlock[], input: FactsInput
     area: t.area ?? routine?.area ?? null,
     minutes: blocks.length > 0 ? blocks.reduce((s, b) => s + blockMinutes(b), 0) : t.estimated_minutes,
     start_time: starts[0] ?? null,
-    expected: !routine?.is_untracked,
+    expected: isExpected(routine, input),
     outcome: t.status === 'done' ? 'done' : 'open',
     reason: null,
     program: programOf(routine, input.progress),
@@ -209,7 +222,7 @@ function blockItem(b: FactsBlock, input: FactsInput, routine: FactsRoutine | und
     area: blockArea(b, routine),
     minutes: blockMinutes(b),
     start_time: hhmm(b.start_time),
-    expected: !routine?.is_untracked,
+    expected: isExpected(routine, input),
     outcome: b.completed_at !== null ? 'done' : 'open',
     reason: null,
     program: programOf(routine, input.progress),
@@ -233,7 +246,8 @@ function habitItems(input: FactsInput): { items: DayItem[]; week: HabitWeek[] } 
       week.push({ routine_id: r.id, title: r.title, area: r.area, done: habitWeekDone(input.completions, r, input.date), target: r.times_per_week })
     }
     // Günlük alışkanlık bugün beklenir; haftalık esnek olanın bugün yapılması beklenmez.
-    items.push(habitItem(r, done, r.times_per_day !== null || r.times_per_week === 7, input))
+    const daily = r.times_per_day !== null || r.times_per_week === 7
+    items.push(habitItem(r, done, daily && isExpected(r, input), input))
   }
   return { items, week }
 }
@@ -345,12 +359,12 @@ export async function loadDayFacts(db: Db, p: LoadFactsParams): Promise<DayFacts
       .select('id, task_id, label, block_type, start_time, end_time, routine_id, completed_at')
       .eq('user_id', userId).eq('date', date),
     db.from('routines')
-      .select('id, title, kind, area, times_per_week, times_per_day, estimated_minutes, target_count, is_untracked, is_active, starts_on, ends_on')
+      .select('id, title, kind, area, times_per_week, times_per_day, estimated_minutes, target_count, is_untracked, is_active, starts_on, ends_on, is_protected')
       .eq('user_id', userId),
     db.from('routine_completions')
       .select('routine_id, completed_on, count')
       .eq('user_id', userId).gte('completed_on', mondayOf(date)).lte('completed_on', date),
-    db.from('daily_plans').select('energy_level').eq('user_id', userId).eq('date', date),
+    db.from('daily_plans').select('energy_level, minimum_mode').eq('user_id', userId).eq('date', date),
     db.from('focus_sessions')
       .select('minutes')
       .eq('user_id', userId).gte('started_at', bounds.start).lt('started_at', bounds.end),
@@ -362,6 +376,7 @@ export async function loadDayFacts(db: Db, p: LoadFactsParams): Promise<DayFacts
 
   const taskRows = rowsOf<Omit<FactsTask, 'area' | 'goal'> & { area: unknown; goal: unknown }>(tasks, 'tasks')
   const routineRows = rowsOf<Omit<FactsRoutine, 'area'> & { area: unknown }>(routines, 'routines')
+  const planRow = rowsOf<{ energy_level: number | null; minimum_mode: boolean | null }>(plan, 'daily_plans')[0]
 
   return buildDayFacts({
     date,
@@ -369,7 +384,8 @@ export async function loadDayFacts(db: Db, p: LoadFactsParams): Promise<DayFacts
     blocks: rowsOf<FactsBlock>(blocks, 'time_blocks'),
     routines: routineRows.map((r) => ({ ...r, area: toArea(r.area) })),
     completions: rowsOf<FactsCompletion>(completions, 'routine_completions'),
-    energy: rowsOf<{ energy_level: number | null }>(plan, 'daily_plans')[0]?.energy_level ?? null,
+    energy: planRow?.energy_level ?? null,
+    minimum: planRow?.minimum_mode === true,
     focusMinutes: rowsOf<{ minutes: number }>(focus, 'focus_sessions').reduce((s, f) => s + f.minutes, 0),
     health: rowsOf<FactsHealth>(health, 'health_daily')[0] ?? null,
     workoutCompleted: rowsOf<{ id: string }>(workouts, 'workouts').length > 0,

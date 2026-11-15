@@ -353,3 +353,23 @@ test('toGoal: nesne ya da tek elemanlı dizi okunur, eksik ve bozuk veri null', 
   assert.equal(toGoal([]), null)
   assert.equal(toGoal({ id: 'g' }), null)
 })
+
+test('asgari gün: yalnız korumalı rutin ve rutinsiz görev beklenir, gerisi esnek', () => {
+  const day = {
+    tasks: [
+      task({ id: 'kor', routine_id: 'r-kor' }),
+      task({ id: 'kapali', routine_id: 'r-kapali' }),
+      task({ id: 'tek' }),
+    ],
+    blocks: [block({ id: 'b-kapali', block_type: 'routine', routine_id: 'r-kapali' })],
+    routines: [
+      routine({ id: 'r-kor', kind: 'task', is_protected: true }),
+      routine({ id: 'r-kapali', kind: 'block' }),
+      routine({ id: 'su', times_per_day: 1, times_per_week: null }),
+    ],
+  }
+  const expected = (minimum: boolean) =>
+    buildDayFacts(input({ ...day, minimum })).items.filter((i) => i.expected).map((i) => i.key).sort()
+  assert.deepEqual(expected(false), ['block:b-kapali', 'habit:su', 'task:kapali', 'task:kor', 'task:tek'])
+  assert.deepEqual(expected(true), ['task:kor', 'task:tek'])
+})

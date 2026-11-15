@@ -122,7 +122,22 @@ async function dayMeals(uid: string, date: string): Promise<Array<{ total_calori
   return (data ?? []) as Array<{ total_calories: number | null; total_protein: number | null }>
 }
 
+/** Kullanıcı o günü asgari gün yaptı mı (081). Okunamazsa normal gün sayılır. */
+async function isMinimumDay(uid: string, date: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('daily_plans')
+    .select('minimum_mode')
+    .eq('user_id', uid)
+    .eq('date', date)
+    .maybeSingle()
+  return data?.minimum_mode === true
+}
+
 async function buildMorning(uid: string, date: string, time: string, ctx: DayContext): Promise<Copy> {
+  // Asgari günde öncelik listesi ve blok sayısı yerine tek, hafif bir cümle.
+  if (await isMinimumDay(uid, date)) {
+    return morningCopy({ blockCount: 0, firstBlock: null, topTask: null, streak: null, minimum: true }, ctx)
+  }
   // Önce günlük özet: 3 öncelik + bakım + manevi/sosyal. Seri cümlesi bilerek yok:
   // sabah yalnızca bunlar söylenir. Öncelik yoksa aşağıdaki mevcut metne düşülür.
   const brief = await loadMorningBrief(supabase, uid, date)
@@ -197,13 +212,14 @@ async function buildEvening(uid: string, date: string, ctx: DayContext): Promise
   // Hiç öğün yoksa akşam özeti göndermenin anlamı yok
   if (meals.length === 0) return null
 
-  const [target, tomorrow] = await Promise.all([
+  const [target, tomorrow, minimum] = await Promise.all([
     activeTarget(uid),
     supabase
       .from('time_blocks')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', uid)
       .eq('date', shiftDate(date, 1)),
+    isMinimumDay(uid, date),
   ])
 
   return eveningCopy(
@@ -214,6 +230,7 @@ async function buildEvening(uid: string, date: string, ctx: DayContext): Promise
       targetKcal: target?.calories ?? null,
       targetProtein: target?.protein_g ?? null,
       tomorrowBlocks: tomorrow.count ?? 0,
+      minimum,
     },
     ctx,
   )

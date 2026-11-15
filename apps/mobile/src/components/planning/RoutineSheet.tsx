@@ -43,6 +43,10 @@ interface FormState {
   goalId: string | null
   /** Bağlı antrenman programı; yalnız blok rutininde, seçilince blok türü workout olur. */
   programId: string | null
+  /** Asgari günde (081) de kalır; ad AI planlayıcının dokunmadığı rutinle aynı alan. */
+  isProtected: boolean
+  /** Asgari günde gösterilen süre (dk); boş = blok süresi. */
+  minMinutes: string
 }
 
 function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
@@ -58,12 +62,14 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
     goalId: r?.goal_id ?? null,
     programId: r?.workout_program_id ?? null,
+    isProtected: r?.is_protected ?? false,
+    minMinutes: r?.min_minutes ? String(r.min_minutes) : '',
   }
 }
 
 type FormError =
   | 'plan_err_name_required' | 'plan_err_pick_day' | 'plan_err_time_required'
-  | 'plan_err_time_invalid' | 'plan_err_end_after_start' | 'routines_err_per_week' | 'routines_err_per_day'
+  | 'plan_err_time_invalid' | 'plan_err_end_after_start' | 'routines_err_per_week' | 'routines_err_per_day' | 'routines_err_min_minutes'
 
 /** Formu doğrular; hata varsa çeviri anahtarı, yoksa kayda hazır girdi döner. */
 function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRoutineInput | FormError {
@@ -86,6 +92,8 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
   if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
   if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'plan_err_time_invalid'
   if (hasTime && f.end === f.start) return 'plan_err_end_after_start'
+  const minMinutes = f.isProtected && f.minMinutes !== '' ? Number(f.minMinutes) : null
+  if (minMinutes !== null && (!Number.isInteger(minMinutes) || minMinutes < 1 || minMinutes > 600)) return 'routines_err_min_minutes'
   const blockKind: BlockType = f.kind === 'block' && f.programId ? 'workout' : blockType
   return {
     title,
@@ -98,6 +106,8 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     ...(isNew && { starts_on: todayDate() }),
     goal_id: f.kind === 'task' ? f.goalId : null,
     workout_program_id: f.kind === 'block' && blockKind === 'workout' ? f.programId : null,
+    is_protected: f.isProtected,
+    min_minutes: minMinutes,
   }
 }
 
@@ -217,6 +227,18 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
               <TimeField label={t.routines_end} value={form.end} onChange={(v) => patch({ end: v })} defaultTime={form.start || '10:00'} onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
             </View>
             {form.kind === 'task' && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_time_optional}</Text>}
+            <TouchableOpacity
+              onPress={() => patch({ isProtected: !form.isProtected })}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: form.isProtected }}
+              style={[chip(form.isProtected), { alignSelf: 'flex-start' }]}
+            >
+              <Text style={chipText(form.isProtected)}>{t.routines_protected}</Text>
+            </TouchableOpacity>
+            {form.isProtected && (
+              <Input label={t.routines_min_minutes} value={form.minMinutes} keyboardType="number-pad"
+                onChangeText={(v) => patch({ minMinutes: v.replace(/\D/g, '').slice(0, 3) })} />
+            )}
           </>
         )}
 

@@ -35,6 +35,8 @@ export interface MorningData {
   /** Takvim boşken önerilecek en yüksek öncelikli açık görev. */
   topTask: string | null
   streak: StreakSummary | null
+  /** Asgari gün (081): bugün yalnız korumalı rutinler var. */
+  minimum?: boolean
 }
 
 export interface MiddayData {
@@ -51,6 +53,8 @@ export interface EveningData {
   targetKcal: number | null
   targetProtein: number | null
   tomorrowBlocks: number
+  /** Bugün asgari gündü (081). */
+  minimum?: boolean
 }
 
 export interface WeightData {
@@ -183,6 +187,16 @@ function morningBody(d: MorningData, ctx: DayContext): string {
 }
 
 export function morningCopy(d: MorningData, ctx: DayContext): Copy {
+  if (d.minimum) {
+    return {
+      title: pick(['Bugün asgari gün', 'Hafif bir gün: sadece korumalılar', 'Bugün sadece korumalı rutinler'], ctx.seed),
+      body: pick([
+        'Gerisi bugün kapalı, hiçbir şey silinmedi. Sadece korumalı rutinlerini yap, yeter.',
+        'Az ama sürekli. Korumalı rutinler bugünün tamamı.',
+        'Bugün tek iş korumalı rutinler. Gerisi yarın yerinde.',
+      ], ctx.seed),
+    }
+  }
   return { title: morningTitle(d, ctx), body: lines(morningBody(d, ctx), streakText(d.streak, ctx.seed)) }
 }
 
@@ -245,7 +259,12 @@ export function eveningCopy(d: EveningData, ctx: DayContext): Copy | null {
   ], ctx.seed) + (pct !== null ? ` Hedefin %${pct} kadarı.` : '')
 
   let insight: string | null = null
-  if (d.targetProtein && p >= d.targetProtein) {
+  if (d.minimum) {
+    insight = pick([
+      'Asgari gün de bir gün sayılır. Yarın plan normale döner.',
+      'Bugün sadece korumalılar vardı, zinciri koparmadın.',
+    ], ctx.seed)
+  } else if (d.targetProtein && p >= d.targetProtein) {
     insight = pick(['Protein hedefini tutturdun. 💪', 'Protein tamam, kasların memnun.'], ctx.seed)
   } else if (pct !== null && pct >= 90 && pct <= 110) {
     insight = pick(['Hedefe neredeyse tam isabet.', 'Kalori hedefiyle uyumlu bir gün.'], ctx.seed)

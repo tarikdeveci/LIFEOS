@@ -3,7 +3,7 @@ import { ScrollView, View, Text, TouchableOpacity, RefreshControl } from 'react-
 import { router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
-import { useTaskStore, usePlanningStore, useNutritionStore, blockTiming, formatDuration, minutesOfDay, todayDate, calorieBudget } from '@lifeos/shared'
+import { useTaskStore, usePlanningStore, useNutritionStore, useRoutineStore, blockTiming, formatDuration, minutesOfDay, todayDate, calorieBudget } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { StatCard } from '@/src/components/ui/StatCard'
@@ -16,6 +16,8 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
 import { useProgramDays, withProgramDay } from '@/src/hooks/useProgramDays'
+import { useMinimumDay } from '@/src/hooks/useMinimumDay'
+import { Button } from '@/src/components/ui/Button'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
@@ -26,6 +28,7 @@ export default function TodayScreen() {
   // Planlama sekmesi başka güne bakarken de bugün ekranı bugünün bloklarını gösterir.
   const { todayBlocks: timeBlocks, fetchDayData } = usePlanningStore()
   const { meals, target, dailySummary, fetchDayNutrition } = useNutritionStore()
+  const fetchRoutines = useRoutineStore((s) => s.fetchRoutines)
   const health = useHealthStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -45,8 +48,10 @@ export default function TodayScreen() {
       fetchTasks(supabase, uid),
       fetchDayData(supabase, uid, todayStr),
       fetchDayNutrition(supabase, uid, todayStr),
+      // Asgari günde hangi rutinin korunduğu buradan okunur.
+      fetchRoutines(supabase, uid, todayStr),
     ])
-  }, [todayStr, fetchTasks, fetchDayData, fetchDayNutrition])
+  }, [todayStr, fetchTasks, fetchDayData, fetchDayNutrition, fetchRoutines])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -67,9 +72,13 @@ export default function TodayScreen() {
     setRefreshing(false)
   }
 
-  const todayTasks  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
+  const openTasks   = useMemo(() => tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done'), [tasks, todayStr])
   const doneTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
-  const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
+  const dayBlocks   = useMemo(() => timeBlocks.filter((b) => b.date === todayStr), [timeBlocks, todayStr])
+  // Asgari günde korunmayan rutinin blok ve görevleri "Bugün kapalı" altına iner (081).
+  const minDay = useMinimumDay(openTasks, dayBlocks)
+  const todayTasks  = minDay.active.tasks
+  const todayBlocks = minDay.active.blocks
   const programDays = useProgramDays(userId, todayBlocks)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
@@ -237,6 +246,7 @@ export default function TodayScreen() {
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_blocks_today}</Text>
           )}
           </TouchableOpacity>
+          <MinimumDayControls day={minDay} />
         </GlassCard>
 
         {/* Nutrition */}
@@ -306,5 +316,65 @@ function SectionHeader({ title, linkLabel, onPress }: SectionHeaderProps) {
       <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{title}</Text>
       <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{linkLabel}</Text>
     </TouchableOpacity>
+  )
+}
+
+interface MinimumDayControlsProps {
+  day: ReturnType<typeof useMinimumDay>
+}
+
+/** Asgari gün düğmesi, kapalı kalanların soluk listesi ve korunan rutin yoksa yol gösterme. */
+function MinimumDayControls({ day }: MinimumDayControlsProps) {
+  const { colors } = useTheme()
+  const { t } = useLang()
+  if (!day.ready) return null
+  // Görev bloğu ile görevi aynı başlıkla iki kez göstermemek için blokla eşleşen görev atlanır.
+  const blockTaskIds = new Set(day.closed.blocks.map((b) => b.task_id).filter(Boolean))
+  const closedRows = [
+    ...day.closed.blocks.map((b) => ({ id: b.id, label: b.label ?? '', time: b.start_time.slice(0, 5) })),
+    ...day.closed.tasks.filter((x) => !blockTaskIds.has(x.id)).map((x) => ({ id: x.id, label: x.title, time: '' })),
+  ]
+  return (
+    <View style={{ marginTop: spacing[3], gap: spacing[2] }}>
+      {day.minimum && (
+        <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{t.today_minimum_hint}</Text>
+      )}
+      {day.minimum && !day.hasProtected && (
+        <TouchableOpacity onPress={() => router.push('/(tabs)/planning')} accessibilityRole="link" style={{ minHeight: MIN_TOUCH, justifyContent: 'center' }}>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{t.today_minimum_empty}</Text>
+          <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold, marginTop: 2 }}>{t.today_minimum_go_routines}</Text>
+        </TouchableOpacity>
+      )}
+      {day.minimum && closedRows.length > 0 && (
+        <TouchableOpacity
+          onPress={() => day.setShowClosed(!day.showClosed)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: day.showClosed }}
+          style={{ minHeight: MIN_TOUCH, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSubtle }}>
+            {t.today_minimum_closed.replace('{n}', String(closedRows.length))}
+          </Text>
+          <Ionicons name={day.showClosed ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />
+        </TouchableOpacity>
+      )}
+      {day.minimum && day.showClosed && closedRows.map((row) => (
+        <View key={row.id} style={{ flexDirection: 'row', gap: spacing[3], opacity: 0.5, paddingVertical: 4 }}>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, width: 40, fontVariant: ['tabular-nums'] }}>{row.time}</Text>
+          <Text style={{ flex: 1, fontSize: fontSize.sm, color: colors.textSecondary }} numberOfLines={1}>{row.label}</Text>
+        </View>
+      ))}
+      {day.failed && (
+        <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.sm, color: palette.danger }}>{t.today_minimum_error}</Text>
+      )}
+      <Button
+        label={day.minimum ? t.today_minimum_off : t.today_minimum_on}
+        onPress={() => void day.toggle()}
+        loading={day.busy}
+        variant="secondary"
+        size="sm"
+        fullWidth
+      />
+    </View>
   )
 }
