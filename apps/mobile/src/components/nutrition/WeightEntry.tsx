@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { BODY_LIMITS, formatWeightKg } from '@lifeos/shared'
 import { Button } from '../ui/Button'
+import { useLang } from '../../contexts/LangContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
@@ -36,6 +37,7 @@ function parseKg(text: string): number {
 export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }: Props) {
   const busy = saving || disabled
   const { colors } = useTheme()
+  const { t } = useLang()
   const [text, setText] = useState(initialKg !== null ? formatWeightKg(initialKg) : '')
 
   const parsed = parseKg(text)
@@ -64,10 +66,10 @@ export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }:
   return (
     <View style={{ gap: spacing[3] }}>
       <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textMuted, textAlign: 'center' }}>
-        Bugünkü kilon
+        {t.nut_weight_your_weight}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[4] }}>
-        {stepButton('remove', -STEP_KG, '100 gram azalt')}
+        {stepButton('remove', -STEP_KG, t.nut_weight_dec)}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TextInput
             value={text}
@@ -82,15 +84,15 @@ export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }:
           />
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textMuted, marginLeft: 2 }}>kg</Text>
         </View>
-        {stepButton('add', STEP_KG, '100 gram artır')}
+        {stepButton('add', STEP_KG, t.nut_weight_inc)}
       </View>
       {text.trim() !== '' && !valid && (
         <Text style={{ fontSize: fontSize.xs, color: palette.danger, textAlign: 'center' }}>
-          {MIN_KG} ile {MAX_KG} kg arasında bir değer gir.
+          {t.nut_weight_invalid.replace('{min}', String(MIN_KG)).replace('{max}', String(MAX_KG))}
         </Text>
       )}
       <Button
-        label={unchanged ? 'Bugün kaydedildi' : savedToday ? 'Bugünkü tartıyı güncelle' : 'Bugünkü tartıyı kaydet'}
+        label={unchanged ? t.nut_weight_saved : savedToday ? t.nut_weight_update : t.nut_weight_save}
         onPress={() => {
           if (valid) void onSave(parsed)
         }}

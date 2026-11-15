@@ -12,6 +12,7 @@ import {
 } from '../utils/calendarSync'
 import type { Calendar } from 'expo-calendar'
 import { permissionDrift } from '../utils/permissions'
+import { getCurrentT } from '@/src/contexts/LangContext'
 
 interface CalendarStore {
   hasPermission: boolean
@@ -97,7 +98,7 @@ export const useCalendarStore = create<CalendarStore>()(
           isSyncing: false,
           lastSyncedAt: new Date().toISOString(),
           lastSyncError: failedCalendarIds.length > 0
-            ? `${failedCalendarIds.length} takvim okunamadı`
+            ? getCurrentT().misc_calendars_failed_to_read.replace('{n}', String(failedCalendarIds.length))
             : null,
         })
       },

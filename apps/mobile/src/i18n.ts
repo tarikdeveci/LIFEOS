@@ -1,5 +1,8 @@
 import { workoutEn, workoutTr } from './i18nWorkout'
 import { formsEn, formsTr } from './i18nForms'
+import { accountEn, accountTr } from './i18nAccount'
+import { nutritionEn, nutritionTr } from './i18nNutrition'
+import { miscEn, miscTr } from './i18nMisc'
 import { reportEn, reportTr } from '@lifeos/shared'
 import { lifeSetupEn, lifeSetupTr, REVIEW_I18N } from '@lifeos/shared'
 
@@ -314,7 +317,7 @@ const translations = {
     plan_ai_plan: 'AI plan',
     plan_ai_planning: 'AI Planning Assistant',
 
-    // Planning — "where am I now?"
+    // Planning: "where am I now?"
     plan_now_badge: 'NOW',
     plan_now_free: 'Free time',
     plan_next: 'Next',
@@ -411,7 +414,7 @@ const translations = {
     health_prompt_desc: 'Connect steps, sleep, active calories and heart rate from {provider}. Read only.',
     health_connect: 'Connect {provider}',
     health_connect_desc: 'LifeOS reads steps, walking and running distance, active calories, exercise, workouts, sleep and heart rate from {provider}.',
-    health_read_only: 'Read only — LifeOS never writes data to {provider}.',
+    health_read_only: 'Read only. LifeOS never writes data to {provider}.',
     health_data_use: 'Used for goals, calorie budget, recovery and weekly insights.',
     health_account_sync: 'Daily summaries are securely saved to your LifeOS account for device sync.',
     health_connected: 'Connected',
@@ -443,7 +446,7 @@ const translations = {
     health_goal_reached: 'Goal reached 🎉',
     health_energy_suggestion: 'Suggested energy from your sleep',
     health_recovery_good: 'Recovery looks good',
-    health_recovery_watch: 'Resting HR is above your average — take it easy',
+    health_recovery_watch: 'Resting HR is above your average, take it easy',
     health_disconnect: 'Turn off {provider} sync',
     health_open_settings: 'Open {provider} settings',
 
@@ -851,7 +854,7 @@ const translations = {
     health_prompt_desc: '{provider} üzerindeki adım, uyku, aktif kalori ve nabız verilerini bağla. Salt okunur.',
     health_connect: '{provider}’e Bağlan',
     health_connect_desc: 'LifeOS; {provider} üzerinden adım, yürüme ve koşu mesafesi, aktif kalori, egzersiz, antrenman, uyku ve nabız verilerini okur.',
-    health_read_only: 'Salt okunur — LifeOS, {provider} üzerine hiçbir veri yazmaz.',
+    health_read_only: 'Salt okunur. LifeOS, {provider} üzerine hiçbir veri yazmaz.',
     health_data_use: 'Hedefler, kalori bütçesi, toparlanma ve haftalık içgörüler için kullanılır.',
     health_account_sync: 'Günlük özetler cihazlar arası eşitleme için LifeOS hesabında güvenle saklanır.',
     health_connected: 'Bağlı',
@@ -883,7 +886,7 @@ const translations = {
     health_goal_reached: 'Hedef tamamlandı 🎉',
     health_energy_suggestion: 'Uykuna göre önerilen enerji',
     health_recovery_good: 'Toparlanma iyi görünüyor',
-    health_recovery_watch: 'Dinlenme nabzın ortalamanın üstünde — bugün ağırdan al',
+    health_recovery_watch: 'Dinlenme nabzın ortalamanın üstünde, bugün ağırdan al',
     health_disconnect: '{provider} senkronunu kapat',
     health_open_settings: '{provider} ayarlarını aç',
 
@@ -898,11 +901,11 @@ const translations = {
   },
 } as const
 
-export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof reportEn | keyof typeof lifeSetupEn | keyof typeof REVIEW_I18N.en]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof accountEn | keyof typeof nutritionEn | keyof typeof miscEn | keyof typeof reportEn | keyof typeof lifeSetupEn | keyof typeof REVIEW_I18N.en]: string }
 
 const merged = {
-  en: { ...translations.en, ...workoutEn, ...formsEn, ...reportEn, ...lifeSetupEn, ...REVIEW_I18N.en },
-  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...reportTr, ...lifeSetupTr, ...REVIEW_I18N.tr },
+  en: { ...translations.en, ...workoutEn, ...formsEn, ...accountEn, ...nutritionEn, ...miscEn, ...reportEn, ...lifeSetupEn, ...REVIEW_I18N.en },
+  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...accountTr, ...nutritionTr, ...miscTr, ...reportTr, ...lifeSetupTr, ...REVIEW_I18N.tr },
 }
 
 export function getTranslations(lang: Language): Translations {

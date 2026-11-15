@@ -40,31 +40,6 @@ import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src
 /** ai-suggest'in beslenme koçundan dönen aksiyon. */
 interface CoachAction { action: 'log_meal'; meal_type: MealType; text: string }
 
-const MEAL_LABELS: Record<MealType, string> = {
-  breakfast: 'Kahvaltı',
-  lunch: 'Öğle',
-  dinner: 'Akşam',
-  snack: 'Ara öğün',
-}
-
-const CHAT_SUGGESTIONS = [
-  'Kaç kalori kaldı?',
-  'Akşama ne yesem?',
-  'Protein hedefimi tuttum mu?',
-  'Bu haftaki gidişatım nasıl?',
-]
-
-/**
- * Bildirim tek dokunuşta biter: serbest metin istenmez. Etiketler kullanıcının
- * neyi yanlış bulduğunu ayırt etmeye yeter, gerisi ize bakılarak teşhis edilir.
- */
-const FEEDBACK_KINDS: { kind: NutritionFeedbackKind; label: string }[] = [
-  { kind: 'missing_item', label: 'Bir şey eksik' },
-  { kind: 'wrong_food', label: 'Yanlış yiyecek' },
-  { kind: 'wrong_portion', label: 'Gramaj yanlış' },
-  { kind: 'wrong_macros', label: 'Kalori yanlış' },
-]
-
 function questionKey(question: MealQuestion): string {
   return `${question.kind}:${question.phrase}:${question.raw}`
 }
@@ -226,7 +201,7 @@ export default function NutritionScreen() {
       setFoodSearch('')
       setFoodResults([])
     } catch {
-      Alert.alert('Hata', 'Yiyecek eklenemedi.')
+      Alert.alert(t.nut_err_add_food_title, t.nut_err_add_food_msg)
     } finally {
       setAddingChoice(false)
     }
@@ -242,9 +217,9 @@ export default function NutritionScreen() {
   // Silme onaysız gitmesin (UX: silme onay veya geri al ister, #39).
   function confirmRemoveMeal(mealId: string) {
     const tr = lang === 'tr'
-    Alert.alert(tr ? 'Öğünü sil' : 'Delete meal', tr ? 'Bu öğün kaydı silinsin mi?' : 'Delete this meal entry?', [
-      { text: tr ? 'İptal' : 'Cancel', style: 'cancel' },
-      { text: tr ? 'Sil' : 'Delete', style: 'destructive', onPress: () => void removeMeal(supabase, mealId) },
+    Alert.alert(t.nut_del_meal_title, t.nut_del_meal_msg, [
+      { text: t.nut_cancel, style: 'cancel' },
+      { text: t.nut_delete, style: 'destructive', onPress: () => void removeMeal(supabase, mealId) },
     ])
   }
 
@@ -283,7 +258,7 @@ export default function NutritionScreen() {
   async function handleSaveMealEdit() {
     if (!editingMeal) return
     if (editApprovals.some((approved) => !approved)) {
-      Alert.alert('Onay gerekli', 'Küratörsüz kaynaktan gelen eşleşmeleri kaydetmeden önce onayla.')
+      Alert.alert(t.nut_approval_required_title, t.nut_approval_required_msg)
       return
     }
     setEditLoading(true)
@@ -303,7 +278,7 @@ export default function NutritionScreen() {
       setEditRawInput('')
       if (userId) await load(userId)
     } catch {
-      Alert.alert('Hata', 'Öğün güncellenemedi')
+      Alert.alert(t.nut_err_edit_meal_title, t.nut_err_edit_meal_msg)
     } finally {
       setEditLoading(false)
     }
@@ -321,10 +296,10 @@ export default function NutritionScreen() {
       setEditTrace(result.trace)
       setEditVersion(result.version)
       if (result.questions.length > 0) {
-        Alert.alert('Kontrol gerekli', `${result.questions.length} kalem güvenle çözülemedi ve öğüne eklenmedi.`)
+        Alert.alert(t.nut_check_required_title, t.nut_check_required_msg.replace('{n}', String(result.questions.length)))
       }
     } catch {
-      Alert.alert('Hata', 'Öğün yeniden analiz edilemedi')
+      Alert.alert(t.nut_err_reparse_meal_title, t.nut_err_reparse_meal_msg)
     } finally {
       setEditLoading(false)
     }
@@ -356,7 +331,7 @@ export default function NutritionScreen() {
       setParseVersion(result.version)
       setAiDegraded(result.ai.pro && !result.ai.enabled ? (result.ai.error === 'budget' ? 'budget' : 'down') : null)
     } catch {
-      Alert.alert('Hata', 'Öğün analiz edilemedi')
+      Alert.alert(t.nut_err_parse_meal_title, t.nut_err_parse_meal_msg)
     } finally {
       setParsing(false)
     }
@@ -376,16 +351,13 @@ export default function NutritionScreen() {
 
     const name = recipeName.trim()
     if (name.length < 2) {
-      Alert.alert('İsim gerekli', 'Yemeğe bir isim ver — bir dahaki sefere bu isimle bulacaksın.')
+      Alert.alert(t.nut_name_required_title, t.nut_name_required_msg)
       return
     }
 
     const missingGrams = items.filter((item) => !item.grams || item.grams <= 0)
     if (missingGrams.length > 0) {
-      Alert.alert(
-        'Gramaj eksik',
-        `Şu kalemlerin gramajı belli değil: ${missingGrams.map((i) => i.name).join(', ')}.\n\nPorsiyon ağırlığı hesaplanamadığı için tarif kaydedilemiyor. Gramajlarını yaz ve tekrar dene.`,
-      )
+      Alert.alert(t.nut_grams_missing_title, t.nut_grams_missing_msg.replace('{items}', missingGrams.map((i) => i.name).join(', ')))
       return
     }
 
@@ -393,7 +365,7 @@ export default function NutritionScreen() {
     const totalGrams = items.reduce((sum, item) => sum + (item.grams ?? 0), 0)
     const servingSize = Math.round(totalGrams / portions)
     if (servingSize <= 0) {
-      Alert.alert('Hesaplanamadı', 'Toplam ağırlık sıfır çıktı.')
+      Alert.alert(t.nut_calc_failed_title, t.nut_calc_failed_msg)
       return
     }
 
@@ -421,13 +393,10 @@ export default function NutritionScreen() {
       setShowSaveRecipe(false)
       setRecipeName('')
       setRecipePortions('1')
-      Alert.alert(
-        'Yemeğin kaydedildi',
-        `"${name}" · 1 porsiyon ≈ ${servingSize} g, ${Math.round(per((i) => i.calories, 0))} kcal.\n\nBundan sonra adını yazman ya da aramada bulman yeterli.`,
-      )
+      Alert.alert(t.nut_meal_saved_title, t.nut_meal_saved_msg.replace('{name}', name).replace('{servingSize}', String(servingSize)).replace('{kcal}', String(Math.round(per((i) => i.calories, 0)))))
     } catch (error) {
       console.warn('Tarif kaydedilemedi:', error)
-      Alert.alert('Hata', 'Yemek kaydedilemedi. Aynı isimde bir kaydın olabilir.')
+      Alert.alert(t.nut_err_save_recipe_title, t.nut_err_save_recipe_msg)
     } finally {
       setSavingRecipe(false)
     }
@@ -436,7 +405,7 @@ export default function NutritionScreen() {
   async function handleAddMeal() {
     if (!userId) return
     if (itemApprovals.some((approved) => !approved)) {
-      Alert.alert('Onay gerekli', 'Küratörsüz kaynaktan gelen eşleşmeleri kaydetmeden önce onayla.')
+      Alert.alert(t.nut_approval_required_title, t.nut_approval_required_msg)
       return
     }
     setAdding(true)
@@ -465,7 +434,7 @@ export default function NutritionScreen() {
       // Öğün kaydedildi — kullanıcının uygulamadan değer gördüğü an. Beklenmez:
       // puanlama istemi kaydın tamamlanmasını geciktirmemeli.
       void recordValueMoment()
-    } catch { Alert.alert('Hata', 'Öğün eklenemedi') }
+    } catch { Alert.alert(t.nut_err_add_meal_title, t.nut_err_add_meal_msg) }
     finally { setAdding(false) }
   }
 
@@ -495,7 +464,7 @@ export default function NutritionScreen() {
       })
     } catch {
       setFeedbackSent((sent) => ({ ...sent, [index]: false }))
-      Alert.alert('Bildirim gönderilemedi', 'Bağlantını kontrol edip tekrar dener misin?')
+      Alert.alert(t.nut_err_send_feedback_title, t.nut_err_send_feedback_msg)
     }
   }
 
@@ -523,7 +492,7 @@ export default function NutritionScreen() {
       setParseTrace((entries) => resolveTraceQuestion(entries, question, item))
       dismissQuestion(index, questionKey(question))
     } catch {
-      Alert.alert('Hata', 'Seçim uygulanamadı.')
+      Alert.alert(t.nut_err_apply_choice_title, t.nut_err_apply_choice_msg)
     }
   }
 
@@ -558,7 +527,7 @@ export default function NutritionScreen() {
       setParseTrace((entries) => resolveTraceQuestion(entries, question, resolvedItem))
       dismissQuestion(index, key)
     } catch {
-      Alert.alert('Hata', 'Miktar uygulanamadı.')
+      Alert.alert(t.nut_err_apply_amount_title, t.nut_err_apply_amount_msg)
     }
   }
 
@@ -570,7 +539,7 @@ export default function NutritionScreen() {
   async function logMealFromCoach(mealTypeForLog: MealType, text: string) {
     if (!userId) return
     const result = await callParseMeal({ raw_input: text, user_id: userId })
-    if (result.items.length === 0) throw new Error('Çözümlenemedi')
+    if (result.items.length === 0) throw new Error(t.nut_err_parse_meal_msg)
     await addMeal(supabase, userId, {
       date: todayStr,
       meal_type: mealTypeForLog,
@@ -617,23 +586,23 @@ export default function NutritionScreen() {
       const actions = (data.actions ?? [])
         .filter((a) => a.action === 'log_meal' && !!a.text)
         .map((a) => ({
-          label: `${MEAL_LABELS[a.meal_type] ?? 'Öğün'} olarak kaydet`,
+          label: t.nut_coach_save_as_meal.replace('{meal}', (t['nutr_' + a.meal_type as keyof typeof t] as string) ?? t.nut_meal_fallback),
           icon: 'add-circle-outline' as const,
-          doneLabel: 'Kaydedildi',
+          doneLabel: t.nut_coach_saved,
           onPress: async () => {
             try {
               await logMealFromCoach(a.meal_type, a.text)
               await load(userId)
             } catch {
-              Alert.alert('Hata', 'Öğün kaydedilemedi')
+              Alert.alert(t.nut_err_save_coach_meal_title, t.nut_err_save_coach_meal_msg)
               throw new Error('log failed')
             }
           },
         }))
 
-      setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? 'Yanıt alınamadı', actions }])
+      setChatMsgs((m) => [...m, { role: 'assistant', content: data.message ?? t.nut_ai_no_response, actions }])
     } catch (error) {
-      setChatMsgs((m) => [...m, { role: 'assistant', content: aiErrorMessage(error, 'Hata oluştu, tekrar dene.') }])
+      setChatMsgs((m) => [...m, { role: 'assistant', content: aiErrorMessage(error, t.nut_ai_err) }])
     } finally { setChatLoading(false) }
   }
 
@@ -652,10 +621,10 @@ export default function NutritionScreen() {
     const grams = items.reduce((sum, item) => sum + (item.grams ?? 0), 0)
     const kcal = items.reduce((sum, item) => sum + item.calories, 0)
     if (items.some((item) => !item.grams || item.grams <= 0)) {
-      return 'Bazı kalemlerin gramajı belli değil — porsiyon ağırlığı hesaplanamıyor.'
+      return t.nut_recipe_missing_grams
     }
     const portions = Math.max(0.5, parseFloat(recipePortions.replace(',', '.')) || 1)
-    return `1 porsiyon ≈ ${Math.round(grams / portions)} g · ${Math.round(kcal / portions)} kcal`
+    return t.nut_recipe_portion_calc.replace('{g}', String(Math.round(grams / portions))).replace('{kcal}', String(Math.round(kcal / portions)))
   })()
 
   return (
@@ -722,7 +691,7 @@ export default function NutritionScreen() {
 
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? 'Hızlı Yiyecek Ara'}</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? t.nut_food_search_ph}</Text>
           <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'} />
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
@@ -790,7 +759,7 @@ export default function NutritionScreen() {
           setFoodSearch('')
           setFoodResults([])
         }}
-        title={t.nutr_add_meal}
+        title={t.nut_add_meal_title}
         scrollable
       >
         <View style={{ gap: spacing[4] }}>
@@ -829,7 +798,7 @@ export default function NutritionScreen() {
                 label={t.nutr_what_did_you_eat}
                 value={rawInput}
                 onChangeText={setRawInput}
-                placeholder="2 yumurta 1 dilim tam buğday ekmeği beyaz peynir"
+                placeholder={t.nut_meal_text_ph}
                 multiline
                 numberOfLines={3}
                 style={{ minHeight: 80, textAlignVertical: 'top' }}
@@ -840,7 +809,7 @@ export default function NutritionScreen() {
                   kullanıcı metni düzeltip tekrar çalıştırabilmeli. Buton
                   gizlendiğinde tek çıkış yolu modalı kapatmaktı. */}
               <Button
-                label={parsing ? t.nutr_analyzing : parsedItems ? 'Tekrar hesapla' : 'Hesapla'}
+                label={parsing ? t.nutr_analyzing : parsedItems ? t.nut_recalc : t.nut_calc}
                 onPress={handleParse}
                 loading={parsing}
                 variant="secondary"
@@ -907,8 +876,8 @@ export default function NutritionScreen() {
                 <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: 'rgba(245,158,11,0.12)' }}>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textSecondary, lineHeight: 18 }}>
                     {aiDegraded === 'budget'
-                      ? "Bu ayki AI öğün çözümleme sınırına ulaştın, ayın 1'inde yenilenir. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor."
-                      : 'AI katmanı kullanılamıyor. Sözlük ve kurallarla hesaplandı; emin olunamayanlar aşağıda soruluyor.'}
+                      ? t.nut_ai_budget
+                      : t.nut_ai_down}
                   </Text>
                 </View>
               )}
@@ -937,20 +906,25 @@ export default function NutritionScreen() {
                       onPress={() => setItemApprovals((approvals) => approvals.map((approved, index) => index === i ? true : approved))}
                       style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: palette.accent }}
                     >
-                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
+                      <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.nut_approve_match}</Text>
                     </TouchableOpacity>
                   )}
                   {item.disposition === 'confirm' && itemApprovals[i] && (
-                    <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: palette.success }}>Onaylandı</Text>
+                    <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: palette.success }}>{t.nut_approved}</Text>
                   )}
 
                   {feedbackSent[i] ? (
                     <Text style={{ marginTop: 6, fontSize: fontSize.xs, color: palette.success }}>
-                      Bildirildi — teşekkürler, bu kalemi düzelteceğiz.
+                      {t.nut_reported}
                     </Text>
                   ) : feedbackFor === i ? (
                     <View style={{ marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-                      {FEEDBACK_KINDS.map(({ kind, label }) => (
+                      {([
+                        { kind: 'missing_item', label: t.nut_feedback_1 },
+                        { kind: 'wrong_food', label: t.nut_feedback_2 },
+                        { kind: 'wrong_portion', label: t.nut_feedback_3 },
+                        { kind: 'wrong_macros', label: t.nut_feedback_4 },
+                      ] as { kind: NutritionFeedbackKind; label: string }[]).map(({ kind, label }) => (
                         <TouchableOpacity
                           key={kind}
                           onPress={() => void sendItemFeedback(i, item, kind)}
@@ -960,12 +934,12 @@ export default function NutritionScreen() {
                         </TouchableOpacity>
                       ))}
                       <TouchableOpacity onPress={() => setFeedbackFor(null)} style={{ paddingHorizontal: spacing[2], paddingVertical: 6 }}>
-                        <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Vazgeç</Text>
+                        <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.nut_give_up}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <TouchableOpacity onPress={() => setFeedbackFor(i)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Bu yanlış mı?</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.nut_wrong_item_q}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -974,7 +948,7 @@ export default function NutritionScreen() {
               {parsedQuestions.length > 0 && (
                 <View style={{ gap: spacing[2], marginTop: spacing[2] }}>
                   <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                    Emin olamadıklarım ({parsedQuestions.length}) — tahmin yürütmedim
+                    {t.nut_unsure_items.replace('{n}', String(parsedQuestions.length))}
                   </Text>
                   {parsedQuestions.map((question, questionIndex) => {
                     const key = questionKey(question)
@@ -982,8 +956,8 @@ export default function NutritionScreen() {
                       <View key={key} style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: 'rgba(99,102,241,0.08)', borderWidth: 1, borderColor: colors.border, gap: spacing[2] }}>
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>
                           {question.kind === 'amount'
-                            ? `“${question.raw}” — ${question.food_label ?? question.phrase} kaç gram?`
-                            : `“${question.raw}” — bu hangisi?`}
+                            ? t.nut_how_many_grams.replace('{raw}', question.raw).replace('{food}', String(question.food_label ?? question.phrase))
+                            : t.nut_which_one.replace('{raw}', question.raw)}
                         </Text>
 
                         {question.kind === 'choice' && question.choices.map((choice) => (
@@ -999,7 +973,7 @@ export default function NutritionScreen() {
                         ))}
 
                         {question.kind === 'choice' && question.choices.length === 0 && (
-                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Bu yiyecek veritabanında yok.</Text>
+                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.nut_food_not_in_db}</Text>
                         )}
 
                         {question.kind === 'amount' && (
@@ -1015,13 +989,13 @@ export default function NutritionScreen() {
                               onPress={() => void handleQuestionAmount(questionIndex, question)}
                               style={{ paddingHorizontal: spacing[4], paddingVertical: 11, borderRadius: 10, backgroundColor: palette.accent }}
                             >
-                              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>Ekle</Text>
+                              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.nut_add_btn}</Text>
                             </TouchableOpacity>
                           </View>
                         )}
 
                         <TouchableOpacity onPress={() => dismissQuestion(questionIndex, key)}>
-                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>Atla</Text>
+                          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.nut_skip}</Text>
                         </TouchableOpacity>
                       </View>
                     )
@@ -1042,7 +1016,7 @@ export default function NutritionScreen() {
                 <View style={{ gap: spacing[3], padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                      Kendi yemeğin olarak kaydet
+                      {t.nut_save_as_own_food}
                     </Text>
                     <TouchableOpacity onPress={() => setShowSaveRecipe(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                       <Ionicons name="close" size={16} color={colors.textSubtle} />
@@ -1055,23 +1029,23 @@ export default function NutritionScreen() {
                   </Text>
 
                   <Input
-                    label="Yemeğin adı"
+                    label={t.nut_recipe_name_label}
                     value={recipeName}
                     onChangeText={setRecipeName}
-                    placeholder="Annemin mercimekli köftesi"
+                    placeholder={t.nut_recipe_name_ph}
                   />
                   <Input
-                    label="Kaç porsiyon çıktı?"
+                    label={t.nut_recipe_portions_label}
                     value={recipePortions}
                     onChangeText={setRecipePortions}
                     keyboardType="decimal-pad"
-                    placeholder="1"
+                    placeholder={t.nut_recipe_portions_ph}
                   />
 
                   <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{recipePreview}</Text>
 
                   <Button
-                    label={savingRecipe ? 'Kaydediliyor...' : 'Yemeği kaydet'}
+                    label={savingRecipe ? t.nut_saving_recipe : t.nut_save_recipe}
                     onPress={() => void handleSaveRecipe()}
                     loading={savingRecipe}
                     variant="secondary"
@@ -1085,7 +1059,7 @@ export default function NutritionScreen() {
                 >
                   <Ionicons name="bookmark-outline" size={14} color={palette.accent} />
                   <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
-                    Bunu kendi yemeğim olarak kaydet
+                    {t.nut_save_as_my_food_btn}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1106,16 +1080,16 @@ export default function NutritionScreen() {
       <AiChatSheet
         visible={showChat}
         onClose={() => setShowChat(false)}
-        title="Beslenme Koçu"
+        title={t.nut_coach_title}
         accent={palette.accent}
         messages={chatMsgs}
         loading={chatLoading}
         input={chatInput}
         onChangeInput={setChatInput}
         onSend={handleChat}
-        placeholder="Ne sormak istersin?"
-        emptyHint="Bugünkü hedeflerine ve yediklerine bakarak cevap veriyorum. Ne yediğini yazarsan tek dokunuşla kaydedebilirim."
-        suggestions={CHAT_SUGGESTIONS}
+        placeholder={t.nut_coach_ph}
+        emptyHint={t.nut_coach_hint}
+        suggestions={[t.nut_coach_suggest_1, t.nut_coach_suggest_2, t.nut_coach_suggest_3, t.nut_coach_suggest_4]}
         onSuggestionPress={(text) => { void sendChat(text) }}
       />
 
@@ -1131,22 +1105,22 @@ export default function NutritionScreen() {
           setEditVersion(null)
           setEditRawInput('')
         }}
-        title="Öğün Düzenle"
+        title={t.nut_edit_meal_title}
         scrollable
       >
         <View style={{ gap: spacing[4] }}>
           <Input
-            label="Öğün Metni"
+            label={t.nut_meal_text_label}
             value={editRawInput}
             onChangeText={setEditRawInput}
-            placeholder="2 yumurta, 100g tavuk..."
+            placeholder={t.nut_meal_text_ph}
             multiline
             numberOfLines={3}
             style={{ minHeight: 80, textAlignVertical: 'top' }}
           />
 
           <Button
-            label={editLoading ? 'Yeniden hesaplanıyor...' : 'Yeniden Hesapla'}
+            label={editLoading ? t.nut_recalc_loading : t.nut_recalc}
             onPress={() => void handleReparseEditMeal()}
             loading={editLoading}
             variant="secondary"
@@ -1175,7 +1149,7 @@ export default function NutritionScreen() {
                     onPress={() => setEditApprovals((approvals) => approvals.map((approved, approvalIndex) => approvalIndex === index ? true : approved))}
                     style={{ alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: 8, backgroundColor: palette.accent }}
                   >
-                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>Bu eşleşmeyi onayla</Text>
+                    <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.nut_approve_match}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1183,7 +1157,7 @@ export default function NutritionScreen() {
           </View>
 
           <Button
-            label={editLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+            label={editLoading ? t.nut_save_changes_loading : t.nut_save_changes}
             onPress={() => void handleSaveMealEdit()}
             loading={editLoading}
             disabled={editItems.length === 0 || editApprovals.some((approved) => !approved)}

@@ -1,5 +1,6 @@
 import * as Calendar from 'expo-calendar'
 import { Platform } from 'react-native'
+import { getCurrentT } from '../contexts/LangContext'
 
 export async function requestCalendarPermission(): Promise<boolean> {
   const { status } = await Calendar.requestCalendarPermissionsAsync()
@@ -88,6 +89,7 @@ function toLocalDateString(date: Date): string {
 }
 
 export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
+  const t = getCurrentT()
   const startDate = event.startDate
   const endDate = event.endDate
 
@@ -113,7 +115,7 @@ export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
 
   return {
     id: `local_${event.id}`,
-    title: (event.title ?? '(Başlıksız)').trim() || '(Başlıksız)',
+    title: (event.title ?? t.misc_untitled).trim() || t.misc_untitled,
     startsAt,
     endsAt,
     localDate,

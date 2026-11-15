@@ -73,15 +73,15 @@ export function PhysicalInfoSheet({ visible, onClose, profile, goals, levels, sa
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Fiziksel Bilgiler" scrollable>
+    <BottomSheet visible={visible} onClose={onClose} title={t.acc_physical_info} scrollable>
       <View style={{ gap: spacing[3] }}>
         <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-          <Input label="Boy (cm)" value={draft.height} onChangeText={(v) => editMetric('height', v)} error={metricError('height', t.profile_err_height, BODY_LIMITS.heightCm)} keyboardType="decimal-pad" placeholder="175" containerStyle={{ flex: 1 }} returnKeyType="next" />
-          <Input label="Kilo (kg)" value={draft.weight} onChangeText={(v) => editMetric('weight', v)} error={metricError('weight', t.profile_err_weight, BODY_LIMITS.weightKg)} keyboardType="decimal-pad" placeholder="75" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_height_cm} value={draft.height} onChangeText={(v) => editMetric('height', v)} error={metricError('height', t.profile_err_height, BODY_LIMITS.heightCm)} keyboardType="decimal-pad" placeholder="175" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_weight_kg} value={draft.weight} onChangeText={(v) => editMetric('weight', v)} error={metricError('weight', t.profile_err_weight, BODY_LIMITS.weightKg)} keyboardType="decimal-pad" placeholder="75" containerStyle={{ flex: 1 }} returnKeyType="next" />
         </View>
-        <Input label="Yaş" value={draft.age} onChangeText={(v) => editMetric('age', v)} error={metricError('age', t.profile_err_age, BODY_LIMITS.age)} keyboardType="number-pad" placeholder="22" returnKeyType="done" />
+        <Input label={t.acc_age_label} value={draft.age} onChangeText={(v) => editMetric('age', v)} error={metricError('age', t.profile_err_age, BODY_LIMITS.age)} keyboardType="number-pad" placeholder="22" returnKeyType="done" />
 
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Cinsiyet</Text>
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_gender_label}</Text>
         <View style={{ flexDirection: 'row', gap: spacing[2] }}>
           {(['male', 'female'] as const).map((gender) => (
             <TouchableOpacity
@@ -96,7 +96,7 @@ export function PhysicalInfoSheet({ visible, onClose, profile, goals, levels, sa
           ))}
         </View>
 
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Fitness Hedefi</Text>
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_goal_label}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
           {goals.map((g) => (
             <TouchableOpacity key={g.key} onPress={() => setDraft((p) => ({ ...p, fitnessGoal: g.key }))}
@@ -107,7 +107,7 @@ export function PhysicalInfoSheet({ visible, onClose, profile, goals, levels, sa
           ))}
         </View>
 
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>Aktivite Seviyesi</Text>
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_activity_label}</Text>
         <View style={{ gap: spacing[2] }}>
           {levels.map((a) => (
             <TouchableOpacity key={a.key} onPress={() => setDraft((p) => ({ ...p, activityLevel: a.key }))}
@@ -122,7 +122,7 @@ export function PhysicalInfoSheet({ visible, onClose, profile, goals, levels, sa
         </View>
 
         {saveFailed && <SaveError text={t.profile_save_failed} />}
-        <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
+        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
       </View>
     </BottomSheet>
   )
@@ -163,46 +163,44 @@ export function NutritionTargetsSheet({ visible, onClose, nutrition, saving, onC
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Beslenme Hedefleri" scrollable>
+    <BottomSheet visible={visible} onClose={onClose} title={t.acc_nutrition_goals} scrollable>
       <View style={{ gap: spacing[3] }}>
         <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
           <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
-            Fiziksel bilgilerinden kalori ve makro hedefi hesaplayabilir, sonra gerekirse elle duzenleyebilirsin.
+            {t.acc_nutrition_calc_desc}
           </Text>
         </View>
-        <Button label="Otomatik Hesapla" onPress={handleCalculate} variant="secondary" fullWidth />
+        <Button label={t.acc_auto_calculate} onPress={handleCalculate} variant="secondary" fullWidth />
 
         {/* Kaynak / citation — App Store Guideline 1.4.1 (sağlık bilgisi kaynağı) */}
         <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18 }}>
-            {lang === 'tr'
-              ? 'Kalori ve makro değerleri Harris-Benedict (BMR) denklemi ve Atwater faktörlerine göre tahmin edilir. Yalnızca bilgilendirme amaçlıdır, tıbbi tavsiye değildir.'
-              : 'Calorie and macro values are estimated using the Harris-Benedict (BMR) equation and Atwater factors. For informational purposes only, not medical advice.'}
+            {t.acc_nutrition_info}
           </Text>
           <View style={{ flexDirection: 'row', gap: spacing[4], marginTop: spacing[2] }}>
             <TouchableOpacity onPress={() => void onOpenUrl('https://en.wikipedia.org/wiki/Harris%E2%80%93Benedict_equation')}>
               <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
-                {lang === 'tr' ? 'Kaynak: Harris-Benedict' : 'Source: Harris-Benedict'}
+                {t.acc_source_harris}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => void onOpenUrl('https://en.wikipedia.org/wiki/Atwater_system')}>
               <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
-                {lang === 'tr' ? 'Atwater faktörleri' : 'Atwater factors'}
+                {t.acc_atwater}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
-        <Input label="Günlük Kalori (kcal)" value={draft.calories} onChangeText={(v) => setDraft((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
+        <Input label={t.acc_daily_calories_kcal} value={draft.calories} onChangeText={(v) => setDraft((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
         <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-          <Input label="Protein (g)" value={draft.protein} onChangeText={(v) => setDraft((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
-          <Input label="Karb (g)" value={draft.carbs} onChangeText={(v) => setDraft((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_protein_g} value={draft.protein} onChangeText={(v) => setDraft((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_carbs_g} value={draft.carbs} onChangeText={(v) => setDraft((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} returnKeyType="next" />
         </View>
         <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-          <Input label="Yağ (g)" value={draft.fat} onChangeText={(v) => setDraft((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} returnKeyType="next" />
-          <Input label="Lif (g)" value={draft.fiber} onChangeText={(v) => setDraft((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+          <Input label={t.acc_fat_g} value={draft.fat} onChangeText={(v) => setDraft((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_fiber_g} value={draft.fiber} onChangeText={(v) => setDraft((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
         </View>
         {saveFailed && <SaveError text={t.profile_save_failed} />}
-        <Button label={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
+        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
       </View>
     </BottomSheet>
   )

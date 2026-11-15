@@ -19,7 +19,7 @@ import { GoalSteps } from './GoalSteps'
 interface Props { userId: string }
 
 interface Draft { title: string; target: string; unit: string; tags: string; countMode: GoalCountMode }
-const EMPTY: Draft = { title: '', target: '3', unit: 'gün', tags: '', countMode: 'tasks' }
+const EMPTY: Draft = { title: '', target: '3', unit: '', tags: '', countMode: 'tasks' }
 
 /**
  * Bu haftanın hedefleri ve ilerlemesi. Ay ve çeyrek hedefleri web'de düzenlenir; burada sadece hafta.
@@ -30,7 +30,7 @@ export function GoalsCard({ userId }: Props) {
   const { t } = useLang()
   const { goals, tasks, entries, habitEntries, error, fetchGoals, addGoal, removeGoal } = useGoalStore()
   const [ui, setUi] = useState({ sheet: false, saving: false })
-  const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [draft, setDraft] = useState<Draft>(() => ({ ...EMPTY, unit: t.misc_days }))
   const [open, setOpen] = useState(false)
   const { sheet, saving } = ui
   const setSheet = (sheet: boolean) => setUi((state) => ({ ...state, sheet }))
@@ -63,7 +63,7 @@ export function GoalsCard({ userId }: Props) {
         unit: draft.unit.trim() || null, count_mode: draft.countMode,
         tag_filter: draft.tags.split(',').map((x) => x.trim()).filter(Boolean),
       })
-      setDraft(EMPTY)
+      setDraft({ ...EMPTY, unit: t.misc_days })
       setSheet(false)
     } catch {
       Alert.alert(t.goals_error)
@@ -151,7 +151,7 @@ export function GoalsCard({ userId }: Props) {
             <Input label={t.goals_unit} value={draft.unit} maxLength={20} placeholder={draft.countMode === 'units' ? t.goal_unit_custom : undefined}
               onChangeText={(v) => patch({ unit: v })} containerStyle={{ flex: 1 }} />
           </View>
-          <Input label={t.goals_tags} value={draft.tags} onChangeText={(v) => patch({ tags: v })} placeholder="spor, koşu" />
+          <Input label={t.goals_tags} value={draft.tags} onChangeText={(v) => patch({ tags: v })} placeholder={t.misc_sports_running} />
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
             {(['tasks', 'hours', 'units'] as const).map((m) => (
               <TouchableOpacity key={m} onPress={() => patch({ countMode: m })} style={chip(draft.countMode === m)}>

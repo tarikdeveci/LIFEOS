@@ -1,8 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { todayDate } from '@lifeos/shared'
 import type { ParseMealResponse } from '@lifeos/shared'
 
-import { LANG_STORAGE_KEY } from '../i18n'
+import { loadStoredLang, getCurrentT } from '../contexts/LangContext'
 import { supabase } from './supabase'
 
 const BASE = process.env['EXPO_PUBLIC_SUPABASE_URL']!
@@ -14,7 +13,7 @@ async function getToken(): Promise<string> {
     const { data } = await supabase.auth.refreshSession()
     session = data.session
   }
-  if (!session) throw new Error('Oturum bulunamadı')
+  if (!session) throw new Error(getCurrentT().misc_session_not_found)
   return session.access_token
 }
 
@@ -33,17 +32,17 @@ export class AiAccessError extends Error {
   }
 }
 
-export const AI_BUDGET_MESSAGE = "Bu ayki AI kullanım sınırına ulaştın. Ayın 1'inde yenilenir."
+export const AI_BUDGET_MESSAGE = () => getCurrentT().misc_ai_budget_exhausted
 
 /** Sohbet ekranlarının hata balonu: sınır dolduysa bunu söyle, yoksa ekranın kendi metni. */
 export function aiErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof AiAccessError && error.code === 'ai_budget_exhausted' ? AI_BUDGET_MESSAGE : fallback
+  return error instanceof AiAccessError && error.code === 'ai_budget_exhausted' ? AI_BUDGET_MESSAGE() : fallback
 }
 
 export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T> {
   const token = await getToken()
   // Arayüz dili: sunucu koçun cevap dilini buna göre seçer, gönderilmezse Türkçe cevaplar.
-  const language = (await AsyncStorage.getItem(LANG_STORAGE_KEY).catch(() => null)) === 'en' ? 'en' : 'tr'
+  const language = await loadStoredLang()
   const res = await fetch(`${BASE}/functions/v1/ai-suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${token}` },
@@ -57,9 +56,9 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
     }
     if (res.status === 429) {
       const payload = (await res.json().catch(() => null)) as { code?: string } | null
-      if (payload?.code === 'ai_budget_exhausted') throw new AiAccessError('ai_budget_exhausted', AI_BUDGET_MESSAGE)
+      if (payload?.code === 'ai_budget_exhausted') throw new AiAccessError('ai_budget_exhausted', AI_BUDGET_MESSAGE())
     }
-    throw new Error(`AI suggest hatası: ${res.status}`)
+    throw new Error(`AI suggest error: ${res.status}`)
   }
   return res.json() as Promise<T>
 }
@@ -72,10 +71,10 @@ export async function callParseMeal(body: Record<string, unknown>): Promise<Pars
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    throw new Error(`Parse meal hatası: ${res.status}`)
+    throw new Error(`Parse meal error: ${res.status}`)
   }
   const data: unknown = await res.json()
-  if (!isParseMealResponse(data)) throw new Error('Parse meal yanıtı beklenen biçimde değil')
+  if (!isParseMealResponse(data)) throw new Error('Parse meal response is not in the expected format')
   return data
 }
 

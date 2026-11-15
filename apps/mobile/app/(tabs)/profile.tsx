@@ -42,17 +42,19 @@ export default function ProfileScreen() {
   const { lang, t } = useLang()
   const bottomPadding = useBottomTabPadding()
 
-  const ACTIVITY_LEVELS = ACTIVITY_LEVELS_DEF.map((a) => ({
-    key: a.key,
-    label: lang === 'tr' ? a.trLabel : a.enLabel,
-    sub:   lang === 'tr' ? a.trSub   : a.enSub,
-  }))
+  const ACTIVITY_LEVELS = [
+    { key: 'sedentary', label: t.acc_act_sedentary, sub: t.acc_act_sedentary_sub },
+    { key: 'lightly_active', label: t.acc_act_light, sub: t.acc_act_light_sub },
+    { key: 'moderately_active', label: t.acc_act_mod, sub: t.acc_act_mod_sub },
+    { key: 'very_active', label: t.acc_act_very, sub: t.acc_act_very_sub },
+  ]
 
-  const FITNESS_GOALS = FITNESS_GOALS_DEF.map((g) => ({
-    key:   g.key,
-    label: lang === 'tr' ? g.trLabel : g.enLabel,
-    icon:  g.icon,
-  }))
+  const FITNESS_GOALS = [
+    { key: 'weight_loss', label: t.acc_goal_weight_loss, icon: 'trending-down-outline' },
+    { key: 'muscle_gain', label: t.acc_goal_muscle_gain, icon: 'barbell-outline' },
+    { key: 'maintenance', label: t.acc_goal_maintenance, icon: 'fitness-outline' },
+    { key: 'endurance', label: t.acc_goal_endurance, icon: 'timer-outline' },
+  ]
 
   const [profile, setProfile] = useState<ProfileState>({
     displayName: '', email: '', height: '', weight: '', age: '',
@@ -156,7 +158,7 @@ export default function ProfileScreen() {
         activityLevel: draft.activityLevel,
       }))
       setShowPhysical(false)
-      Alert.alert('Kaydedildi', 'Fiziksel bilgilerin güncellendi.')
+      Alert.alert(t.acc_saved, t.acc_physical_info_updated)
       return true
     } catch {
       return false
@@ -197,7 +199,7 @@ export default function ProfileScreen() {
         fiber: String(payload.fiber_g),
       })
       setShowNutrition(false)
-      Alert.alert('Kaydedildi', 'Beslenme hedeflerin güncellendi.')
+      Alert.alert(t.acc_saved, t.acc_nutrition_goals_updated)
       return true
     } catch {
       return false
@@ -212,7 +214,7 @@ export default function ProfileScreen() {
     const age = parseInt(profile.age, 10)
 
     if (!Number.isFinite(height) || !Number.isFinite(weight) || !Number.isFinite(age) || height <= 0 || weight <= 0 || age <= 0) {
-      Alert.alert('Eksik bilgi', 'Kalori hesaplamak icin boy, kilo ve yas bilgilerini doldur.')
+      Alert.alert(t.acc_missing_info, t.acc_fill_info_for_calc)
       return null
     }
 
@@ -250,10 +252,10 @@ export default function ProfileScreen() {
   }
 
   function handleSignOut() {
-    Alert.alert('Çıkış', 'Oturumu kapatmak istediğine emin misin?', [
-      { text: 'İptal', style: 'cancel' },
+    Alert.alert(t.acc_logout_title, t.acc_logout_confirm, [
+      { text: t.acc_cancel, style: 'cancel' },
       {
-        text: 'Çıkış Yap',
+        text: t.acc_logout_btn,
         style: 'destructive',
         onPress: async () => {
           // Token oturum kapanmadan silinmeli: silme RLS altında çalışıyor,
@@ -269,7 +271,7 @@ export default function ProfileScreen() {
     try {
       await Linking.openURL(url)
     } catch {
-      Alert.alert('Bağlantı açılamadı', 'Lütfen lifeos.tr adresini tarayıcıdan ziyaret et.')
+      Alert.alert(t.acc_link_open_failed, t.acc_link_open_failed_desc)
     }
   }
 
@@ -327,7 +329,7 @@ export default function ProfileScreen() {
               <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: palette.accent }}>{initials}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{profile.displayName || 'Kullanıcı'}</Text>
+              <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{profile.displayName || t.acc_user}</Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{profile.email}</Text>
             </View>
           </View>
@@ -375,12 +377,12 @@ export default function ProfileScreen() {
         {/* Physical info */}
         <SectionCard title={lang === 'tr' ? 'Fiziksel Bilgiler' : 'Physical Info'} icon="body-outline" onEdit={() => setShowPhysical(true)} style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-            <InfoChip label="Boy" value={profile.height ? `${profile.height} cm` : '—'} />
-            <InfoChip label="Kilo" value={profile.weight ? `${formatWeightKg(Number(profile.weight))} kg` : '—'} />
-            <InfoChip label="Yaş" value={profile.age || '—'} />
-            <InfoChip label="Cinsiyet" value={profile.gender === 'female' ? t.profile_gender_female : t.profile_gender_male} />
-            <InfoChip label="Hedef" value={FITNESS_GOALS.find((g) => g.key === profile.fitnessGoal)?.label ?? '—'} />
-            <InfoChip label="Aktivite" value={ACTIVITY_LEVELS.find((a) => a.key === profile.activityLevel)?.label ?? '—'} />
+            <InfoChip label={t.acc_height_label} value={profile.height ? `${profile.height} cm` : '—'} />
+            <InfoChip label={t.acc_weight_label} value={profile.weight ? `${formatWeightKg(Number(profile.weight))} kg` : '—'} />
+            <InfoChip label={t.acc_age_label} value={profile.age || '—'} />
+            <InfoChip label={t.acc_gender_label} value={profile.gender === 'female' ? t.profile_gender_female : t.profile_gender_male} />
+            <InfoChip label={t.acc_goal_label} value={FITNESS_GOALS.find((g) => g.key === profile.fitnessGoal)?.label ?? '—'} />
+            <InfoChip label={t.acc_activity_label} value={ACTIVITY_LEVELS.find((a) => a.key === profile.activityLevel)?.label ?? '—'} />
           </View>
         </SectionCard>
 
@@ -388,14 +390,14 @@ export default function ProfileScreen() {
         <SectionCard title={lang === 'tr' ? 'Beslenme Hedefleri' : 'Nutrition Goals'} icon="nutrition-outline" onEdit={() => setShowNutrition(true)} style={{ marginBottom: spacing[4] }}>
           {hasNutrition ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-              <InfoChip label="Kalori" value={nutrition.calories ? `${nutrition.calories} kcal` : '—'} color={palette.warning} />
-              <InfoChip label="Protein" value={nutrition.protein ? `${nutrition.protein}g` : '—'} color={palette.info} />
-              <InfoChip label="Karb" value={nutrition.carbs ? `${nutrition.carbs}g` : '—'} color={palette.success} />
-              <InfoChip label="Yağ" value={nutrition.fat ? `${nutrition.fat}g` : '—'} color={palette.danger} />
-              <InfoChip label="Lif" value={nutrition.fiber ? `${nutrition.fiber}g` : '—'} color="#10B981" />
+              <InfoChip label={t.acc_calorie_label} value={nutrition.calories ? `${nutrition.calories} kcal` : '—'} color={palette.warning} />
+              <InfoChip label={t.acc_protein_label} value={nutrition.protein ? `${nutrition.protein}g` : '—'} color={palette.info} />
+              <InfoChip label={t.acc_carb_label} value={nutrition.carbs ? `${nutrition.carbs}g` : '—'} color={palette.success} />
+              <InfoChip label={t.acc_fat_label} value={nutrition.fat ? `${nutrition.fat}g` : '—'} color={palette.danger} />
+              <InfoChip label={t.acc_fiber_label} value={nutrition.fiber ? `${nutrition.fiber}g` : '—'} color="#10B981" />
             </View>
           ) : (
-            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>Henüz hedef belirlenmemiş.</Text>
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle }}>{t.acc_no_nutrition_targets}</Text>
           )}
         </SectionCard>
 
@@ -463,6 +465,7 @@ export default function ProfileScreen() {
 
 function SectionCard({ title, icon, onEdit, children, style }: { title: string; icon: string; onEdit: () => void; children: React.ReactNode; style?: object }) {
   const { colors } = useTheme()
+  const { t } = useLang()
   return (
     <GlassCard style={style}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
@@ -472,7 +475,7 @@ function SectionCard({ title, icon, onEdit, children, style }: { title: string; 
         </View>
         <TouchableOpacity onPress={onEdit} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
-          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, fontWeight: fontWeight.medium }}>Düzenle</Text>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, fontWeight: fontWeight.medium }}>{t.acc_edit}</Text>
         </TouchableOpacity>
       </View>
       {children}
