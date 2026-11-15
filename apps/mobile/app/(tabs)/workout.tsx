@@ -205,7 +205,7 @@ export default function WorkoutScreen() {
             totalCount={workoutHistory.length}
             isPro={isPro}
             isCheckingPro={isCheckingPro}
-            onOpenCoach={() => { if (requirePro()) coach.setShowCoach(true) }}
+            onOpenCoach={() => { if (requirePro('workout_coach')) coach.setShowCoach(true) }}
           />
         )}
 

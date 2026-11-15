@@ -554,7 +554,7 @@ export default function NutritionScreen() {
   async function sendChat(text: string) {
     const trimmed = text.trim()
     if (!trimmed || !userId || chatLoading) return
-    if (!requirePro()) return
+    if (!requirePro('nutrition_chat')) return
 
     // Geçmiş, kullanıcının yeni mesajı eklenmeden önce alınır: sunucu son turu
     // ayrıca user_message olarak ekliyor, iki kez göndermek modeli tekrarlatıyor.
@@ -639,7 +639,7 @@ export default function NutritionScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_title}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity onPress={() => { if (requirePro()) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
+            <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
               <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>

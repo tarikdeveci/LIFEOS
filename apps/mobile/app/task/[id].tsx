@@ -122,7 +122,7 @@ export default function TaskDetailScreen() {
 
   async function handleAiSuggest() {
     if (!task) return
-    if (!requirePro()) return
+    if (!requirePro('task_priority')) return
     setAiLoading(true)
     setAiReasoning(null)
     try {
