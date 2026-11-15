@@ -298,7 +298,7 @@ export type Database = {
           name: string
           platform: string | null
           props: Json
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -306,7 +306,7 @@ export type Database = {
           name: string
           platform?: string | null
           props?: Json
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -314,7 +314,7 @@ export type Database = {
           name?: string
           platform?: string | null
           props?: Json
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -2092,6 +2092,7 @@ export type Database = {
         Args: { p_user: string }
         Returns: number
       }
+      guest_is_stale: { Args: { p_user: string }; Returns: boolean }
       integration_get_secret: {
         Args: { p_integration: string }
         Returns: string
@@ -2111,6 +2112,7 @@ export type Database = {
           routine_id: string
         }[]
       }
+      purge_stale_guests: { Args: { p_limit?: number }; Returns: number }
       record_food_gap: {
         Args: { p_phrase: string; p_reason: string; p_user: string }
         Returns: undefined
