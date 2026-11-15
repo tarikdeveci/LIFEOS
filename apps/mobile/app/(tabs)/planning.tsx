@@ -31,6 +31,7 @@ import { useNow } from '@/src/hooks/useNow'
 import { useProGate } from '@/src/hooks/useProGate'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
+import { useProgramDays } from '@/src/hooks/useProgramDays'
 
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
 function localIsoDate(date = new Date()): string {
@@ -265,6 +266,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         .sort((a, b) => a.start_time.localeCompare(b.start_time)),
     [timeBlocks, selectedDate],
   )
+  const programDays = useProgramDays(userId, dayBlocks)
 
   const isViewingToday = selectedDate === todayStr
   // Bugüne ait blok ya da görev yoksa "Günü kapat" kartı çıkmaz: verisi olmayan kullanıcıda ekran değişmez.
@@ -373,6 +375,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
           now={now}
           blockColors={BLOCK_COLORS}
           blockLabels={BLOCK_LABELS}
+          programDays={programDays}
           // Silme yazılamazsa store bloğu geri koyar; satırın geri gelmesi hatayı gösterir.
           onDelete={(blockId) => { removeTimeBlock(supabase, blockId).catch(() => undefined) }}
           onEdit={(block) => setBlockSheet(block)}

@@ -49,6 +49,8 @@ export interface Routine {
   is_untracked: boolean
   /** 068: bağlı hedef (yalnızca task ve habit). Görev örnekleri ve alışkanlık günleri ilerlemeye sayılır. */
   goal_id: string | null
+  /** 079: bağlı antrenman programı (yalnızca workout bloğu). Program günü bloğun günlerine sırayla düşer. */
+  workout_program_id: string | null
   created_at: string
   updated_at: string
 }
@@ -83,6 +85,7 @@ export interface CreateRoutineInput {
   is_protected?: boolean
   is_untracked?: boolean
   goal_id?: string | null
+  workout_program_id?: string | null
 }
 
 /** my_routine_progress RPC satırı: sayaçlı rutinin biten oturum sayısı. */

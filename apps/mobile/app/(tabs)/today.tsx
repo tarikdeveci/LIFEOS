@@ -15,6 +15,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
+import { useProgramDays, withProgramDay } from '@/src/hooks/useProgramDays'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
@@ -69,6 +70,7 @@ export default function TodayScreen() {
   const todayTasks  = tasks.filter((t) => t.scheduled_date === todayStr && t.status !== 'done')
   const doneTasks   = tasks.filter((t) => t.scheduled_date === todayStr && t.status === 'done').length
   const todayBlocks = timeBlocks.filter((b) => b.date === todayStr)
+  const programDays = useProgramDays(userId, todayBlocks)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
       const [sh = 0, sm = 0] = b.start_time.split(':').map(Number)
@@ -212,7 +214,7 @@ export default function TodayScreen() {
                       style={{ flex: 1, fontSize: fontSize.sm, fontWeight: isActive ? fontWeight.bold : fontWeight.medium, color: isActive ? colors.textPrimary : colors.textSecondary }}
                       numberOfLines={1}
                     >
-                      {block.label}
+                      {withProgramDay(block.label ?? '', programDays[block.id])}
                     </Text>
                     {isActive && (
                       <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.full, backgroundColor: color }}>
