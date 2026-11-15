@@ -27,6 +27,15 @@ export function wsjfToPriorityLabel(score: number): 'critical' | 'high' | 'mediu
 }
 
 /**
+ * Kullanıcı önceliği ayarladı mı: beş skordan biri varsayılandan farklıysa evet.
+ * Varsayılan görev 1.5 ile "high" etiketine düştüğü için etiket yalnız bu durumda gösterilir.
+ */
+export function hasCustomPriority(scores: WsjfScores): boolean {
+  return (Object.keys(DEFAULT_WSJF_SCORES) as (keyof WsjfScores)[])
+    .some((key) => scores[key] !== DEFAULT_WSJF_SCORES[key])
+}
+
+/**
  * Default WSJF skorları
  */
 export const DEFAULT_WSJF_SCORES: WsjfScores = {
