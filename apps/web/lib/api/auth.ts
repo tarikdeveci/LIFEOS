@@ -3,13 +3,22 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { ACCOUNT_REQUIRED_BODY, isPermanentAccount, type GateUser } from '@/lib/api/accountGate'
 
+type ApiSupabase = Awaited<ReturnType<typeof createServerClient>>
+
+export interface ApiAuth {
+  supabase: ApiSupabase
+  userId: string
+  isAnonymous: boolean
+  emailConfirmed: boolean
+}
+
 /**
  * API rotaları için oturum: web çerezden, mobil "Authorization: Bearer <supabase erişim
  * anahtarı>" ile gelir. Dönen istemci kullanıcı adına çalışır (RLS geçerli).
  */
-export async function authenticateRequest(req: Request) {
+export async function authenticateRequest(req: Request): Promise<ApiAuth | null> {
   const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim()
-  const supabase = bearer
+  const supabase: ApiSupabase = bearer
     ? createClient(process.env['NEXT_PUBLIC_SUPABASE_URL']!, process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!, {
         global: { headers: { Authorization: `Bearer ${bearer}` } },
         auth: { persistSession: false, autoRefreshToken: false },
