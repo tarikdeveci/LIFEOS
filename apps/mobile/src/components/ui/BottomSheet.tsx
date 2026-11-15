@@ -122,7 +122,11 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
           {title && (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] }}>
               <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{title}</Text>
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity
+                onPress={onClose}
+                accessibilityRole="button"
+                style={{ minWidth: 44, minHeight: 44, marginVertical: -spacing[2], alignItems: 'flex-end', justifyContent: 'center' }}
+              >
                 <Text style={{ fontSize: fontSize.base, color: colors.textMuted }}>{t.cancel}</Text>
               </TouchableOpacity>
             </View>

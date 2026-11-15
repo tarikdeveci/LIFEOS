@@ -295,7 +295,7 @@ export const accountTr: Record<keyof typeof accountEn, string> = {
   acc_weight_kg: 'Kilo (kg)',
   acc_saving: 'Kaydediliyor...',
   acc_save: 'Kaydet',
-  acc_nutrition_calc_desc: 'Fiziksel bilgilerinden kalori ve makro hedefi hesaplayabilir, sonra gerekirse elle duzenleyebilirsin.',
+  acc_nutrition_calc_desc: 'Fiziksel bilgilerinden kalori ve makro hedefi hesaplayabilir, sonra gerekirse elle düzenleyebilirsin.',
   acc_auto_calculate: 'Otomatik Hesapla',
   acc_source_harris: 'Kaynak: Harris-Benedict',
   acc_atwater: 'Atwater faktörleri',

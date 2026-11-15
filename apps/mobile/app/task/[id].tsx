@@ -202,13 +202,13 @@ export default function TaskDetailScreen() {
     <ScreenBackground edges={['top']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={goBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <TouchableOpacity onPress={goBack} hitSlop={hitSlopFor(64, 24)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="chevron-back" size={20} color={palette.accent} />
           <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.misc_back}</Text>
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
           {saving && <ActivityIndicator size="small" color={palette.accent} />}
-          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityLabel={t.misc_delete_task_a11y}>
+          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityRole="button" accessibilityLabel={t.misc_delete_task_a11y}>
             <Ionicons name="trash-outline" size={20} color={palette.danger} />
           </TouchableOpacity>
         </View>
@@ -252,7 +252,9 @@ export default function TaskDetailScreen() {
                 <TouchableOpacity
                   key={s}
                   onPress={() => handleStatusChange(s)}
-                  style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}18`, borderWidth: 1, borderColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}35` }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}18`, borderWidth: 1, borderColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}35` }}
                 >
                   <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: active ? '#fff' : STATUS_COLORS[s] }}>{getStatusLabels(t)[s]}</Text>
                 </TouchableOpacity>
@@ -277,10 +279,12 @@ export default function TaskDetailScreen() {
             <TouchableOpacity
               onPress={handleAiSuggest}
               disabled={aiLoading || isCheckingPro}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading || !isPro ? 0.6 : 1 }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: aiLoading || isCheckingPro, busy: aiLoading }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading || !isPro ? 0.6 : 1 }}
             >
               {aiLoading ? <ActivityIndicator size="small" color={palette.accent} /> : <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={14} color={palette.accent} />}
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{isPro ? t.misc_ai_suggest : t.misc_pro_ai_suggest}</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{isPro ? t.misc_ai_suggest : t.misc_pro_ai_suggest}</Text>
             </TouchableOpacity>
           </View>
 
@@ -346,6 +350,8 @@ export default function TaskDetailScreen() {
                       <TouchableOpacity
                         disabled={chipsDisabled}
                         onPress={() => handleDate(todayStr)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isToday, disabled: chipsDisabled }}
                         style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isToday ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isToday ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isToday ? '#fff' : colors.textPrimary }}>{t.misc_today}</Text>
@@ -353,6 +359,8 @@ export default function TaskDetailScreen() {
                       <TouchableOpacity
                         disabled={chipsDisabled}
                         onPress={() => handleDate(tomorrowStr)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isTomorrow, disabled: chipsDisabled }}
                         style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isTomorrow ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isTomorrow ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isTomorrow ? '#fff' : colors.textPrimary }}>{t.misc_tomorrow}</Text>
@@ -360,6 +368,8 @@ export default function TaskDetailScreen() {
                       <TouchableOpacity
                         disabled={chipsDisabled}
                         onPress={() => handleDate(null)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isNone, disabled: chipsDisabled }}
                         style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isNone ? colors.bgSurface : colors.glassInner, borderWidth: 1, borderColor: isNone ? colors.border : colors.border, alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isNone ? colors.textPrimary : colors.textMuted }}>{t.misc_no_date}</Text>
