@@ -9,6 +9,7 @@ import { GlassCard } from '@/src/components/ui/GlassCard'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { HealthConnectPrompt } from '@/src/components/health/HealthCard'
+import { NextTaskRow } from '@/src/components/tasks/NextTaskRow'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -177,6 +178,7 @@ export default function TodayScreen() {
           {todayTasks.length === 0 && (
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_tasks}</Text>
           )}
+          {todayTasks.length === 0 && <NextTaskRow tasks={tasks} />}
         </GlassCard>
 
         {/* Planning */}

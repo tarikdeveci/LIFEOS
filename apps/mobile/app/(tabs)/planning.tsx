@@ -15,6 +15,7 @@ import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { BlockSheet } from '@/src/components/planning/BlockSheet'
 import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
+import { NextTaskRow } from '@/src/components/tasks/NextTaskRow'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
 import { WeekStrip } from '@/src/components/planning/WeekStrip'
@@ -259,7 +260,8 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
 
   const isViewingToday = selectedDate === todayStr
   // Bugüne ait blok ya da görev yoksa "Günü kapat" kartı çıkmaz: verisi olmayan kullanıcıda ekran değişmez.
-  const hasTodayTasks = useTaskStore((s) => s.tasks.some((task) => task.scheduled_date === todayStr))
+  const allTasks = useTaskStore((s) => s.tasks)
+  const hasTodayTasks = allTasks.some((task) => task.scheduled_date === todayStr)
   const hasTodayItems = hasTodayTasks || timeBlocks.some((b) => b.date === todayStr)
   const dayTitle = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })
   // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
@@ -351,6 +353,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         ) : (
           <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
         ))}
+        {isViewingToday && userId && <NextTaskRow tasks={allTasks} style={{ marginBottom: spacing[4] }} />}
         {isViewingToday && userId && hasTodayItems && <DayCloseCard userId={userId} now={now} date={todayStr} />}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
