@@ -292,6 +292,25 @@ export async function createWorkoutProgram(
   return data as WorkoutProgram
 }
 
+/** Kullanıcının kendi programının adı (şablonları RLS korur). */
+export async function updateWorkoutProgram(
+  supabase: Supabase,
+  programId: string,
+  updates: { name: string },
+): Promise<void> {
+  const { error } = await supabase.from('workout_programs').update(updates).eq('id', programId)
+  if (error) throw error
+}
+
+export async function updateProgramDay(
+  supabase: Supabase,
+  dayId: string,
+  updates: { day_name: string },
+): Promise<void> {
+  const { error } = await supabase.from('program_days').update(updates).eq('id', dayId)
+  if (error) throw error
+}
+
 export async function deleteWorkoutProgram(
   supabase: Supabase,
   programId: string,
@@ -358,13 +377,20 @@ export async function deleteProgramExercise(supabase: Supabase, exerciseRowId: s
 }
 
 /**
- * Programdaki bir hareketi başka bir hareketle değiştirir (ekipmana uyarlama).
- * Set, tekrar ve dinlenme satırda kalır.
+ * Programdaki bir hareketin satırını günceller: ekipmana uyarlamada hareketi
+ * değiştirir, düzenlemede set, tekrar, dinlenme ve sırayı.
  */
 export async function updateProgramExercise(
   supabase: Supabase,
   exerciseRowId: string,
-  updates: { exercise_id?: string; notes?: string | null },
+  updates: {
+    exercise_id?: string
+    notes?: string | null
+    sets?: number
+    reps?: number | null
+    rest_seconds?: number
+    order_index?: number
+  },
 ): Promise<void> {
   const { error } = await supabase.from('program_exercises').update(updates).eq('id', exerciseRowId)
   if (error) throw error
