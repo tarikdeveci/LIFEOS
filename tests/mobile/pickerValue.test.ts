@@ -36,3 +36,10 @@ test('isoToDate: bozuk ya da olmayan günde null', () => {
     assert.equal(isoToDate(bad), null, bad)
   }
 })
+
+test('timeToDate: varsayılan gün yaz saati geçişi olmayan sabit gün', () => {
+  for (const v of ['00:00', '02:30', '03:15', '23:59']) {
+    assert.equal(dateToTime(timeToDate(v)), v)
+  }
+  assert.equal(timeToDate('02:30').getMonth(), 0)
+})

@@ -122,7 +122,11 @@ function PickerField({ label, placeholder, containerStyle, error, disabled, onCl
             onChange={(_e: DateTimePickerEvent, d?: Date) => { if (d) onPick(d) }}
           />
           <TouchableOpacity
-            onPress={() => setIosOpen(false)}
+            onPress={() => {
+              // Çark hiç oynatılmadıysa değişiklik olayı gelmez: gösterilen varsayılanı kaydet.
+              if (empty) onPick(pickerValue)
+              setIosOpen(false)
+            }}
             accessibilityRole="button"
             style={{ minHeight: MIN_TOUCH, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: spacing[3] }}
           >
@@ -164,7 +168,7 @@ export function TimeField({ value, onChange, defaultTime, ...rest }: TimeProps) 
       {...rest}
       mode="time"
       display={valid ? value : ''}
-      pickerValue={timeToDate(value, new Date(), defaultTime)}
+      pickerValue={timeToDate(value, undefined, defaultTime)}
       onPick={(d) => onChange(dateToTime(d))}
     />
   )

@@ -16,8 +16,11 @@ function parseTime(value: string): [number, number] | null {
   return h < 24 && min < 60 ? [h, min] : null
 }
 
+/** Saat seçicinin günü: yaz saati geçişi olmayan sabit bir gün, yoksa 02:30 gibi saatler kayar. */
+const TIME_BASE = new Date(2001, 0, 1, 12)
+
 /** 'HH:MM' değerini `base` gününün o saatine çevirir; değer bozuksa `fallback` saati. */
-export function timeToDate(value: string, base: Date = new Date(), fallback = '09:00'): Date {
+export function timeToDate(value: string, base: Date = TIME_BASE, fallback = '09:00'): Date {
   const [h, min] = parseTime(value) ?? parseTime(fallback) ?? [9, 0]
   const d = new Date(base)
   d.setHours(h, min, 0, 0)
