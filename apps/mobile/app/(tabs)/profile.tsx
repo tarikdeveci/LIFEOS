@@ -14,7 +14,7 @@ import { GlassCard } from '@/src/components/ui/GlassCard'
 import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
 import { HealthCard } from '@/src/components/health/HealthCard'
 import { AdaptiveTdeeCard } from '@/src/components/nutrition/AdaptiveTdeeCard'
-import { PhysicalInfoSheet, NutritionTargetsSheet } from '@/src/components/profile/ProfileSheets'
+import { PhysicalInfoSheet, NutritionTargetsSheet, nutritionDraftGrams } from '@/src/components/profile/ProfileSheets'
 import type { ProfileState, NutritionState } from '@/src/components/profile/ProfileSheets'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { Button } from '@/src/components/ui/Button'
@@ -171,12 +171,15 @@ export default function ProfileScreen() {
     if (!userId) return false
     setSaving(true)
     try {
+      // Kalori makrolardan gelir, ayrı girilmez; önizlemeyle aynı hesap (#11).
+      const { protein_g, carbs_g, fat_g, calories } = nutritionDraftGrams(draft)
+      if (calories <= 0) return false
       const payload = {
-        calories:  parseFloat(draft.calories) || 2000,
-        protein_g: parseFloat(draft.protein)  || 150,
-        carbs_g:   parseFloat(draft.carbs)    || 250,
-        fat_g:     parseFloat(draft.fat)      || 70,
-        fiber_g:   parseFloat(draft.fiber)    || 30,
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+        fiber_g: parseFloat(draft.fiber) || 30,
         is_active: true,
       }
       const { data: existing } = await supabase

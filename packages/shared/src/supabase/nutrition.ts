@@ -232,11 +232,13 @@ export interface CuratedFoodMatch {
   fat: number
   fiber: number
   is_verified: boolean
+  /** 024: serving_size tek parçayı temsil ediyor mu. */
+  is_countable?: boolean
 }
 
 const CURATED_CACHE_TTL_MS = 5 * 60 * 1000
 const CURATED_COLUMNS =
-  'id, name, name_en, aliases, serving_size, serving_unit, calories, protein, carbs, fat, fiber, is_verified'
+  'id, name, name_en, aliases, serving_size, serving_unit, calories, protein, carbs, fat, fiber, is_verified, is_countable'
 
 let curatedCache: { userId: string; at: number; rows: CuratedFoodMatch[] } | null = null
 
@@ -334,6 +336,7 @@ export async function searchFoodChoices(
             : Math.round(food.calories),
         default_grams: food.serving_size > 0 ? food.serving_size : 100,
         verified: food.is_verified,
+        countable: food.serving_size > 0 && food.is_countable === true,
       },
     })
   }

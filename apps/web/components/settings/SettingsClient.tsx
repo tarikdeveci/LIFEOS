@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast'
 import {
   APP_DEFAULTS,
   calculateTDEE,
+  caloriesFromMacros,
   suggestMacrosFromTDEE,
   type ActivityLevel,
   type FitnessGoal,
@@ -117,6 +118,7 @@ export default function SettingsClient({ userId }: { userId: string }) {
     fat_g: APP_DEFAULTS.DEFAULT_FAT_G,
     fiber_g: APP_DEFAULTS.DEFAULT_FIBER_G,
   })
+  const derivedCalories = caloriesFromMacros(nutritionTarget.protein_g, nutritionTarget.carbs_g, nutritionTarget.fat_g)
 
   // Check 2FA status on mount
   useEffect(() => {
@@ -216,6 +218,8 @@ export default function SettingsClient({ userId }: { userId: string }) {
         .insert({
           user_id: userId,
           ...nutritionTarget,
+          // Kalori makrolardan gelir, tek doğruluk kaynağı makrolardır (#11).
+          calories: caloriesFromMacros(nutritionTarget.protein_g, nutritionTarget.carbs_g, nutritionTarget.fat_g),
           is_active: true,
         })
         .select('id')
@@ -575,13 +579,11 @@ export default function SettingsClient({ userId }: { userId: string }) {
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label={t.settings_calories}
+              label={t.settings_calories_derived}
               type="number"
-              value={nutritionTarget.calories}
-              onChange={(e) => setNutritionTarget({ ...nutritionTarget, calories: parseInt(e.target.value) || 0 })}
-              min={500}
-              max={10000}
-              step={50}
+              value={derivedCalories}
+              readOnly
+              aria-readonly="true"
             />
             <Input
               label={t.settings_protein}
@@ -626,13 +628,13 @@ export default function SettingsClient({ userId }: { userId: string }) {
             <p className="mb-2 text-xs font-medium text-muted">{t.nutr_macro_breakdown}</p>
             <div className="flex gap-4 text-xs">
               <span className="text-primary">
-                Protein: <b>{nutritionTarget.protein_g * 4} kcal</b> ({nutritionTarget.calories > 0 ? Math.round((nutritionTarget.protein_g * 4 / nutritionTarget.calories) * 100) : 0}%)
+                Protein: <b>{nutritionTarget.protein_g * 4} kcal</b> ({derivedCalories > 0 ? Math.round((nutritionTarget.protein_g * 4 / derivedCalories) * 100) : 0}%)
               </span>
               <span className="text-primary">
-                Karb: <b>{nutritionTarget.carbs_g * 4} kcal</b> ({nutritionTarget.calories > 0 ? Math.round((nutritionTarget.carbs_g * 4 / nutritionTarget.calories) * 100) : 0}%)
+                Karb: <b>{nutritionTarget.carbs_g * 4} kcal</b> ({derivedCalories > 0 ? Math.round((nutritionTarget.carbs_g * 4 / derivedCalories) * 100) : 0}%)
               </span>
               <span className="text-primary">
-                Yağ: <b>{nutritionTarget.fat_g * 9} kcal</b> ({nutritionTarget.calories > 0 ? Math.round((nutritionTarget.fat_g * 9 / nutritionTarget.calories) * 100) : 0}%)
+                Yağ: <b>{nutritionTarget.fat_g * 9} kcal</b> ({derivedCalories > 0 ? Math.round((nutritionTarget.fat_g * 9 / derivedCalories) * 100) : 0}%)
               </span>
             </div>
           </div>
