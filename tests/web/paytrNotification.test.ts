@@ -5,38 +5,32 @@ import { handlePaytrNotification, type PaytrDb, type PaytrIpn } from '../../apps
 
 type Err = { message: string } | null
 interface FakeOptions {
-  subscription?: { user_id: string; plan: string } | null
-  subError?: Err
-  existing?: unknown[]
-  existingError?: Err
-  updateError?: Err
-  insertError?: Err
+  payment?: { plan: string } | null
+  pError?: Err
+  rpcResult?: string
+  rpcError?: Err
 }
 
 function fakeDb(options: FakeOptions = {}) {
   const calls: string[] = []
-  const subscription = 'subscription' in options ? options.subscription : { user_id: 'u1', plan: 'pro_monthly' }
+  const payment = 'payment' in options ? options.payment : { plan: 'pro_monthly' }
+  const rpcResult = 'rpcResult' in options ? options.rpcResult : 'ok'
   const db = {
     from(table: string) {
       return {
         select() {
           const chain: Record<string, unknown> = {
             eq: () => chain,
-            limit: () => Promise.resolve({ data: options.existing ?? [], error: options.existingError ?? null }),
-            maybeSingle: () => Promise.resolve({ data: subscription, error: options.subError ?? null }),
+            maybeSingle: () => Promise.resolve({ data: payment, error: options.pError ?? null }),
           }
           return chain
-        },
-        update() {
-          calls.push(`update:${table}`)
-          return { eq: () => Promise.resolve({ error: options.updateError ?? null }) }
-        },
-        insert() {
-          calls.push(`insert:${table}`)
-          return Promise.resolve({ error: options.insertError ?? null })
-        },
+        }
       }
     },
+    rpc(name: string) {
+      calls.push(`rpc:${name}`)
+      return Promise.resolve({ data: rpcResult, error: options.rpcError ?? null })
+    }
   } as unknown as PaytrDb
   return { db, calls }
 }
@@ -48,37 +42,23 @@ const deps = (db: PaytrDb, verify = true) => ({
   db, verifyHash: () => verify, netMonthlyUsd: () => 1.5, now: () => new Date('2026-01-31T10:00:00Z'),
 })
 
-test('paytr ipn: başarılı ödeme abonelik ve geçmişi yazar, OK döner', async () => {
+test('paytr ipn: başarılı ödeme rpc çağırır, OK döner', async () => {
   const { db, calls } = fakeDb()
   const result = await handlePaytrNotification(ipn(), deps(db))
   assert.deepEqual(result, { status: 200, body: 'OK' })
-  assert.deepEqual(calls, ['update:subscriptions', 'insert:payment_history'])
+  assert.deepEqual(calls, ['rpc:paytr_settle_payment'])
 })
 
-test('paytr ipn: abonelik yazma hatasında OK dönmez, geçmiş yazılmaz', async () => {
-  const { db, calls } = fakeDb({ updateError: { message: 'db down' } })
+test('paytr ipn: rpc hatasında 500 döner', async () => {
+  const { db, calls } = fakeDb({ rpcError: { message: 'db down' } })
   const result = await handlePaytrNotification(ipn(), deps(db))
   assert.equal(result.status, 500)
   assert.notEqual(result.body, 'OK')
-  assert.deepEqual(calls, ['update:subscriptions'])
+  assert.deepEqual(calls, ['rpc:paytr_settle_payment'])
 })
 
-test('paytr ipn: geçmiş yazma hatasında OK dönmez', async () => {
-  const { db } = fakeDb({ insertError: { message: 'db down' } })
-  const result = await handlePaytrNotification(ipn(), deps(db))
-  assert.equal(result.status, 500)
-  assert.notEqual(result.body, 'OK')
-})
-
-test('paytr ipn: başarısız ödeme geçmişi yazılamazsa da OK dönmez', async () => {
-  const { db, calls } = fakeDb({ insertError: { message: 'db down' } })
-  const result = await handlePaytrNotification(ipn({ status: 'failed' }), deps(db))
-  assert.equal(result.status, 500)
-  assert.deepEqual(calls, ['insert:payment_history'])
-})
-
-test('paytr ipn: abonelik okuma hatası tekrar denetir', async () => {
-  const { db, calls } = fakeDb({ subError: { message: 'timeout' } })
+test('paytr ipn: payment okuma hatası tekrar denetir (500)', async () => {
+  const { db, calls } = fakeDb({ pError: { message: 'timeout' } })
   const result = await handlePaytrNotification(ipn(), deps(db))
   assert.equal(result.status, 500)
   assert.deepEqual(calls, [])
@@ -96,16 +76,23 @@ test('paytr ipn: eksik alan 400', async () => {
   assert.equal((await handlePaytrNotification(ipn({ hash: '' }), deps(db))).status, 400)
 })
 
-test('paytr ipn: bilinmeyen oid OK döner (tekrar denemek düzeltmez)', async () => {
-  const { db, calls } = fakeDb({ subscription: null })
+test('paytr ipn: bilinmeyen oid OK döner (ilk kontrol)', async () => {
+  const { db, calls } = fakeDb({ payment: null })
   const result = await handlePaytrNotification(ipn(), deps(db))
   assert.deepEqual(result, { status: 200, body: 'OK' })
   assert.deepEqual(calls, [])
 })
 
-test('paytr ipn: çift bildirim ikinci kez yazmaz', async () => {
-  const { db, calls } = fakeDb({ existing: [{ id: 'x' }] })
+test('paytr ipn: rpc not_found dönerse OK', async () => {
+  const { db, calls } = fakeDb({ rpcResult: 'not_found' })
   const result = await handlePaytrNotification(ipn(), deps(db))
   assert.deepEqual(result, { status: 200, body: 'OK' })
-  assert.deepEqual(calls, [])
+  assert.deepEqual(calls, ['rpc:paytr_settle_payment'])
+})
+
+test('paytr ipn: rpc already dönerse OK', async () => {
+  const { db, calls } = fakeDb({ rpcResult: 'already' })
+  const result = await handlePaytrNotification(ipn(), deps(db))
+  assert.deepEqual(result, { status: 200, body: 'OK' })
+  assert.deepEqual(calls, ['rpc:paytr_settle_payment'])
 })

@@ -20,7 +20,7 @@ export interface PaytrIpn {
 }
 
 /** Testte sahte nesne verilir (tests/web/paytrNotification.test.ts). */
-export type PaytrDb = Pick<SupabaseClient, 'from'>
+export type PaytrDb = Pick<SupabaseClient, 'from' | 'rpc'>
 
 export interface PaytrDeps {
   db: PaytrDb
@@ -46,81 +46,45 @@ export async function handlePaytrNotification(ipn: PaytrIpn, deps: PaytrDeps): P
     return INVALID
   }
 
-  const { data: subscription, error: subError } = await deps.db
-    .from('subscriptions')
-    .select('user_id, plan')
+  const { data: payment, error: pError } = await deps.db
+    .from('payment_history')
+    .select('plan')
     .eq('paytr_merchant_oid', merchantOid)
     .maybeSingle()
-  if (subError) {
-    console.error('PayTR abonelik okunamadı:', { merchantOid, message: subError.message })
+  if (pError) {
+    console.error('PayTR ödeme geçmişi okunamadı:', { merchantOid, message: pError.message })
     return RETRY
   }
-  if (!subscription) {
-    // Aynı kullanıcı ikinci bir ödeme başlattıysa subscriptions.paytr_merchant_oid ezilmiş
-    // olabilir. Bu bilinen açık: nedeni KALAN_ADIMLAR'da. Tekrar denemek düzeltmez.
+  if (!payment) {
     console.error('Abonelik bulunamadı merchant_oid:', merchantOid)
     return OK
   }
 
   const outcome = status === 'success' ? 'success' : 'failure'
-
-  // Çift bildirim: bu oid için aynı sonuç zaten yazıldıysa tekrar yazma.
-  const { data: existing, error: existingError } = await deps.db
-    .from('payment_history')
-    .select('id')
-    .eq('paytr_merchant_oid', merchantOid)
-    .eq('status', outcome)
-    .limit(1)
-  if (existingError) {
-    console.error('PayTR ödeme geçmişi okunamadı:', { merchantOid, message: existingError.message })
-    return RETRY
-  }
-  if (existing && existing.length > 0) return OK
-
-  const planKey = subscription.plan as 'pro_monthly' | 'pro_annual'
+  const planKey = payment.plan as 'pro_monthly' | 'pro_annual'
   const amount = parseFloat(totalAmount) / 100
+  let netMonthlyUsd: number | null = null
 
   if (outcome === 'success') {
-    const now = (deps.now ?? (() => new Date()))()
-    const periodEnd = new Date(now)
-    if (planKey === 'pro_annual') periodEnd.setFullYear(periodEnd.getFullYear() + 1)
-    else periodEnd.setMonth(periodEnd.getMonth() + 1)
-    const netMonthlyUsd = deps.netMonthlyUsd(totalAmount, planKey)
-
-    // Önce abonelik: bu yazılamazsa geçmiş satırı da yazılmaz, tekrar deneme ikisini birlikte yapar.
-    const { error: updateError } = await deps.db
-      .from('subscriptions')
-      .update({
-        status: planKey,
-        current_period_start: now.toISOString(),
-        current_period_end: periodEnd.toISOString(),
-        cancel_at_period_end: false,
-        cancelled_at: null,
-        // Kur tanımlı değilse kolon hiç yazılmaz, mevcut değer korunur.
-        ...(netMonthlyUsd === null ? {} : { net_monthly_usd: netMonthlyUsd }),
-      })
-      .eq('user_id', subscription.user_id)
-    if (updateError) {
-      console.error('PayTR abonelik güncellenemedi:', { merchantOid, message: updateError.message })
-      return RETRY
-    }
+    netMonthlyUsd = deps.netMonthlyUsd(totalAmount, planKey)
   }
 
-  const { error: insertError } = await deps.db.from('payment_history').insert({
-    user_id: subscription.user_id,
-    amount,
-    currency: 'TRY',
-    status: outcome,
-    paytr_merchant_oid: merchantOid,
-    plan: planKey,
-    description: outcome === 'success'
-      ? `${planKey === 'pro_annual' ? 'Yıllık' : 'Aylık'} Pro abonelik`
-      : 'Ödeme başarısız',
-    ...(outcome === 'failure' ? { error_message: ipn.failedReasonCode } : {}),
+  const { data: rpcResult, error: rpcError } = await deps.db.rpc('paytr_settle_payment', {
+    p_oid: merchantOid,
+    p_status: outcome,
+    p_amount: amount,
+    p_error_message: ipn.failedReasonCode || null,
+    p_net_monthly_usd: netMonthlyUsd
   })
-  if (insertError) {
-    console.error('PayTR ödeme geçmişi yazılamadı:', { merchantOid, message: insertError.message })
+
+  if (rpcError) {
+    console.error('PayTR RPC hatası:', { merchantOid, message: rpcError.message })
     return RETRY
+  }
+
+  if (rpcResult === 'not_found') {
+    console.error('Abonelik bulunamadı (RPC) merchant_oid:', merchantOid)
+    return OK
   }
 
   return OK
