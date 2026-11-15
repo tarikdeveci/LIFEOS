@@ -31,6 +31,7 @@ import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { FoodChoiceAmount } from '@/src/components/nutrition/FoodChoiceAmount'
+import { portionRungLabel } from '@/src/utils/portionRung'
 import { ManualMacroForm } from '@/src/components/nutrition/ManualMacroForm'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -881,7 +882,7 @@ export default function NutritionScreen() {
                   </View>
                   {item.calories_min !== undefined && item.calories_max !== undefined && (
                     <Text style={{ marginTop: 3, fontSize: fontSize.xs, color: colors.textSubtle }}>
-                      {item.calories_min}–{item.calories_max} kcal · {item.source === 'corpus' ? (item.source_label ? `USDA: ${item.source_label}` : 'USDA, kontrol et') : item.portion_rung}
+                      {item.calories_min}-{item.calories_max} kcal · {item.source === 'corpus' ? (item.source_label ? t.ux_nut_usda_label.replace('{label}', item.source_label) : t.ux_nut_usda_check) : portionRungLabel(t, item.portion_rung)}
                     </Text>
                   )}
                   {item.disposition === 'confirm' && !itemApprovals[i] && (
@@ -1124,7 +1125,7 @@ export default function NutritionScreen() {
                 </View>
                 {item.calories_min !== undefined && item.calories_max !== undefined && (
                   <Text style={{ marginTop: 4, fontSize: fontSize.xs, color: colors.textSubtle }}>
-                    {item.calories_min}–{item.calories_max} kcal {item.source === 'corpus' ? `· USDA${item.source_label ? ': ' + item.source_label : ''}` : ''}
+                    {item.calories_min}-{item.calories_max} kcal {item.source === 'corpus' ? `· USDA${item.source_label ? ': ' + item.source_label : ''}` : ''}
                   </Text>
                 )}
                 {item.disposition === 'confirm' && !editApprovals[index] && (

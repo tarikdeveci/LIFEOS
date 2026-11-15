@@ -50,6 +50,15 @@ export const uxEn = {
   ux_manual_values_required: 'Enter calories or at least one macro.',
   ux_manual_invalid_number: 'Values must be numbers, 0 or more.',
   ux_manual_unit: 'serving',
+  ux_nut_portion_stated_mass: 'your amount',
+  ux_nut_portion_stated_volume: 'your volume',
+  ux_nut_portion_user_memory: 'your usual portion',
+  ux_nut_portion_household_measure: 'household measure',
+  ux_nut_portion_serving_default: '1 serving assumed',
+  ux_nut_portion_model_estimate: 'AI estimate',
+  ux_nut_portion_unknown: 'unknown',
+  ux_nut_usda_label: 'USDA: {label}',
+  ux_nut_usda_check: 'USDA, check it',
 } as const
 
 export const uxTr: Record<keyof typeof uxEn, string> = {
@@ -101,4 +110,13 @@ export const uxTr: Record<keyof typeof uxEn, string> = {
   ux_manual_values_required: 'Kalori ya da en az bir makro gir.',
   ux_manual_invalid_number: 'Değerler 0 ya da daha büyük bir sayı olmalı.',
   ux_manual_unit: 'porsiyon',
+  ux_nut_portion_stated_mass: 'yazdığın gramaj',
+  ux_nut_portion_stated_volume: 'yazdığın hacim',
+  ux_nut_portion_user_memory: 'senin porsiyonun',
+  ux_nut_portion_household_measure: 'ev ölçüsü',
+  ux_nut_portion_serving_default: '1 porsiyon varsayıldı',
+  ux_nut_portion_model_estimate: 'AI tahmini',
+  ux_nut_portion_unknown: 'bilinmiyor',
+  ux_nut_usda_label: 'USDA: {label}',
+  ux_nut_usda_check: 'USDA, kontrol et',
 }
