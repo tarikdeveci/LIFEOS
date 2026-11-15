@@ -546,7 +546,7 @@ export function MealAddModal({ open, onClose, userId, onSubmit, onParseMeal, edi
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs font-medium text-primary">
                         {question.kind === 'amount'
-                          ? `«${question.raw}» — ${question.food_label} kaç gram?`
+                          ? `«${question.raw}»: ${question.food_label ?? question.phrase} kaç gram?`
                           : `«${question.raw}» — bu hangisi?`}
                       </p>
                       <button
