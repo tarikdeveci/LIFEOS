@@ -95,3 +95,57 @@ test('şablon yazılıp örnek üretimi başarısız olursa ekran yeni şablonda
   await assert.rejects(useRoutineStore.getState().updateSeries(client, 'r1', { title: 'Yeni' }))
   assert.equal(useRoutineStore.getState().routines[0]?.title, 'Yeni')
 })
+
+// Haftam kaydı (#29): onGenerated verilince Kaydet yalnız şablon yazımını bekler.
+function fakeRoutineClient() {
+  const calls: string[] = []
+  let releaseRpc: () => void = () => {}
+  const rpcGate = new Promise<void>((r) => { releaseRpc = r })
+  const client = {
+    from: () => ({
+      insert: (row: { title: string }) => ({
+        select: () => ({
+          single: async () => {
+            calls.push('insert')
+            return { data: { id: 'r1', created_at: '2026-10-01', title: row.title, start_time: null }, error: null }
+          },
+        }),
+      }),
+    }),
+    rpc: async (name: string) => {
+      calls.push(name)
+      await rpcGate
+      return { data: 3, error: null }
+    },
+  }
+  return { client: client as unknown as SupabaseClient, calls, releaseRpc }
+}
+
+const routineInput = { title: 'Yürüyüş', kind: 'block' } as unknown as Parameters<ReturnType<typeof useRoutineStore.getState>['addRoutine']>[2]
+
+test('addRoutine onGenerated ile: örnek üretimini beklemeden döner, üretim bitince geri çağırır', async () => {
+  useRoutineStore.setState({ routines: [] })
+  const { client, calls, releaseRpc } = fakeRoutineClient()
+  let generated = 0
+  const routine = await useRoutineStore.getState().addRoutine(client, 'u', routineInput, () => { generated++ })
+  assert.equal(routine.id, 'r1')
+  assert.deepEqual(calls, ['insert', 'materialize_my_routines'])
+  assert.equal(generated, 0, 'üretim bitmeden geri çağrı yok')
+  assert.equal(useRoutineStore.getState().routines.length, 1, 'rutin hemen listede')
+  releaseRpc()
+  await tick()
+  assert.equal(generated, 1)
+})
+
+test('addRoutine onGenerated olmadan: örnekler üretilince döner (eski davranış)', async () => {
+  useRoutineStore.setState({ routines: [] })
+  const { client, calls, releaseRpc } = fakeRoutineClient()
+  let done = false
+  const pending = useRoutineStore.getState().addRoutine(client, 'u', routineInput).then(() => { done = true })
+  await tick()
+  assert.deepEqual(calls, ['insert', 'materialize_my_routines'])
+  assert.equal(done, false)
+  releaseRpc()
+  await pending
+  assert.equal(done, true)
+})

@@ -9,6 +9,8 @@ import type {
 import {
   getRoutines,
   createRoutine,
+  insertRoutine,
+  generateRoutineInstances,
   updateRoutineSeries,
   deleteRoutine,
   getRoutineCompletions,
@@ -37,7 +39,16 @@ interface RoutineState {
 
   // Actions
   fetchRoutines: (supabase: Supabase, userId: string, today?: string) => Promise<void>
-  addRoutine: (supabase: Supabase, userId: string, input: CreateRoutineInput) => Promise<Routine>
+  /**
+   * `onGenerated` verilirse yalnız şablon yazımı beklenir (1 istek); örnek üretimi arka planda
+   * koşar ve bitince `onGenerated` çağrılır. Verilmezse örnekler üretilmeden dönmez.
+   */
+  addRoutine: (
+    supabase: Supabase,
+    userId: string,
+    input: CreateRoutineInput,
+    onGenerated?: () => void,
+  ) => Promise<Routine>
   updateSeries: (
     supabase: Supabase,
     routineId: string,
@@ -90,8 +101,11 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
 
   // Örnekleri sunucu ürettiği için burada optimistic ekleme yok: satır id'si ve
   // üretilen bloklar ancak insert dönünce belli.
-  addRoutine: async (supabase, userId, input) => {
-    const routine = await createRoutine(supabase, userId, input)
+  addRoutine: async (supabase, userId, input, onGenerated) => {
+    const routine = onGenerated
+      ? await insertRoutine(supabase, userId, input)
+      : await createRoutine(supabase, userId, input)
+    if (onGenerated) void generateRoutineInstances(supabase).then(onGenerated)
     set((state) => ({
       routines: state.routines.some((r) => r.id === routine.id)
         ? state.routines

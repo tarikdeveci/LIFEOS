@@ -27,8 +27,8 @@ export async function getRoutines(supabase: Supabase, userId: string): Promise<R
   return data as unknown as Routine[]
 }
 
-/** Rutini kaydeder ve örneklerini hemen üretir (block 90 gün, task 7 gün). */
-export async function createRoutine(
+/** Sadece şablonu yazar (1 istek); örnekler `generateRoutineInstances` ile üretilir. */
+export async function insertRoutine(
   supabase: Supabase,
   userId: string,
   input: CreateRoutineInput,
@@ -45,12 +45,29 @@ export async function createRoutine(
     .single()
 
   if (error) throw error
-  // Rutin yazıldı: örnek üretimi başarısız diye hata fırlatılırsa kullanıcı tekrar dener ve
-  // ikinci seri oluşur. Bir kez daha denenir; yine olmazsa gece cron'u (00:10) üretir.
+  return data as unknown as Routine
+}
+
+/**
+ * Rutin yazıldıktan sonra örnekleri üretir (block 90 gün, task 7 gün). Başarısızlık hata
+ * fırlatmaz: fırlatılırsa kullanıcı tekrar dener ve ikinci seri oluşur. Bir kez daha denenir;
+ * yine olmazsa gece cron'u (00:10) üretir.
+ */
+export async function generateRoutineInstances(supabase: Supabase): Promise<void> {
   await materializeMyRoutines(supabase)
     .catch(() => materializeMyRoutines(supabase))
     .catch(() => undefined)
-  return data as unknown as Routine
+}
+
+/** Rutini kaydeder ve örneklerini hemen üretir: 2 ardışık istek (yazma, üretim). */
+export async function createRoutine(
+  supabase: Supabase,
+  userId: string,
+  input: CreateRoutineInput,
+): Promise<Routine> {
+  const routine = await insertRoutine(supabase, userId, input)
+  await generateRoutineInstances(supabase)
+  return routine
 }
 
 /**
