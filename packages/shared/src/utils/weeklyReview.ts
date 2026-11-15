@@ -86,7 +86,8 @@ export function summarizeWeek(input: WeekReviewInput): WeekReview {
 
   for (const block of input.blocks) {
     if (!inWeek(block.date)) continue
-    const minutes = Math.max(0, toMinutes(block.end_time) - toMinutes(block.start_time))
+    const diff = toMinutes(block.end_time) - toMinutes(block.start_time)
+    const minutes = diff < 0 ? diff + 1440 : diff
     const done = block.completed_at != null
     const day = dayOf(block.date)
     if (day) {

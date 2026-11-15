@@ -160,7 +160,11 @@ export function DayTimeline({
     const s = parseClockParts(block.start_time)
     const e = parseClockParts(block.end_time)
     const top = (s.h - startHour) * hourHeight + (s.m / 60) * hourHeight
-    const bottom = (e.h - startHour) * hourHeight + (e.m / 60) * hourHeight
+    // Gece yarısını geçen blok (bitiş < başlangıç) çizelgenin sonuna kadar uzar.
+    const crosses = e.h * 60 + e.m < s.h * 60 + s.m
+    const bottom = crosses
+      ? (endHour - startHour) * hourHeight
+      : (e.h - startHour) * hourHeight + (e.m / 60) * hourHeight
     return { top, height: Math.max(bottom - top, 24) }
   }
 
@@ -183,7 +187,7 @@ export function DayTimeline({
 
       const startMin = timeToMinutes(block.start_time)
       const endMin = timeToMinutes(block.end_time)
-      const durationMin = endMin - startMin
+      const durationMin = minutesBetween(block.start_time, block.end_time)
 
       // pixel → dakika
       const deltaMinutes = (delta.y / hourHeight) * 60

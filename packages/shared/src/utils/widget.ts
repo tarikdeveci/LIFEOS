@@ -208,8 +208,8 @@ export function resolveWidgetNow(snapshot: WidgetSnapshot, now: Date = new Date(
     const start = clockToMinutes(block.startTime)
     const rawEnd = clockToMinutes(block.endTime)
     if (start === null || rawEnd === null) continue
-    // Gece yarısını geçen blok (23:30–00:15) gün sonuna kadar sayılır
-    const end = rawEnd <= start ? 1440 : rawEnd
+    // Gece yarısını geçen blok (23:30-00:15): bitiş ertesi gün, süre gerçek süre
+    const end = rawEnd > start ? rawEnd : 1440 + rawEnd
 
     if (nowMin >= start && nowMin < end) {
       current = block

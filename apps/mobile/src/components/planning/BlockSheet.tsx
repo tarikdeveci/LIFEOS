@@ -66,7 +66,7 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
     // Boş başlık ve hatalı saat sessizce reddedilmez; ağ hatasıyla aynı mesajı da almaz.
     const invalid = !draft.label.trim() ? t.plan_err_name_required
       : !TIME_RE.test(draft.start_time) || !TIME_RE.test(draft.end_time) ? t.plan_err_time_invalid
-      : draft.end_time <= draft.start_time ? t.plan_err_end_after_start
+      : draft.end_time === draft.start_time ? t.plan_err_end_after_start
       : null
     if (invalid) { setError(invalid); return }
     setError(null)

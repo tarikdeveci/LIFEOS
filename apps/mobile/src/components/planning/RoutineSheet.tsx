@@ -81,7 +81,7 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
   const hasTime = f.start !== '' || f.end !== ''
   if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
   if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'plan_err_time_invalid'
-  if (hasTime && f.end <= f.start) return 'plan_err_end_after_start'
+  if (hasTime && f.end === f.start) return 'plan_err_end_after_start'
   return {
     title,
     kind: f.kind,

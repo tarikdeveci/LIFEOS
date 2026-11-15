@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
 import type { BlockType } from '@lifeos/shared'
-import { BLOCK_TYPE_COLORS, todayDate, shiftIsoDate } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, todayDate, shiftIsoDate, minutesBetween } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import { getBlocksForDateRange, getPlansForDateRange } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
@@ -93,7 +93,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
   const totalBlockedMinutes = weekDays.map((day) => {
     const dayBlocks = blocks.filter((b) => b.date === day)
     return dayBlocks.reduce((sum, b) => {
-      return sum + (timeToMinutes(b.end_time) - timeToMinutes(b.start_time))
+      return sum + minutesBetween(b.start_time, b.end_time)
     }, 0)
   })
 
@@ -240,7 +240,9 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
                   const startMin = timeToMinutes(block.start_time)
                   const endMin = timeToMinutes(block.end_time)
                   const topPx = minutesToPx(startMin)
-                  const heightPx = Math.max(((endMin - startMin) / 60) * PX_PER_HOUR, 18)
+                  // Gece yarısını geçen blok o günün sonuna kadar çizilir.
+                  const dayEndMin = endMin > startMin ? endMin : 24 * 60
+                  const heightPx = Math.max(((dayEndMin - startMin) / 60) * PX_PER_HOUR, 18)
                   const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
 
                   if (topPx < 0) return null

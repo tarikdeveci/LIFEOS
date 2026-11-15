@@ -71,7 +71,7 @@ function toInput(f: FormState, isNew: boolean): CreateRoutineInput | FormError {
   if (f.days.length === 0) return 'plan_err_pick_day'
   const hasTime = f.start !== '' && f.end !== ''
   if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
-  if (hasTime && f.end <= f.start) return 'plan_err_end_after_start'
+  if (hasTime && f.end === f.start) return 'plan_err_end_after_start'
   return {
     title,
     kind: f.kind,

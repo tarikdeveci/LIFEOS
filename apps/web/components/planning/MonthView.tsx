@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
-import { BLOCK_TYPE_COLORS, todayDate } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, todayDate, minutesBetween } from '@lifeos/shared'
 import {
   getBlocksForDateRange,
   getPlansForDateRange,
@@ -175,9 +175,7 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
 
             // Yoğunluk: kaç saat planlandı
             const plannedMinutes = dayBlocks.reduce((sum, b) => {
-              const [sh, sm] = b.start_time.split(':').map(Number) as [number, number]
-              const [eh, em] = b.end_time.split(':').map(Number) as [number, number]
-              return sum + (eh * 60 + em) - (sh * 60 + sm)
+              return sum + minutesBetween(b.start_time, b.end_time)
             }, 0)
             const plannedHours = Math.round(plannedMinutes / 60)
 
