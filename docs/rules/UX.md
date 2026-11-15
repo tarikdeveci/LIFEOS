@@ -35,6 +35,11 @@ madde sırasıdır (`docs/KALAN_ADIMLAR.md`). Görsel değerler ve bileşen seç
   Kapatmak İptal'dir: hiçbir şey yazılmaz.
 - Klavye açılınca odaktaki alan ve Kaydet görünür kalır; klavye içeriği örtmez (#26).
 - Sheet içinde sheet açılmaz; ikinci adım gerekiyorsa aynı sheet'in içeriği değişir veya ayrı ekran açılır.
+  İkinci adım aynı sheet'teyse (antrenman programında uyarlama, hareket ekleme, planlama) Android geri
+  önce bir adım geri gider (`BottomSheet onBack`); arka plana dokunmak ve aşağı çekmek yine kapatır.
+- Tam ekran modal ekranlar (görev ayrıntısı, paywall) sheet değildir. iOS'ta sistem aşağı çekmeyle
+  kapatır; Android'de aşağı çekme yoktur, kapatma ekrandaki Geri/X ve donanım geri iledir. İçerik
+  kaydırıldığı için Android'e çekme hareketi eklenmez (kaydırmayla çakışır).
 
 ## 3. Formlar
 

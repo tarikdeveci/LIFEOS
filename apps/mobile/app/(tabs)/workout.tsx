@@ -264,6 +264,12 @@ export default function WorkoutScreen() {
         onClose={() => { programs.setSelectedProgram(null); programs.setExpandedDay(null); programs.setAddingToDay(null); planner.setPlanningProgram(false); programs.setAdaptingProgram(false) }}
         title={programs.addingToDay ? t.wk_add_movement : planner.planningProgram ? t.wk_plan_program : programs.adaptingProgram ? t.wk_adapt_title : (liveProgram ? liveProgram.name : t.wk_program)}
         scrollable
+        onBack={
+          programs.adaptingProgram && liveProgram && equipment !== null ? () => programs.setAdaptingProgram(false)
+            : programs.addingToDay ? programs.closeExercisePicker
+              : planner.planningProgram ? () => planner.setPlanningProgram(false)
+                : undefined
+        }
       >
         {programs.adaptingProgram && liveProgram && equipment !== null ? (
           <AdaptProgramView
