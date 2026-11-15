@@ -1,5 +1,6 @@
 import { Alert } from 'react-native'
 import { router } from 'expo-router'
+import { aiBenefitKey } from '@/src/ai/benefit'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
@@ -18,7 +19,7 @@ export function useProGate(_userId?: string | null) {
 
     Alert.alert(
       t.misc_pro_required,
-      t.misc_pro_ai_features,
+      t[aiBenefitKey(source)],
       [
         { text: t.misc_not_now, style: 'cancel' },
         {

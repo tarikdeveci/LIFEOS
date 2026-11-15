@@ -5,6 +5,7 @@ import { nutritionEn, nutritionTr } from './i18nNutrition'
 import { miscEn, miscTr } from './i18nMisc'
 import { uxEn, uxTr } from './i18nUx'
 import { guestEn, guestTr } from './i18nGuest'
+import { aiEn, aiTr } from './i18nAi'
 import { reportEn, reportTr } from '@lifeos/shared'
 import { lifeSetupEn, lifeSetupTr, REVIEW_I18N } from '@lifeos/shared'
 
@@ -903,11 +904,11 @@ const translations = {
   },
 } as const
 
-export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof accountEn | keyof typeof nutritionEn | keyof typeof miscEn | keyof typeof uxEn | keyof typeof guestEn | keyof typeof reportEn | keyof typeof lifeSetupEn | keyof typeof REVIEW_I18N.en]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof workoutEn | keyof typeof formsEn | keyof typeof accountEn | keyof typeof nutritionEn | keyof typeof miscEn | keyof typeof uxEn | keyof typeof guestEn | keyof typeof aiEn | keyof typeof reportEn | keyof typeof lifeSetupEn | keyof typeof REVIEW_I18N.en]: string }
 
 const merged = {
-  en: { ...translations.en, ...workoutEn, ...formsEn, ...accountEn, ...nutritionEn, ...miscEn, ...uxEn, ...guestEn, ...reportEn, ...lifeSetupEn, ...REVIEW_I18N.en },
-  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...accountTr, ...nutritionTr, ...miscTr, ...uxTr, ...guestTr, ...reportTr, ...lifeSetupTr, ...REVIEW_I18N.tr },
+  en: { ...translations.en, ...workoutEn, ...formsEn, ...accountEn, ...nutritionEn, ...miscEn, ...uxEn, ...guestEn, ...aiEn, ...reportEn, ...lifeSetupEn, ...REVIEW_I18N.en },
+  tr: { ...translations.tr, ...workoutTr, ...formsTr, ...accountTr, ...nutritionTr, ...miscTr, ...uxTr, ...guestTr, ...aiTr, ...reportTr, ...lifeSetupTr, ...REVIEW_I18N.tr },
 }
 
 export function getTranslations(lang: Language): Translations {

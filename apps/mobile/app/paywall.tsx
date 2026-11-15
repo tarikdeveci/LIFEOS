@@ -11,6 +11,8 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 import { useAuth } from '@/src/contexts/AuthContext'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
+import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
+import { aiBenefitKey, shouldShowFreeLeft } from '@/src/ai/benefit'
 import { supabase } from '@/src/lib/supabase'
 import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
@@ -51,6 +53,9 @@ export default function PaywallScreen() {
   const { source, freeLeft } = useLocalSearchParams<{ source?: string; freeLeft?: string }>()
   const fromOnboarding = source === 'onboarding'
   const accountReady = stage === 'ready'
+  // Kalan ücretsiz AI hakkı ilk AI sonucundan önce de görünür: "ücretsiz kullanamıyorum" yanlış okumasını önler.
+  const { freePlansLeft } = useFreeAiPlans(subscription.isPro, subscription.isLoading || !accountReady)
+  const freeLeftCount = freeLeft !== undefined && Number.isFinite(Number(freeLeft)) ? Number(freeLeft) : freePlansLeft
 
   // Paywall yalnızca hesabı hazır kullanıcıya açılır; misafir ve onaysız e-posta kapıya yönlenir.
   useEffect(() => {
@@ -190,11 +195,13 @@ export default function PaywallScreen() {
             LifeOS Pro
           </Text>
           <Text style={{ fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
-            {tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature'}
+            {source && aiBenefitKey(source) !== 'ai_benefit_default'
+              ? t[aiBenefitKey(source)]
+              : (tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature')}
           </Text>
-          {source === 'post_signup' && freeLeft !== undefined && (
+          {source !== 'free_limit' && shouldShowFreeLeft(subscription.isPro, freeLeftCount) && (
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
-              {t.paywall_free_left.replace('{n}', freeLeft)}
+              {t.paywall_free_left.replace('{n}', String(freeLeftCount))}
             </Text>
           )}
           {source === 'free_limit' && (
