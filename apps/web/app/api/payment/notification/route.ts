@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyNotificationHash } from '@/lib/paytr'
+import { paytrNetMonthlyUsd } from '@/lib/paytrNet'
 
 function getAdminClient() {
   return createClient(
@@ -50,6 +51,10 @@ export async function POST(req: Request) {
       } else {
         periodEnd.setMonth(periodEnd.getMonth() + 1)
       }
+      const netMonthlyUsd = paytrNetMonthlyUsd(totalAmount, planKey, {
+        usdTry: process.env['AI_USD_TRY'],
+        commissionPct: process.env['PAYTR_COMMISSION_PCT'],
+      })
 
       await supabaseAdmin
         .from('subscriptions')
@@ -59,6 +64,8 @@ export async function POST(req: Request) {
           current_period_end: periodEnd.toISOString(),
           cancel_at_period_end: false,
           cancelled_at: null,
+          // Kur tanımlı değilse kolon hiç yazılmaz, mevcut değer korunur.
+          ...(netMonthlyUsd === null ? {} : { net_monthly_usd: netMonthlyUsd }),
         })
         .eq('user_id', subscription.user_id)
 

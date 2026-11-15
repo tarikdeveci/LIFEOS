@@ -14,7 +14,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
   const { colors } = useTheme()
@@ -132,12 +132,24 @@ export default function TodayScreen() {
             <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>{t.today}</Text>
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>{dateLabel}</Text>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/profile')}
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Ionicons name="person-outline" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/profile')}
+              accessibilityRole="button"
+              accessibilityLabel={t.profile_title}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/settings' as never)}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings_open}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Sağlık bağlı değilken tek satırlık tanıtım kartı (Guideline 2.5.1: HealthKit
@@ -149,17 +161,12 @@ export default function TodayScreen() {
 
         {/* Tasks */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_tasks_section}</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/tasks')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_all}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
+          <SectionHeader title={t.today_tasks_section} linkLabel={t.today_all} onPress={() => router.push('/(tabs)/tasks')} />
+          <TouchableOpacity accessible={false} activeOpacity={0.7} onPress={() => router.push('/(tabs)/tasks')} style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
             <StatCard label={t.today_pending} value={todayTasks.length} color={palette.accent} />
             <StatCard label={t.today_done_count} value={doneTasks} color={palette.success} />
             <StatCard label={t.today_planned_hours} value={`${plannedHours}${lang === 'en' ? 'h' : 's'}`} color={palette.warning} />
-          </View>
+          </TouchableOpacity>
           {todayTasks.slice(0, 3).map((task) => (
             <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}` as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}>
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.accent }} />
@@ -174,12 +181,8 @@ export default function TodayScreen() {
 
         {/* Planning */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_calendar}</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/planning')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_open}</Text>
-            </TouchableOpacity>
-          </View>
+          <SectionHeader title={t.today_calendar} linkLabel={t.today_open} onPress={() => router.push('/(tabs)/planning')} />
+          <TouchableOpacity accessible={false} activeOpacity={0.7} onPress={() => router.push('/(tabs)/planning')}>
           {visibleBlocks.map(({ block, timing }) => {
             const color = blockColors[block.block_type] ?? palette.accent
             const isActive = timing.phase === 'active'
@@ -228,18 +231,14 @@ export default function TodayScreen() {
           {todayBlocks.length === 0 && (
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_blocks_today}</Text>
           )}
+          </TouchableOpacity>
         </GlassCard>
 
         {/* Nutrition */}
         <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.today_nutrition}</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/nutrition')}>
-              <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{t.today_open}</Text>
-            </TouchableOpacity>
-          </View>
+          <SectionHeader title={t.today_nutrition} linkLabel={t.today_open} onPress={() => router.push('/(tabs)/nutrition')} />
 
-          <View style={{ gap: spacing[2], marginBottom: spacing[4] }}>
+          <TouchableOpacity accessible={false} activeOpacity={0.7} onPress={() => router.push('/(tabs)/nutrition')} style={{ gap: spacing[2], marginBottom: spacing[4] }}>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
               <StatCard label={t.today_calories} value={`${totalCal}`} color={palette.warning} />
               <StatCard label={t.nutr_protein} value={`${Math.round(totalProt)}g`} color={palette.info} />
@@ -248,7 +247,7 @@ export default function TodayScreen() {
               <StatCard label={t.nutr_carbs} value={`${Math.round(totalCarbs)}g`} color={palette.success} />
               <StatCard label={t.nutr_fat} value={`${Math.round(totalFat)}g`} color={palette.danger} />
             </View>
-          </View>
+          </TouchableOpacity>
 
           {target ? (
             <View style={{ gap: spacing[3] }}>
@@ -280,5 +279,27 @@ export default function TodayScreen() {
         </GlassCard>
       </ScrollView>
     </ScreenBackground>
+  )
+}
+
+interface SectionHeaderProps {
+  title: string
+  linkLabel: string
+  onPress: () => void
+}
+
+/** Özet kartının başlığı: bütün satır sekmeye götürür, küçük "Aç" yazısı tek hedef değil (#3). */
+function SectionHeader({ title, linkLabel, onPress }: SectionHeaderProps) {
+  const { colors } = useTheme()
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={`${title}, ${linkLabel.replace(/\s*→$/, '')}`}
+      style={{ minHeight: MIN_TOUCH, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}
+    >
+      <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{title}</Text>
+      <Text style={{ fontSize: fontSize.sm, color: palette.accent, fontWeight: fontWeight.semibold }}>{linkLabel}</Text>
+    </TouchableOpacity>
   )
 }

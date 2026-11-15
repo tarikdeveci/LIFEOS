@@ -13,7 +13,6 @@ import {
   summarizeMuscleLoad,
   type MuscleGroupRef,
 } from '../_shared/ai/muscleLoad.ts'
-import { CHAT_EFFORT, firstText } from './model.ts'
 import { normalizeHistory, type RouteContext } from './request.ts'
 import { shiftDate } from './time.ts'
 
@@ -48,7 +47,7 @@ function muscleNamesFromSets(value: unknown): string[] {
 }
 
 export async function handleWorkoutPlan(route: RouteContext): Promise<Response> {
-  const { supabase, userId, client, chatModel, ledger, langInstr, today, json } = route
+  const { supabase, userId, generate, ledger, langInstr, today, json } = route
   const { fitness_goal, available_minutes, energy_level } = route.body
 
   // Bugün için antrenman planı önerileri
@@ -68,12 +67,10 @@ export async function handleWorkoutPlan(route: RouteContext): Promise<Response> 
     })
     .join('\n') ?? 'Geçmiş antrenman yok'
 
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
-    // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
-    max_tokens: 4500,
+  // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+  // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+  const result = await generate({
+    maxTokens: 4500,
     system: `Sen LifeOS'un kişisel fitness koçusun. ${langInstr}
 Kullanıcının antrenman geçmişine göre bugün ne yapması gerektiğini öneri olarak sun.
 Yanıtını şu JSON dizisi formatında ver — her öneri bir nesne:
@@ -101,9 +98,8 @@ Lütfen:
 4. Gerekiyorsa dinlenme günü öner`,
     }],
   })
-  await ledger.record(response)
 
-  const text = firstText(response)
+  const text = result.text
   let suggestions: unknown[] = []
   try {
     const jsonMatch = text.match(/\[[\s\S]*\]/)
@@ -111,12 +107,13 @@ Lütfen:
   } catch {
     suggestions = [{ type: 'general', message: text }]
   }
+  if (suggestions.length === 0) ledger.markFailed()
 
   return json({ suggestions })
 }
 
 export async function handleWorkoutProgramChat(route: RouteContext): Promise<Response> {
-  const { supabase, userId, body, client, chatModel, ledger, lang, today, json } = route
+  const { supabase, userId, body, generate, ledger, lang, today, json } = route
   const { user_message, workout_context } = body
 
   // Katalog sunucudan okunur: istemciye güvenip 200 satır göndertmek hem
@@ -210,19 +207,13 @@ export async function handleWorkoutProgramChat(route: RouteContext): Promise<Res
     userMessage: user_message?.trim() || 'Bana haftalık bir antrenman programı yaz.',
   })
 
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
-    // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
-    max_tokens: 9000,
-    system,
-    messages,
-  })
-  await ledger.record(response)
+  // Dusunme (effort low) ayni butceyi paylasiyor: eski deger dusunme
+  // yokken olculmustu, simdi ciktinin yarim kalmamasi icin pay birakiyoruz.
+  const response = await generate({ system, messages, maxTokens: 9000 })
 
-  const result = parseWorkoutCoachResult(firstText(response), resolveName)
+  const result = parseWorkoutCoachResult(response.text, resolveName)
   if (!result.message) {
+    ledger.markFailed()
     result.message = 'Yanıt oluşturulamadı, isteğini biraz daha netleştirip tekrar dene.'
   }
   return json(result)

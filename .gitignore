@@ -79,3 +79,6 @@ scripts/seed-user-data.mjs
 
 # Ham reels videolari (GB boyutunda; EAS arsivine de giriyordu)
 marketing/reels/
+
+# Persona testi ham raporlari ve ekran.mjs durum dosyasi (repoya girmez)
+.claude/skills/persona-test/raporlar/

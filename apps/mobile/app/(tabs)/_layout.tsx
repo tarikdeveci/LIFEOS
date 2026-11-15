@@ -8,6 +8,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useWidgetSync } from '@/src/hooks/useWidgetSync'
 import { useBlockLiveActivity } from '@/src/hooks/useBlockLiveActivity'
 import { useRealtimeSync } from '@/src/hooks/useRealtimeSync'
+import { SwipeTabs } from '@/src/navigation/SwipeTabs'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
@@ -17,6 +18,8 @@ const TABS = [
   { segment: 'nutrition', icon: 'restaurant-outline',       iconActive: 'restaurant'       },
   { segment: 'workout',   icon: 'barbell-outline',          iconActive: 'barbell'          },
 ] as const
+
+const TAB_SEGMENTS = TABS.map((tab) => tab.segment)
 
 function FloatingTabBar() {
   const router = useRouter()
@@ -112,7 +115,8 @@ export default function TabsLayout() {
   useRealtimeSync()
 
   return (
-    <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
+    <SwipeTabs segments={TAB_SEGMENTS}>
+    <Tabs tabBar={() => <FloatingTabBar />} backBehavior="fullHistory" screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="today"     options={{ title: t.tab_today }} />
       <Tabs.Screen name="planning"  options={{ title: t.tab_planning }} />
       <Tabs.Screen name="tasks"     options={{ title: t.tab_tasks }} />
@@ -120,5 +124,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="workout"   options={{ title: t.tab_workout }} />
       <Tabs.Screen name="profile"   options={{ href: null, title: t.tab_profile }} />
     </Tabs>
+    </SwipeTabs>
   )
 }

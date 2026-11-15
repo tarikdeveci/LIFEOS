@@ -1,0 +1,107 @@
+# UX kuralları
+
+Kapsam: mobil öncelikli, web'de de aynı davranış beklenir. `#n` test mühendisi listesindeki
+madde sırasıdır (`docs/KALAN_ADIMLAR.md`). Görsel değerler ve bileşen seçimi: `DESIGN.md`.
+
+## 1. Navigasyon
+
+- Geri, ekranın açıldığı yere döner; geçmiş yoksa (ör. bildirimden açılış) mantıksal üst ekrana gider.
+  "Geri" düğmesi sabit bir rotaya `push` etmez (#12, #16). Ekranda elle `router.back()` yazılmaz:
+  düğme için `BackButton`, metinli geri için `useGoBack()` kullanılır. Üst ekran eşlemesi
+  `src/navigation/backRoutes.ts` içinde; yeni alt sayfanın üstü Bugün değilse oraya eklenir.
+- Ana sekme dışındaki her ekranda sol üstte geri düğmesi vardır.
+- Sol kenardan sağa kaydırmak geri gider. Bu kök düzendeki `SwipeBack` ile bütün ekranlara kendiliğinden
+  gelir, ekran başına kod yazılmaz. Kapalı olduğu yerler (ana sekmeler, giriş, onboarding, paywall)
+  `backRoutes.ts` içindeki listededir; yeni bir ekranda kapatmak gerekiyorsa oraya eklenir.
+  Ekranın içinde sol kenardan başlayan başka bir kaydırma hareketi yazılmaz.
+- Ana sekmeler arasında yatay kaydırma sıradaki veya önceki sekmeye gider, iki uçta başa sarmaz
+  (`SwipeTabs`, kullanıcı isteği 2026-11-07). Sekme içine yeni yatay liste eklenirse `ScrollView`
+  `react-native-gesture-handler`'dan alınır, yoksa bu hareket listeyi keser.
+  Android hareketli gezinmede kenardan başlayan kaydırma da aynı geçişi yapar; Bugün'de sol kenar
+  uygulamadan çıkar.
+- Android donanım geri tuşu ekrandaki geri ile aynı yere gider. Açık sheet önce sheet'i kapatır
+  (`Modal onRequestClose`), ekranı değil.
+- Bir özet kart veya başlık dokunulabilir görünüyorsa dokununca kendi sekmesine/ayrıntısına gider (#3).
+- Aynı ekran içindeki sekmeler (`Segmented` veya sekme çubuğu) dokunarak geçilebilir (#23).
+- Geçiş animasyonu tutarlı: alt sayfa sağdan, sheet aşağıdan (#2).
+
+## 2. Pop up
+
+- Sheet (`BottomSheet`): form, seçim, ayrıntı; bulunulan bağlam korunur.
+- Uyarı (`Alert`): sadece geri alınamaz onay ("Silinsin mi?") ve izin için ayarlara yönlendirme.
+  Bilgi vermek veya hata göstermek için uyarı açılmaz; ekranda gösterilir (`DESIGN.md` 6).
+- Sheet üst bardan (tutamaç ve başlık) aşağı çekilerek, arka plana dokunarak ve Android geri tuşuyla
+  kapanır (#6, #17). Çekme içerikte başlamaz: liste kaydırması ve girdilerle çakışır.
+  Kapatmak İptal'dir: hiçbir şey yazılmaz.
+- Klavye açılınca odaktaki alan ve Kaydet görünür kalır; klavye içeriği örtmez (#26).
+- Sheet içinde sheet açılmaz; ikinci adım gerekiyorsa aynı sheet'in içeriği değişir veya ayrı ekran açılır.
+  İkinci adım aynı sheet'teyse (antrenman programında uyarlama, hareket ekleme, planlama) Android geri
+  önce bir adım geri gider (`BottomSheet onBack`); arka plana dokunmak ve aşağı çekmek yine kapatır.
+- Tam ekran modal ekranlar (görev ayrıntısı, paywall) sheet değildir. iOS'ta sistem aşağı çekmeyle
+  kapatır; Android'de aşağı çekme yoktur, kapatma ekrandaki Geri/X ve donanım geri iledir. İçerik
+  kaydırıldığı için Android'e çekme hareketi eklenmez (kaydırmayla çakışır).
+
+## 3. Formlar
+
+- İptal (ve sheet'i kapatmak) hiçbir şey yazmaz ve taslağı sıfırlar; bir sonraki açılış kayıtlı
+  değerle başlar, yarım taslakla değil (#9, #22, #38).
+- Kaydet tek yazma noktasıdır. Alan değişince arka planda kayıt yapılmaz.
+  İstisna: Kaydet düğmesi olmayan, değişikliği anında uygulayan ayar (anahtar, tema seçimi).
+  Bir ekran ya hep anında uygular ya hep Kaydet bekler; ikisi karışmaz.
+- Kaydet başarılıysa ekran kapanır veya geri bildirim verir; başarısızsa girdiler korunur ve hata görünür.
+- Sayısal alanlarda aralık doğrulaması, hata alanın altında (#10). Faz 2 önerisi: yaş 13 ile 100,
+  kilo 30 ile 300 kg, boy 100 ile 250 cm.
+- Ondalık alanlar virgül ve nokta kabul eder (72,5 ve 72.5), `keyboardType="decimal-pad"` (#5).
+- Aynı veri iki yerde gösteriliyorsa tek kaynaktan gelir; birini güncellemek ötekini günceller
+  (#7 günlük kilo ve profil kilosu, #11 kalori ve makrolar).
+
+## 4. Girdiler
+
+- Tarih ve saat elle yazılmaz, seçiciden seçilir (`DateField`, `TimeField`) (#18, #32).
+- Birim alanın yanında görünür (kg, dk, g).
+- Sabit seçenekler serbest metinle alınmaz: `Segmented` veya liste.
+- Varsayılan değer mantıklı olur ve kullanıcının dilindedir (#47 birim varsayılanı "gün").
+
+## 5. Dil
+
+- Kullanıcıya görünen her metin i18n'den gelir (`useLang().t`; `src/i18n.ts`, `src/i18nForms.ts`,
+  `src/i18nWorkout.ts`). Buna uyarı başlıkları, placeholder, `accessibilityLabel`, varsayılan
+  değerler ve hesaplanan açıklama metinleri dahil (#46 ile #49).
+- İlk açılışta cihaz dili: `tr` ise Türkçe, değilse İngilizce. Kullanıcı seçim yaptıysa kayıtlı seçim geçerli (#1).
+- Dil değişince ekrandaki her metin değişir; önceden hesaplanıp state'e yazılmış metin kalmaz (#46).
+- Yeni anahtar iki dile birlikte eklenir. `src/i18n.ts` depoda CRLF: düzenlerken satır sonunu koru,
+  commit öncesi `git diff --ignore-cr-at-eol` ile bak.
+
+## 6. Sadelik
+
+- Sekme başına tek birincil eylem, en üstte; ikincil özellikler "Daha fazla" altında katlanır (#50, #51, #52).
+- Opsiyonel alanlar varsayılan kapalı, bir düğmeyle açılır; kapalıyken mantıklı varsayılan kullanılır
+  (#21: WSJF "Önceliği ayarla" ile açılır, kapalıyken hepsi 3).
+- Kullanıcının bilmediği kavram (WSJF gibi) tek cümlelik açıklamayla gelir (#19).
+- Yeni yetenek önce mevcut bir yuvaya (var olan kartta ek satır, bildirim, sunucu kuralı) eklenir;
+  yeni kart ancak emülatörde ekranın bugünkü hali tartıldıktan sonra (kaç kart, kaç kaydırma,
+  neyin önüne geçiyor) ve kullanımı zorlaştırmadığı gösterilince eklenir.
+
+## 7. Silme
+
+- Silme hedefi en az 44x44 (#39).
+- Onay (`Alert`, `danger` eylem) veya geri al seçeneği; ikisinden biri zorunlu.
+- Silme yolu görünür: sadece gizli kaydırma hareketi yetmez, menüde veya ayrıntıda "Sil" de bulunur (#28).
+- Silme gerçekten siler: bağlı kayıtlar (ör. rutinin tamamlama kayıtları) silmeyi engellemez (#31).
+
+## 8. Kullanıcının önceki kararları
+
+Bunlar test listesinden değil, ürün sahibinin daha önce verdiği kararlardan gelir. Değiştirmek için sorulur.
+
+- Sekmeye taşımak silmek sayılır. Mevcut bir özellik ana akıştan çıkarılmaz; kaldırma gerekiyorsa
+  gerekçeli seçenek sunulur, karar kullanıcınındır (2026-09-30).
+- Kart ait olduğu sekmede durur; günün ilk girdisi üstte (2026-09-18/19). Örnekler: Antrenman'da
+  "Antrenman Başlat" en üstte; Beslenme'de önce "Bugün" makro özeti, altında hızlı arama, sonra öğünler.
+- Anasayfa sadece sekme özetlerinden oluşur; sekmesi olmayan kart anasayfaya konmaz.
+  İstisna: sağlık bağlı değilken tek satırlık Health Connect daveti (App Store 2.5.1).
+- Ölçümler (kilo takibi, aktivite ve uyku) Profil'de.
+- Pro sadece AI: LLM çağrısı yapmayan hiçbir özellik kilitlenmez (2026-09-29).
+- Bildirim saati sabit kalabilir ama metni her gün, güne ve veriye göre değişir
+  (`supabase/functions/daily-digest/copy.ts` havuz deseni).
+- Yeni yetenek herkes için tasarlanır, ürün sahibine özel kişiselleştirme değil; mevcut kartların
+  varsayılan görünümü değişmez (2026-10-05).

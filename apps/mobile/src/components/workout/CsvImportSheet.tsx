@@ -59,7 +59,7 @@ export function CsvImportSheet({ visible, onClose, userId }: Props) {
     if (picking) return
     setPicking(true)
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true })
+      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain'], copyToCacheDirectory: true })
       if (result.canceled) return
       const asset = result.assets[0]
       if (!asset || !asset.name.toLowerCase().endsWith('.csv')) {

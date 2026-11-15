@@ -18,7 +18,7 @@ import { MuscleBodyMap, bodyBaseFill, type BodyMapLegendItem } from './MuscleBod
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import type { Translations } from '../../i18n'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '../../theme/tokens'
 
 interface Props {
   sets: LoggedSet[]
@@ -250,7 +250,9 @@ export function MuscleInsightsCard({ sets, muscleGroups, bodyWeightKg, gender, l
 
           <TouchableOpacity
             onPress={() => setListOpen((open) => !open)}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingTop: spacing[3] }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: listOpen }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], marginTop: spacing[1], minHeight: MIN_TOUCH }}
           >
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: palette.accent }}>
               {listOpen ? t.muscle_hide_list : t.muscle_all}

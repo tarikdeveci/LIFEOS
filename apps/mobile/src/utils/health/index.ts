@@ -28,6 +28,7 @@ function getReader(): HealthReader {
     cached = {
       isAvailable: async () => false,
       requestPermissions: async () => false,
+      hasPermissions: async () => false,
       readDay: async () => ({ ok: false, reason: 'unavailable' }),
     }
   }
@@ -55,6 +56,10 @@ export function isHealthAvailable(): Promise<boolean> {
 
 export function requestHealthPermissions(): Promise<boolean> {
   return getReader().requestPermissions()
+}
+
+export function hasHealthPermissions(): Promise<boolean> {
+  return getReader().hasPermissions()
 }
 
 export function readHealthDay(date: string, now: Date = new Date()) {

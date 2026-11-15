@@ -8,14 +8,15 @@
 //              tek noktası), ömür boyu 3 kez. Sayaç migration 052'deki
 //              ai_allowance() içinde.
 //   • Deneme : Pro gibi, bütçesi AI_TRIAL_BUDGET_USD.
-//   • Pro    : aylık bütçe kullanıcının ödediği fiyatla ölçeklenir. Bütçe
-//              aşılınca sohbetler ucuz modele, öğün ayrıştırma kural katmanına
-//              düşer. Bütçenin AI_HARD_CAP_FACTOR katında sohbetler durur (429).
+//   • Pro    : aylık bütçe net gelirle ölçeklenir. Bütçe aşılınca tüm rotalar
+//              yedek (ucuz) modele düşer. Bu ayki maliyet AI_ABUSE_CAP_USD'yi
+//              geçerse istekler durur (429), deneme dahil.
 //
 // Maliyet her model yanıtının `usage` alanından hesaplanıp `events.ai_used`
 // satırının props'una yazılır; ayrı tablo yok (040: aynı olgu tek yerde).
 
 import { FREE_KINDS } from './freeKinds.ts'
+import type { LlmResult } from './llm/types.ts'
 
 interface QueryError {
   message: string
@@ -62,14 +63,16 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-// Kullanıcının ödediği AYLIK fiyatın (USD) bu oranı AI'a gidebilir. Fiyat
-// bilinmiyorsa (web/PayTR, fiyatı henüz yazılmamış eski abonelik) taban bütçe.
+// Bütçe kullanıcının NET aylık gelirinin (vergi ve mağaza payı düşülmüş,
+// subscriptions.net_monthly_usd) bu oranıdır. Net gelir bilinmiyorsa sabit
+// varsayılan. Elle verilen hesaplar ai_budget_override_usd ile sabitlenir.
 // Hepsi `supabase secrets set` ile koda dokunmadan ayarlanır; ayar için
 // analytics.ai_cost_by_user görünümüne bakılır.
-const BUDGET_SHARE = envNumber('AI_BUDGET_SHARE', 0.5)
-const MIN_BUDGET_USD = envNumber('AI_MIN_BUDGET_USD', 1)
+const BUDGET_SHARE = envNumber('AI_BUDGET_SHARE', 0.4)
+const DEFAULT_BUDGET_USD = envNumber('AI_DEFAULT_BUDGET_USD', 0.38)
 const TRIAL_BUDGET_USD = envNumber('AI_TRIAL_BUDGET_USD', 0.5)
-const HARD_CAP_FACTOR = envNumber('AI_HARD_CAP_FACTOR', 3)
+// Sert sınır yerine kötüye kullanım koruması: bu ayki toplam maliyet bunu geçerse 429.
+const ABUSE_CAP_USD = envNumber('AI_ABUSE_CAP_USD', 5)
 
 function isActivePro(row: Record<string, unknown> | null): boolean {
   const active = row?.['status'] === 'pro_monthly' || row?.['status'] === 'pro_annual'
@@ -77,11 +80,17 @@ function isActivePro(row: Record<string, unknown> | null): boolean {
   return active && periodEnd !== null && new Date(periodEnd) > new Date()
 }
 
+function positiveNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function monthlyBudgetUsd(row: Record<string, unknown> | null): number {
-  const price = Number(row?.['price_usd'])
-  if (!Number.isFinite(price) || price <= 0) return MIN_BUDGET_USD
-  const monthly = row?.['status'] === 'pro_annual' ? price / 12 : price
-  return Math.max(MIN_BUDGET_USD, monthly * BUDGET_SHARE)
+  const override = positiveNumber(row?.['ai_budget_override_usd'])
+  if (override !== null) return override
+  const net = positiveNumber(row?.['net_monthly_usd'])
+  return net !== null ? net * BUDGET_SHARE : DEFAULT_BUDGET_USD
 }
 
 interface Allowance {
@@ -134,7 +143,7 @@ export async function resolveAiAccess(supabase: SupabaseLike, userId: string, ki
   const tier: AiTier = row?.['period_type'] === 'trial' ? 'trial' : 'pro'
   const budget = tier === 'trial' ? TRIAL_BUDGET_USD : monthlyBudgetUsd(row)
 
-  if (allowance.monthCostUsd >= budget * HARD_CAP_FACTOR) {
+  if (allowance.monthCostUsd >= ABUSE_CAP_USD) {
     return {
       allowed: false,
       tier,
@@ -144,43 +153,6 @@ export async function resolveAiAccess(supabase: SupabaseLike, userId: string, ki
     }
   }
   return { allowed: true, tier, overBudget: allowance.monthCostUsd >= budget }
-}
-
-/** Anthropic yanıtının maliyet için gereken kısmı. */
-export interface MeteredMessage {
-  model: string
-  usage: {
-    input_tokens: number
-    output_tokens: number
-    cache_creation_input_tokens?: number | null
-    cache_read_input_tokens?: number | null
-  }
-  /** 'max_tokens': çıktı yarım kaldı. Ücretsiz hak bu yanıt için yanmaz. */
-  stop_reason?: string | null
-}
-
-// USD / 1M token. Önbellek yazımı (5 dk) girdi fiyatının 1,25 katı, okuması
-// 0,1 katı. Düşünme token'ları çıktıya dahil gelir ve çıktı fiyatından ödenir.
-function pricePerMTok(model: string): { input: number; output: number } {
-  if (/opus-(4-[5-9]|5)/.test(model)) return { input: 5, output: 25 }
-  if (/sonnet-5/.test(model)) return { input: 2, output: 10 }
-  if (/sonnet/.test(model)) return { input: 3, output: 15 }
-  if (/haiku/.test(model)) return { input: 1, output: 5 }
-  // Bilinmeyen ya da eski Opus: pahalı say, bütçe sessizce gevşemesin.
-  return { input: 15, output: 75 }
-}
-
-export function costUsd(message: MeteredMessage): number {
-  const price = pricePerMTok(message.model)
-  const usage = message.usage
-  const cacheWrite = usage.cache_creation_input_tokens ?? 0
-  const cacheRead = usage.cache_read_input_tokens ?? 0
-  return (
-    usage.input_tokens * price.input
-    + cacheWrite * price.input * 1.25
-    + cacheRead * price.input * 0.1
-    + usage.output_tokens * price.output
-  ) / 1_000_000
 }
 
 /** Ücretsiz katmanda başarısız çağrının `kind`'ı: FREE_KINDS dışında, hak saymaz. */
@@ -212,7 +184,13 @@ export class AiLedger {
   private cacheReadTokens = 0
   private cacheWriteTokens = 0
   private cost = 0
+  private textChars = 0
   private readonly models = new Set<string>()
+  private readonly routes = new Set<string>()
+  private fellBack = false
+  // Istegin tamami icin: flush partiyi sifirlar ama bildirim ve yanit modu flush'tan sonra okur.
+  private requestCalls = 0
+  private requestFellBack = false
   private reservationId: number | null = null
   private failed = false
 
@@ -276,15 +254,28 @@ export class AiLedger {
     await this.settle(this.buildProps(true))
   }
 
-  add(message: MeteredMessage): void {
+  /** Bu istekte yedek model çalıştıysa 'fallback', yalnız birinci modelse 'primary', çağrı yoksa null. */
+  mode(): 'primary' | 'fallback' | null {
+    if (this.requestCalls === 0) return null
+    return this.requestFellBack ? 'fallback' : 'primary'
+  }
+
+  add(result: LlmResult): void {
     this.calls += 1
-    this.inputTokens += message.usage.input_tokens
-    this.outputTokens += message.usage.output_tokens
-    this.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0
-    this.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0
-    this.cost += costUsd(message)
-    this.models.add(message.model)
-    if (message.stop_reason === 'max_tokens') this.failed = true
+    this.requestCalls += 1
+    this.inputTokens += result.usage.input
+    this.outputTokens += result.usage.output
+    this.cacheReadTokens += result.usage.cacheRead
+    this.cacheWriteTokens += result.usage.cacheWrite
+    this.cost += result.costUsd
+    this.textChars += result.text.length + (result.toolInput ? JSON.stringify(result.toolInput).length : 0)
+    this.models.add(result.apiModel)
+    this.routes.add(result.route)
+    if (result.mode === 'fallback') {
+      this.fellBack = true
+      this.requestFellBack = true
+    }
+    if (result.stopReason === 'max_tokens') this.failed = true
   }
 
   private buildProps(reset: boolean): Record<string, unknown> {
@@ -292,6 +283,10 @@ export class AiLedger {
       kind: this.failed && this.reservationId !== null ? failedKind(this.kind) : this.kind,
       tier: this.tier,
       model: [...this.models].join(','),
+      route: [...this.routes].join(','),
+      mode: this.calls === 0 ? null : this.fellBack ? 'fallback' : 'primary',
+      text_chars: this.textChars,
+      parse_ok: !this.failed,
       calls: this.calls,
       input_tokens: this.inputTokens,
       output_tokens: this.outputTokens,
@@ -307,7 +302,10 @@ export class AiLedger {
       this.cacheReadTokens = 0
       this.cacheWriteTokens = 0
       this.cost = 0
+      this.textChars = 0
       this.models.clear()
+      this.routes.clear()
+      this.fellBack = false
     }
     return props
   }
@@ -394,11 +392,5 @@ export class AiLedger {
       }
     }
     return false
-  }
-
-  /** Tek çağrılı rotalar için: ekle ve hemen yaz. */
-  async record(message: MeteredMessage): Promise<void> {
-    this.add(message)
-    await this.flush()
   }
 }

@@ -135,3 +135,44 @@ export function collapseRoutineTasks<T extends RoutineTaskLike>(tasks: readonly 
   }
   return { tasks: tasks.filter((task) => !isOpen(task) || nearest.get(task.routine_id!) === task), more }
 }
+
+/** Başlık karşılaştırması için: küçük harf, Türkçe harfler sadeleşir, noktalama ve fazla boşluk gider. */
+export function normalizeRoutineTitle(title: string): string {
+  const decomposed = title.toLocaleLowerCase('tr').normalize('NFD')
+  // Birleşik aksan işaretleri (U+0300 ile U+036F) atılır: ç, ş, ğ, ö, ü sadeleşir.
+  const plain = Array.from(decomposed).filter((ch) => { const c = ch.charCodeAt(0); return c < 0x300 || c > 0x36f }).join('')
+  return plain
+    .replace(/ı/g, 'i')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Yeni rutinle aynı ya da çok benzer başlıklı, aynı günlere düşen etkin rutin. Başlıklardan
+ * biri ötekini kapsıyorsa (en az 4 harf) benzer sayılır; alışkanlıkların günü olmadığı için
+ * iki alışkanlık gün sormadan karşılaştırılır. Kurulumda aynı iş hem görev rutini hem blok
+ * olarak iki kez giriliyordu; uyarı kaydı engellemez, yalnız sorar.
+ */
+export function findSimilarRoutine<T extends { id: string; title: string; kind: string; days_of_week: readonly number[]; is_active: boolean }>(
+  draft: { title: string; kind: string; days_of_week?: readonly number[] },
+  routines: readonly T[],
+  excludeId: string | null = null,
+): T | null {
+  const title = normalizeRoutineTitle(draft.title)
+  if (!title) return null
+  const days = draft.days_of_week ?? []
+  for (const r of routines) {
+    if (!r.is_active || r.id === excludeId) continue
+    const other = normalizeRoutineTitle(r.title)
+    const short = title.length <= other.length ? title : other
+    const long = short === title ? other : title
+    const similar = title === other || (short.length >= 4 && long.includes(short))
+    if (!similar) continue
+    const bothHabits = draft.kind === 'habit' && r.kind === 'habit'
+    const sharesDay = days.some((d) => r.days_of_week.includes(d))
+    const habitVsDays = days.length === 0 || r.days_of_week.length === 0
+    if (bothHabits || sharesDay || habitVsDays) return r
+  }
+  return null
+}

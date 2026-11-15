@@ -63,6 +63,11 @@ export async function requestPermissions(): Promise<boolean> {
 /** Uyku "asleep" sayılan kategori değerleri (inBed ve awake hariç) */
 const ASLEEP_VALUES = new Set([1, 3, 4, 5]) // asleepUnspecified, asleepCore, asleepDeep, asleepREM
 
+/** HealthKit okuma iznini gizlilik gereği açıklamaz; reddedilen tür boş veri döner. */
+export async function hasPermissions(): Promise<boolean> {
+  return true
+}
+
 export async function readDay(range: DayRange): Promise<HealthReadResult> {
   const hk = await loadHealthKit()
   if (!hk) return { ok: false, reason: 'unavailable' }

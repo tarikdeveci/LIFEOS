@@ -34,7 +34,7 @@ export const company = {
   // İade politikası — dijital hizmet
   refundDays: 14,
 
-  lastUpdated: '2026-07-07',
+  lastUpdated: '2026-10-28',
 } as const
 
 export type Company = typeof company

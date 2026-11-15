@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import type { EquipmentKey, Exercise, MuscleGroup } from '@lifeos/shared'

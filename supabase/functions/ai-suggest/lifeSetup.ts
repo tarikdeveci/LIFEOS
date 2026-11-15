@@ -4,11 +4,10 @@
 // rutin/hedef/görev fonksiyonlarıyla uygular.
 
 import { LIFE_SETUP_TEXT_MAX, buildLifeSetupPrompt, parseLifeSetup } from '../_shared/ai/lifeSetup.ts'
-import { CHAT_EFFORT, firstText } from './model.ts'
 import type { RouteContext } from './request.ts'
 
 export async function handleLifeSetup(route: RouteContext): Promise<Response> {
-  const { client, chatModel, ledger, lang, json } = route
+  const { generate, ledger, lang, json } = route
 
   // Uzun metni sessizce kesmek planın sonundaki kuralları kaybettirirdi: reddet.
   // Doğrulama model çağrısından önce, yani hak ya da maliyet doğmuyor.
@@ -26,19 +25,12 @@ export async function handleLifeSetup(route: RouteContext): Promise<Response> {
   if (!await ledger.begin()) return json({ error: 'AI access requires Pro', code: 'pro_required' }, 402)
 
   const { system, messages } = buildLifeSetupPrompt({ lang, text })
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor. Cikti 20 rutin, 10 hedef ve
-    // 30 gorev tavaniyla ~5k token'a cikabilir; yarim JSON ayristirilamaz.
-    max_tokens: 8000,
-    system,
-    messages,
-  })
+  // Dusunme (effort low) ayni butceyi paylasiyor. Cikti 20 rutin, 10 hedef ve
+  // 30 gorev tavaniyla ~5k token'a cikabilir; yarim JSON ayristirilamaz.
+  const result = await generate({ system, messages, maxTokens: 8000 })
   // Ayrıştırılamayan ya da max_tokens'ta kesilen yanıt hak yakmaz; maliyet yine yazılır.
-  const proposal = response.stop_reason === 'max_tokens' ? null : parseLifeSetup(firstText(response))
+  const proposal = result.stopReason === 'max_tokens' ? null : parseLifeSetup(result.text)
   if (!proposal) ledger.markFailed()
-  await ledger.record(response)
 
   if (!proposal) return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
   return json({ proposal })

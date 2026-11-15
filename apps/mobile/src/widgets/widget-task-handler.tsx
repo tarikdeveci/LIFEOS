@@ -10,6 +10,7 @@ import type { WidgetTaskHandlerProps } from 'react-native-android-widget'
 import { emptyWidgetSnapshot } from '@lifeos/shared'
 import { readWidgetSnapshot } from './storage'
 import { renderLifeOSWidget } from './render'
+import { loadStoredLang } from '../contexts/LangContext'
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   const { widgetAction, renderWidget } = props
@@ -17,6 +18,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
   if (widgetAction === 'WIDGET_DELETED') return
 
   // WIDGET_ADDED / WIDGET_UPDATE / WIDGET_RESIZED / WIDGET_CLICK
+  await loadStoredLang()
   const snapshot = (await readWidgetSnapshot()) ?? emptyWidgetSnapshot()
   renderWidget(renderLifeOSWidget(snapshot))
 }

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 const HAS_EXTENSION = /\.[cm]?[jt]sx?$/
 
 export async function resolve(specifier, context, next) {
+  // Deno'nun 'npm:paket' belirticisi Node'da yalın paket adıdır.
+  if (specifier.startsWith('npm:')) return next(specifier.slice(4), context)
   const parent = context.parentURL
   const isRelative = specifier.startsWith('./') || specifier.startsWith('../')
   if (isRelative && parent?.endsWith('.ts') && !HAS_EXTENSION.test(specifier)) {

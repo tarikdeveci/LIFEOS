@@ -2,12 +2,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { FREE_KINDS } from '../../supabase/functions/_shared/ai/freeKinds.ts'
-import type { RouteContext, SuggestRequest } from '../../supabase/functions/ai-suggest/request.ts'
+import type { LlmRequest, LlmResult } from '../../supabase/functions/_shared/ai/llm/types.ts'
+import { withAiMode, type RouteContext, type SuggestRequest } from '../../supabase/functions/ai-suggest/request.ts'
 
-// model.ts modül yüklenirken Deno.env okur; Deno'suz ortamda boş bir ortam yeterli.
-Object.assign(globalThis, { Deno: { env: { get: () => undefined } } })
 const { handleLifeSetup } = await import('../../supabase/functions/ai-suggest/lifeSetup.ts')
 const { handleDailyReport } = await import('../../supabase/functions/ai-suggest/dailyReport.ts')
+const { handleBrainDump, handleTaskPriority } = await import('../../supabase/functions/ai-suggest/tasks.ts')
+const { handleDailyPlan } = await import('../../supabase/functions/ai-suggest/planning.ts')
+const { handleWorkoutPlan } = await import('../../supabase/functions/ai-suggest/workout.ts')
+const { handleNutritionChat } = await import('../../supabase/functions/ai-suggest/nutrition.ts')
 
 // ---------- erişim kararı ----------
 
@@ -22,23 +25,26 @@ test('erişim: life_setup ücretsiz haklara dahil, daily_report yalnızca Pro', 
 
 // ---------- sahte bağlam ----------
 
-interface ModelCall { model: string; max_tokens: number; system: unknown; messages: { role: string; content: string }[] }
+type ModelCall = LlmRequest
 
 function harness(options: {
-  reply?: string; row?: unknown; profile?: unknown; readError?: string; writeError?: string
+  reply?: string; row?: unknown; profile?: unknown; task?: unknown; readError?: string; writeError?: string
   /** Ücretsiz hak ayrılamadı (begin false). */ denyBegin?: boolean
-  stopReason?: string
+  stopReason?: LlmResult['stopReason']
 } = {}) {
   const modelCalls: ModelCall[] = []
-  const ledgerRecords: unknown[] = []
   const ledgerEvents: string[] = []
   const updates: { table: string; values: unknown }[] = []
 
-  const chain = (result: unknown) => {
-    const link: Record<string, unknown> = {}
-    link['eq'] = () => link
-    link['maybeSingle'] = async () => result
-    link['then'] = (resolve: (value: unknown) => unknown) => resolve(result)
+  // Her sorgu yöntemi zincirlenir; await edilince ya da tekil okumada sonuç döner.
+  const chain = (result: unknown): Record<string, unknown> => {
+    const link: Record<string, unknown> = new Proxy({}, {
+      get: (_target, prop) => {
+        if (prop === 'then') return (resolve: (value: unknown) => unknown) => resolve(result)
+        if (prop === 'maybeSingle' || prop === 'single') return async () => result
+        return () => link
+      },
+    })
     return link
   }
 
@@ -47,7 +53,7 @@ function harness(options: {
       select: () => chain(
         table === 'daily_reports'
           ? { data: options.row ?? null, error: options.readError ? { message: options.readError } : null }
-          : { data: options.profile ?? null, error: null },
+          : { data: table === 'tasks' ? options.task ?? null : options.profile ?? null, error: null },
       ),
       update: (values: unknown) => {
         updates.push({ table, values })
@@ -56,30 +62,34 @@ function harness(options: {
     }),
   }
 
-  const client = {
-    messages: {
-      create: async (params: ModelCall) => {
-        modelCalls.push(params)
-        ledgerEvents.push('model')
-        return { content: [{ type: 'text', text: options.reply ?? '' }], model: 'test', usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: options.stopReason ?? 'end_turn' }
-      },
-    },
+  const generate = async (request: ModelCall): Promise<LlmResult> => {
+    modelCalls.push(request)
+    ledgerEvents.push('model')
+    return {
+      text: options.reply ?? '',
+      toolInput: null,
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      stopReason: options.stopReason ?? 'end',
+      route: 'life_setup',
+      modelId: 'test',
+      apiModel: 'test',
+      costUsd: 0,
+      mode: 'primary',
+    }
   }
 
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
   const route = (body: Partial<SuggestRequest>): RouteContext => ({
-    supabase, userId: 'u1', body: { type: 'life_setup', ...body }, client,
-    chatModel: 'chat-model',
+    supabase, userId: 'u1', body: { type: 'life_setup', ...body }, generate,
     ledger: {
       begin: async () => { ledgerEvents.push('begin'); return !options.denyBegin },
       markFailed: () => { ledgerEvents.push('failed') },
-      record: async (r: unknown) => { ledgerRecords.push(r); ledgerEvents.push('record') },
     },
     lang: 'tr', langInstr: '', today: '2026-10-05', json,
   } as unknown as RouteContext)
 
-  return { route, modelCalls, ledgerRecords, ledgerEvents, updates }
+  return { route, modelCalls, ledgerEvents, updates }
 }
 
 async function read(response: Response): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -95,7 +105,6 @@ test('life_setup: boş ve metin olmayan istek 400, model çağrılmaz', async ()
     assert.equal(status, 400)
     assert.equal(body['code'], 'text_empty')
     assert.equal(h.modelCalls.length, 0)
-    assert.equal(h.ledgerRecords.length, 0)
   }
 })
 
@@ -106,7 +115,6 @@ test('life_setup: 8000 karakteri aşan metin 400 verir, sessizce kesilmez', asyn
   assert.equal(body['code'], 'text_too_long')
   assert.equal(body['max'], 8000)
   assert.equal(h.modelCalls.length, 0)
-  assert.equal(h.ledgerRecords.length, 0)
 })
 
 test('life_setup: tam 8000 karakter kabul edilir, metin kesilmeden modele gider', async () => {
@@ -119,25 +127,22 @@ test('life_setup: tam 8000 karakter kabul edilir, metin kesilmeden modele gider'
     summary: 'tamam', routines: [], goals: [], tasks: [{ title: 'Rapor', area: null }], rules: {}, unsupported: [],
   })
   assert.equal(h.modelCalls.length, 1)
-  assert.equal(h.modelCalls[0]?.model, 'chat-model')
+  assert.equal(h.modelCalls[0]?.maxTokens, 8000)
   assert.equal(h.modelCalls[0]?.messages[0]?.content, `<plan>\n${text}\n</plan>`)
-  // Model çağrısı deftere bir kez işlenir (ücretsiz hak buradan düşer).
-  assert.equal(h.ledgerRecords.length, 1)
 })
 
-test('life_setup: çözümlenemeyen yanıt 502, çağrı yine de deftere işlenir', async () => {
+test('life_setup: çözümlenemeyen yanıt 502', async () => {
   const h = harness({ reply: 'Bunu yapamam.' })
   const { status, body } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
   assert.equal(status, 502)
   assert.equal(body['error'], 'AI yanıtı çözümlenemedi')
-  assert.equal(h.ledgerRecords.length, 1)
 })
 
 test('life_setup: hak model çağrısından ÖNCE ayrılır, başarılı yanıt hak yakmaz işaretlenmez', async () => {
   const h = harness({ reply: '{"summary":"tamam"}' })
   const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
   assert.equal(status, 200)
-  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'record'])
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model'])
 })
 
 test('life_setup: hak ayrılamazsa 402, model çağrılmaz', async () => {
@@ -146,7 +151,6 @@ test('life_setup: hak ayrılamazsa 402, model çağrılmaz', async () => {
   assert.equal(status, 402)
   assert.equal(body['code'], 'pro_required')
   assert.equal(h.modelCalls.length, 0)
-  assert.equal(h.ledgerRecords.length, 0)
 })
 
 test('life_setup: doğrulama hatası hak ayırmaz (begin çağrılmaz)', async () => {
@@ -159,14 +163,14 @@ test('life_setup: ayrıştırılamayan yanıt hak yakmaz (markFailed), maliyet y
   const h = harness({ reply: 'Bunu yapamam.' })
   const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
   assert.equal(status, 502)
-  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed', 'record'])
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed'])
 })
 
 test('life_setup: max_tokens ile kesilen yanıt geçerli JSON görünse bile 502 ve hak yakmaz', async () => {
   const h = harness({ reply: '{"summary":"yarım"}', stopReason: 'max_tokens' })
   const { status } = await read(await handleLifeSetup(h.route({ text: 'Her gün spor' })))
   assert.equal(status, 502)
-  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed', 'record'])
+  assert.deepEqual(h.ledgerEvents, ['begin', 'model', 'failed'])
 })
 
 // ---------- daily_report ----------
@@ -220,7 +224,6 @@ test('daily_report: saklanmış AI anlatısı model çağrılmadan döner', asyn
   assert.equal(status, 200)
   assert.deepEqual(body['narrative'], stored)
   assert.equal(h.modelCalls.length, 0)
-  assert.equal(h.ledgerRecords.length, 0)
   assert.equal(h.updates.length, 0)
 })
 
@@ -238,7 +241,6 @@ test('daily_report: şablon anlatı varken model bir kez çağrılır, sonuç sa
   assert.equal(narrative['headline'], 'Audit eğitimini yaptın.')
 
   assert.equal(h.modelCalls.length, 1)
-  assert.equal(h.ledgerRecords.length, 1)
   assert.match(JSON.stringify(h.modelCalls[0]?.system), /Seri bozulması başarısızlık değil/)
   assert.match(JSON.stringify(h.modelCalls[0]?.system), /Audit eğitimi/)
 
@@ -256,7 +258,6 @@ test('daily_report: çözümlenemeyen yanıt 502, satıra yazılmaz', async () =
   const h = harness({ row: { facts: FACTS, checkin: {}, narrative: TEMPLATE }, reply: 'olmaz' })
   const { status } = await read(await handleDailyReport(h.route({ type: 'daily_report', date: '2026-10-05' })))
   assert.equal(status, 502)
-  assert.equal(h.ledgerRecords.length, 1)
   assert.equal(h.updates.length, 0)
 })
 
@@ -276,6 +277,52 @@ test('daily_report: yazma hatası anlatıyı düşürmez', async () => {
 test('daily_report: okuma hatası fırlatılır (index 500 verir)', async () => {
   const h = harness({ readError: 'bağlantı koptu' })
   await assert.rejects(handleDailyReport(h.route({ type: 'daily_report', date: '2026-10-05' })), /daily_reports okunamadı: bağlantı koptu/)
+})
+
+// ---------- model çağrısı: bütçe ve hak ----------
+
+test('rotalar: model çağrısına giden maxTokens değerleri değişmedi', async () => {
+  const cases: { name: string; run: (h: ReturnType<typeof harness>) => Promise<Response>; max: number; reply: string; task?: unknown }[] = [
+    { name: 'daily_plan', run: (h) => handleDailyPlan(h.route({ type: 'daily_plan' })), max: 1500, reply: '[{"type":"general","message":"x"}]' },
+    { name: 'brain_dump', run: (h) => handleBrainDump(h.route({ type: 'brain_dump', user_message: 'süt al' })), max: 2048, reply: '{"tasks":[]}' },
+    { name: 'task_priority', run: (h) => handleTaskPriority(h.route({ type: 'task_priority' }), 't1'), max: 512, reply: '{"value_score":3}', task: { title: 'Rapor' } },
+    { name: 'workout_plan', run: (h) => handleWorkoutPlan(h.route({ type: 'workout_plan' })), max: 4500, reply: '[{"type":"general","message":"x"}]' },
+    { name: 'nutrition_chat', run: (h) => handleNutritionChat(h.route({ type: 'nutrition_chat' })), max: 4500, reply: '{"message":"merhaba"}' },
+  ]
+  for (const c of cases) {
+    const h = harness({ task: c.task, reply: c.reply })
+    const response = await c.run(h)
+    assert.equal(response.status, 200, c.name)
+    assert.equal(h.modelCalls.length, 1, c.name)
+    assert.equal(h.modelCalls[0]?.maxTokens, c.max, c.name)
+    assert.deepEqual(h.ledgerEvents, ['model'], c.name)
+  }
+})
+
+test('rotalar: ayrıştırılamayan yanıtta markFailed çağrılır', async () => {
+  const cases: { name: string; run: (h: ReturnType<typeof harness>) => Promise<Response>; task?: unknown }[] = [
+    { name: 'daily_plan', run: (h) => handleDailyPlan(h.route({ type: 'daily_plan' })) },
+    { name: 'brain_dump', run: (h) => handleBrainDump(h.route({ type: 'brain_dump', user_message: 'süt al' })) },
+    { name: 'task_priority', run: (h) => handleTaskPriority(h.route({ type: 'task_priority' }), 't1'), task: { title: 'Rapor' } },
+    { name: 'workout_plan', run: (h) => handleWorkoutPlan(h.route({ type: 'workout_plan' })) },
+  ]
+  for (const c of cases) {
+    const h = harness({ task: c.task, reply: '' })
+    await c.run(h)
+    assert.ok(h.ledgerEvents.includes('failed'), c.name)
+  }
+})
+
+test('ai_mode: yalnız düz nesne gövdeye eklenir', () => {
+  assert.deepEqual(withAiMode({ a: 1 }, 'primary'), { a: 1, ai_mode: 'primary' })
+  assert.deepEqual(withAiMode({ a: 1 }, 'fallback'), { a: 1, ai_mode: 'fallback' })
+  assert.deepEqual(withAiMode([1], 'fallback'), [1])
+  assert.equal(withAiMode(null, 'primary'), null)
+  assert.equal(withAiMode('x', 'primary'), 'x')
+})
+
+test('ai_mode: model çağrılmadıysa alan eklenmez', () => {
+  assert.deepEqual(withAiMode({ a: 1 }, null), { a: 1 })
 })
 
 // ---------- replan bağlamı ----------

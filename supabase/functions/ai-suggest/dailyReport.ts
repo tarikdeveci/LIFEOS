@@ -11,12 +11,11 @@ import {
   readStoredAiNarrative,
 } from '../_shared/ai/dailyReport.ts'
 import { isIsoDate } from '../_shared/report/dates.ts'
-import { CHAT_EFFORT, firstText } from './model.ts'
 import { loadPlanningRules } from './planningContext.ts'
 import type { RouteContext } from './request.ts'
 
 export async function handleDailyReport(route: RouteContext): Promise<Response> {
-  const { supabase, userId, body, client, chatModel, ledger, lang, json } = route
+  const { supabase, userId, body, generate, ledger, lang, json } = route
 
   const date = body.date
   if (!isIsoDate(date)) return json({ error: 'Geçersiz tarih', code: 'invalid_date' }, 400)
@@ -40,18 +39,14 @@ export async function handleDailyReport(route: RouteContext): Promise<Response> 
   const rules = await loadPlanningRules(supabase, userId)
   const { system, messages } = buildDailyReportPrompt({ lang, context, about: rules.about ?? '' })
 
-  const response = await client.messages.create({
-    model: chatModel,
-    output_config: CHAT_EFFORT,
-    // Dusunme (effort low) ayni butceyi paylasiyor; cikti kisa ama yarim kalmamali.
-    max_tokens: 3000,
-    system,
-    messages,
-  })
-  await ledger.record(response)
+  // Dusunme (effort low) ayni butceyi paylasiyor; cikti kisa ama yarim kalmamali.
+  const result = await generate({ system, messages, maxTokens: 3000 })
 
-  const narrative = parseDailyReportNarrative(firstText(response), context.items)
-  if (!narrative) return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
+  const narrative = parseDailyReportNarrative(result.text, context.items)
+  if (!narrative) {
+    ledger.markFailed()
+    return json({ error: 'AI yanıtı çözümlenemedi' }, 502)
+  }
 
   // Yazılamazsa anlatı yine de döner: model parası harcandı. Kayıt olmadığı için bir
   // sonraki açılışta yeniden üretilir, bu yüzden hata sessiz geçilmez.

@@ -165,3 +165,20 @@ test('görev silinince bağlı blokları sunucuda ve ekranda (bugünün aynası 
   assert.deepEqual(usePlanningStore.getState().timeBlocks.map((b) => b.id), ['b2'])
   assert.deepEqual(usePlanningStore.getState().todayBlocks.map((b) => b.id), ['b2'])
 })
+
+test('blok düzenleme ve silme yazılamazsa yerel önceki hali geri gelir', async () => {
+  const original = block('a', '09:00', '10:00')
+  usePlanningStore.setState({ timeBlocks: [original, block('b', '11:00', '12:00')] })
+  const failing = {
+    from: () => ({
+      update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: 'ağ' } }) }) }) }),
+      delete: () => ({ eq: async () => ({ error: { message: 'ağ' } }) }),
+    }),
+  } as unknown as SupabaseClient
+
+  await assert.rejects(usePlanningStore.getState().updateTimeBlock(failing, 'a', { label: 'Yeni' }))
+  assert.equal(usePlanningStore.getState().timeBlocks.find((b) => b.id === 'a')?.label, 'a')
+
+  await assert.rejects(usePlanningStore.getState().removeTimeBlock(failing, 'a'))
+  assert.deepEqual(usePlanningStore.getState().timeBlocks.map((b) => b.id), ['a', 'b'])
+})
