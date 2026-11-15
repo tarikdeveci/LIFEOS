@@ -28,3 +28,11 @@ test('sert sinir dolunca kural katmanina duser ve sinirli isaretlenir', () => {
   })
   assert.deepEqual(plan, { pro: true, useModel: false, limited: true })
 })
+
+test('mealInputError: sınır içi metin geçer, aşan ve metin olmayan reddedilir', async () => {
+  const { mealInputError, MEAL_INPUT_MAX } = await import('../../supabase/functions/parse-meal/plan.ts')
+  assert.equal(mealInputError('2 yumurta'), null)
+  assert.equal(mealInputError('a'.repeat(MEAL_INPUT_MAX)), null)
+  assert.equal(mealInputError('a'.repeat(MEAL_INPUT_MAX + 1))?.code, 'input_too_long')
+  assert.equal(mealInputError(undefined)?.code, 'input_too_long')
+})

@@ -30,7 +30,7 @@ import type { ParseMealResult } from '../_shared/nutrition/types.ts'
 import { notifyFallbackOnce, type NoticeClient } from '../_shared/ai/fallbackNotice.ts'
 import { bindRoute, getRouter } from '../_shared/ai/llm/index.ts'
 import { AiLedger, resolveAiAccess } from '../_shared/ai/usage.ts'
-import { planMealAi } from './plan.ts'
+import { mealInputError, planMealAi } from './plan.ts'
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -95,6 +95,8 @@ serve(async (req: Request) => {
     const { raw_input, user_id }: ParseRequest = await req.json()
     if (!raw_input || !user_id) return json({ error: 'raw_input ve user_id gerekli' }, 400)
     if (user.id !== user_id) return json({ error: 'Yetkisiz erişim' }, 403)
+    const tooLong = mealInputError(raw_input)
+    if (tooLong) return json(tooLong, 400)
 
     // Service role: RLS'i aşar, sorgular yine user_id ile daraltılır.
     const supabase = createClient(

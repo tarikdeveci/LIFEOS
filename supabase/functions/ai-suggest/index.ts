@@ -126,10 +126,10 @@ serve(async (req: Request) => {
     await ledger?.abandon()
     await ledger?.flush()
     console.error('ai-suggest error:', error)
-    const message = error instanceof Error ? error.message : String(error)
     console.error('ai-suggest stack:', error instanceof Error ? error.stack : undefined)
+    // İç hata metni (model sağlayıcı yanıtı, SQL hatası) istemciye gitmez, yalnızca log'a yazılır.
     return new Response(
-      JSON.stringify({ error: 'AI öneri oluşturulurken hata oluştu', detail: message }),
+      JSON.stringify({ error: 'AI öneri oluşturulurken hata oluştu' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }

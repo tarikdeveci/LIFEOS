@@ -2,7 +2,7 @@
 // Beslenme koçu sohbeti (nutrition_chat) ve istemciden gelen makro ile öğün verisinin normalleştirilmesi.
 
 import { buildNutritionCoachPrompt, parseNutritionCoachResult, type Macros } from '../_shared/ai/coach.ts'
-import { normalizeHistory, type RouteContext } from './request.ts'
+import { chatMessageError, normalizeHistory, type RouteContext } from './request.ts'
 import { shiftDate } from './time.ts'
 
 function num(value: unknown, fallback = 0): number {
@@ -66,6 +66,8 @@ function normalizeMeals(raw: unknown): MealSummary[] {
 export async function handleNutritionChat(route: RouteContext): Promise<Response> {
   const { supabase, userId, body, generate, ledger, lang, today, json } = route
   const { user_message, current_time, nutrition_context } = body
+  const tooLong = chatMessageError(user_message)
+  if (tooLong) return json(tooLong, 400)
 
   const ctx = nutrition_context ?? {}
   const targetRaw = ctx.target ?? body.target
