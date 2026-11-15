@@ -9,7 +9,7 @@ const { handleLifeSetup } = await import('../../supabase/functions/ai-suggest/li
 const { handleDailyReport } = await import('../../supabase/functions/ai-suggest/dailyReport.ts')
 const { handleBrainDump, handleTaskPriority } = await import('../../supabase/functions/ai-suggest/tasks.ts')
 const { handleDailyPlan } = await import('../../supabase/functions/ai-suggest/planning.ts')
-const { handleWorkoutPlan } = await import('../../supabase/functions/ai-suggest/workout.ts')
+const { handleWorkoutPlan, handleWorkoutProgramChat } = await import('../../supabase/functions/ai-suggest/workout.ts')
 const { handleNutritionChat } = await import('../../supabase/functions/ai-suggest/nutrition.ts')
 
 // ---------- erişim kararı ----------
@@ -313,6 +313,36 @@ test('rotalar: ayrıştırılamayan yanıtta markFailed çağrılır', async () 
   }
 })
 
+test('sohbet rotaları: 2000 karakterden uzun mesaj model çağrılmadan 400 alır', async () => {
+  const tooLong = 'a'.repeat(2001)
+  const cases: { name: string; run: (h: ReturnType<typeof harness>) => Promise<Response> }[] = [
+    { name: 'nutrition_chat', run: (h) => handleNutritionChat(h.route({ type: 'nutrition_chat', user_message: tooLong })) },
+    { name: 'workout_program_chat', run: (h) => handleWorkoutProgramChat(h.route({ type: 'workout_program_chat', user_message: tooLong })) },
+  ]
+  for (const c of cases) {
+    const h = harness({ reply: '{"message":"x"}' })
+    const response = await c.run(h)
+    assert.equal(response.status, 400, c.name)
+    assert.equal(((await response.json()) as { code: string }).code, 'message_too_long', c.name)
+    assert.equal(h.modelCalls.length, 0, c.name)
+  }
+})
+
+test('sohbet rotaları: tam sınırdaki mesaj geçer', async () => {
+  const h = harness({ reply: '{"message":"merhaba"}' })
+  const response = await handleNutritionChat(h.route({ type: 'nutrition_chat', user_message: 'a'.repeat(2000) }))
+  assert.equal(response.status, 200)
+})
+
+test('normalizeHistory: son 8 tur ve tur başına 4000 karakter', async () => {
+  const { normalizeHistory } = await import('../../supabase/functions/ai-suggest/request.ts')
+  const raw = Array.from({ length: 30 }, (_, i) => ({ role: 'user', text: `m${i} ${'x'.repeat(9000)}` }))
+  const turns = normalizeHistory(raw)
+  assert.equal(turns.length, 8)
+  assert.ok(turns[0]!.text.startsWith('m22 '))
+  assert.ok(turns.every((turn) => turn.text.length === 4000))
+})
+
 test('ai_mode: yalnız düz nesne gövdeye eklenir', () => {
   assert.deepEqual(withAiMode({ a: 1 }, 'primary'), { a: 1, ai_mode: 'primary' })
   assert.deepEqual(withAiMode({ a: 1 }, 'fallback'), { a: 1, ai_mode: 'fallback' })
@@ -383,4 +413,11 @@ test('replan bağlamı: kurallar profilden okunur, okunamazsa varsayılanla deva
   } finally {
     console.error = original
   }
+})
+
+test('sohbet rotaları: boşlukla şişirilmiş mesaj da sınırı aşar', async () => {
+  const h = harness({ reply: '{"message":"x"}' })
+  const response = await handleNutritionChat(h.route({ type: 'nutrition_chat', user_message: `a${' '.repeat(5000)}` }))
+  assert.equal(response.status, 400)
+  assert.equal(h.modelCalls.length, 0)
 })

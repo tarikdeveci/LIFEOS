@@ -76,15 +76,34 @@ export interface RouteContext {
  */
 export function normalizeHistory(raw: unknown): ChatTurn[] {
   if (!Array.isArray(raw)) return []
-  return raw.flatMap((entry): ChatTurn[] => {
+  // Pro sohbet rotaları da aynı sınırı kullanır: geçmiş sınırsız gelirse mesaj
+  // sınırı anlamsız kalır. Sondan REPLAN_HISTORY_TURNS tur, tur başına REPLAN_HISTORY_TURN_MAX karakter.
+  return raw.slice(-REPLAN_HISTORY_TURNS).flatMap((entry): ChatTurn[] => {
     if (!entry || typeof entry !== 'object') return []
     const record = entry as Record<string, unknown>
     const text = typeof record['text'] === 'string'
       ? record['text']
       : typeof record['content'] === 'string' ? record['content'] : ''
     if (!text.trim()) return []
-    return [{ role: record['role'] === 'assistant' ? 'assistant' : 'user', text }]
+    return [{
+      role: record['role'] === 'assistant' ? 'assistant' : 'user',
+      text: Array.from(text).slice(0, REPLAN_HISTORY_TURN_MAX).join(''),
+    }]
   })
+}
+
+/**
+ * Sohbet mesajı üst sınırı (nutrition_chat, workout_program_chat, replan).
+ * Sessizce kesilmez: istemci aynı sınırı kutuda uygular (AI_CHAT_MESSAGE_MAX),
+ * aşan istek model çağrılmadan 400 alır.
+ */
+export function chatMessageError(message: unknown): { error: string; code: string; max: number } | null {
+  if (typeof message !== 'string' || message.length <= REPLAN_MESSAGE_MAX) return null
+  return {
+    error: `Mesaj en çok ${REPLAN_MESSAGE_MAX} karakter olabilir`,
+    code: 'message_too_long',
+    max: REPLAN_MESSAGE_MAX,
+  }
 }
 
 // replan ücretsiz katmanda açık: girdi boyu sınırsız kalırsa tek bir ücretsiz

@@ -13,7 +13,7 @@ import {
   summarizeMuscleLoad,
   type MuscleGroupRef,
 } from '../_shared/ai/muscleLoad.ts'
-import { normalizeHistory, type RouteContext } from './request.ts'
+import { chatMessageError, normalizeHistory, type RouteContext } from './request.ts'
 import { shiftDate } from './time.ts'
 
 function normalizeExerciseName(value: string): string {
@@ -115,6 +115,8 @@ Lütfen:
 export async function handleWorkoutProgramChat(route: RouteContext): Promise<Response> {
   const { supabase, userId, body, generate, ledger, lang, today, json } = route
   const { user_message, workout_context } = body
+  const tooLong = chatMessageError(user_message)
+  if (tooLong) return json(tooLong, 400)
 
   // Katalog sunucudan okunur: istemciye güvenip 200 satır göndertmek hem
   // isteği şişiriyor hem de eski sürümlerde eksik alan bırakıyordu.
