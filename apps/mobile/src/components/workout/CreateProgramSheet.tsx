@@ -49,7 +49,11 @@ export function CreateProgramSheet({ visible, onClose, name, onChangeName, dayNa
               containerStyle={{ flex: 1 }}
             />
             {dayNames.length > 1 && (
-              <TouchableOpacity onPress={() => onChangeDayNames((days) => days.filter((_, index) => index !== i))} hitSlop={hitSlopFor(20)}>
+              <TouchableOpacity onPress={() => onChangeDayNames((days) => days.filter((_, index) => index !== i))}
+                hitSlop={hitSlopFor(20)}
+                accessibilityRole="button"
+                accessibilityLabel={t.wk_remove_day.replace('{name}', dayName.trim() || t.wk_day_n.replace('{n}', String(i + 1)))}
+              >
                 <Ionicons name="close-circle" size={20} color={colors.textSubtle} />
               </TouchableOpacity>
             )}
