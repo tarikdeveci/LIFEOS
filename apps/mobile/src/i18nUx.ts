@@ -36,6 +36,8 @@ export const uxEn = {
   ux_goal_delete: 'Delete goal {name}',
   ux_routine_similar: 'A similar routine already falls on these days: "{title}".',
   ux_routine_save_anyway: 'Save anyway',
+  ux_next_task: 'Next task',
+  ux_next_task_overdue: 'Overdue',
 } as const
 
 export const uxTr: Record<keyof typeof uxEn, string> = {
@@ -73,4 +75,6 @@ export const uxTr: Record<keyof typeof uxEn, string> = {
   ux_goal_delete: '{name} hedefini sil',
   ux_routine_similar: 'Bu günlerde benzer bir rutinin var: "{title}".',
   ux_routine_save_anyway: 'Yine de kaydet',
+  ux_next_task: 'Sıradaki görev',
+  ux_next_task_overdue: 'Gecikmiş',
 }

@@ -45,3 +45,40 @@ export const DEFAULT_WSJF_SCORES: WsjfScores = {
   effort_score: 3,
   friction_score: 3,
 }
+
+interface PendingTaskLike {
+  status: string
+  priority_score: number
+  scheduled_date: string | null
+  due_date: string | null
+}
+
+/** Görevin takvimdeki en erken tarihi (planlanan ya da son tarih); ikisi de yoksa null. */
+export function taskDateKey(task: Pick<PendingTaskLike, 'scheduled_date' | 'due_date'>): string | null {
+  const dates = [task.scheduled_date, task.due_date].filter((d): d is string => !!d)
+  if (dates.length === 0) return null
+  return dates.reduce((a, b) => (a <= b ? a : b))
+}
+
+/**
+ * Bugün ve Planlama'da gösterilen en yakın bekleyen görev (#33). Açık görevler (bitmemiş,
+ * ertelenmemiş, engelli olmayan) arasından tarihi olanlar en erken tarihle gelir: geciken önce,
+ * sonra bugün, sonra ilk gelecek gün. Tarihli görev yoksa en yüksek öncelikli tarihsiz görev.
+ * Aynı tarihte yüksek WSJF önce.
+ */
+export function nearestPendingTask<T extends PendingTaskLike>(tasks: readonly T[]): T | null {
+  let best: T | null = null
+  let bestKey: string | null = null
+  for (const task of tasks) {
+    if (task.status === 'done' || task.status === 'deferred' || task.status === 'blocked') continue
+    const key = taskDateKey(task)
+    if (!best) { best = task; bestKey = key; continue }
+    const better =
+      key !== null && bestKey === null ? true
+        : key === null && bestKey !== null ? false
+          : key !== bestKey ? (key as string) < (bestKey as string)
+            : task.priority_score > best.priority_score
+    if (better) { best = task; bestKey = key }
+  }
+  return best
+}
