@@ -100,7 +100,16 @@ export default function GizlilikKvkkPage() {
           30 gün içinde sonuçlandırılır.
         </p>
       </Section>
-      <Section title="8. Hesap ve Veri Silme">
+      <Section title="8. Misafir Kullanım">
+        <p>
+          Hesap açmadan kullanırken uygulama sana e-posta ya da ad istemeyen anonim bir kimlik oluşturur.
+          Bu sürede girdiğin veriler (görev, plan, öğün, antrenman) hesaplı kullanımda olduğu gibi
+          sunucularımızda saklanır. Uygulamayı 30 gün hiç açmazsan anonim kimlik ve ona bağlı tüm veriler
+          kalıcı olarak silinir. Hesap oluşturduğunda aynı veriler aynı kimlikle hesabına bağlanır, taşıma
+          ya da kopyalama yapılmaz.
+        </p>
+      </Section>
+      <Section title="9. Hesap ve Veri Silme">
         <p>
           LifeOS hesabınızı mobil uygulamadaki <strong className="text-white/80">Profil → Hesap ve Gizlilik</strong>{' '}
           bölümünden kalıcı olarak silebilirsiniz. Uygulamaya erişemiyorsanız{' '}
