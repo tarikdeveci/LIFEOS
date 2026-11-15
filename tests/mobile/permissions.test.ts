@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { requestOrOpenSettings } from '../../apps/mobile/src/utils/permissions.ts'
+import { permissionDrift, requestOrOpenSettings } from '../../apps/mobile/src/utils/permissions.ts'
 
 function setup(response: { status: string; canAskAgain: boolean }) {
   let opened = 0
@@ -26,4 +26,19 @@ test('kalıcı reddedildiyse (diyalog artık çıkmıyor) ayarlar açılır', as
   const s = setup({ status: 'denied', canAskAgain: false })
   assert.equal(await s.run(), false)
   assert.equal(s.opened(), 1)
+})
+
+// Saklanan bayrak cihazdaki izinle karşılaştırılır: Android izni geri alınca
+// uygulamayı kapatır, açılışta saklı "verildi" bayrağı kalıyordu.
+test('saklı izin cihazla aynıysa değişiklik yok', () => {
+  assert.equal(permissionDrift(true, true), null)
+  assert.equal(permissionDrift(false, false), null)
+})
+
+test('izin ayarlardan geri alındıysa revoked', () => {
+  assert.equal(permissionDrift(true, false), 'revoked')
+})
+
+test('izin ayarlardan verildiyse granted', () => {
+  assert.equal(permissionDrift(false, true), 'granted')
 })

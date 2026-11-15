@@ -28,6 +28,11 @@ export type HealthReadResult =
 export interface HealthReader {
   isAvailable: () => Promise<boolean>
   requestPermissions: () => Promise<boolean>
+  /**
+   * Okuma izni hâlâ var mı (diyalog açmaz). Android'de izin ayarlardan geri
+   * alınabiliyor; HealthKit okuma iznini açıklamadığı için iOS hep true döner.
+   */
+  hasPermissions: () => Promise<boolean>
   readDay: (range: DayRange) => Promise<HealthReadResult>
 }
 

@@ -25,6 +25,7 @@ export default function CalendarSettingsScreen() {
     lastSyncedAt,
     hasPermission,
     initialize,
+    refreshPermission,
   } = useCalendarStore()
 
   useEffect(() => {
@@ -32,13 +33,7 @@ export default function CalendarSettingsScreen() {
   }, [initialize])
 
   // Sistem ayarlarından dönünce izni iki yönde de yeniden oku.
-  useOnAppActive(() => {
-    void Calendar.getCalendarPermissionsAsync().then(({ status }) => {
-      const granted = status === 'granted'
-      if (granted && !hasPermission) void initialize()
-      if (!granted && hasPermission) useCalendarStore.setState({ hasPermission: false })
-    })
-  })
+  useOnAppActive(() => { void refreshPermission() })
 
   // Kalıcı reddedilmiş izinde diyalog çıkmıyordu, düğme ölü görünüyordu (#13, #15).
   const askPermission = async () => {

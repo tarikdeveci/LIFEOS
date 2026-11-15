@@ -19,3 +19,13 @@ export async function requestOrOpenSettings(
   if (!res.canAskAgain) await openSettings()
   return false
 }
+
+/**
+ * Kalıcı saklanan izin bayrağını cihazdaki gerçek izinle karşılaştırır.
+ * Android izni sistem ayarlarından geri alınca uygulamayı kapatır; açılışta saklı
+ * bayrak "verildi" kalıyor, ekran yanlış durum gösteriyordu.
+ */
+export function permissionDrift(stored: boolean, granted: boolean): 'granted' | 'revoked' | null {
+  if (stored === granted) return null
+  return granted ? 'granted' : 'revoked'
+}

@@ -6,6 +6,12 @@ export async function requestCalendarPermission(): Promise<boolean> {
   return status === 'granted'
 }
 
+/** İzni sormadan okur (diyalog açmaz). */
+export async function hasCalendarPermission(): Promise<boolean> {
+  const { status } = await Calendar.getCalendarPermissionsAsync()
+  return status === 'granted'
+}
+
 export async function getAvailableCalendars(): Promise<Calendar.Calendar[]> {
   const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT)
   return calendars
