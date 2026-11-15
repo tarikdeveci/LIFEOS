@@ -12,6 +12,7 @@ import { recordValueMoment } from '@/src/lib/review'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
+import { DateField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -303,7 +304,7 @@ export default function TaskDetailScreen() {
         <GlassCard>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Detaylar</Text>
           <View style={{ gap: spacing[3] }}>
-            {/* Tarih - Faz 3'te DatePicker eklenecek */}
+            {/* Tarih: hızlı seçimler ve takvimden seçme (#18) */}
             <View>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>Tarih</Text>
               <View style={{ flexDirection: 'row', gap: spacing[2], flexWrap: 'wrap' }}>
@@ -318,11 +319,6 @@ export default function TaskDetailScreen() {
 
                   return (
                     <>
-                      {!isNone && !isToday && !isTomorrow && (
-                        <View style={{ minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: '#fff' }}>{task.scheduled_date}</Text>
-                        </View>
-                      )}
                       <TouchableOpacity
                         disabled={chipsDisabled}
                         onPress={() => handleDate(todayStr)}
@@ -348,6 +344,12 @@ export default function TaskDetailScreen() {
                   )
                 })()}
               </View>
+              <DateField
+                value={task.scheduled_date ?? ''}
+                onChange={(v) => void handleDate(v)}
+                disabled={editingDuration || saving}
+                containerStyle={{ marginTop: spacing[2] }}
+              />
               {errorFor('date')}
             </View>
 

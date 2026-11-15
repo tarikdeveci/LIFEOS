@@ -12,10 +12,12 @@ import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
 import { BrainDumpSheet } from '@/src/components/tasks/BrainDumpSheet'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
+import { DateField } from '@/src/components/ui/PickerField'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { TaskCheckbox } from '@/src/components/ui/TaskCheckbox'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { Segmented } from '@/src/components/ui/Segmented'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
@@ -205,19 +207,12 @@ export default function TasksScreen() {
             <StatCard label={t.tasks_total} value={tasks.length} />
           </View>
 
-          <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[3] }}>
-            {(['today', 'week', 'all'] as Tab[]).map((tabKey) => (
-              <TouchableOpacity
-                key={tabKey}
-                onPress={() => setTab(tabKey)}
-                style={{ flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: 'center', backgroundColor: tab === tabKey ? colors.bgSurface : 'transparent', ...(tab === tabKey ? colors.shadowCard : {}) }}
-              >
-                <Text style={{ fontSize: fontSize.sm, fontWeight: tab === tabKey ? fontWeight.semibold : fontWeight.regular, color: tab === tabKey ? colors.textPrimary : colors.textMuted }}>
-                  {tabKey === 'today' ? t.today : tabKey === 'week' ? t.week : t.all}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Segmented
+            options={[{ key: 'today', label: t.today }, { key: 'week', label: t.week }, { key: 'all', label: t.all }]}
+            value={tab}
+            onChange={setTab}
+            style={{ marginBottom: spacing[3] }}
+          />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[2] }}>
             <TouchableOpacity
@@ -276,7 +271,7 @@ export default function TasksScreen() {
           <Input label={t.task_field_title} value={draft.title} onChangeText={(v) => setDraft((d) => ({ ...d, title: v }))} placeholder={t.qtask_nl_placeholder} autoFocus returnKeyType="next" />
           {quickPreview && <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium, marginTop: -spacing[2] }}>{quickPreview}</Text>}
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.task_field_date} value={draft.scheduled_date} onChangeText={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={todayStr} containerStyle={{ flex: 1 }} returnKeyType="next" />
+            <DateField label={t.task_field_date} value={draft.scheduled_date} onChange={(v) => setDraft((d) => ({ ...d, scheduled_date: v }))} placeholder={relativeDateLabel(todayStr, lang)} onClear={() => setDraft((d) => ({ ...d, scheduled_date: '' }))} containerStyle={{ flex: 1 }} />
             <Input label={t.task_field_minutes} value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 

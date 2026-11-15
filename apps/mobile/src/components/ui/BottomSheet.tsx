@@ -18,9 +18,14 @@ interface Props {
   title?: string
   children: React.ReactNode
   scrollable?: boolean
+  /**
+   * Sheet içinde alt görünüm açıkken verilir: Android donanım geri bütün sheet'i
+   * kapatmak yerine bunu çağırır, bir adım geri gider. Arka plan ve aşağı çekme yine kapatır.
+   */
+  onBack?: () => void
 }
 
-export function BottomSheet({ visible, onClose, title, children, scrollable = false }: Props) {
+export function BottomSheet({ visible, onClose, title, children, scrollable = false, onBack }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
   const { height: screenHeight } = useWindowDimensions()
@@ -78,7 +83,7 @@ export function BottomSheet({ visible, onClose, title, children, scrollable = fa
   )
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onBack ?? onClose} statusBarTranslucent>
       {/* Modal ayrı bir pencere: kök düzendeki hareket kökü buraya ulaşmaz. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
       {/*

@@ -4,6 +4,7 @@ import type { BlockType, CreateRoutineInput, Routine, RoutineKind, Weekday } fro
 import { todayDate } from '@lifeos/shared'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
+import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -190,8 +191,8 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
               <Text style={chipText(form.biweekly)}>{t.routines_biweekly}</Text>
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-              <Input label={t.routines_start} value={form.start} onChangeText={(v) => patch({ start: v })} placeholder="09:00" containerStyle={{ flex: 1 }} />
-              <Input label={t.routines_end} value={form.end} onChangeText={(v) => patch({ end: v })} placeholder="10:00" containerStyle={{ flex: 1 }} />
+              <TimeField label={t.routines_start} value={form.start} onChange={(v) => patch({ start: v })} defaultTime="09:00" onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
+              <TimeField label={t.routines_end} value={form.end} onChange={(v) => patch({ end: v })} defaultTime={form.start || '10:00'} onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
             </View>
             {form.kind === 'task' && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_time_optional}</Text>}
           </>

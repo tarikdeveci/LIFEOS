@@ -57,6 +57,10 @@ export const formsEn = {
   profile_gender_female: 'Female',
   profile_gender_male: 'Male',
   profile_save_failed: 'Could not save. Check your connection.',
+  picker_choose_date: 'Choose date',
+  picker_choose_time: 'Choose time',
+  picker_clear: 'Clear',
+  picker_done: 'Done',
 } as const
 
 export const formsTr: Record<keyof typeof formsEn, string> = {
@@ -115,4 +119,8 @@ export const formsTr: Record<keyof typeof formsEn, string> = {
   profile_gender_female: 'Kadın',
   profile_gender_male: 'Erkek',
   profile_save_failed: 'Kaydedilemedi. Bağlantını kontrol et.',
+  picker_choose_date: 'Tarih seç',
+  picker_choose_time: 'Saat seç',
+  picker_clear: 'Temizle',
+  picker_done: 'Tamam',
 }
