@@ -58,9 +58,13 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   }
 
   const handleSave = async (input: CreateRoutineInput) => {
-    if (editing) await updateSeries(supabase, editing.id, input)
-    else await addRoutine(supabase, userId, input)
-    onChanged()
+    if (editing) {
+      await updateSeries(supabase, editing.id, input)
+      onChanged()
+    } else {
+      // Kaydet yalnız şablon yazımını bekler; örnekler arka planda üretilir, bitince gün yenilenir.
+      await addRoutine(supabase, userId, input, onChanged)
+    }
   }
 
   const handleDelete = async () => {
