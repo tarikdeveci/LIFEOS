@@ -68,14 +68,10 @@ serve(async (req: Request) => {
     // Ölçüm burada, istemcide değil: web'de AI çağrısı beş ayrı bileşene
     // dağılmış durumda ve mobil ayrı bir yoldan geliyor. Her rota tek model
     // çağrısı yapıyor; satır o çağrıdan hemen sonra token ve USD maliyetiyle
-    // yazılır. `supabase` kullanıcının JWT'siyle çalışıyor, RLS insert
-    // politikasından geçiyor.
-    // Ücretsiz katmanda rezervasyon satırını kapatmak için service role gerekir
-    // (events kullanıcıya yalnızca INSERT açık; satırı kullanıcı güncelleyemez).
-    const settleClient = access.tier === 'free'
-      ? createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-      : null
-    ledger = new AiLedger(supabase, user.id, type, access.tier, settleClient)
+    // yazılır. Satırı service role yazar (078: kullanıcı `ai_used` ekleyemez);
+    // ücretsiz katmanın rezervasyonu kullanıcının JWT'siyle (`supabase`) alınır.
+    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    ledger = new AiLedger(supabase, user.id, type, access.tier, serviceClient)
 
     const lang: Lang = language === 'en' ? 'en' : 'tr'
 

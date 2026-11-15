@@ -176,6 +176,11 @@ export function failedKind(kind: string): string {
  * çevrilir: maliyet yazılır, hak yanmaz. İstek yarıda ölürse (zaman aşımı)
  * rezervasyon açık kalır ve hak yanar: bilinmezlikte fazla saymak, bedava
  * hak vermekten iyidir.
+ *
+ * Yazım her katmanda service role ile (078): events_insert_own kullanıcıya
+ * `ai_used` yazdırmaz, yoksa istemci kendi satırını ekleyip kota ve
+ * ai_route_health sayılarını bozabilirdi. Kullanıcı istemcisi yalnızca
+ * reserve_ai_use için (auth.uid() gerekir).
  */
 export class AiLedger {
   private calls = 0
@@ -198,11 +203,12 @@ export class AiLedger {
   private readonly userId: string
   private readonly kind: string
   private readonly tier: AiTier
-  private readonly settleClient: SupabaseLike | null
+  private readonly serviceClient: SupabaseLike
 
   /**
-   * `settleClient`: service role istemcisi. Yalnızca ücretsiz katmanda gerekir;
-   * kullanıcının kendi JWT'siyle satır güncellenemez (events yalnızca INSERT).
+   * `supabase`: kullanıcının JWT'siyle çalışan istemci (rezervasyon).
+   * `serviceClient`: service role istemcisi; `ai_used` satırını yazar ve
+   * rezervasyonu kapatır. Kullanıcı bu satırları ne ekleyebilir ne güncelleyebilir.
    * (Alanlar açık tanımlı: Node'un strip-only modu parametre özelliği desteklemiyor.)
    */
   constructor(
@@ -210,13 +216,13 @@ export class AiLedger {
     userId: string,
     kind: string,
     tier: AiTier,
-    settleClient: SupabaseLike | null = null,
+    serviceClient: SupabaseLike,
   ) {
     this.supabase = supabase
     this.userId = userId
     this.kind = kind
     this.tier = tier
-    this.settleClient = settleClient
+    this.serviceClient = serviceClient
   }
 
   /**
@@ -335,10 +341,10 @@ export class AiLedger {
    */
   private async settle(props: Record<string, unknown>): Promise<void> {
     const id = this.reservationId
-    const client = this.settleClient
+    const client = this.serviceClient
     if (id === null) return
     this.reservationId = null
-    for (let attempt = 1; client && attempt <= LEDGER_WRITE_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= LEDGER_WRITE_ATTEMPTS; attempt++) {
       try {
         const { error } = await client.rpc('settle_ai_use', { p_user_id: this.userId, p_id: id, p_props: props })
         if (!error) return
@@ -373,7 +379,7 @@ export class AiLedger {
     for (let attempt = 1; attempt <= LEDGER_WRITE_ATTEMPTS; attempt++) {
       let retryable = false
       try {
-        const { error, status } = await this.supabase
+        const { error, status } = await this.serviceClient
           .from('events')
           .insert({ user_id: this.userId, name: 'ai_used', props })
         if (!error) return true

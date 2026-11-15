@@ -49,15 +49,19 @@ function userClient(reserve: { data: unknown; error?: { message: string } | null
 
 function serviceClient(fail = 0) {
   const calls: RpcCall[] = []
+  const inserts: Insert[] = []
   let failures = fail
   const client = {
+    from: () => ({
+      insert: async (values: Record<string, unknown>) => { inserts.push({ values }); return { data: null, error: null } },
+    }),
     rpc: async (name: string, args?: Record<string, unknown>) => {
       calls.push({ name, args })
       if (failures > 0) { failures -= 1; return { data: null, error: { message: 'geçici' } } }
       return { data: true, error: null }
     },
   } as unknown as Client
-  return { client, calls }
+  return { client, calls, inserts }
 }
 
 const quiet = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -78,7 +82,7 @@ test('ücretsiz: model çağrısından önce rezervasyon, yanıttan sonra aynı 
   assert.equal(service.calls.length, 0, 'çağrı gelmeden satır kapanmaz')
 
   await record(ledger, MESSAGE)
-  assert.equal(user.inserts.length, 0, 'ayrıca yeni satır yazılmaz')
+  assert.equal(user.inserts.length + service.inserts.length, 0, 'ayrıca yeni satır yazılmaz')
   assert.equal(service.calls.length, 1)
   assert.equal(service.calls[0]?.name, 'settle_ai_use')
   assert.equal(service.calls[0]?.args?.['p_id'], 41)
@@ -143,15 +147,17 @@ test('ücretsiz: begin tekrar çağrılsa ikinci hak ayırmaz', async () => {
   assert.equal(user.rpcs.length, 1)
 })
 
-test('Pro ve deneme: begin hiçbir şey yapmaz, satır çağrıdan sonra insert ile yazılır, max_tokens kind değiştirmez', async () => {
+test('Pro ve deneme: begin hiçbir şey yapmaz, satırı çağrıdan sonra service role yazar, max_tokens kind değiştirmez', async () => {
   for (const tier of ['pro', 'trial'] as const) {
     const user = userClient({ data: 1 })
-    const ledger = new AiLedger(user.client, 'u1', 'replan', tier)
+    const service = serviceClient()
+    const ledger = new AiLedger(user.client, 'u1', 'replan', tier, service.client)
     assert.equal(await ledger.begin(), true)
     assert.equal(user.rpcs.length, 0)
     await record(ledger, { ...MESSAGE, stopReason: 'max_tokens' })
-    assert.equal(user.inserts.length, 1)
-    const row = user.inserts[0]?.values
+    assert.equal(user.inserts.length, 0, 'kullanıcı istemcisi events yazmaz (078)')
+    assert.equal(service.inserts.length, 1)
+    const row = service.inserts[0]?.values
     assert.equal(row?.['name'], 'ai_used')
     assert.equal((row?.['props'] as Record<string, unknown>)['kind'], 'replan')
     assert.equal((row?.['props'] as Record<string, unknown>)['tier'], tier)
@@ -179,8 +185,8 @@ test('eşzamanlılık: veritabanı atomik ayırır, N paralel istekten yalnızca
 })
 
 test('ledger: yeni alanlar', async () => {
-  const user = userClient({ data: 1 })
-  const ledger = new AiLedger(user.client, 'u1', 'meal', 'pro')
+  const user = serviceClient()
+  const ledger = new AiLedger(userClient({ data: 1 }).client, 'u1', 'meal', 'pro', user.client)
   ledger.add({ ...MESSAGE, route: 'meal_extract', costUsd: 0.0123456 })
   ledger.add({
     ...MESSAGE,
@@ -203,12 +209,12 @@ test('ledger: yeni alanlar', async () => {
 })
 
 test('ledger: markFailed parse_ok false, max_tokens da', async () => {
-  const user = userClient({ data: 1 })
-  const a = new AiLedger(user.client, 'u1', 'replan', 'pro')
+  const user = serviceClient()
+  const a = new AiLedger(userClient({ data: 1 }).client, 'u1', 'replan', 'pro', user.client)
   a.add(MESSAGE)
   a.markFailed()
   await a.flush()
-  const b = new AiLedger(user.client, 'u1', 'replan', 'pro')
+  const b = new AiLedger(userClient({ data: 1 }).client, 'u1', 'replan', 'pro', user.client)
   b.add({ ...MESSAGE, stopReason: 'max_tokens' })
   await b.flush()
   assert.equal((user.inserts[0]?.values['props'] as Record<string, unknown>)['parse_ok'], false)
@@ -216,8 +222,8 @@ test('ledger: markFailed parse_ok false, max_tokens da', async () => {
 })
 
 test('ledger: mode() çağrı yoksa null, flush sonrası da isteğin modunu verir', async () => {
-  const user = userClient({ data: 1 })
-  const ledger = new AiLedger(user.client, 'u1', 'replan', 'pro')
+  const user = serviceClient()
+  const ledger = new AiLedger(userClient({ data: 1 }).client, 'u1', 'replan', 'pro', user.client)
   assert.equal(ledger.mode(), null)
   ledger.add(MESSAGE)
   assert.equal(ledger.mode(), 'primary')
