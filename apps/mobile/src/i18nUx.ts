@@ -26,6 +26,16 @@ export const uxEn = {
   ux_wk_edit_ex_label: 'Edit {name}',
   ux_wk_body_front: 'Body map, front',
   ux_wk_body_back: 'Body map, back',
+  ux_plan_edit_block: 'Edit block',
+  ux_plan_delete_error: 'Could not delete the block',
+  ux_plan_prev_week: 'Previous week',
+  ux_plan_next_week: 'Next week',
+  ux_plan_block_a11y: '{name}, {start} to {end}',
+  ux_plan_mark_done: 'Mark done',
+  ux_plan_mark_undone: 'Mark not done',
+  ux_goal_delete: 'Delete goal {name}',
+  ux_routine_similar: 'A similar routine already falls on these days: "{title}".',
+  ux_routine_save_anyway: 'Save anyway',
 } as const
 
 export const uxTr: Record<keyof typeof uxEn, string> = {
@@ -53,4 +63,14 @@ export const uxTr: Record<keyof typeof uxEn, string> = {
   ux_wk_edit_ex_label: '{name} düzenle',
   ux_wk_body_front: 'Kas haritası, ön',
   ux_wk_body_back: 'Kas haritası, arka',
+  ux_plan_edit_block: 'Bloğu düzenle',
+  ux_plan_delete_error: 'Blok silinemedi',
+  ux_plan_prev_week: 'Önceki hafta',
+  ux_plan_next_week: 'Sonraki hafta',
+  ux_plan_block_a11y: '{name}, {start} ile {end} arası',
+  ux_plan_mark_done: 'Tamamlandı olarak işaretle',
+  ux_plan_mark_undone: 'Tamamlanmadı olarak işaretle',
+  ux_goal_delete: '{name} hedefini sil',
+  ux_routine_similar: 'Bu günlerde benzer bir rutinin var: "{title}".',
+  ux_routine_save_anyway: 'Yine de kaydet',
 }

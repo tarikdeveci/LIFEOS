@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
 import type { BlockType, CreateRoutineInput, Routine, RoutineKind, Weekday } from '@lifeos/shared'
-import { todayDate } from '@lifeos/shared'
+import { findSimilarRoutine, todayDate, useRoutineStore } from '@lifeos/shared'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
 import { TimeField } from '@/src/components/ui/PickerField'
@@ -100,18 +100,34 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
   const { t } = useLang()
   const [form, setForm] = useState<FormState>(() => toForm(routine, defaultKind))
   const [saving, setSaving] = useState(false)
+  // Hata ve benzer rutin uyarısı formun içinde görünür (UX 2: bilgi için Alert açılmaz).
+  const [notice, setNotice] = useState<{ text: string; warn: boolean } | null>(null)
+  const [warnedId, setWarnedId] = useState<string | null>(null)
 
-  useEffect(() => { if (visible) setForm(toForm(routine, defaultKind)) }, [visible, routine, defaultKind])
+  useEffect(() => {
+    if (!visible) return
+    setForm(toForm(routine, defaultKind))
+    setNotice(null)
+    setWarnedId(null)
+  }, [visible, routine, defaultKind])
 
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
   const names = t.routines_day_names.split(',')
 
   const handleSave = async () => {
     const input = toInput(form, routine === null, routine?.block_type ?? 'routine')
-    if (typeof input === 'string') { Alert.alert(t[input]); return }
+    if (typeof input === 'string') { setNotice({ text: t[input], warn: false }); return }
+    // Aynı iş iki kez girilmesin: benzer rutin varsa önce söylenir, ikinci Kaydet yine kaydeder.
+    const similar = findSimilarRoutine(input, useRoutineStore.getState().routines, routine?.id ?? null)
+    if (similar && similar.id !== warnedId) {
+      setWarnedId(similar.id)
+      setNotice({ text: t.ux_routine_similar.replace('{title}', similar.title), warn: true })
+      return
+    }
+    setNotice(null)
     setSaving(true)
     try { await onSave(input); onClose() }
-    catch { Alert.alert(t.routines_error) }
+    catch { setNotice({ text: t.routines_error, warn: false }) }
     finally { setSaving(false) }
   }
 
@@ -202,7 +218,10 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
           <TaskGoalPicker userId={userId} goalId={form.goalId} onChange={(goalId) => patch({ goalId })} />
         )}
 
-        <Button label={t.routines_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[2] }} />
+        {notice && (
+          <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.sm, color: notice.warn ? palette.warning : palette.danger }}>{notice.text}</Text>
+        )}
+        <Button label={notice?.warn ? t.ux_routine_save_anyway : t.routines_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[2] }} />
         {routine && onDelete && <Button label={t.routines_delete} onPress={handleDelete} variant="danger" fullWidth />}
       </View>
     </BottomSheet>

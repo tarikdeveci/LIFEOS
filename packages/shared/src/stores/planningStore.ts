@@ -117,20 +117,38 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     }))
   },
 
+  // İyimser yazmalar hata verirse yerel önceki değer geri konur: çevrimdışıyken
+  // günü yeniden okumak da başarısız olacağından geri alma ağa bağlı olmamalı.
   updateTimeBlock: async (supabase, blockId, updates) => {
+    const prev = get().timeBlocks.find((b) => b.id === blockId)
     set((state) => ({
       timeBlocks: state.timeBlocks.map((b) =>
         b.id === blockId ? { ...b, ...updates } : b,
       ),
     }))
-    await updateTimeBlock(supabase, blockId, updates)
+    try {
+      await updateTimeBlock(supabase, blockId, updates)
+    } catch (err) {
+      if (prev) set((state) => ({ timeBlocks: state.timeBlocks.map((b) => (b.id === blockId ? prev : b)) }))
+      throw err
+    }
   },
 
   removeTimeBlock: async (supabase, blockId) => {
+    const prev = get().timeBlocks.find((b) => b.id === blockId)
     set((state) => ({
       timeBlocks: state.timeBlocks.filter((b) => b.id !== blockId),
     }))
-    await deleteTimeBlock(supabase, blockId)
+    try {
+      await deleteTimeBlock(supabase, blockId)
+    } catch (err) {
+      if (prev) {
+        set((state) => state.timeBlocks.some((b) => b.id === blockId) ? state : {
+          timeBlocks: [...state.timeBlocks, prev].sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time)),
+        })
+      }
+      throw err
+    }
   },
 
   /**
