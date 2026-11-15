@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
 import { addMinutesToClock, nextSlotTime, usePlanningStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
+import { promptPushAfterFirstBlock } from '@/src/notifications/firstBlockPrompt'
 import { Input } from '@/src/components/ui/Input'
 import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
@@ -78,7 +79,11 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
     setSaving(true)
     try {
       if (editing) await updateTimeBlock(supabase, editing.id, values)
-      else await addTimeBlock(supabase, userId, { date, ...values })
+      else {
+        await addTimeBlock(supabase, userId, { date, ...values })
+        // Bildirim izni ilk kaydedilen blokta, bir kez istenir.
+        void promptPushAfterFirstBlock()
+      }
       onClose()
     } catch {
       setError(editing ? t.plan_block_update_error : t.plan_block_add_error)

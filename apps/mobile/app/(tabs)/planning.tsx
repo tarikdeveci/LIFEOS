@@ -29,6 +29,7 @@ import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
 import { useProGate } from '@/src/hooks/useProGate'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
@@ -71,6 +72,7 @@ export default function PlanningScreen() {
   const { localEvents, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
+  const { requireAccount } = useRequireAccount()
   // Free kullanıcı ürünün vaadini (gününü AI kursun) görebilsin diye AI
   // planlama ilk 3 kez ücretsiz; sayaç ve kapı sunucuda.
   const { freePlansLeft, refreshFreePlans } = useFreeAiPlans(isPro, isCheckingPro)
@@ -88,6 +90,8 @@ export default function PlanningScreen() {
     ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
     : `Pro · ${t.plan_ai_plan}`
   function requirePlanAccess(): boolean {
+    // Ücretsiz plan hakkı hesap ister: misafir önce hesap kapısından geçer.
+    if (!requireAccount('ai')) return false
     if (hasFreePlan) return true
     return requirePro('free_limit')
   }
@@ -211,7 +215,11 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         },
       ])
     } catch (error) {
-      if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
+      if (error instanceof AiAccessError && error.code === 'account_required') {
+        // Sunucu hesap istedi (istemci aşamayı geç öğrenmiş olabilir): sheet kapanır, kapı açılır.
+        setShowAiChat(false)
+        setTimeout(() => requireAccount('ai'), 400)
+      } else if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
         // Ücretsiz hak bitti (başka cihazda harcanmış da olabilir). iOS iç
         // içe modal açmıyor: önce sheet kapanır, sonra paywall.
         void refreshFreePlans()

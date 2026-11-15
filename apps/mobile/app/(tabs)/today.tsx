@@ -137,10 +137,11 @@ export default function TodayScreen() {
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/profile')}
               accessibilityRole="button"
-              accessibilityLabel={t.profile_title}
-              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel={t.profile_button}
+              style={{ minWidth: 44, height: 44, paddingHorizontal: spacing[3], borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', gap: spacing[1], alignItems: 'center', justifyContent: 'center' }}
             >
               <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted }}>{t.profile_button}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/settings' as never)}

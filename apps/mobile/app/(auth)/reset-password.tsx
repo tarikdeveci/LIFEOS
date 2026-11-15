@@ -29,7 +29,7 @@ export default function ResetPasswordScreen() {
     }
     setLoading(true)
     try {
-      const { error } = await supabase.auth.updateUser({ password })
+      const { error } = await supabase.auth.updateUser({ password, data: { password_set: true } })
       if (error) throw error
       Alert.alert(t.acc_password_updated, t.acc_password_updated_desc, [
         { text: t.acc_back_to_login, onPress: () => router.replace('/(auth)/login') },

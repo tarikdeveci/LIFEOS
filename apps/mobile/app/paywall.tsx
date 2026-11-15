@@ -9,6 +9,8 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { useAuth } from '@/src/contexts/AuthContext'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { supabase } from '@/src/lib/supabase'
 import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
@@ -38,14 +40,22 @@ function trialDuration(trial: TrialOffer, tr: boolean): string {
 
 export default function PaywallScreen() {
   const { colors, isDark } = useTheme()
-  const { lang } = useLang()
+  const { lang, t } = useLang()
   const subscription = useSubscriptionStatus()
+  const { userId, stage } = useAuth()
+  const { requireAccount } = useRequireAccount()
   const tr = lang === 'tr'
   const goBack = useGoBack()
   // Ekranı kim açtı: 'onboarding' (ilk açılış), 'free_limit' (ücretsiz AI
   // planlama hakkı bitti) ya da yok (profil, Pro kilidi).
-  const { source } = useLocalSearchParams<{ source?: string }>()
+  const { source, freeLeft } = useLocalSearchParams<{ source?: string; freeLeft?: string }>()
   const fromOnboarding = source === 'onboarding'
+  const accountReady = stage === 'ready'
+
+  // Paywall yalnızca hesabı hazır kullanıcıya açılır; misafir ve onaysız e-posta kapıya yönlenir.
+  useEffect(() => {
+    if (stage && !accountReady) requireAccount('paywall', { replace: true })
+  }, [stage, accountReady, requireAccount])
 
   const [plans, setPlans] = useState<ProPlan[] | null>(null)
   const [selected, setSelected] = useState<ProPeriod>('annual')
@@ -54,13 +64,12 @@ export default function PaywallScreen() {
   // açılışında bir kez; ödeme tarafını RevenueCat ölçtüğü için buraya
   // yalnızca "gördü" bilgisi ve nereden açıldığı yazılıyor.
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) void track(supabase, data.user.id, 'paywall_view', { source: source ?? 'direct' })
-    })
-  }, [source])
+    if (userId && accountReady) void track(supabase, userId, 'paywall_view', { source: source ?? 'direct' })
+  }, [source, userId, accountReady])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (!accountReady) return
     let active = true
     void fetchProPlans().then((result) => {
       if (!active) return
@@ -70,7 +79,7 @@ export default function PaywallScreen() {
     return () => {
       active = false
     }
-  }, [])
+  }, [accountReady])
 
   const openLink = useCallback((url: string) => {
     void WebBrowser.openBrowserAsync(url)
@@ -78,10 +87,10 @@ export default function PaywallScreen() {
 
   async function handlePurchase() {
     const plan = plans?.find((p) => p.period === selected)
-    if (!plan) return
+    if (!plan || !userId) return
 
     setBusy(true)
-    const outcome = await purchasePlan(plan)
+    const outcome = await purchasePlan(plan, userId)
     setBusy(false)
 
     if (outcome === 'purchased') {
@@ -108,8 +117,9 @@ export default function PaywallScreen() {
   }
 
   async function handleRestore() {
+    if (!userId) return
     setBusy(true)
-    const outcome = await restorePurchases()
+    const outcome = await restorePurchases(userId)
     setBusy(false)
 
     if (outcome === 'restored') {
@@ -182,6 +192,11 @@ export default function PaywallScreen() {
           <Text style={{ fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
             {tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature'}
           </Text>
+          {source === 'post_signup' && freeLeft !== undefined && (
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
+              {t.paywall_free_left.replace('{n}', freeLeft)}
+            </Text>
+          )}
           {source === 'free_limit' && (
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
               {tr ? '3 ücretsiz AI planlama hakkını kullandın.' : "You've used your 3 free AI planning requests."}
@@ -295,7 +310,7 @@ export default function PaywallScreen() {
             size="lg"
             fullWidth
             loading={busy}
-            disabled={busy || !plans || plans.length === 0}
+            disabled={busy || !plans || plans.length === 0 || !subscription.canPurchase}
             style={{ marginBottom: spacing[3] }}
           />
         )}
@@ -322,7 +337,7 @@ export default function PaywallScreen() {
           onPress={() => void handleRestore()}
           variant="ghost"
           fullWidth
-          disabled={busy}
+          disabled={busy || !subscription.canPurchase}
           style={{ marginBottom: spacing[5] }}
         />
 

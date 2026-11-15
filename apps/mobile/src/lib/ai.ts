@@ -3,6 +3,7 @@ import type { ParseMealResponse } from '@lifeos/shared'
 
 import { loadStoredLang, getCurrentT } from '../contexts/LangContext'
 import { supabase } from './supabase'
+import { runPostSignupAfterAiResult } from '../auth/postSignup'
 
 const BASE = process.env['EXPO_PUBLIC_SUPABASE_URL']!
 const ANON = process.env['EXPO_PUBLIC_SUPABASE_ANON_KEY']!
@@ -19,13 +20,16 @@ async function getToken(): Promise<string> {
 
 /**
  * Sunucunun AI kapısı reddetti: Pro gerekli (402; free kullanıcının ücretsiz
- * planlama hakkı bittiğinde de bu) ya da bu ayki AI sınırı doldu (429).
+ * planlama hakkı bittiğinde de bu), hesap gerekli (403, misafir ya da onaysız
+ * e-posta) ya da bu ayki AI sınırı doldu (429).
  * Kapı kuralları: supabase/functions/_shared/ai/usage.ts
  */
-export class AiAccessError extends Error {
-  readonly code: 'pro_required' | 'ai_budget_exhausted'
+export type AiAccessCode = 'pro_required' | 'ai_budget_exhausted' | 'account_required'
 
-  constructor(code: 'pro_required' | 'ai_budget_exhausted', message: string) {
+export class AiAccessError extends Error {
+  readonly code: AiAccessCode
+
+  constructor(code: AiAccessCode, message: string) {
     super(message)
     this.name = 'AiAccessError'
     this.code = code
@@ -51,15 +55,20 @@ export async function callAiSuggest<T>(body: Record<string, unknown>): Promise<T
     body: JSON.stringify({ today: todayDate(), language, ...body }),
   })
   if (!res.ok) {
-    if (res.status === 402 || res.status === 403) {
+    if (res.status === 403) {
+      const payload = (await res.json().catch(() => null)) as { code?: string } | null
+      if (payload?.code === 'account_required') throw new AiAccessError('account_required', 'AI erisimi icin hesap gerekli')
       throw new AiAccessError('pro_required', 'AI erisimi icin Pro abonelik gerekli')
     }
+    if (res.status === 402) throw new AiAccessError('pro_required', 'AI erisimi icin Pro abonelik gerekli')
     if (res.status === 429) {
       const payload = (await res.json().catch(() => null)) as { code?: string } | null
       if (payload?.code === 'ai_budget_exhausted') throw new AiAccessError('ai_budget_exhausted', AI_BUDGET_MESSAGE())
     }
     throw new Error(`AI suggest error: ${res.status}`)
   }
+  // Hesap yeni açıldıysa bekleyen post_signup paywall'ı ilk AI sonucundan sonra açılır.
+  void runPostSignupAfterAiResult()
   return res.json() as Promise<T>
 }
 
