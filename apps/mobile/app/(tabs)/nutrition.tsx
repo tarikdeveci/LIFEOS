@@ -406,6 +406,29 @@ export default function NutritionScreen() {
     }
   }
 
+  /**
+   * Sheet'i kapatır ve taslağın tamamını sıfırlar (#38). Metin, mod ve seçili arama sonucu da
+   * temizlenir: yarım temizlik yeniden açılışta eski metinden hesap yaptırıyordu.
+   */
+  function closeMealSheet() {
+    setShowAdd(false)
+    setRawInput('')
+    setAddMode('text')
+    setParsedItems(null)
+    setParsedBase([])
+    setParsedQuestions([])
+    setItemApprovals([])
+    setFeedbackFor(null)
+    setFeedbackSent({})
+    setAmountDrafts({})
+    setParseTrace(null)
+    setParseVersion(null)
+    setAiDegraded(null)
+    setPendingChoice(null)
+    setFoodSearch('')
+    setFoodResults([])
+  }
+
   async function handleAddMeal() {
     if (!userId) return
     if (itemApprovals.some((approved) => !approved)) {
@@ -423,18 +446,7 @@ export default function NutritionScreen() {
         ...(parseTrace ? { parse_trace: parseTrace } : {}),
         ...(parseVersion ? { parse_version: parseVersion } : {}),
       })
-      setRawInput('')
-      setParsedItems(null)
-      setParsedBase([])
-      setParsedQuestions([])
-      setItemApprovals([])
-      setFeedbackFor(null)
-      setFeedbackSent({})
-      setAmountDrafts({})
-      setParseTrace(null)
-      setParseVersion(null)
-      setAiDegraded(null)
-      setShowAdd(false)
+      closeMealSheet()
       // Öğün kaydedildi — kullanıcının uygulamadan değer gördüğü an. Beklenmez:
       // puanlama istemi kaydın tamamlanmasını geciktirmemeli.
       void recordValueMoment()
@@ -747,22 +759,7 @@ export default function NutritionScreen() {
       {/* Add meal */}
       <BottomSheet
         visible={showAdd}
-        onClose={() => {
-          setShowAdd(false)
-          setParsedItems(null)
-          setParsedBase([])
-          setParsedQuestions([])
-          setItemApprovals([])
-          setFeedbackFor(null)
-          setFeedbackSent({})
-          setAmountDrafts({})
-          setParseTrace(null)
-          setParseVersion(null)
-          setAiDegraded(null)
-          setPendingChoice(null)
-          setFoodSearch('')
-          setFoodResults([])
-        }}
+        onClose={closeMealSheet}
         title={t.nut_add_meal_title}
         scrollable
       >
