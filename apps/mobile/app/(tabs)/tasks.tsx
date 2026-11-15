@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Switch } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
-import { addMinutesToClock, DEFAULT_TASK_MINUTES, fromDateString, parseQuickTask, relativeDateLabel, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
+import { addMinutesToClock, DEFAULT_TASK_MINUTES, DEFAULT_WSJF_SCORES, fromDateString, hasCustomPriority, parseQuickTask, relativeDateLabel, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -12,7 +12,7 @@ import { CarryPrompt } from '@/src/components/tasks/CarryPrompt'
 import { BrainDumpSheet } from '@/src/components/tasks/BrainDumpSheet'
 import { Button } from '@/src/components/ui/Button'
 import { Input } from '@/src/components/ui/Input'
-import { DateField } from '@/src/components/ui/PickerField'
+import { DateField, TimeField } from '@/src/components/ui/PickerField'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { TaskCheckbox } from '@/src/components/ui/TaskCheckbox'
 import { StatCard } from '@/src/components/ui/StatCard'
@@ -22,7 +22,8 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useProGate } from '@/src/hooks/useProGate'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
+import { PriorityLabel } from '@/src/components/tasks/PriorityLabel'
 
 type Tab = 'today' | 'week' | 'all'
 
@@ -33,6 +34,11 @@ interface Draft {
   value_score: number
   urgency_score: number
   effort_score: number
+  // Öncelik katlıyken skorlar varsayılan gider (#21); açıp kapatmak seçilenleri unutturmaz.
+  priority_open: boolean
+  // Metinde saat yoksa takvime bu saatle blok olarak eklenir (#34).
+  add_to_calendar: boolean
+  start_time: string
 }
 
 // Tarih ve süre boş başlar (bugün ve 30 dk yalnızca ipucu): dolu gelseydi metindeki
@@ -41,6 +47,7 @@ function emptyDraft(): Draft {
   return {
     title: '', scheduled_date: '',
     estimated_minutes: '', value_score: 3, urgency_score: 3, effort_score: 3,
+    priority_open: false, add_to_calendar: false, start_time: '',
   }
 }
 
@@ -145,6 +152,9 @@ export default function TasksScreen() {
     return parts.length > 0 ? parts.join(' · ') : null
   }, [draft.title, t.qtask_due_short])
 
+  // Görev her zaman bir güne düşer (boşsa bugün); metinde saat varsa blok zaten açılır, anahtar gereksiz.
+  const showCalendarToggle = useMemo(() => !parseQuickTask(draft.title, todayDate()).start_time, [draft.title])
+
   async function handleAdd() {
     if (!userId || !draft.title.trim() || addingRef.current) return
     addingRef.current = true
@@ -154,20 +164,24 @@ export default function TasksScreen() {
       const parsed = parseQuickTask(draft.title, todayDate())
       const day = draft.scheduled_date.trim() || parsed.scheduled_date || todayDate()
       const minutes = parseInt(draft.estimated_minutes) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
+      const scores = draft.priority_open
+        ? { value_score: draft.value_score, urgency_score: draft.urgency_score, effort_score: draft.effort_score }
+        : { value_score: DEFAULT_WSJF_SCORES.value_score, urgency_score: DEFAULT_WSJF_SCORES.urgency_score, effort_score: DEFAULT_WSJF_SCORES.effort_score }
+      const startTime = parsed.start_time ?? (draft.add_to_calendar && draft.start_time ? draft.start_time : null)
       const task = await addTask(supabase, userId, {
         title: parsed.title,
         scheduled_date: day || undefined,
         ...(parsed.due_date ? { due_date: parsed.due_date } : {}),
         ...(parsed.tags.length > 0 ? { tags: parsed.tags } : {}),
         estimated_minutes: minutes,
-        value_score: draft.value_score,
-        urgency_score: draft.urgency_score,
-        effort_score: parsed.effort_score ?? draft.effort_score,
+        value_score: scores.value_score,
+        urgency_score: scores.urgency_score,
+        effort_score: parsed.effort_score ?? scores.effort_score,
         status: 'planned',
       })
-      if (parsed.start_time && day) {
+      if (startTime && day) {
         await createTimeBlocks(supabase, userId, [{
-          date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+          date: day, start_time: startTime, end_time: addMinutesToClock(startTime, minutes),
           block_type: 'task', label: task.title, task_id: task.id,
         }])
       }
@@ -195,8 +209,15 @@ export default function TasksScreen() {
               >
                 <Ionicons name="bulb-outline" size={20} color={palette.accent} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="add" size={22} color="#fff" />
+              <TouchableOpacity
+                onPress={() => setShowAdd(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t.tasks_new}
+                style={{ height: 40, paddingHorizontal: spacing[4], borderRadius: 20, backgroundColor: palette.accent, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                hitSlop={hitSlopFor(40)}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.tasks_new}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -275,16 +296,45 @@ export default function TasksScreen() {
             <Input label={t.task_field_minutes} value={draft.estimated_minutes} onChangeText={(v) => setDraft((d) => ({ ...d, estimated_minutes: v }))} keyboardType="number-pad" placeholder={String(DEFAULT_TASK_MINUTES)} containerStyle={{ flex: 1 }} returnKeyType="done" />
           </View>
 
-          {/* Primary action — visible before WSJF so keyboard never hides it */}
+          {showCalendarToggle && (
+            <View style={{ gap: spacing[2] }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: fontWeight.medium }}>{t.task_add_to_calendar}</Text>
+                <Switch
+                  value={draft.add_to_calendar}
+                  onValueChange={(next) => setDraft((d) => ({ ...d, add_to_calendar: next, start_time: next && !d.start_time ? '09:00' : d.start_time }))}
+                  accessibilityLabel={t.task_add_to_calendar}
+                  trackColor={{ false: colors.glassBorder, true: `${palette.accent}80` }}
+                  thumbColor={draft.add_to_calendar ? palette.accent : colors.textSubtle}
+                />
+              </View>
+              {draft.add_to_calendar && (
+                <TimeField label={t.field_start} value={draft.start_time} onChange={(v) => setDraft((d) => ({ ...d, start_time: v }))} defaultTime="09:00" />
+              )}
+            </View>
+          )}
+
+          {/* Birincil eylem öncelikten önce: klavye açıkken de görünür kalır. */}
           <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth />
 
-          {/* WSJF — optional, collapsible feel via section header */}
-          <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', marginTop: spacing[1] }}>
-            {t.task_scores_hint}
-          </Text>
-          <ScoreRow label={t.task_score_value} value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
-          <ScoreRow label={t.task_score_urgency} value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
-          <ScoreRow label={t.task_score_effort} value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+          <TouchableOpacity
+            onPress={() => setDraft((d) => ({ ...d, priority_open: !d.priority_open }))}
+            accessibilityRole="button"
+            accessibilityLabel={t.task_priority_set}
+            accessibilityState={{ expanded: draft.priority_open }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44 }}
+          >
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: palette.accent }}>{t.task_priority_set}</Text>
+            <Ionicons name={draft.priority_open ? 'chevron-up' : 'chevron-down'} size={16} color={palette.accent} />
+          </TouchableOpacity>
+          {draft.priority_open && (
+            <>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center' }}>{t.task_priority_explain}</Text>
+              <ScoreRow label={t.task_score_value} value={draft.value_score} onChange={(v) => setDraft((d) => ({ ...d, value_score: v }))} />
+              <ScoreRow label={t.task_score_urgency} value={draft.urgency_score} onChange={(v) => setDraft((d) => ({ ...d, urgency_score: v }))} />
+              <ScoreRow label={t.task_score_effort} value={draft.effort_score} onChange={(v) => setDraft((d) => ({ ...d, effort_score: v }))} />
+            </>
+          )}
         </View>
       </BottomSheet>
     </ScreenBackground>
@@ -332,7 +382,7 @@ function TaskRow({ task, onPress, onToggle }: { task: Task; onPress: () => void;
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], flexWrap: 'wrap' }}>
               <StatusBadge status={task.status as never} />
               {task.estimated_minutes && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{task.estimated_minutes}{lang === 'tr' ? 'dk' : ' min'}</Text>}
-              {task.priority_score != null && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>WSJF {task.priority_score.toFixed(1)}</Text>}
+              {task.priority_score != null && hasCustomPriority(task) && <PriorityLabel score={task.priority_score} />}
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} style={{ marginTop: 2 }} />
@@ -349,7 +399,7 @@ function ScoreRow({ label, value, onChange }: { label: string; value: number; on
       <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: fontWeight.medium }}>{label}</Text>
       <View style={{ flexDirection: 'row', gap: 6 }}>
         {[1, 2, 3, 4, 5].map((n) => (
-          <TouchableOpacity key={n} onPress={() => onChange(n)} style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: value === n ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: value === n ? palette.accent : colors.border }}>
+          <TouchableOpacity key={n} onPress={() => onChange(n)} hitSlop={hitSlopFor(32)} accessibilityRole="button" accessibilityLabel={`${label} ${n}`} accessibilityState={{ selected: value === n }} style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: value === n ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: value === n ? palette.accent : colors.border }}>
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: value === n ? '#fff' : colors.textMuted }}>{n}</Text>
           </TouchableOpacity>
         ))}

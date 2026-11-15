@@ -3,8 +3,9 @@ import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } fr
 import { useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { useGoBack } from '@/src/navigation/useGoBack'
-import { useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
+import { hasCustomPriority, useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
+import { priorityWord } from '@/src/components/tasks/PriorityLabel'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
@@ -50,6 +51,8 @@ export default function TaskDetailScreen() {
   const [inlineError, setInlineError] = useState<{ at: 'wsjf' | 'date' | 'duration'; message: string } | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReasoning, setAiReasoning] = useState<string | null>(null)
+  // Öncelik ayarları varsayılan katlı (#21); AI önerisi gelince açılır ki değişen skor görünsün.
+  const [priorityOpen, setPriorityOpen] = useState(false)
 
   const { selectTask, updateTask, setStatus, deleteTask } = useTaskStore()
 
@@ -135,6 +138,7 @@ export default function TaskDetailScreen() {
         if (Object.keys(updates).length > 0) {
           const updated = await updateTask(supabase, task.id, updates)
           setTask(updated)
+          setPriorityOpen(true)
         }
       }
     } catch { setAiReasoning(t.misc_ai_suggest_error) }
@@ -232,8 +236,10 @@ export default function TaskDetailScreen() {
 
         {/* Priority score */}
         <GlassCard>
-          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{t.misc_wsjf_priority}</Text>
-          <Text style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.extrabold, color: palette.accent }}>{task.priority_score?.toFixed(2) ?? '—'}</Text>
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, marginBottom: 4 }}>{t.task_priority}</Text>
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.extrabold, color: palette.accent }}>
+            {task.priority_score != null && hasCustomPriority(task) ? priorityWord(t, task.priority_score) : t.task_priority_unset}
+          </Text>
         </GlassCard>
 
         {/* Status */}
@@ -257,8 +263,17 @@ export default function TaskDetailScreen() {
 
         {/* WSJF */}
         <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.misc_wsjf_params}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[2] }}>
+            <TouchableOpacity
+              onPress={() => setPriorityOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={t.task_priority_set}
+              accessibilityState={{ expanded: priorityOpen }}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}
+            >
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.task_priority_set}</Text>
+              <Ionicons name={priorityOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAiSuggest}
               disabled={aiLoading || isCheckingPro}
@@ -269,6 +284,9 @@ export default function TaskDetailScreen() {
             </TouchableOpacity>
           </View>
 
+          {priorityOpen && (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, marginTop: spacing[2], marginBottom: spacing[4] }}>{t.task_priority_explain}</Text>
+          )}
           {aiReasoning && (
             <View style={{ marginBottom: spacing[4], padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiReasoning}</Text>
@@ -276,7 +294,7 @@ export default function TaskDetailScreen() {
           )}
           {errorFor('wsjf')}
 
-          <View style={{ gap: spacing[4] }}>
+          {priorityOpen && <View style={{ gap: spacing[4] }}>
             {getWsjfFields(t).map((field) => {
               const value = task[field.key] as number
               return (
@@ -290,6 +308,10 @@ export default function TaskDetailScreen() {
                       <TouchableOpacity
                         key={v}
                         onPress={() => handleWsjf(field.key, v)}
+                        hitSlop={hitSlopFor(44, 36)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${field.label} ${v}`}
+                        accessibilityState={{ selected: value === v }}
                         style={{ flex: 1, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: value === v ? field.color : `${field.color}18`, borderWidth: 1, borderColor: value === v ? field.color : `${field.color}30` }}
                       >
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: value === v ? '#fff' : field.color }}>{v}</Text>
@@ -299,7 +321,7 @@ export default function TaskDetailScreen() {
                 </View>
               )
             })}
-          </View>
+          </View>}
         </GlassCard>
 
         {/* Details */}
