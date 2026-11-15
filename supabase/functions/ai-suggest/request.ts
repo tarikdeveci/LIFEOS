@@ -98,7 +98,7 @@ export function normalizeHistory(raw: unknown): ChatTurn[] {
  * aşan istek model çağrılmadan 400 alır.
  */
 export function chatMessageError(message: unknown): { error: string; code: string; max: number } | null {
-  if (typeof message !== 'string' || message.trim().length <= REPLAN_MESSAGE_MAX) return null
+  if (typeof message !== 'string' || message.length <= REPLAN_MESSAGE_MAX) return null
   return {
     error: `Mesaj en çok ${REPLAN_MESSAGE_MAX} karakter olabilir`,
     code: 'message_too_long',

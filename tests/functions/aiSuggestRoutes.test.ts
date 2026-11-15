@@ -414,3 +414,10 @@ test('replan bağlamı: kurallar profilden okunur, okunamazsa varsayılanla deva
     console.error = original
   }
 })
+
+test('sohbet rotaları: boşlukla şişirilmiş mesaj da sınırı aşar', async () => {
+  const h = harness({ reply: '{"message":"x"}' })
+  const response = await handleNutritionChat(h.route({ type: 'nutrition_chat', user_message: `a${' '.repeat(5000)}` }))
+  assert.equal(response.status, 400)
+  assert.equal(h.modelCalls.length, 0)
+})
