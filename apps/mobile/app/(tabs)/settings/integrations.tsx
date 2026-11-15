@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native'
-import Ionicons from '@expo/vector-icons/Ionicons'
-import { router } from 'expo-router'
+import { View, Text, ScrollView, Alert, Platform } from 'react-native'
+import { BackButton } from '@/src/components/ui/BackButton'
 import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import type { Integration, IntegrationProvider } from '@lifeos/shared'
@@ -139,9 +138,7 @@ export default function IntegrationsScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[2] }}>
-          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/settings' as never))} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.integ_title}</Text>
         </View>
         <Text style={[hint, { marginBottom: spacing[5] }]}>{t.integ_subtitle}</Text>

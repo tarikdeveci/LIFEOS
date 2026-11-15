@@ -15,7 +15,7 @@ port = 54323
 [auth]
 enabled = true
 site_url = "https://lifeos.tr"
-additional_redirect_urls = ["http://localhost:3000", "https://lifeos.tr", "https://www.lifeos.tr", "lifeos://"]
+additional_redirect_urls = ["http://localhost:3000", "https://lifeos.tr", "https://www.lifeos.tr", "https://lifeos.tr/auth/callback", "lifeos://", "lifeos://**"]
 jwt_expiry = 3600
 enable_signup = true
 

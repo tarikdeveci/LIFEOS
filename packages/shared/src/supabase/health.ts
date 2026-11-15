@@ -166,6 +166,29 @@ export async function updateHealthSettings(
 // Kilo geçmişi: adaptif kalori hedefinin girdisi (bkz. utils/adaptiveTdee.ts)
 // -------------------------------------------------------
 
+/**
+ * Profil tercihlerinin yalnız verilen anahtarlarını değiştirir. preferences tek JSONB
+ * olduğu için tamamını yazmak planlama ve tema gibi diğer ayarları siler.
+ */
+export async function patchProfilePreferences(
+  supabase: Supabase,
+  userId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const { data, error: readError } = await supabase
+    .from('user_profiles')
+    .select('preferences')
+    .eq('id', userId)
+    .maybeSingle()
+  if (readError) throw readError
+
+  const current = (data as { preferences: Record<string, unknown> | null } | null)?.preferences ?? {}
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ id: userId, preferences: { ...current, ...patch } }, { onConflict: 'id' })
+  if (error) throw error
+}
+
 /** weight_logs.weight_kg CHECK aralığı (049). */
 export const WEIGHT_LOG_MIN_KG = 20
 export const WEIGHT_LOG_MAX_KG = 400

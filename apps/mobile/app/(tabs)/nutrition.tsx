@@ -35,7 +35,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useProGate } from '@/src/hooks/useProGate'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 /** ai-suggest'in beslenme koçundan dönen aksiyon. */
 interface CoachAction { action: 'log_meal'; meal_type: MealType; text: string }
@@ -237,6 +237,15 @@ export default function NutritionScreen() {
     setPendingChoice(choice)
     setPendingGrams(String(choice.default_grams))
     setShowAdd(true)
+  }
+
+  // Silme onaysız gitmesin (UX: silme onay veya geri al ister, #39).
+  function confirmRemoveMeal(mealId: string) {
+    const tr = lang === 'tr'
+    Alert.alert(tr ? 'Öğünü sil' : 'Delete meal', tr ? 'Bu öğün kaydı silinsin mi?' : 'Delete this meal entry?', [
+      { text: tr ? 'İptal' : 'Cancel', style: 'cancel' },
+      { text: tr ? 'Sil' : 'Delete', style: 'destructive', onPress: () => void removeMeal(supabase, mealId) },
+    ])
   }
 
   function openEditMeal(meal: Meal) {
@@ -740,10 +749,10 @@ export default function NutritionScreen() {
                         {meal.total_calories} kcal · P:{meal.total_protein}g · {lang === 'tr' ? 'K' : 'C'}:{meal.total_carbs}g · {lang === 'tr' ? 'Y' : 'F'}:{meal.total_fat}g
                       </Text>
                     </View>
-                    <TouchableOpacity onPress={() => removeMeal(supabase, meal.id)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <TouchableOpacity onPress={() => confirmRemoveMeal(meal.id)} style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={lang === 'tr' ? 'Öğünü sil' : 'Delete meal'}>
                       <Ionicons name="trash-outline" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => openEditMeal(meal)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginLeft: spacing[2] }}>
+                    <TouchableOpacity onPress={() => openEditMeal(meal)} style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={lang === 'tr' ? 'Öğünü düzenle' : 'Edit meal'}>
                       <Ionicons name="create-outline" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
                   </View>

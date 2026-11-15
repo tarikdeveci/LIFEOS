@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { View, Text, ScrollView, Switch, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, ScrollView, Switch, ActivityIndicator, Linking } from 'react-native'
+import * as Calendar from 'expo-calendar'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router } from 'expo-router'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
@@ -9,6 +10,8 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { useCalendarStore } from '@/src/stores/calendarStore'
+import { useOnAppActive } from '@/src/hooks/useOnAppActive'
+import { requestOrOpenSettings } from '@/src/utils/permissions'
 
 export default function CalendarSettingsScreen() {
   const { colors } = useTheme()
@@ -22,11 +25,22 @@ export default function CalendarSettingsScreen() {
     lastSyncedAt,
     hasPermission,
     initialize,
+    refreshPermission,
   } = useCalendarStore()
 
   useEffect(() => {
     void initialize()
   }, [initialize])
+
+  // Sistem ayarlarından dönünce izni iki yönde de yeniden oku.
+  useOnAppActive(() => { void refreshPermission() })
+
+  // Kalıcı reddedilmiş izinde diyalog çıkmıyordu, düğme ölü görünüyordu (#13, #15).
+  const askPermission = async () => {
+    if (await requestOrOpenSettings(Calendar.requestCalendarPermissionsAsync, Linking.openSettings)) {
+      void initialize()
+    }
+  }
 
   const lastSyncText = lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
@@ -37,9 +51,7 @@ export default function CalendarSettingsScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/settings' as never))} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
             Takvim Senkronizasyonu
           </Text>
@@ -63,7 +75,7 @@ export default function CalendarSettingsScreen() {
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' }}>
                 Cihaz takvimine erişmek için izin verin.
               </Text>
-              <Button label="İzin Ver" onPress={() => void initialize()} />
+              <Button label="İzin Ver" onPress={() => void askPermission()} />
             </View>
           </GlassCard>
         )}

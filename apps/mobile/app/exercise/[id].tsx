@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { useLocalSearchParams, router } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { useGoBack } from '@/src/navigation/useGoBack'
 import { equipmentLabel, useWorkoutStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -30,6 +31,7 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
  */
 export default function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const goBack = useGoBack()
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const insets = useSafeAreaInsets()
@@ -47,7 +49,7 @@ export default function ExerciseDetailScreen() {
   const header = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <TouchableOpacity
-        onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/workout' as never))}
+        onPress={goBack}
         accessibilityRole="button"
         hitSlop={8}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}

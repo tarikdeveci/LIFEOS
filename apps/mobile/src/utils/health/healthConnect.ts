@@ -72,6 +72,18 @@ export async function requestPermissions(): Promise<boolean> {
   }
 }
 
+export async function hasPermissions(): Promise<boolean> {
+  const hc = await loadHealthConnect()
+  if (!hc) return false
+  if (!(await ensureInitialized(hc))) return false
+  try {
+    const granted = await hc.getGrantedPermissions()
+    return granted.some((p) => p.accessType === 'read')
+  } catch {
+    return false
+  }
+}
+
 export async function readDay(range: DayRange): Promise<HealthReadResult> {
   const hc = await loadHealthConnect()
   if (!hc) return { ok: false, reason: 'unavailable' }

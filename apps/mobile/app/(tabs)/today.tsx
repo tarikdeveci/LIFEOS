@@ -132,12 +132,24 @@ export default function TodayScreen() {
             <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>{t.today}</Text>
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>{dateLabel}</Text>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/profile')}
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Ionicons name="person-outline" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/profile')}
+              accessibilityRole="button"
+              accessibilityLabel={t.profile_title}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/settings' as never)}
+              accessibilityRole="button"
+              accessibilityLabel={t.settings_open}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Sağlık bağlı değilken tek satırlık tanıtım kartı (Guideline 2.5.1: HealthKit

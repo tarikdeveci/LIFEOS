@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useOnAppActive } from '@/src/hooks/useOnAppActive'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
-import { BackButton } from '@/src/components/report/ReportStates'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { CsvImportSheet } from '@/src/components/workout/CsvImportSheet'
 import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
 import { SupportCard } from '@/src/components/settings/SupportCard'
@@ -33,7 +34,10 @@ const LANG_OPTIONS: { lang: Language; label: string; flag: string }[] = [
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useTheme()
   const { lang, setLang, t } = useLang()
-  const { hasPermission: calendarGranted } = useCalendarStore()
+  const { hasPermission: calendarGranted, refreshPermission } = useCalendarStore()
+  // Saklı bayrak bayatlayabiliyor (izin ayarlardan geri alınınca); her görünüşte cihazdan oku.
+  useFocusEffect(useCallback(() => { void refreshPermission() }, [refreshPermission]))
+  useOnAppActive(() => { void refreshPermission() })
   const bottomPadding = useBottomTabPadding()
   const [userId, setUserId] = useState<string | null>(null)
   const [showCsvImport, setShowCsvImport] = useState(false)
@@ -45,11 +49,6 @@ export default function SettingsScreen() {
     }
     void loadUser()
   }, [])
-
-  function goBack() {
-    if (router.canGoBack()) router.back()
-    else router.replace('/(tabs)/profile' as never)
-  }
 
   async function openExternalUrl(url: string) {
     try {
@@ -63,7 +62,7 @@ export default function SettingsScreen() {
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
-          <BackButton onPress={goBack} />
+          <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.settings_title}</Text>
         </View>
 

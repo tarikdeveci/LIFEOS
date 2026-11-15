@@ -6,6 +6,7 @@ import { GlassCard } from '../ui/GlassCard'
 import { useHealthStore } from '../../stores/healthStore'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
+import { useOnAppActive } from '../../hooks/useOnAppActive'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
 interface Props {
@@ -22,7 +23,10 @@ const SLEEP_GOALS = [390, 420, 450, 480] // 6.5s, 7s, 7.5s, 8s
 export function HealthSettingsCard({ userId }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const { available, settings, isConnecting, isSyncing, hydrate, connect, updateSettings, sync } = useHealthStore()
+  const {
+    available, settings, isConnecting, isSyncing, permissionDenied,
+    hydrate, connect, updateSettings, sync, checkPermission,
+  } = useHealthStore()
   const [expanded, setExpanded] = useState(false)
 
   const enabled = settings?.enabled ?? false
@@ -43,13 +47,31 @@ export function HealthSettingsCard({ userId }: Props) {
     if (userId) void hydrate(userId)
   }, [hydrate, userId])
 
+  // Ayarlardan dönünce izni yeniden oku; geri verildiyse bekleyen senkronu yap.
+  useOnAppActive(() => {
+    if (!userId || !enabled) return
+    const wasDenied = permissionDenied
+    void (async () => {
+      if ((await checkPermission()) && wasDenied) await sync(userId)
+    })()
+  })
+
   async function handleConnect() {
     if (!userId) return
     const ok = await connect(userId)
     if (!ok) {
+      // connect() availability'yi store'a yazar; kapanıştaki `available` eski kalır.
+      const unavailable = useHealthStore.getState().available === false
+      // Reddedilmiş izinde sistem diyaloğu bir daha çıkmıyor (#15): ayarlara giden yol ver.
       Alert.alert(
         providerName,
-        (available === false ? t.health_unavailable : t.health_permission_denied).replace('{provider}', providerName),
+        (unavailable ? t.health_unavailable : t.health_permission_denied).replace('{provider}', providerName),
+        unavailable
+          ? undefined
+          : [
+              { text: t.cancel, style: 'cancel' },
+              { text: t.health_open_settings.replace('{provider}', providerName), onPress: openSystemSettings },
+            ],
       )
     } else {
       setExpanded(true)
@@ -61,9 +83,11 @@ export function HealthSettingsCard({ userId }: Props) {
       void Linking.openURL('x-apple-health://')
         .catch(() => void Linking.openURL('app-settings:'))
     } else {
-      // Health Connect ayar ekranı
-      void Linking.sendIntent?.('android.health.connect.action.HEALTH_CONNECT_SETTINGS')
-        .catch(() => void Linking.openSettings())
+      // Android 14+ Health Connect sistemin parçası, eski sürümlerde ayrı uygulama.
+      // Eski eylem adı hiçbir cihazda yoktu, düğme uygulama bilgisini açıyordu.
+      void Linking.sendIntent('android.health.connect.action.HEALTH_HOME_SETTINGS')
+        .catch(() => Linking.sendIntent('androidx.health.ACTION_HEALTH_CONNECT_SETTINGS'))
+        .catch(() => Linking.openSettings())
     }
   }
 
@@ -117,14 +141,28 @@ export function HealthSettingsCard({ userId }: Props) {
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
             {providerName}
           </Text>
-          <Text style={{ fontSize: fontSize.xs, color: enabled ? palette.success : colors.textMuted, marginTop: 2 }}>
-            {enabled
+          <Text style={{ fontSize: fontSize.xs, color: !enabled ? colors.textMuted : permissionDenied ? palette.warning : palette.success, marginTop: 2 }}>
+            {enabled && permissionDenied
+              ? t.health_permission_off
+              : enabled
               ? `✓ ${t.health_connected}${lastSyncText ? ` · ${t.health_last_sync}: ${lastSyncText}` : ''}`
               : t.health_summary}
           </Text>
         </View>
         {enabled && <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />}
       </TouchableOpacity>
+
+      {enabled && permissionDenied && (
+        <TouchableOpacity
+          onPress={openSystemSettings}
+          accessibilityRole="button"
+          style={{ marginTop: spacing[3], minHeight: 44, paddingVertical: spacing[3], borderRadius: radius.lg, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>
+            {t.health_open_settings.replace('{provider}', providerName)}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {!enabled ? (
         <>

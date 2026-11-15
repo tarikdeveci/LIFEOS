@@ -51,6 +51,12 @@ export const formsEn = {
   task_status_error: 'Could not update the task status. Check your connection.',
   task_add_error: 'Could not add the task',
   integ_disconnect_error: 'Could not disconnect, try again',
+  profile_err_height: 'Height must be {min} to {max} cm',
+  profile_err_weight: 'Weight must be {min} to {max} kg',
+  profile_err_age: 'Age must be a whole number from {min} to {max}',
+  profile_gender_female: 'Female',
+  profile_gender_male: 'Male',
+  profile_save_failed: 'Could not save. Check your connection.',
 } as const
 
 export const formsTr: Record<keyof typeof formsEn, string> = {
@@ -103,4 +109,10 @@ export const formsTr: Record<keyof typeof formsEn, string> = {
   task_status_error: 'Görev durumu güncellenemedi. Bağlantını kontrol et.',
   task_add_error: 'Görev eklenemedi',
   integ_disconnect_error: 'Bağlantı kesilemedi, tekrar dene',
+  profile_err_height: 'Boy {min} ile {max} cm arasında olmalı',
+  profile_err_weight: 'Kilo {min} ile {max} kg arasında olmalı',
+  profile_err_age: 'Yaş {min} ile {max} arasında tam sayı olmalı',
+  profile_gender_female: 'Kadın',
+  profile_gender_male: 'Erkek',
+  profile_save_failed: 'Kaydedilemedi. Bağlantını kontrol et.',
 }

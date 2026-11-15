@@ -43,7 +43,7 @@ Sebep: haftalık hedeflerde yazılar çok küçük (#27). 55 yaş personası bü
 ## 3. Dokunma alanı
 
 - Dokunulabilen her öğe en az 44x44. Görsel küçükse `hitSlop` ile büyütülür.
-  Örnekler: `TaskCheckbox` (24px daire, hitSlop ile 44), `ReportStates.tsx` içindeki `BackButton` (44x44 kutu).
+  Örnekler: `TaskCheckbox` (24px daire, hitSlop ile 44), `BackButton` (44x44 kutu).
 - Silme ikonları dahil, istisna yok (#39).
 - Sadece ikon olan buton `accessibilityRole="button"` ve `accessibilityLabel` (i18n'den) taşır.
 - Yan yana dokunma hedefleri arasında en az `spacing[2]`.
@@ -63,10 +63,11 @@ varsa ortak bileşene seçenek eklenir.
 
 | Bileşen | Ne zaman | Ne zaman değil |
 |---------|----------|----------------|
-| `BottomSheet` | Bulunulan ekranın bağlamında kısa iş: form, seçim listesi, ayrıntı. Uzun içerik veya klavyeli form: `scrollable` | Geri alınamaz onay (uyarı kullan, `UX.md`), çok adımlı akış (ayrı ekran) |
+| `BottomSheet` | Bulunulan ekranın bağlamında kısa iş: form, seçim listesi, ayrıntı. Uzun içerik veya klavyeli form: `scrollable`. Üst bardan aşağı çekip kapatma kendiliğinden gelir, `onClose` çalışır; kapanmaması gereken an varsa (kayıt sürerken) `onClose` erken döner, sheet yerine oturur | Geri alınamaz onay (uyarı kullan, `UX.md`), çok adımlı akış (ayrı ekran) |
 | `Button` | Her metinli eylem. `primary` ekranda veya sheet'te tek birincil eylem; `secondary` yan eylem; `ghost` vazgeç/ikincil; `danger` silme onayı. Async işte `loading` | İkon tek başına (ikon butonu + hitSlop + etiket) |
 | `Input` | Serbest metin ve sayı. Üstünde `label`; doluyken temizleme için `onClear` + `clearLabel` | Tarih ve saat (seçici), sabit seçenekler (`Segmented` veya liste) |
 | `Segmented` | Aynı içeriğin görünümleri arasında geçiş (Gün / Hafta), 2 ile 4 seçenek | Sayfa navigasyonu, 4'ten fazla seçenek |
+| `BackButton` | Ana sekme dışındaki her ekranın başlığında, başlık metninin solunda. Prop gerekmez: açıldığı yere döner, etiket ve 44x44 içinde gelir. Dönmeden önce iş yapan ekran `onPress` verir | Elle yazılan `chevron-back` düğmesi, sabit rotaya gitme |
 | `GlassCard` | Kart yüzeyi | |
 | `ScreenBackground` | Sekme ve tam ekranların zemini ve güvenli alanı | |
 | `StatCard`, `ProgressBar` | Sayısal özet, hedefe göre ilerleme | |
@@ -99,4 +100,3 @@ Kodu doğrularken bulundu (2026-10-28); yeni kodda örnek alınmaz:
 - `Button` `size="sm"` 44'ün altında, `hitSlop` prop'u yok.
 - `Button` içinde `'#FFFFFF'` ve `rgba(...)` literal'leri var, token değil.
 - `fontSize: 10` literal'i: `app/(tabs)/nutrition.tsx`, `app/(tabs)/planning.tsx`, `app/onboarding.tsx`.
-- `BottomSheet`'te aşağı çekip kapatma yok (#6, #17).

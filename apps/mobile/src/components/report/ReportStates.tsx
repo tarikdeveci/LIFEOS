@@ -1,13 +1,13 @@
-// Raporun veri dışı hâlleri: yükleniyor, açılamadı, kayıtsız gün. Ayrıca ortak geri düğmesi.
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+// Raporun veri dışı hâlleri: yükleniyor, açılamadı, kayıtsız gün.
+import { ActivityIndicator, Text, View } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { BackButton } from '@/src/components/ui/BackButton'
 import { Button } from '@/src/components/ui/Button'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-interface BackButtonProps { onPress: () => void }
 interface SkeletonProps { onBack: () => void }
 interface ErrorProps {
   onBack: () => void
@@ -17,22 +17,6 @@ interface ErrorProps {
 
 /** Üst çubuğun yüksekliği; kaydırma içeriği bu kadar aşağıdan başlar. */
 export const BAR_HEIGHT = 48
-
-export function BackButton({ onPress }: BackButtonProps) {
-  const { colors } = useTheme()
-  const { t } = useLang()
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={t.report_back}
-      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -spacing[2] }}
-    >
-      <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-    </TouchableOpacity>
-  )
-}
 
 /** Yüklenirken raporun iskeleti: açılışın yerleşimiyle aynı, böylece veri gelince ekran zıplamaz. */
 export function ReportSkeleton({ onBack }: SkeletonProps) {
