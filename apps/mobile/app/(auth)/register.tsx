@@ -28,8 +28,8 @@ export default function RegisterScreen() {
         email: email.trim(), password,
         options: { data: { display_name: displayName.trim(), timezone } },
       })
-      if (error) Alert.alert('Kayıt Başarısız', error.message)
-      else if (!data.user) Alert.alert('Bilgi', 'E-postanı doğrula ve giriş yap.')
+      if (error) Alert.alert(t.acc_register_failed, error.message)
+      else if (!data.user) Alert.alert(t.acc_info, t.acc_verify_email)
     } finally { setLoading(false) }
   }
 
@@ -52,24 +52,24 @@ export default function RegisterScreen() {
             </View>
             <Text style={{ marginTop: spacing[4], fontSize: fontSize['3xl'], fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>LifeOS</Text>
             <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
-              Hesabını oluştur ve günlük sistemini kur.
+              {t.acc_register_subtitle}
             </Text>
           </View>
 
           <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Kayıt Ol</Text>
-            <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>Temel bilgilerini gir</Text>
+            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.acc_register_btn}</Text>
+            <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>{t.acc_enter_basic_info}</Text>
 
             <Input label={t.auth_full_name} value={displayName} onChangeText={setDisplayName} autoCapitalize="words" placeholder={t.auth_full_name_ph} containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
-            <Input label="E-posta" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="ornek@email.com" containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
-            <Input label="Şifre" value={password} onChangeText={setPassword} secureTextEntry placeholder="En az 8 karakter" containerStyle={{ marginBottom: spacing[5] }} onSubmitEditing={handleRegister} returnKeyType="done" />
+            <Input label={t.acc_email} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder={t.acc_email_placeholder} containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
+            <Input label={t.acc_password} value={password} onChangeText={setPassword} secureTextEntry placeholder={t.acc_password_min_placeholder} containerStyle={{ marginBottom: spacing[5] }} onSubmitEditing={handleRegister} returnKeyType="done" />
 
-            <Button label={loading ? 'Hesap oluşturuluyor...' : 'Kayıt Ol'} onPress={handleRegister} loading={loading} fullWidth />
+            <Button label={loading ? t.acc_creating_account : t.acc_register_btn} onPress={handleRegister} loading={loading} fullWidth />
 
             <TouchableOpacity onPress={goBack} style={{ marginTop: spacing[4] }}>
               <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
-                Hesabın var mı?{' '}
-                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>Giriş yap</Text>
+                {t.acc_has_account}{' '}
+                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>{t.acc_login_link}</Text>
               </Text>
             </TouchableOpacity>
           </GlassCard>

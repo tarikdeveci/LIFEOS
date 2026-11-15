@@ -14,6 +14,7 @@ import { FlexWidget, TextWidget } from 'react-native-android-widget'
 import type { HexColor } from 'react-native-android-widget'
 import { resolveWidgetNow } from '@lifeos/shared'
 import type { WidgetSnapshot } from '@lifeos/shared'
+import { getCurrentT } from '../contexts/LangContext'
 
 const COLORS = {
   bg: '#171726',
@@ -36,16 +37,17 @@ const BLOCK_COLORS: Record<string, HexColor> = {
   workout: '#F87171',
 }
 
-function fmtRemaining(minutes: number): string {
+function fmtRemaining(minutes: number, t: any): string {
   const m = Math.max(0, Math.round(minutes))
   const h = Math.floor(m / 60)
   const rem = m % 60
-  if (h === 0) return `${rem}d`
-  if (rem === 0) return `${h}s`
-  return `${h}s ${rem}d`
+  if (h === 0) return `${rem}${t.misc_min_short}`
+  if (rem === 0) return `${h}${t.misc_hour_short}`
+  return `${h}${t.misc_hour_short} ${rem}${t.misc_min_short}`
 }
 
 export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
+  const t = getCurrentT()
   // Aktif/sıradaki bloğu snapshot'taki donmuş alanlardan değil, ŞU ANA göre
   // yeniden seç. Uygulama kapalıyken de blok geçişleri doğru görünür.
   const state = resolveWidgetNow(snapshot, new Date())
@@ -82,7 +84,7 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
               style={{ fontSize: 12, color: COLORS.muted }}
             />
             <TextWidget
-              text={`   ${fmtRemaining(state.remainingMinutes)} kaldı`}
+              text={`   ${fmtRemaining(state.remainingMinutes, t)} ${t.misc_remaining_suffix}`}
               style={{ fontSize: 12, fontWeight: '600', color: accent }}
             />
           </FlexWidget>
@@ -97,12 +99,12 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
       ) : (
         <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }} clickAction="OPEN_APP">
           <TextWidget
-            text={state.dayOver ? 'Bugün blok kalmadı' : 'Şu an boş zaman'}
+            text={state.dayOver ? t.misc_no_blocks_today : t.misc_now_free_time}
             style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}
           />
           {next ? (
             <TextWidget
-              text={`Sıradaki: ${truncate(next.label, 18)} · ${fmtRemaining(state.minutesUntilStart)} sonra`}
+              text={`${t.misc_next}: ${truncate(next.label, 18)} · ${fmtRemaining(state.minutesUntilStart, t)} ${t.misc_after_suffix}`}
               style={{ fontSize: 12, color: COLORS.muted, marginTop: 4 }}
             />
           ) : (
@@ -113,18 +115,18 @@ export function renderLifeOSWidget(snapshot: WidgetSnapshot) {
 
       {/* Alt: özet satırı */}
       <FlexWidget style={{ flexDirection: 'row', width: 'match_parent', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }} clickAction="OPEN_APP">
-        <SummaryPill label="Görev" value={`${snapshot.pendingTasks}`} color={COLORS.accent} />
+        <SummaryPill label={t.misc_task} value={`${snapshot.pendingTasks}`} color={COLORS.accent} />
         {snapshot.calories ? (
           <SummaryPill label="kcal" value={`${snapshot.calories.consumed}/${snapshot.calories.target}`} color={COLORS.warning} />
         ) : (
-          <SummaryPill label="Biten" value={`${snapshot.doneTasks}`} color={COLORS.success} />
+          <SummaryPill label={t.misc_done} value={`${snapshot.doneTasks}`} color={COLORS.success} />
         )}
         {snapshot.steps ? (
-          <SummaryPill label="adım" value={compact(snapshot.steps.value)} color={COLORS.success} />
+          <SummaryPill label={t.misc_steps} value={compact(snapshot.steps.value)} color={COLORS.success} />
         ) : next && block ? (
-          <SummaryPill label="Sıradaki" value={next.startTime} color={COLORS.muted} />
+          <SummaryPill label={t.misc_next} value={next.startTime} color={COLORS.muted} />
         ) : (
-          <SummaryPill label="Biten" value={`${snapshot.doneTasks}`} color={COLORS.success} />
+          <SummaryPill label={t.misc_done} value={`${snapshot.doneTasks}`} color={COLORS.success} />
         )}
       </FlexWidget>
     </FlexWidget>

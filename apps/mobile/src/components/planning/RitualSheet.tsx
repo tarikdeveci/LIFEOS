@@ -12,11 +12,11 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
-const ENERGY_LEVELS = [
+const getEnergyLevels = (t: any) => [
   { level: 1 as const, emoji: '😴', label: 'Bitkin' },
-  { level: 2 as const, emoji: '😑', label: 'Düşük' },
+  { level: 2 as const, emoji: '😑', label: t.misc_low },
   { level: 3 as const, emoji: '😐', label: 'Orta' },
-  { level: 4 as const, emoji: '😊', label: 'İyi' },
+  { level: 4 as const, emoji: '😊', label: t.misc_good },
   { level: 5 as const, emoji: '🔥', label: 'Harika' },
 ]
 
@@ -125,7 +125,7 @@ export function RitualSheet({ userId, visible, onClose, onAiPlan, aiLabel }: Pro
   }
 
   const pickEnergy = (level: 1 | 2 | 3 | 4 | 5) => {
-    setEnergyLevel(supabase, level).catch(() => Alert.alert('Hata', 'Enerji seviyesi kaydedilemedi'))
+    setEnergyLevel(supabase, level).catch(() => Alert.alert(t.misc_error, t.misc_energy_save_error))
   }
 
   const option = (icon: 'list-outline' | 'sparkles-outline', title: string, hint: string, onPress: () => void) => (
@@ -154,7 +154,7 @@ export function RitualSheet({ userId, visible, onClose, onAiPlan, aiLabel }: Pro
               <>
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted }}>{t.plan_energy_q}</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing[2] }}>
-                  {ENERGY_LEVELS.map(({ level, emoji, label }) => {
+                  {getEnergyLevels(t).map(({ level, emoji, label }) => {
                     const active = dailyPlan.energy_level === level
                     return (
                       <TouchableOpacity key={level} onPress={() => pickEnergy(level)} accessibilityLabel={label} accessibilityState={{ selected: active }}

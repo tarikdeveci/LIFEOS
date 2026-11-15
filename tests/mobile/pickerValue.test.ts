@@ -37,9 +37,18 @@ test('isoToDate: bozuk ya da olmayan günde null', () => {
   }
 })
 
-test('timeToDate: varsayılan gün yaz saati geçişi olmayan sabit gün', () => {
+test('timeToDate: varsayılan gün bugün, eski sabit tarih değil (Hermes ile seçici aynı saati görsün)', () => {
+  const d = timeToDate('15:30')
+  const now = new Date()
+  assert.equal(dateToTime(d), '15:30')
+  assert.ok(Math.abs(d.getTime() - now.getTime()) < 3 * 24 * 3600 * 1000)
+})
+
+test('timeToDate: yaz saati geçişinde olmayan saat bir sonraki güne kayar, saat değişmez', () => {
   for (const v of ['00:00', '02:30', '03:15', '23:59']) {
-    assert.equal(dateToTime(timeToDate(v)), v)
+    for (let day = 0; day < 366; day += 1) {
+      const base = new Date(2026, 0, 1 + day, 12)
+      assert.equal(dateToTime(timeToDate(v, base)), v, `${v} ${base.toDateString()}`)
+    }
   }
-  assert.equal(timeToDate('02:30').getMonth(), 0)
 })

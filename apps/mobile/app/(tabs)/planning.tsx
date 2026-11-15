@@ -451,7 +451,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
             <TimeField label={t.field_end} value={draft.end_time} onChange={(v) => setDraft((d) => ({ ...d, end_time: v }))} defaultTime={draft.start_time || '10:00'} containerStyle={{ flex: 1 }} />
           </View>
           <View>
-            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Tür</Text>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>{t.misc_type}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
               {(Object.keys(BLOCK_LABELS) as BlockType[]).map((type) => (
                 <TouchableOpacity key={type} onPress={() => setDraft((d) => ({ ...d, block_type: type }))} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.md, backgroundColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.glassInner, borderWidth: 1, borderColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.border }}>

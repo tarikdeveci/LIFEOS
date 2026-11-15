@@ -54,7 +54,7 @@ export default function SettingsScreen() {
     try {
       await Linking.openURL(url)
     } catch {
-      Alert.alert('Bağlantı açılamadı', 'Lütfen lifeos.tr adresini tarayıcıdan ziyaret et.')
+      Alert.alert(t.acc_link_open_failed, t.acc_link_open_failed_desc)
     }
   }
 
@@ -79,10 +79,10 @@ export default function SettingsScreen() {
                 <Ionicons name="calendar-outline" size={18} color={palette.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                    {lang === 'tr' ? 'Takvim Senkronizasyonu' : 'Calendar Sync'}
+                    {t.acc_calendar_sync}
                   </Text>
                   <Text style={{ fontSize: fontSize.xs, color: calendarGranted ? palette.success : colors.textMuted, marginTop: 2 }}>
-                    {calendarGranted ? '✓ Erişim verildi' : 'İzin verilmemiş'}
+                    {calendarGranted ? t.acc_access_granted : t.acc_no_permission}
                   </Text>
                 </View>
               </View>
@@ -99,12 +99,10 @@ export default function SettingsScreen() {
                 <Ionicons name="key-outline" size={18} color={palette.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                    {lang === 'tr' ? 'API ve Otomasyon' : 'API & Automation'}
+                    {t.acc_api_automation}
                   </Text>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                    {lang === 'tr'
-                      ? 'Mail ve otomasyonlardan görev almak için anahtarları web panelinden oluştur'
-                      : 'Create keys in the web panel to receive tasks from email & automations'}
+                    {t.acc_api_automation_desc}
                   </Text>
                 </View>
               </View>
@@ -121,10 +119,10 @@ export default function SettingsScreen() {
                 <Ionicons name="cloud-upload-outline" size={18} color={palette.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                    {lang === 'tr' ? 'Antrenman Verisi İçe Aktar' : 'Import Workout Data'}
+                    {t.acc_import_workout}
                   </Text>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                    {lang === 'tr' ? 'Strong, Hevy veya FitNotes CSV dosyası' : 'Strong, Hevy or FitNotes CSV file'}
+                    {t.acc_import_workout_desc}
                   </Text>
                 </View>
               </View>
@@ -144,12 +142,10 @@ export default function SettingsScreen() {
                 <Ionicons name="notifications-outline" size={18} color={palette.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                    {lang === 'tr' ? 'Bildirimler' : 'Notifications'}
+                    {t.acc_notifications}
                   </Text>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-                    {lang === 'tr'
-                      ? 'Sabah, öğlen ve akşam özetleri, blok hatırlatmaları, e-posta'
-                      : 'Morning, midday and evening digests, block reminders, email'}
+                    {t.acc_notifications_desc}
                   </Text>
                 </View>
               </View>
@@ -160,7 +156,7 @@ export default function SettingsScreen() {
 
         {/* Language */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>Dil / Language</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>{t.acc_language}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             {LANG_OPTIONS.map((opt) => (
               <TouchableOpacity
@@ -177,7 +173,7 @@ export default function SettingsScreen() {
 
         {/* Theme */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>{lang === 'tr' ? 'Tema' : 'Theme'}</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[4] }}>{t.acc_theme}</Text>
           <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             {THEME_OPTIONS_DEF.map((opt) => (
               <TouchableOpacity

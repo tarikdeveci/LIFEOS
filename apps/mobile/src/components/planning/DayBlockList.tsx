@@ -114,7 +114,7 @@ export function DayBlockList({
   ].sort((a, b) => a.start - b.start)
 
   const eventTime = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-  const rows: ReactNode[] = allDay.map((event) => <ExternalRow key={event.id} start="Tüm gün" title={event.title} source="Takvim" />)
+  const rows: ReactNode[] = allDay.map((event) => <ExternalRow key={event.id} start={t.misc_all_day} title={event.title} source={t.misc_calendar_source} />)
   // Boşluktaysak (aktif blok yok) çizgi şu andan sonra başlayan ilk satırın önüne,
   // hepsi geçtiyse en sona düşer.
   let nowLineDrawn = !isToday || activeIndex !== -1 || blocks.length === 0
@@ -137,7 +137,7 @@ export function DayBlockList({
     cursor = Math.max(cursor ?? item.end, item.end)
     if (item.kind === 'event') {
       const { event } = item
-      rows.push(<ExternalRow key={event.id} start={eventTime(event.startsAt)} end={eventTime(event.endsAt)} title={event.title} source="Takvim" minHeight={spanPx(item.end - item.start)} />)
+      rows.push(<ExternalRow key={event.id} start={eventTime(event.startsAt)} end={eventTime(event.endsAt)} title={event.title} source={t.misc_calendar_source} minHeight={spanPx(item.end - item.start)} />)
       return
     }
     if (item.kind === 'busy') {

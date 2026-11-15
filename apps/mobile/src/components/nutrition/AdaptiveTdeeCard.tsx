@@ -16,6 +16,7 @@ import { Button } from '../ui/Button'
 import { WeightChart } from './WeightChart'
 import { WeightEntry } from './WeightEntry'
 import { useWeightTracking } from '../../hooks/useWeightTracking'
+import { useLang } from '../../contexts/LangContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '../../theme/tokens'
 
@@ -31,30 +32,32 @@ type Range = (typeof RANGES)[number]
 /** Geçmiş listesinde kapalıyken görünen tartı sayısı. */
 const HISTORY_PREVIEW = 5
 
-const SOURCE_LABEL: Record<HealthSource, string> = {
-  manual: 'Elle',
-  health_connect: 'Health Connect',
-  apple_health: 'Apple Sağlık',
+const getSourceLabel = (source: HealthSource, t: Record<string, any>) => {
+  switch (source) {
+    case 'manual': return t.nut_source_manual
+    case 'health_connect': return t.nut_source_hc
+    case 'apple_health': return t.nut_source_ah
+  }
 }
 
-function gapText(gap: TdeeGap, r: AdaptiveTdeeResult): string {
+function gapText(gap: TdeeGap, r: AdaptiveTdeeResult, t: Record<string, any>): string {
   switch (gap) {
     case 'no_weigh_in':
-      return 'Tartıldıkça kalori hedefin gerçek harcamana göre ayarlanır.'
+      return t.nut_gap_no_weigh_in
     case 'few_days':
-      return `Öneri için en az ${TDEE_MIN_DAYS} günlük veri gerekiyor (şu an ${r.daysTracked}).`
+      return t.nut_gap_few_days.replace('{min}', String(TDEE_MIN_DAYS)).replace('{current}', String(r.daysTracked))
     case 'few_intake_days':
-      return `Öneri için en az ${TDEE_MIN_INTAKE_DAYS} gün öğün kaydı gerekiyor (şu an ${r.intakeDays}).`
+      return t.nut_gap_few_intake.replace('{min}', String(TDEE_MIN_INTAKE_DAYS)).replace('{current}', String(r.intakeDays))
     case 'few_weigh_ins':
-      return `Öneri için en az ${TDEE_MIN_WEIGH_INS} tartı gerekiyor (şu an ${r.weighIns}).`
+      return t.nut_gap_few_weigh.replace('{min}', String(TDEE_MIN_WEIGH_INS)).replace('{current}', String(r.weighIns))
     case 'low_confidence':
-      return 'Tahmin henüz oturmadı, birkaç gün daha kayıt gerekiyor.'
+      return t.nut_gap_low_conf
     case 'implausible':
-      return 'Veriler tutarsız görünüyor, eksik öğün kaydı olabilir. Şimdilik öneri yok.'
+      return t.nut_gap_implausible
     case 'below_floor':
-      return 'Hesaplanan hedef güvenli alt sınırın altında kaldı, öneri yok.'
+      return t.nut_gap_below_floor
     case 'no_change':
-      return 'Mevcut hedefin tahminle uyumlu, değişiklik gerekmiyor.'
+      return t.nut_gap_no_change
   }
 }
 
@@ -72,6 +75,7 @@ function signedKg(delta: number): string {
  */
 export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
   const { colors } = useTheme()
+  const { t } = useLang()
   const { state, busy, saveWeight, removeWeight, applyProposal } = useWeightTracking(userId, onDataChanged)
   const [range, setRange] = useState<Range>(30)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -87,7 +91,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
   return (
     <GlassCard style={{ marginBottom: spacing[4] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
-        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Kilo Takibi</Text>
+        <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.nut_adaptive_title}</Text>
         {weighIns.length > 0 && (
           <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, padding: 2 }}>
             {RANGES.map((r) => (
@@ -96,7 +100,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                 onPress={() => setRange(r)}
                 style={{ paddingHorizontal: spacing[3], paddingVertical: 4, borderRadius: radius.full, backgroundColor: range === r ? palette.accent : 'transparent' }}
               >
-                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: range === r ? '#FFFFFF' : colors.textMuted }}>{r} gün</Text>
+                <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: range === r ? '#FFFFFF' : colors.textMuted }}>{t.nut_adaptive_days.replace('{n}', String(r))}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -106,12 +110,12 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
       {state.status === 'loading' && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
           <ActivityIndicator size="small" color={colors.textMuted} />
-          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>Yükleniyor...</Text>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{t.nut_adaptive_loading}</Text>
         </View>
       )}
 
       {state.status === 'error' && (
-        <Text style={{ fontSize: fontSize.sm, color: palette.danger }}>Kilo verileri yüklenemedi: {state.message}</Text>
+        <Text style={{ fontSize: fontSize.sm, color: palette.danger }}>{t.nut_adaptive_err.replace('{err}', state.message)}</Text>
       )}
 
       {data && (
@@ -124,8 +128,8 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                   <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textMuted }}> kg</Text>
                 </Text>
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
-                  Son tartı: {relativeDateLabel(latest.date)}
-                  {data.result.trendWeightKg !== null ? `, trend ${formatWeightKg(data.result.trendWeightKg)} kg` : ''}
+                  {t.nut_adaptive_last.replace('{date}', relativeDateLabel(latest.date))}
+                  {data.result.trendWeightKg !== null ? t.nut_adaptive_trend_val.replace('{kg}', formatWeightKg(data.result.trendWeightKg)) : ''}
                 </Text>
               </View>
               {data.result.weeklyRateKg !== null && (
@@ -136,14 +140,14 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                     color={palette.accent}
                   />
                   <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>
-                    haftada {signedKg(data.result.weeklyRateKg)} kg
+                    {t.nut_adaptive_weekly.replace('{val}', signedKg(data.result.weeklyRateKg))}
                   </Text>
                 </View>
               )}
             </View>
           ) : (
             <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>
-              Henüz tartı yok. İlk tartını gir, kilonun gidişatı burada grafik olarak birikir.
+              {t.nut_adaptive_empty}
             </Text>
           )}
 
@@ -161,7 +165,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
           {history.length > 0 && (
             <View>
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[1] }}>
-                Tartı geçmişi
+                {t.nut_adaptive_history}
               </Text>
               {visibleHistory.map((entry, index) => {
                 const previous = history[index + 1]
@@ -170,7 +174,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                   <View key={entry.date} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fontSize.sm, color: colors.textPrimary }}>{label}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{SOURCE_LABEL[entry.source]}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{getSourceLabel(entry.source, t)}</Text>
                     </View>
                     {previous && (
                       <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginRight: spacing[3], fontVariant: ['tabular-nums'] }}>
@@ -184,7 +188,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                       <TouchableOpacity
                         onPress={() => removeWeight(entry.date, label)}
                         disabled={busy !== null}
-                        accessibilityLabel={`${label} tartısını sil`}
+                        accessibilityLabel={t.nut_adaptive_del_a11y.replace('{date}', label)}
                         hitSlop={hitSlopFor(16)}
                         style={{ marginLeft: spacing[3] }}
                       >
@@ -202,7 +206,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[1], paddingTop: spacing[3] }}
                 >
                   <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: palette.accent }}>
-                    {historyOpen ? 'Daha az göster' : `Tümünü göster (${history.length})`}
+                    {historyOpen ? t.nut_adaptive_show_less : t.nut_adaptive_show_all.replace('{n}', String(history.length))}
                   </Text>
                   <Ionicons name={historyOpen ? 'chevron-up' : 'chevron-down'} size={16} color={palette.accent} />
                 </TouchableOpacity>
@@ -211,17 +215,17 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
           )}
 
           <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing[3], gap: spacing[2] }}>
-            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>Gerçek harcaman</Text>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.nut_adaptive_exp_title}</Text>
             {data.result.weighIns > 0 && (
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>
-                Tahmini {data.result.expenditure} kcal/gün ({data.result.low}-{data.result.high})
+                {t.nut_adaptive_exp_val.replace('{kcal}', String(data.result.expenditure)).replace('{low}', String(data.result.low)).replace('{high}', String(data.result.high))}
               </Text>
             )}
             {data.result.proposal ? (
               <>
                 <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{data.result.proposal.reason}</Text>
                 <Button
-                  label={busy === 'apply' ? 'Güncelleniyor...' : `Hedefi ${data.result.proposal.calories} kcal yap`}
+                  label={busy === 'apply' ? t.nut_adaptive_btn_applying : t.nut_adaptive_btn_apply.replace('{kcal}', String(data.result.proposal.calories))}
                   onPress={() => {
                     if (data.result.proposal) applyProposal(data.result.proposal)
                   }}
@@ -232,7 +236,7 @@ export function AdaptiveTdeeCard({ userId, onDataChanged }: Props) {
               </>
             ) : (
               data.result.gap && (
-                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{gapText(data.result.gap, data.result)}</Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{gapText(data.result.gap, data.result, t)}</Text>
               )
             )}
           </View>

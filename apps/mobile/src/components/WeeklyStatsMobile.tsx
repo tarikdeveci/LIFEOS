@@ -9,8 +9,7 @@ import {
   getWeeklyWorkoutStats,
 } from '@lifeos/shared/supabase'
 import { T } from '@/src/theme'
-
-const TR_DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+import { useLang } from '@/src/contexts/LangContext'
 
 const WORKOUT_COLORS: Record<string, string> = {
   completed: T.success,
@@ -27,6 +26,7 @@ interface WeeklyStatsMobileProps {
 }
 
 export function WeeklyStatsMobile({ supabase, userId, calorieTarget }: WeeklyStatsMobileProps) {
+  const { t } = useLang()
   const [stats, setStats] = useState<WeeklyDayStat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +41,8 @@ export function WeeklyStatsMobile({ supabase, userId, calorieTarget }: WeeklySta
         getWeeklyNutritionSummary(supabase, userId, weekStartDate),
         getWeeklyWorkoutStats(supabase, userId, weekStartDate),
       ])
+
+      const TR_DAYS = t.misc_days_short.split(',')
 
       const data: WeeklyDayStat[] = Array.from({ length: 7 }, (_, i) => {
         const date = shiftIsoDate(weekStartDate, i)
@@ -66,11 +68,11 @@ export function WeeklyStatsMobile({ supabase, userId, calorieTarget }: WeeklySta
       })
       setStats(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Veri yüklenemedi')
+      setError(err instanceof Error ? err.message : t.misc_data_load_error)
     } finally {
       setLoading(false)
     }
-  }, [supabase, userId, calorieTarget])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase, userId, calorieTarget, t])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void loadStats()

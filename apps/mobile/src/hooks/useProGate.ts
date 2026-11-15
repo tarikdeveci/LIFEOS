@@ -4,7 +4,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
 
 export function useProGate(_userId?: string | null) {
-  const { lang } = useLang()
+  const { t } = useLang()
   const subscription = useSubscriptionStatus()
 
   /** @param source paywall'a hangi yoldan gelindiği (ölçüm ve paywall metni için) */
@@ -13,14 +13,12 @@ export function useProGate(_userId?: string | null) {
     if (subscription.isPro) return true
 
     Alert.alert(
-      lang === 'tr' ? 'Pro gerekli' : 'Pro required',
-      lang === 'tr'
-        ? 'AI özellikleri yalnızca Pro üyeliklerde aktif.'
-        : 'AI features are only available with a Pro membership.',
+      t.misc_pro_required,
+      t.misc_pro_ai_features,
       [
-        { text: lang === 'tr' ? 'Vazgeç' : 'Not now', style: 'cancel' },
+        { text: t.misc_not_now, style: 'cancel' },
         {
-          text: lang === 'tr' ? "Pro'ya geç" : 'Go Pro',
+          text: t.misc_go_pro,
           onPress: () => router.push({ pathname: '/paywall', params: source ? { source } : {} }),
         },
       ],

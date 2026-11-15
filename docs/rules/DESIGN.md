@@ -96,7 +96,6 @@ Sebep: kaydetmeyen ama hata da vermeyen ekranlar (#20, #24) ve sessizce çalış
 ## Bilinen sapmalar (kopyalama, Faz 3'te düzelir)
 
 Kodu doğrularken bulundu (2026-10-28); yeni kodda örnek alınmaz:
-- `Segmented` seçenek yüksekliği 44'ün altında (`paddingVertical: 8` + `fontSize.sm`).
 - `Button` `size="sm"` 44'ün altında, `hitSlop` prop'u yok.
 - `Button` içinde `'#FFFFFF'` ve `rgba(...)` literal'leri var, token değil.
 - `fontSize: 10` literal'i: `app/(tabs)/nutrition.tsx`, `app/(tabs)/planning.tsx`, `app/onboarding.tsx`.

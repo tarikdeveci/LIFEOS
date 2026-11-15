@@ -3,6 +3,7 @@ import { View, Text, Pressable, type GestureResponderEvent, type LayoutChangeEve
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg'
 import { daysBetween, formatWeightKg, relativeDateLabel, shiftIsoDate, shortDateLabel, todayDate } from '@lifeos/shared'
 import type { WeightPoint } from '@lifeos/shared/supabase'
+import { useLang } from '../../contexts/LangContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { palette, fontSize, spacing } from '../../theme/tokens'
 
@@ -31,6 +32,7 @@ const MIN_SPAN_KG = 2
  */
 export function WeightChart({ points, trend, days, endDate }: Props) {
   const { colors } = useTheme()
+  const { t } = useLang()
   const [width, setWidth] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -100,13 +102,13 @@ export function WeightChart({ points, trend, days, endDate }: Props) {
   return (
     <View>
       <Text style={{ fontSize: fontSize.xs, color: shown ? colors.textPrimary : colors.textSubtle, marginBottom: spacing[1] }}>
-        {shown ? `${relativeDateLabel(shown.date)}: ${formatWeightKg(shown.weightKg)} kg` : 'Ayrıntı için bir noktaya dokun'}
+        {shown ? `${relativeDateLabel(shown.date)}: ${formatWeightKg(shown.weightKg)} kg` : t.nut_weight_tap_hint}
       </Text>
 
       <View onLayout={handleLayout} style={{ height: HEIGHT, justifyContent: 'center' }}>
         {raw.length === 0 && (
           <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>
-            Son {days} günde tartı yok.
+            {t.nut_weight_no_data.replace('{n}', String(days))}
           </Text>
         )}
         {chart && (
@@ -170,15 +172,15 @@ export function WeightChart({ points, trend, days, endDate }: Props) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textSubtle }} />
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>Tartı</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{t.nut_weight_weigh_in}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <View style={{ width: 14, height: 3, borderRadius: 2, backgroundColor: palette.accent }} />
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>Trend</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{t.nut_weight_trend}</Text>
             </View>
           </View>
           <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-            {endDate === todayDate() ? 'Bugün' : shortDateLabel(endDate)}
+            {endDate === todayDate() ? t.nut_weight_today : shortDateLabel(endDate)}
           </Text>
         </View>
       )}

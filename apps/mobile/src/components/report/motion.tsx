@@ -58,7 +58,7 @@ export function StoryProvider({ value, children }: StoryProviderProps) {
 
 function useStory(): StoryScroll {
   const story = useContext(StoryContext)
-  if (!story) throw new Error('useStory, StoryProvider içinde kullanılmalı')
+  if (!story) throw new Error('useStory must be used within a StoryProvider')
   return story
 }
 
