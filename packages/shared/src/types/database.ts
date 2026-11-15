@@ -1446,6 +1446,7 @@ export type Database = {
           urgency_score: number
           user_id: string
           value_score: number
+          workout_program_id: string | null
         }
         Insert: {
           area?: string | null
@@ -1478,6 +1479,7 @@ export type Database = {
           urgency_score?: number
           user_id: string
           value_score?: number
+          workout_program_id?: string | null
         }
         Update: {
           area?: string | null
@@ -1510,6 +1512,7 @@ export type Database = {
           urgency_score?: number
           user_id?: string
           value_score?: number
+          workout_program_id?: string | null
         }
         Relationships: [
           {
@@ -1517,6 +1520,13 @@ export type Database = {
             columns: ["goal_id"]
             isOneToOne: false
             referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routines_workout_program_id_fkey"
+            columns: ["workout_program_id"]
+            isOneToOne: false
+            referencedRelation: "workout_programs"
             referencedColumns: ["id"]
           },
         ]

@@ -7,6 +7,7 @@ import { Input } from '@/src/components/ui/Input'
 import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
+import { RoutineProgramPicker } from './RoutineProgramPicker'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -40,6 +41,8 @@ interface FormState {
   end: string
   /** Bağlı hedef; blok rutininde yok. */
   goalId: string | null
+  /** Bağlı antrenman programı; yalnız blok rutininde, seçilince blok türü workout olur. */
+  programId: string | null
 }
 
 function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
@@ -54,6 +57,7 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
     goalId: r?.goal_id ?? null,
+    programId: r?.workout_program_id ?? null,
   }
 }
 
@@ -82,16 +86,18 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
   if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
   if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'plan_err_time_invalid'
   if (hasTime && f.end === f.start) return 'plan_err_end_after_start'
+  const blockKind: BlockType = f.kind === 'block' && f.programId ? 'workout' : blockType
   return {
     title,
     kind: f.kind,
-    block_type: f.kind === 'block' ? blockType : 'task',
+    block_type: f.kind === 'block' ? blockKind : 'task',
     days_of_week: [...f.days].sort(),
     every_n_weeks: f.biweekly ? 2 : 1,
     ...(hasTime && { start_time: f.start, end_time: f.end }),
     // İki haftalık parite starts_on'a çapalı; düzenlemede eski çapa korunur.
     ...(isNew && { starts_on: todayDate() }),
     goal_id: f.kind === 'task' ? f.goalId : null,
+    workout_program_id: f.kind === 'block' && blockKind === 'workout' ? f.programId : null,
   }
 }
 
@@ -216,6 +222,9 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
 
         {form.kind !== 'block' && (
           <TaskGoalPicker userId={userId} goalId={form.goalId} onChange={(goalId) => patch({ goalId })} />
+        )}
+        {form.kind === 'block' && (
+          <RoutineProgramPicker userId={userId} programId={form.programId} onChange={(programId) => patch({ programId })} />
         )}
 
         {notice && (

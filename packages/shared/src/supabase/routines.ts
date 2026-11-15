@@ -6,6 +6,7 @@ import type {
   RoutineProgress,
   UpdateRoutineInput,
 } from '../types/routine'
+import type { Workout } from '../types/workout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
@@ -173,4 +174,36 @@ export async function setHabitCount(
     .eq('routine_id', routineId)
     .eq('completed_on', day)
   if (error) throw error
+}
+
+/** Programa bağlı rutinlerin bugünden sonraki blokları (program günü dağıtımı için). */
+export async function getUpcomingRoutineBlocks(
+  supabase: Supabase,
+  routineIds: string[],
+  fromDate: string,
+): Promise<Array<{ id: string; routine_id: string; date: string; start_time: string }>> {
+  if (routineIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('id, routine_id, date, start_time')
+    .in('routine_id', routineIds)
+    .gte('date', fromDate)
+    .order('date')
+    .order('start_time')
+    .limit(1000)
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; routine_id: string; date: string; start_time: string }>
+}
+
+/** Programlardan yapılan son antrenmanlar; `fetchHistory`nin 14 kayıtlık penceresi başka programlarla dolabilir. */
+export async function getProgramWorkoutHistory(supabase: Supabase, userId: string): Promise<Workout[]> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('*')
+    .eq('user_id', userId)
+    .like('name', '%·%')
+    .order('date', { ascending: false })
+    .limit(60)
+  if (error) throw error
+  return (data ?? []) as Workout[]
 }

@@ -19,6 +19,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 import type { LocalCalendarEvent } from '../../utils/calendarSync'
+import { withProgramDay } from '../../hooks/useProgramDays'
 
 interface Props {
   blocks: TimeBlock[]
@@ -30,6 +31,8 @@ interface Props {
   now: Date
   blockColors: Record<string, string>
   blockLabels: Record<string, string>
+  /** Programa bağlı blokların o günkü program günü adı, blok id'siyle. */
+  programDays?: Record<string, string>
   onDelete: (blockId: string) => void
   /** Bloğa dokunmak düzenleme sayfasını açar. */
   onEdit: (block: TimeBlock) => void
@@ -71,7 +74,7 @@ const clockMinute = (iso: string) => {
  * araya "şu an" çizgisi girer.
  */
 export function DayBlockList({
-  blocks, events, busy, isToday, now, blockColors, blockLabels, onDelete, onEdit, onToggleDone, onNowAnchorLayout, header, emptyContent,
+  blocks, events, busy, isToday, now, blockColors, blockLabels, programDays, onDelete, onEdit, onToggleDone, onNowAnchorLayout, header, emptyContent,
 }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
@@ -156,6 +159,7 @@ export function DayBlockList({
         isNext={index === nextIndex && activeIndex === -1}
         color={blockColors[block.block_type] ?? palette.accent}
         typeLabel={blockLabels[block.block_type] ?? block.block_type}
+        programDay={programDays?.[block.id]}
         onDelete={() => onDelete(block.id)}
         onEdit={() => onEdit(block)}
         onToggleDone={() => onToggleDone(block.id, !block.completed_at)}
@@ -229,6 +233,7 @@ interface BlockRowProps {
   isNext: boolean
   color: string
   typeLabel: string
+  programDay?: string
   onDelete: () => void
   onEdit: () => void
   onToggleDone: () => void
@@ -237,7 +242,7 @@ interface BlockRowProps {
   minHeight: number
 }
 
-function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, onEdit, onToggleDone, onLayoutY, minHeight }: BlockRowProps) {
+function BlockRow({ block, timing, isToday, isNext, color, typeLabel, programDay, onDelete, onEdit, onToggleDone, onLayoutY, minHeight }: BlockRowProps) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
 
@@ -298,7 +303,7 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, onDelete, 
           style={{ fontSize: fontSize.base, fontWeight: isActive ? fontWeight.bold : fontWeight.semibold, color: colors.textPrimary, textDecorationLine: isDone ? 'line-through' : 'none' }}
           numberOfLines={1}
         >
-          {block.label ?? typeLabel}
+          {withProgramDay(block.label ?? typeLabel, programDay)}
         </Text>
         <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
           {meta.join(' · ')}
