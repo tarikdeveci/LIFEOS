@@ -1,5 +1,7 @@
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
+import { ACCOUNT_REQUIRED_BODY, isPermanentAccount, type GateUser } from '@/lib/api/accountGate'
 
 /**
  * API rotaları için oturum: web çerezden, mobil "Authorization: Bearer <supabase erişim
@@ -14,5 +16,26 @@ export async function authenticateRequest(req: Request) {
       })
     : await createServerClient()
   const { data: { user } } = bearer ? await supabase.auth.getUser(bearer) : await supabase.auth.getUser()
-  return user ? { supabase, userId: user.id } : null
+  return user
+    ? {
+        supabase,
+        userId: user.id,
+        isAnonymous: user.is_anonymous === true,
+        emailConfirmed: Boolean(user.email_confirmed_at),
+      }
+    : null
+}
+
+/** Kalıcı ve onaylı hesap değilse 403 `account_required` döner, değilse null. */
+export function requirePermanent(auth: { isAnonymous: boolean; emailConfirmed: boolean }) {
+  return auth.isAnonymous || !auth.emailConfirmed ? accountRequiredResponse() : null
+}
+
+/** Kendi `getUser()` çağrısını yapan rotalar (çerez oturumu) için aynı kapı. */
+export function requirePermanentUser(user: GateUser) {
+  return isPermanentAccount(user) ? null : accountRequiredResponse()
+}
+
+function accountRequiredResponse() {
+  return NextResponse.json(ACCOUNT_REQUIRED_BODY, { status: 403 })
 }

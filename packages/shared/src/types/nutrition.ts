@@ -88,6 +88,8 @@ export interface FoodSearchResult extends QuestionChoice {
   default_grams: number
   /** Küratörlü satırlarda doğrulanma durumu. */
   verified?: boolean
+  /** Porsiyon tek parça mı (yumurta, dilim ekmek): miktar adetle girilebilir (#36). */
+  countable?: boolean
   /** Korpus satırlarında kaynak set: sr_legacy | survey | foundation. */
   dataset?: string
 }

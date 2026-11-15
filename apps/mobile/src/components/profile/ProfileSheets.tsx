@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { BODY_LIMITS, parseBodyMetrics } from '@lifeos/shared'
+import { BODY_LIMITS, caloriesFromMacros, parseBodyMetrics } from '@lifeos/shared'
 import type { BodyMetricField, BodyMetrics } from '@lifeos/shared'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
@@ -23,6 +23,15 @@ export interface ProfileState {
 
 export interface NutritionState {
   calories: string; protein: string; carbs: string; fat: string; fiber: string
+}
+
+/** Taslaktaki makro gramları; önizleme ve kayıt aynı kuralı kullanır (boş ya da geçersiz alan 0). */
+export function nutritionDraftGrams(draft: NutritionState): { protein_g: number; carbs_g: number; fat_g: number; calories: number } {
+  const grams = (text: string) => { const n = parseFloat(text); return Number.isFinite(n) && n >= 0 ? n : 0 }
+  const protein_g = grams(draft.protein)
+  const carbs_g = grams(draft.carbs)
+  const fat_g = grams(draft.fat)
+  return { protein_g, carbs_g, fat_g, calories: caloriesFromMacros(protein_g, carbs_g, fat_g) }
 }
 
 interface PhysicalInfoSheetProps {
@@ -162,6 +171,8 @@ export function NutritionTargetsSheet({ visible, onClose, nutrition, saving, onC
     if (!(await onSave(draft))) setSaveFailed(true)
   }
 
+  const draftCalories = nutritionDraftGrams(draft).calories
+
   return (
     <BottomSheet visible={visible} onClose={onClose} title={t.acc_nutrition_goals} scrollable>
       <View style={{ gap: spacing[3] }}>
@@ -190,7 +201,6 @@ export function NutritionTargetsSheet({ visible, onClose, nutrition, saving, onC
             </TouchableOpacity>
           </View>
         </View>
-        <Input label={t.acc_daily_calories_kcal} value={draft.calories} onChangeText={(v) => setDraft((n) => ({ ...n, calories: v }))} keyboardType="number-pad" placeholder="2500" returnKeyType="next" />
         <View style={{ flexDirection: 'row', gap: spacing[3] }}>
           <Input label={t.acc_protein_g} value={draft.protein} onChangeText={(v) => setDraft((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
           <Input label={t.acc_carbs_g} value={draft.carbs} onChangeText={(v) => setDraft((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} returnKeyType="next" />
@@ -199,8 +209,18 @@ export function NutritionTargetsSheet({ visible, onClose, nutrition, saving, onC
           <Input label={t.acc_fat_g} value={draft.fat} onChangeText={(v) => setDraft((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} returnKeyType="next" />
           <Input label={t.acc_fiber_g} value={draft.fiber} onChangeText={(v) => setDraft((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
         </View>
+        {/* Kalori elle girilmez: makrolardan gelir, tek doğruluk kaynağı makrolardır (#11). */}
+        <View
+          accessible
+          accessibilityLabel={`${t.acc_daily_calories_kcal}: ${draftCalories}. ${t.ux_calories_from_macros}`}
+          style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+        >
+          <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{t.acc_daily_calories_kcal}</Text>
+          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginTop: spacing[1] }}>{draftCalories} kcal</Text>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: spacing[1] }}>{t.ux_calories_from_macros}</Text>
+        </View>
         {saveFailed && <SaveError text={t.profile_save_failed} />}
-        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
+        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} disabled={draftCalories <= 0} fullWidth style={{ marginTop: spacing[3] }} />
       </View>
     </BottomSheet>
   )

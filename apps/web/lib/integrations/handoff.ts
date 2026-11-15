@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { NextResponse } from 'next/server'
-import { authenticateRequest } from '@/lib/api/auth'
+import { authenticateRequest, requirePermanent } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -56,6 +56,8 @@ export async function handOffToApp(req: Request, admin: Admin, slug: string, pro
 export async function completeHandoff(req: Request, slug: string, provider: string, connect: Connect) {
   const auth = await authenticateRequest(req)
   if (!auth) return NextResponse.json({ ok: false, error: 'Oturum gerekli' }, { status: 401 })
+  const gate = requirePermanent(auth)
+  if (gate) return gate
   let body: { handoff?: unknown; code?: unknown } = {}
   try { body = (await req.json()) as typeof body } catch { /* aşağıda reddedilir */ }
   if (typeof body.handoff !== 'string' || typeof body.code !== 'string' || !body.code) {
