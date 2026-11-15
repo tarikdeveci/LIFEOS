@@ -245,3 +245,34 @@ export function syncBlocksWithTasks(
 
   return updates
 }
+
+interface ProtectedRoutine { id: string; is_protected: boolean; min_minutes?: number | null }
+
+/**
+ * Asgari gün (081): korunmayan rutinden gelen blok ve görevler `closed`, gerisi `active`.
+ * Elle eklenenlere (routine_id yok) dokunulmaz; hiçbir şey silinmez, sadece ayrılır.
+ */
+export function splitMinimumDay<B extends { routine_id?: string | null }, T extends { routine_id?: string | null }>(
+  blocks: readonly B[],
+  tasks: readonly T[],
+  routines: readonly Pick<ProtectedRoutine, 'id' | 'is_protected'>[],
+): { active: { blocks: B[]; tasks: T[] }; closed: { blocks: B[]; tasks: T[] } } {
+  const kept = new Set(routines.filter((r) => r.is_protected).map((r) => r.id))
+  const isClosed = (x: { routine_id?: string | null }) => !!x.routine_id && !kept.has(x.routine_id)
+  return {
+    active: { blocks: blocks.filter((b) => !isClosed(b)), tasks: tasks.filter((t) => !isClosed(t)) },
+    closed: { blocks: blocks.filter(isClosed), tasks: tasks.filter(isClosed) },
+  }
+}
+
+/**
+ * Asgari günde korunan rutin bloğunun ekranda gösterilen bitişi: başlangıç + min_minutes.
+ * Asgari süre yoksa ya da bloktan uzunsa bitiş değişmez. Satırın end_time'ı yazılmaz.
+ */
+export function minimumEndTime(start: string, end: string, minMinutes: number | null | undefined): string {
+  if (!minMinutes || minMinutes <= 0) return end
+  const s = clockToMinutes(start)
+  let e = clockToMinutes(end)
+  if (e <= s) e += 24 * 60
+  return s + minMinutes >= e ? end : minutesToClock((s + minMinutes) % (24 * 60))
+}

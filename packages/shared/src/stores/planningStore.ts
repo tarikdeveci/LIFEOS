@@ -30,6 +30,8 @@ interface PlanningState {
   /** Bugünün blokları. Planlama başka güne bakarken widget ve canlı bildirim bunu okur. */
   todayBlocks: TimeBlock[]
   dailyPlan: DailyPlan | null
+  /** Bugünün planı. Asgari gün düğmesi Bugün ekranında; Planlama başka güne bakarken de doğru günü yazar. */
+  todayPlan: DailyPlan | null
   flexTasks: Task[]
   carryoverTasks: Task[]
   /** Google takvimindeki dolu aralıklar (gün içi dakika); bağlantı yoksa boş. */
@@ -44,6 +46,7 @@ interface PlanningState {
   removeTimeBlock: (supabase: Supabase, blockId: string) => Promise<void>
   setBlockDone: (supabase: Supabase, blockId: string, done: boolean) => Promise<void>
   setEnergyLevel: (supabase: Supabase, level: 1 | 2 | 3 | 4 | 5) => Promise<void>
+  toggleMinimumMode: (supabase: Supabase) => Promise<void>
   completeRitual: (supabase: Supabase) => Promise<void>
   /** autoPlace sonucunu o güne görev blokları olarak yazar, sonra günü yeniden okur. */
   placeTasks: (supabase: Supabase, userId: string, placements: Placement[], titles: Record<string, string>) => Promise<number>
@@ -81,6 +84,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   timeBlocks: [],
   todayBlocks: [],
   dailyPlan: null,
+  todayPlan: null,
   flexTasks: [],
   carryoverTasks: [],
   busy: [],
@@ -209,6 +213,20 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
     await updateDailyPlan(supabase, dailyPlan.id, { energy_level: level })
   },
 
+  toggleMinimumMode: async (supabase) => {
+    const { todayPlan, dailyPlan } = get()
+    if (!todayPlan) return
+    const next = { ...todayPlan, minimum_mode: !todayPlan.minimum_mode }
+    const mirror = dailyPlan?.id === todayPlan.id
+    set({ todayPlan: next, ...(mirror && { dailyPlan: next }) })
+    try {
+      await updateDailyPlan(supabase, todayPlan.id, { minimum_mode: next.minimum_mode })
+    } catch (err) {
+      set({ todayPlan, ...(mirror && { dailyPlan }) })
+      throw err
+    }
+  },
+
   completeRitual: async (supabase) => {
     const { dailyPlan } = get()
     if (!dailyPlan) return
@@ -314,9 +332,10 @@ onTaskDeleted((taskId) => {
   }
 })
 
-// Seçili gün bugünken her blok değişikliği bugünün aynasına yazılır.
+// Seçili gün bugünken her blok ve plan değişikliği bugünün aynasına yazılır.
 usePlanningStore.subscribe((state) => {
-  if (state.date === todayDate() && state.todayBlocks !== state.timeBlocks) {
-    usePlanningStore.setState({ todayBlocks: state.timeBlocks })
+  if (state.date !== todayDate()) return
+  if (state.todayBlocks !== state.timeBlocks || state.todayPlan !== state.dailyPlan) {
+    usePlanningStore.setState({ todayBlocks: state.timeBlocks, todayPlan: state.dailyPlan })
   }
 })

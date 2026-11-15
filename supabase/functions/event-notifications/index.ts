@@ -75,6 +75,35 @@ function utcDateStr(instant: Date, offsetDays = 0): string {
   return new Date(instant.getTime() + offsetDays * 86400_000).toISOString().slice(0, 10)
 }
 
+/**
+ * Asgari gündeki (daily_plans.minimum_mode) korunmayan rutin bloklarının id'leri.
+ * Okuma hatası hatırlatmayı durdurmaz: fazladan bir hatırlatma, hiç gitmeyen
+ * hatırlatmadan iyidir; hata loglanır.
+ */
+async function minimumDayClosures(
+  userIds: string[],
+  blocks: { id: unknown; user_id: unknown; date: unknown; routine_id: unknown }[],
+): Promise<Set<string>> {
+  const routineBlocks = blocks.filter((b) => b.routine_id)
+  if (routineBlocks.length === 0) return new Set()
+  const [plans, routines] = await Promise.all([
+    supabase.from('daily_plans').select('user_id, date').in('user_id', userIds)
+      .in('date', [...new Set(routineBlocks.map((b) => b.date as string))]).eq('minimum_mode', true),
+    supabase.from('routines').select('id').in('id', [...new Set(routineBlocks.map((b) => b.routine_id as string))]).eq('is_protected', true),
+  ])
+  if (plans.error || routines.error) {
+    console.error('Asgari gun okunamadi:', plans.error?.message ?? routines.error?.message)
+    return new Set()
+  }
+  const minimumDays = new Set((plans.data ?? []).map((p) => `${p.user_id}|${p.date}`))
+  const kept = new Set((routines.data ?? []).map((r) => r.id as string))
+  return new Set(
+    routineBlocks
+      .filter((b) => minimumDays.has(`${b.user_id}|${b.date}`) && !kept.has(b.routine_id as string))
+      .map((b) => b.id as string),
+  )
+}
+
 Deno.serve(async () => {
   const now = new Date()
 
@@ -83,7 +112,7 @@ Deno.serve(async () => {
   // asıl filtrelemeyi hesaplanan UTC anına göre yapıyoruz.
   const { data: blocks, error } = await supabase
     .from('time_blocks')
-    .select('id, user_id, label, start_time, date, block_type')
+    .select('id, user_id, label, start_time, date, block_type, routine_id')
     .gte('date', utcDateStr(now, -1))
     .lte('date', utcDateStr(now, 1))
     .is('notification_sent_at', null)
@@ -123,6 +152,7 @@ Deno.serve(async () => {
   const prefsByUser = new Map(
     (prefsResult.data ?? []).map((p) => [p.user_id as string, p]),
   )
+  const closedToday = await minimumDayClosures(userIds, blocks)
   const tokensByUser = new Map<string, string[]>()
   for (const row of tokensResult.data ?? []) {
     const uid = row.user_id as string
@@ -147,6 +177,8 @@ Deno.serve(async () => {
     const prefs = prefsByUser.get(uid)
 
     if (!prefs?.block_reminder_enabled) continue
+    // Asgari gün (081): korunmayan rutinin bloğu o gün kapalı, hatırlatılmaz.
+    if (closedToday.has(block.id as string)) continue
 
     const reminderMinutes: number = prefs.block_reminder_minutes ?? 15
     const tz = (prefs.timezone as string) || 'Europe/Istanbul'
