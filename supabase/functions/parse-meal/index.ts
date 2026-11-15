@@ -16,6 +16,7 @@
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
 
+import { isAccountRequired } from '../_shared/accountGate.ts'
 import { createRulesExtractor, parseMeal } from '../_shared/nutrition/index.ts'
 import { createSupabaseFoodRepo, type SupabaseLike } from '../_shared/nutrition/repo.ts'
 import {
@@ -118,7 +119,10 @@ serve(async (req: Request) => {
     // Aylık bütçe aşımı modeli kapatmaz, ucuz yedek modele geçirir; yalnızca
     // sert sınır kural katmanına düşürür: öğün kaydı hiçbir koşulda durmaz.
     const access = await resolveAiAccess(authClient, user.id, 'parse_meal')
-    const { pro, useModel: modelTierAvailable, limited: budgetLimited } = planMealAi(access)
+    // Misafir ve onaysız e-posta: 403 yok, model katmanı kapalı, kural katmanı çalışır
+    // (misafir modu, spec bölüm 9). Ezme burada, planMealAi saf kalsın.
+    const mealPlan = isAccountRequired(user) ? { pro: false, useModel: false, limited: false } : planMealAi(access)
+    const { pro, useModel: modelTierAvailable, limited: budgetLimited } = mealPlan
     const overBudget = access.allowed && access.overBudget
 
     // Ölçüm: öğün parse en çok kullanılan AI özelliği. Bir öğün kalem sayısına
