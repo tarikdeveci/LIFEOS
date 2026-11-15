@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { View, Text, ScrollView, Switch, TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
+import { View, Text, ScrollView, Switch, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router } from 'expo-router'
+import { BackButton } from '@/src/components/ui/BackButton'
 import * as Notifications from 'expo-notifications'
 import {
   BLOCK_REMINDER_CHOICES,
@@ -27,6 +27,9 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
+import { useOnAppActive } from '@/src/hooks/useOnAppActive'
+import { requestOrOpenSettings } from '@/src/utils/permissions'
+import { registerForPushNotificationsAsync } from '@/src/notifications/setup'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 /**
@@ -174,6 +177,24 @@ export default function NotificationSettingsScreen() {
     void load()
   }, [load])
 
+  // Sistem ayarlarından dönünce izni iki yönde de yeniden oku; yeni verildiyse token'ı kaydet.
+  useOnAppActive(() => {
+    if (osGranted === null) return
+    void Notifications.getPermissionsAsync().then(({ status }) => {
+      const granted = status === 'granted'
+      if (granted && !osGranted) void registerForPushNotificationsAsync()
+      setOsGranted(granted)
+    })
+  })
+
+  const askPermission = async () => {
+    const granted = await requestOrOpenSettings(Notifications.requestPermissionsAsync, Linking.openSettings)
+    if (!granted) return
+    setOsGranted(true)
+    // Token yalnız açılışta kaydediliyordu; izin burada verilince bildirim gelmiyordu.
+    void registerForPushNotificationsAsync()
+  }
+
   /**
    * Anahtar önce ekranda çevriliyor, sonra yazılıyor; yazma başarısız olursa
    * GERİ ALINIYOR. Aksi hâlde kullanıcı bildirimi kapattığını sanır, sunucu
@@ -248,9 +269,7 @@ export default function NotificationSettingsScreen() {
       <ScreenBackground>
         <View style={{ flex: 1, padding: spacing[5], paddingTop: spacing[6] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-            <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
+            <BackButton />
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1 }}>
               {tr ? 'Bildirimler' : 'Notifications'}
             </Text>
@@ -289,9 +308,7 @@ export default function NotificationSettingsScreen() {
     <ScreenBackground>
       <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1 }}>
             {tr ? 'Bildirimler' : 'Notifications'}
           </Text>
@@ -318,11 +335,7 @@ export default function NotificationSettingsScreen() {
                   <Button
                     label={tr ? 'İzin İste' : 'Request permission'}
                     variant="secondary"
-                    onPress={() => {
-                      void Notifications.requestPermissionsAsync().then(({ status }) => {
-                        setOsGranted(status === 'granted')
-                      })
-                    }}
+                    onPress={() => void askPermission()}
                   />
                 </View>
               </View>

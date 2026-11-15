@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   requestCalendarPermission,
+  hasCalendarPermission,
   getAvailableCalendars,
   fetchLocalEvents,
   mapToLifeOSEvent,
@@ -10,6 +11,8 @@ import {
   type LocalCalendarEvent,
 } from '../utils/calendarSync'
 import type { Calendar } from 'expo-calendar'
+import { permissionDrift } from '../utils/permissions'
+import { getCurrentT } from '@/src/contexts/LangContext'
 
 interface CalendarStore {
   hasPermission: boolean
@@ -22,6 +25,8 @@ interface CalendarStore {
   lastSyncError: string | null
 
   initialize: () => Promise<void>
+  /** Cihazdaki izni sormadan okur, saklı bayrakla farklıysa günceller */
+  refreshPermission: () => Promise<void>
   syncEvents: (daysAhead?: number) => Promise<void>
   toggleCalendar: (id: string) => Promise<void>
 }
@@ -60,6 +65,13 @@ export const useCalendarStore = create<CalendarStore>()(
         await get().syncEvents()
       },
 
+      refreshPermission: async () => {
+        if (!isCalendarSupported()) return
+        const drift = permissionDrift(get().hasPermission, await hasCalendarPermission())
+        if (drift === 'granted') await get().initialize()
+        if (drift === 'revoked') set({ hasPermission: false, availableCalendars: [], localEvents: [] })
+      },
+
       syncEvents: async (daysAhead = 7) => {
         const { selectedCalendarIds, hasPermission } = get()
         if (!hasPermission || selectedCalendarIds.length === 0) return
@@ -86,7 +98,7 @@ export const useCalendarStore = create<CalendarStore>()(
           isSyncing: false,
           lastSyncedAt: new Date().toISOString(),
           lastSyncError: failedCalendarIds.length > 0
-            ? `${failedCalendarIds.length} takvim okunamadı`
+            ? getCurrentT().misc_calendars_failed_to_read.replace('{n}', String(failedCalendarIds.length))
             : null,
         })
       },

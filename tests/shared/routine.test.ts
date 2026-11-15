@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 
 import {
   collapseRoutineTasks,
+  findSimilarRoutine,
   habitDoneDays,
   habitWeekProgress,
+  normalizeRoutineTitle,
   habitWeekStreak,
   isRoutineActiveOn,
   isRoutineDay,
@@ -125,4 +127,28 @@ test('isRoutineActiveOn: etkin, başlamış ve bitmemiş rutin geçerli', () => 
   assert.equal(isRoutineActiveOn(habit, '2026-10-12'), false, 'bittikten sonra')
   assert.equal(isRoutineActiveOn({ ...habit, ends_on: null }, '2027-01-01'), true, 'süresiz')
   assert.equal(isRoutineActiveOn({ ...habit, is_active: false }, '2026-10-06'), false, 'pasif')
+})
+
+test('normalizeRoutineTitle: Türkçe harfler, büyük harf ve noktalama sadeleşir', () => {
+  assert.equal(normalizeRoutineTitle('  İngilizce Çalış!  '), 'ingilizce calis')
+  assert.equal(normalizeRoutineTitle('Kitap okuma (30 dk)'), 'kitap okuma 30 dk')
+  assert.equal(normalizeRoutineTitle('ŞIĞÖÜ'), 'sigou')
+})
+
+test('findSimilarRoutine: benzer başlık ve ortak gün uyarır, farklı gün ve kendisi uyarmaz', () => {
+  const r = (id: string, title: string, kind: string, days: number[], is_active = true) => ({ id, title, kind, days_of_week: days, is_active })
+  const routines = [
+    r('a', 'Spor', 'block', [1, 3, 5]),
+    r('b', 'İngilizce çalış', 'task', [2]),
+    r('c', 'Su iç', 'habit', []),
+    r('d', 'Meditasyon', 'block', [1], false),
+  ]
+  assert.equal(findSimilarRoutine({ title: 'spor', kind: 'task', days_of_week: [3] }, routines)?.id, 'a', 'aynı başlık, ortak gün')
+  assert.equal(findSimilarRoutine({ title: 'Spor', kind: 'block', days_of_week: [2, 4] }, routines), null, 'ortak gün yok')
+  assert.equal(findSimilarRoutine({ title: 'Ingilizce calis', kind: 'block', days_of_week: [2] }, routines)?.id, 'b', 'Türkçe harf farkı')
+  assert.equal(findSimilarRoutine({ title: 'Akşam ingilizce çalış', kind: 'task', days_of_week: [2] }, routines)?.id, 'b', 'kapsayan başlık')
+  assert.equal(findSimilarRoutine({ title: 'Su', kind: 'habit', days_of_week: [] }, routines), null, 'iki harf kapsama sayılmaz')
+  assert.equal(findSimilarRoutine({ title: 'su iç', kind: 'habit', days_of_week: [] }, routines)?.id, 'c', 'iki alışkanlık gün sormaz')
+  assert.equal(findSimilarRoutine({ title: 'Meditasyon', kind: 'block', days_of_week: [1] }, routines), null, 'pasif rutin')
+  assert.equal(findSimilarRoutine({ title: 'Spor', kind: 'block', days_of_week: [1] }, routines, 'a'), null, 'düzenlenen rutinin kendisi')
 })

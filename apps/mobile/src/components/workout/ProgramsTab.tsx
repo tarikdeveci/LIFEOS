@@ -4,8 +4,9 @@ import type { EquipmentKey, ProgramEquipmentFit, WorkoutProgram } from '@lifeos/
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '../../theme/tokens'
 import { EquipmentCard, ProgramFitBadge } from './EquipmentCard'
+import { programDayLabel } from './programDays'
 
 interface Props {
   /** Ekipmana uygunluğa göre sıralanmış programlar. */
@@ -16,6 +17,8 @@ interface Props {
   onEditEquipment: () => void
   onCreate: () => void
   onOpen: (program: WorkoutProgram) => void
+  /** Aktif program ve sıradaki gününün adı: kartı en üste alır ve işaretler. */
+  active: { programId: string; nextDay: string } | null
 }
 
 interface ProgramCardProps {
@@ -23,10 +26,12 @@ interface ProgramCardProps {
   splitLabel: string
   fit: ProgramEquipmentFit | null
   onStart: () => void
+  /** Aktif programda sıradaki günün adı. */
+  nextDay: string | null
 }
 
 /** Antrenman ekranının Programlar sekmesi: ekipman kartı, kendi programını oluştur ve program listesi. */
-export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen }: Props) {
+export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
 
@@ -34,13 +39,26 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
     bro_split: 'Bro Split', push_pull_legs: 'Push Pull Legs',
     full_body: 'Full Body', upper_lower: 'Upper Lower', custom: t.wk_split_custom,
   }
+  const activeProgram = active ? programs.find((p) => p.id === active.programId) ?? null : null
+  const others = activeProgram ? programs.filter((p) => p.id !== activeProgram.id) : programs
 
   return (
     <View style={{ gap: spacing[3] }}>
+      {/* Aktif program listenin başında: kullanıcı kaldığı yerden devam eder. */}
+      {activeProgram && (
+        <ProgramCard
+          program={activeProgram}
+          splitLabel={SPLIT_LABELS[activeProgram.split_type] ?? activeProgram.split_type}
+          fit={fitByProgram.get(activeProgram.id) ?? null}
+          onStart={() => onOpen(activeProgram)}
+          nextDay={active?.nextDay ?? null}
+        />
+      )}
       <EquipmentCard equipment={equipment} loaded={equipmentLoaded} onEdit={onEditEquipment} />
       <TouchableOpacity
         onPress={onCreate}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], paddingVertical: spacing[3], borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.accent }}
+        accessibilityRole="button"
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], minHeight: MIN_TOUCH, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.accent }}
       >
         <Ionicons name="add" size={18} color={palette.accent} />
         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.wk_create_own}</Text>
@@ -52,13 +70,14 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
           <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>{t.wk_programs_failed_hint}</Text>
         </View>
       ) : (
-        programs.map((prog) => (
+        others.map((prog) => (
           <ProgramCard
             key={prog.id}
             program={prog}
             splitLabel={SPLIT_LABELS[prog.split_type] ?? prog.split_type}
             fit={fitByProgram.get(prog.id) ?? null}
             onStart={() => onOpen(prog)}
+            nextDay={null}
           />
         ))
       )}
@@ -66,7 +85,7 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
   )
 }
 
-function ProgramCard({ program, splitLabel, fit, onStart }: ProgramCardProps) {
+function ProgramCard({ program, splitLabel, fit, onStart, nextDay }: ProgramCardProps) {
   const { colors } = useTheme()
   const { t } = useLang()
   const isGlobal = program.user_id === null
@@ -74,6 +93,11 @@ function ProgramCard({ program, splitLabel, fit, onStart }: ProgramCardProps) {
 
   return (
     <GlassCard padding={spacing[4]} noShadow>
+      {nextDay !== null && (
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout, marginBottom: spacing[2] }}>
+          {t.ux_wk_active_program} · {t.ux_wk_next_day.replace('{day}', nextDay)}
+        </Text>
+      )}
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing[3] }}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: 4 }}>
@@ -104,7 +128,7 @@ function ProgramCard({ program, splitLabel, fit, onStart }: ProgramCardProps) {
           {program.days.slice(0, 6).map((day) => (
             <View key={day.id} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: day.is_rest ? colors.glassInner : `${palette.workout}10` }}>
               <Text style={{ fontSize: fontSize.xs, color: day.is_rest ? colors.textSubtle : palette.workout }}>
-                {day.is_rest ? t.wk_rest_day : day.day_name}
+                {day.is_rest ? t.wk_rest_day : programDayLabel(day, t)}
               </Text>
             </View>
           ))}
@@ -113,7 +137,8 @@ function ProgramCard({ program, splitLabel, fit, onStart }: ProgramCardProps) {
 
       <TouchableOpacity
         onPress={onStart}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: palette.workout }}
+        accessibilityRole="button"
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: MIN_TOUCH, borderRadius: radius.lg, backgroundColor: palette.workout }}
       >
         <Ionicons name="play-circle-outline" size={16} color="#fff" />
         {/* Artık doğrudan başlatmıyor: önce günleri ve hareketleri gösteriyor. */}

@@ -4,16 +4,13 @@ import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { ReportStory } from '@/src/components/report/ReportStory'
 import { ReportError, ReportMissing, ReportSkeleton } from '@/src/components/report/ReportStates'
 import { useDayReport } from '@/src/components/report/useDayReport'
+import { useGoBack } from '@/src/navigation/useGoBack'
 
 interface BodyProps { date: string }
 
-function close() {
-  if (router.canGoBack()) router.back()
-  else router.replace('/(tabs)/today' as never)
-}
-
 function ReportBody({ date }: BodyProps) {
   const day = useDayReport(date)
+  const close = useGoBack()
 
   if (day.status === 'ready' && day.report && day.view) {
     return <ReportStory date={date} report={day.report} view={day.view} day={day} onClose={close} />

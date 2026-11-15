@@ -5,17 +5,17 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
-import { addMinutesToClock, getDayPosition, nextSlotTime, usePlanningStore, useTaskStore } from '@lifeos/shared'
+import { getDayPosition, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
-import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
-import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { NowCard } from '@/src/components/planning/NowCard'
 import { FocusCard } from '@/src/components/planning/FocusCard'
 import { DayBlockList } from '@/src/components/planning/DayBlockList'
+import { BlockSheet } from '@/src/components/planning/BlockSheet'
 import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
+import { NextTaskRow } from '@/src/components/tasks/NextTaskRow'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
 import { WeekStrip } from '@/src/components/planning/WeekStrip'
@@ -23,15 +23,15 @@ import { WeeklyRoutines } from '@/src/components/planning/WeeklyRoutines'
 import { GoalsCard } from '@/src/components/planning/GoalsCard'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, MIN_TOUCH } from '@/src/theme/tokens'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useCalendarAutoSync } from '@/src/hooks/useCalendarAutoSync'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
 import { useProGate } from '@/src/hooks/useProGate'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 
-type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'workout'
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
 function localIsoDate(date = new Date()): string {
   const tzOffsetMs = date.getTimezoneOffset() * 60000
@@ -60,25 +60,11 @@ function inferRequestedDate(input: string, fallbackDate: string): string {
   return fallbackDate
 }
 
-/**
- * Yeni blok taslağı — saat SABİT DEĞİL, o anki yerel saatten türetiliyor.
- *
- * Eski hâli '09:00'–'10:00' sabitiydi: sabah dokuz dışında bir şey planlayan
- * herkes iki alanı da elle siliyordu. `nextSlotTime()` bir sonraki yarım saati
- * verdiği için değer çoğu zaman doğrudan kaydedilebilir oluyor.
- */
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
-
-function emptyBlockDraft() {
-  const start = nextSlotTime()
-  return { label: '', start_time: start, end_time: addMinutesToClock(start, 60), block_type: 'focus' as BlockType }
-}
-
 export default function PlanningScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { timeBlocks, dailyPlan, busy, fetchDayData, addTimeBlock, removeTimeBlock, setBlockDone } = usePlanningStore()
+  const { timeBlocks, dailyPlan, busy, fetchDayData, removeTimeBlock, setBlockDone } = usePlanningStore()
   const BLOCK_LABELS: Record<BlockType, string> = {
     task: t.block_task, routine: t.block_routine, break: t.block_break,
     focus: t.block_focus, meal: t.block_meal, workout: t.block_workout,
@@ -86,6 +72,7 @@ export default function PlanningScreen() {
   const { localEvents, initialize, syncEvents } = useCalendarStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
+  const { requireAccount } = useRequireAccount()
   // Free kullanıcı ürünün vaadini (gününü AI kursun) görebilsin diye AI
   // planlama ilk 3 kez ücretsiz; sayaç ve kapı sunucuda.
   const { freePlansLeft, refreshFreePlans } = useFreeAiPlans(isPro, isCheckingPro)
@@ -103,15 +90,16 @@ export default function PlanningScreen() {
     ? (freePlansLabel ? `${t.plan_ai_plan} · ${freePlansLabel}` : t.plan_ai_plan)
     : `Pro · ${t.plan_ai_plan}`
   function requirePlanAccess(): boolean {
+    // Ücretsiz plan hakkı hesap ister: misafir önce hesap kapısından geçer.
+    if (!requireAccount('ai')) return false
     if (hasFreePlan) return true
     return requirePro('free_limit')
   }
   const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
-  const [showAdd, setShowAdd] = useState(false)
-  const [draft, setDraft] = useState(emptyBlockDraft)
-  const [adding, setAdding] = useState(false)
+  /** null: kapalı; 'new': yeni blok; blok: düzenleme. */
+  const [blockSheet, setBlockSheet] = useState<TimeBlock | 'new' | null>(null)
   const [showAiChat, setShowAiChat] = useState(false)
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [aiInput, setAiInput] = useState('')
@@ -178,35 +166,6 @@ export default function PlanningScreen() {
     if (syncError) Alert.alert(t.plan_calendar_sync, t.plan_calendar_sync_partial.replace('{err}', syncError))
   }
 
-  async function handleAdd() {
-    if (!userId) return
-    // Boş başlık ve hatalı saat sessizce reddedilmez; ağ hatasıyla aynı mesajı da almaz.
-    const invalid = !draft.label.trim() ? t.plan_err_name_required
-      : !TIME_RE.test(draft.start_time) || !TIME_RE.test(draft.end_time) ? t.plan_err_time_invalid
-      : draft.end_time <= draft.start_time ? t.plan_err_end_after_start
-      : null
-    if (invalid) { Alert.alert(invalid); return }
-    setAdding(true)
-    try {
-      await addTimeBlock(supabase, userId, {
-        date: selectedDate,
-        label: draft.label.trim(),
-        start_time: draft.start_time + ':00',
-        end_time: draft.end_time + ':00',
-        block_type: draft.block_type,
-      })
-      setDraft(emptyBlockDraft())
-      setShowAdd(false)
-    } catch { Alert.alert(t.error, t.plan_block_add_error) }
-    finally { setAdding(false) }
-  }
-
-  /** Sheet'i her açışta saati yeniden hesapla — uygulama saatlerce açık kalabilir. */
-  function openAddSheet() {
-    setDraft(emptyBlockDraft())
-    setShowAdd(true)
-  }
-
   async function handleAiReplan(text?: string) {
     const userMessage = (text ?? aiInput).trim()
     if (!userId || !userMessage) return
@@ -256,7 +215,11 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         },
       ])
     } catch (error) {
-      if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
+      if (error instanceof AiAccessError && error.code === 'account_required') {
+        // Sunucu hesap istedi (istemci aşamayı geç öğrenmiş olabilir): sheet kapanır, kapı açılır.
+        setShowAiChat(false)
+        setTimeout(() => requireAccount('ai'), 400)
+      } else if (!isPro && error instanceof AiAccessError && error.code === 'pro_required') {
         // Ücretsiz hak bitti (başka cihazda harcanmış da olabilir). iOS iç
         // içe modal açmıyor: önce sheet kapanır, sonra paywall.
         void refreshFreePlans()
@@ -305,7 +268,8 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
 
   const isViewingToday = selectedDate === todayStr
   // Bugüne ait blok ya da görev yoksa "Günü kapat" kartı çıkmaz: verisi olmayan kullanıcıda ekran değişmez.
-  const hasTodayTasks = useTaskStore((s) => s.tasks.some((task) => task.scheduled_date === todayStr))
+  const allTasks = useTaskStore((s) => s.tasks)
+  const hasTodayTasks = allTasks.some((task) => task.scheduled_date === todayStr)
   const hasTodayItems = hasTodayTasks || timeBlocks.some((b) => b.date === todayStr)
   const dayTitle = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })
   // Konum sadece bugün için anlamlı; başka gün seçiliyken hesaplamaya gerek yok
@@ -317,7 +281,12 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   // Sabah bildirimi `?ritual=1` ile açar (notifications/setup.ts); ritüel bittiyse tekrar sorma.
   const { ritual } = useLocalSearchParams<{ ritual?: string }>()
   const ritualPending = !!dailyPlan && !dailyPlan.ritual_completed_at
-  useEffect(() => { if (ritual === '1' && ritualPending) setShowPlanSheet(true) }, [ritual, ritualPending])
+  // Açınca parametre temizlenir: sekme geçmişi (fullHistory) geri dönüşte ziyaretin `ritual=1`'ini geri yükleyip sayfayı yeniden açmasın.
+  useEffect(() => {
+    if (ritual !== '1' || !ritualPending) return
+    setShowPlanSheet(true)
+    router.setParams({ ritual: undefined })
+  }, [ritual, ritualPending])
 
   // Bugün için tek giriş "Günü planla" penceresi; ritüel bugüne özel olduğundan başka günde doğrudan AI.
   function openPlanning() {
@@ -359,16 +328,18 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
             <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{dayTitle}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity onPress={openPlanning} disabled={isCheckingPro} accessibilityLabel={t.ritual_start} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked || isViewingToday ? 1 : 0.55 }}>
+            <TouchableOpacity onPress={openPlanning} disabled={isCheckingPro} accessibilityRole="button" accessibilityLabel={t.ritual_start} style={{ width: MIN_TOUCH, height: MIN_TOUCH, borderRadius: MIN_TOUCH / 2, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked || isViewingToday ? 1 : 0.55 }}>
               <Ionicons name={aiUnlocked || isViewingToday ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
               {hasFreePlan && freePlansLeft !== null && (
                 <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: '#fff' }}>{freePlansLeft}</Text>
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={openAddSheet} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={22} color="#fff" />
+            {/* Yazılı düğme: tek başına + işareti ne eklediğini söylemiyordu. */}
+            <TouchableOpacity onPress={() => setBlockSheet('new')} accessibilityRole="button" accessibilityLabel={t.plan_new_block} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[1], minHeight: MIN_TOUCH, paddingHorizontal: spacing[4], borderRadius: MIN_TOUCH / 2, backgroundColor: palette.accent }}>
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.add}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -390,6 +361,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         ) : (
           <FocusCard wrap userId={userId} date={selectedDate} activeBlock={null} />
         ))}
+        {isViewingToday && userId && <NextTaskRow tasks={allTasks} style={{ marginBottom: spacing[4] }} />}
         {isViewingToday && userId && hasTodayItems && <DayCloseCard userId={userId} now={now} date={todayStr} />}
         {isViewingToday && userId && <HabitsCard userId={userId} />}
 
@@ -401,7 +373,9 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
           now={now}
           blockColors={BLOCK_COLORS}
           blockLabels={BLOCK_LABELS}
-          onDelete={(blockId) => void removeTimeBlock(supabase, blockId)}
+          // Silme yazılamazsa store bloğu geri koyar; satırın geri gelmesi hatayı gösterir.
+          onDelete={(blockId) => { removeTimeBlock(supabase, blockId).catch(() => undefined) }}
+          onEdit={(block) => setBlockSheet(block)}
           onToggleDone={handleToggleBlockDone}
           onNowAnchorLayout={(y) => {
             nowAnchorY.current = y
@@ -436,27 +410,14 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
         )}
       </ScrollView>
 
-      {/* Add block modal */}
-      <BottomSheet visible={showAdd} onClose={() => setShowAdd(false)} title={t.plan_new_block} scrollable>
-        <View style={{ gap: spacing[3] }}>
-          <Input label={t.field_title} value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t.plan_block_placeholder} autoFocus />
-          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-            <Input label={t.field_start} value={draft.start_time} onChangeText={(v) => setDraft((d) => ({ ...d, start_time: v }))} placeholder="09:00" containerStyle={{ flex: 1 }} />
-            <Input label={t.field_end} value={draft.end_time} onChangeText={(v) => setDraft((d) => ({ ...d, end_time: v }))} placeholder="10:00" containerStyle={{ flex: 1 }} />
-          </View>
-          <View>
-            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>Tür</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
-              {(Object.keys(BLOCK_LABELS) as BlockType[]).map((type) => (
-                <TouchableOpacity key={type} onPress={() => setDraft((d) => ({ ...d, block_type: type }))} style={{ paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.md, backgroundColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.glassInner, borderWidth: 1, borderColor: draft.block_type === type ? BLOCK_COLORS[type] : colors.border }}>
-                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.block_type === type ? '#fff' : colors.textMuted }}>{BLOCK_LABELS[type]}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <Button label={adding ? t.adding : t.add} onPress={handleAdd} loading={adding} fullWidth style={{ marginTop: spacing[2] }} />
-        </View>
-      </BottomSheet>
+      <BlockSheet
+        target={blockSheet}
+        userId={userId}
+        date={selectedDate}
+        blockColors={BLOCK_COLORS}
+        blockLabels={BLOCK_LABELS}
+        onClose={() => setBlockSheet(null)}
+      />
 
       {userId && (
         <RitualSheet userId={userId} visible={showPlanSheet} onClose={() => setShowPlanSheet(false)}

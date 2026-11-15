@@ -3,7 +3,7 @@ import { todoistToExternal } from '@lifeos/shared/utils'
 import type { ExternalTaskInput } from '@lifeos/shared/types'
 import type { TodoistTask } from '@lifeos/shared/utils'
 import { importExternalTasks } from '@lifeos/shared/supabase'
-import { authenticateRequest } from '@/lib/api/auth'
+import { authenticateRequest, requirePermanent } from '@/lib/api/auth'
 
 export const runtime = 'nodejs'
 
@@ -44,6 +44,8 @@ async function fetchTodoistTasks(token: string): Promise<TodoistTask[] | 'unauth
 export async function POST(req: Request) {
   const auth = await authenticateRequest(req)
   if (!auth) return jsonError('Oturum gerekli', 401)
+  const gate = requirePermanent(auth)
+  if (gate) return gate
 
   let body: unknown
   try { body = await req.json() } catch { return jsonError('Geçersiz JSON gövdesi', 400) }

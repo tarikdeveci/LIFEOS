@@ -1,36 +1,64 @@
-import { useState } from 'react'
-import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
-import { router } from 'expo-router'
+import { useCallback, useEffect } from 'react'
+import { View, Text, Image, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
+import { router, useLocalSearchParams } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
-import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
-import { Input } from '@/src/components/ui/Input'
-import { Button } from '@/src/components/ui/Button'
+import { SetPasswordStep, UpgradeCodeStep, UpgradeDoneStep, UpgradeFormStep } from '@/src/components/account/UpgradeSteps'
+import { useAuth } from '@/src/contexts/AuthContext'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useUpgradeFlow } from '@/src/hooks/useUpgradeFlow'
+import { runPostSignupAfterConfirmation } from '@/src/auth/postSignup'
+import { hasSeenOnboarding } from '@/src/onboarding/storage'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
+/**
+ * Hesap oluşturma. Misafirde yükseltme (aynı kullanıcı, veriler yerinde), oturum yoksa önce misafir
+ * oturumu açılıp aynı akış: form, e-posta kodu, şifre kendiliğinden kaydedilir, onay.
+ */
 export default function RegisterScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
+  const { reason } = useLocalSearchParams<{ reason?: string }>()
+  const { userId, session } = useAuth()
+  const flow = useUpgradeFlow()
+  const { stage, upgraded } = flow
 
-  async function handleRegister() {
-    if (!displayName || !email || !password) return
-    setLoading(true)
-    try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(), password,
-        options: { data: { display_name: displayName.trim(), timezone } },
-      })
-      if (error) Alert.alert('Kayıt Başarısız', error.message)
-      else if (!data.user) Alert.alert('Bilgi', 'E-postanı doğrula ve giriş yap.')
-    } finally { setLoading(false) }
-  }
+  const leave = useCallback(async () => {
+    if (reason) {
+      router.back()
+      return
+    }
+    const seen = userId ? await hasSeenOnboarding(userId) : true
+    router.replace((seen ? '/(tabs)/today' : '/onboarding') as never)
+  }, [reason, userId])
+
+  // Hesap zaten hazırsa bu ekranın işi yok (örn. başka cihazda tamamlandı).
+  useEffect(() => {
+    if (stage === 'ready' && !upgraded) void leave()
+  }, [stage, upgraded, leave])
+
+  const onContinue = useCallback(async () => {
+    if (userId) await runPostSignupAfterConfirmation(userId, reason)
+    await leave()
+  }, [userId, reason, leave])
+
+  // Girişe geç: oturum varsa (misafir) uyarılı giriş ekranı, yoksa bir önceki ekran.
+  const goSignIn = useCallback(() => {
+    if (session) router.push('/(auth)/login' as never)
+    else if (router.canGoBack()) router.back()
+    else router.replace('/(auth)/login')
+  }, [session])
+
+  const showDone = upgraded && stage === 'ready'
+  const showPassword = stage === 'needs_password'
+  const showCode = stage === 'pending_email' && !flow.editingEmail && !!flow.pendingEmail
+
+  const title = showDone ? t.upgrade_done_title
+    : showPassword ? t.setpw_title
+    : showCode ? t.upgrade_pending_title
+    : t.upgrade_title
+  const subtitle = showDone || showPassword || showCode ? null : t.upgrade_sub
 
   return (
     <LinearGradient colors={colors.gradientColors as [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
@@ -50,27 +78,37 @@ export default function RegisterScreen() {
               <Image source={require('../../assets/logo.png')} style={{ width: 80, height: 80, borderRadius: radius.xl }} />
             </View>
             <Text style={{ marginTop: spacing[4], fontSize: fontSize['3xl'], fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>LifeOS</Text>
-            <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
-              Hesabını oluştur ve günlük sistemini kur.
-            </Text>
           </View>
 
           <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>Kayıt Ol</Text>
-            <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>Temel bilgilerini gir</Text>
+            <Text accessibilityRole="header" style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{title}</Text>
+            {subtitle && <Text style={{ marginTop: spacing[1], fontSize: fontSize.sm, color: colors.textMuted }}>{subtitle}</Text>}
+            <View style={{ height: spacing[5] }} />
 
-            <Input label={t.auth_full_name} value={displayName} onChangeText={setDisplayName} autoCapitalize="words" placeholder={t.auth_full_name_ph} containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
-            <Input label="E-posta" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="ornek@email.com" containerStyle={{ marginBottom: spacing[3] }} returnKeyType="next" />
-            <Input label="Şifre" value={password} onChangeText={setPassword} secureTextEntry placeholder="En az 8 karakter" containerStyle={{ marginBottom: spacing[5] }} onSubmitEditing={handleRegister} returnKeyType="done" />
+            {showDone ? (
+              <UpgradeDoneStep onContinue={() => void onContinue()} />
+            ) : showPassword ? (
+              <SetPasswordStep busy={flow.busy} error={flow.error} onSubmit={(pw) => void flow.submitPassword(pw)} />
+            ) : showCode ? (
+              <UpgradeCodeStep
+                busy={flow.busy} error={flow.error} info={flow.info} email={flow.pendingEmail ?? ''} cooldown={flow.cooldown}
+                onSubmit={(code) => void flow.submitCode(code)} onResend={() => void flow.resend()} onChangeEmail={flow.changeEmail}
+              />
+            ) : (
+              <UpgradeFormStep
+                busy={flow.busy} error={flow.error} emailTaken={flow.emailTaken} initialEmail={flow.pendingEmail ?? undefined}
+                onSubmit={(name, email, pw) => void flow.submitForm(name, email, pw)} onSignIn={goSignIn}
+              />
+            )}
 
-            <Button label={loading ? 'Hesap oluşturuluyor...' : 'Kayıt Ol'} onPress={handleRegister} loading={loading} fullWidth />
-
-            <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacing[4] }}>
-              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
-                Hesabın var mı?{' '}
-                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>Giriş yap</Text>
-              </Text>
-            </TouchableOpacity>
+            {!showDone && (
+              <TouchableOpacity onPress={goSignIn} accessibilityRole="button" style={{ marginTop: spacing[2], minHeight: 44, justifyContent: 'center' }}>
+                <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
+                  {t.acc_has_account}{' '}
+                  <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>{t.acc_login_link}</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
           </GlassCard>
         </ScrollView>
       </KeyboardAvoidingView>

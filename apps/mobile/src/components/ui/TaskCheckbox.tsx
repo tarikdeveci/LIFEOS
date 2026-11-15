@@ -1,6 +1,7 @@
 import { TouchableOpacity, View } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLang } from '../../contexts/LangContext'
 import { palette } from '../../theme/tokens'
 
 /**
@@ -25,13 +26,14 @@ export function TaskCheckbox({
   disabled?: boolean
 }) {
   const { colors } = useTheme()
+  const { t } = useLang()
   return (
     <TouchableOpacity
       onPress={onToggle}
       disabled={disabled}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: done }}
-      accessibilityLabel={done ? 'Tamamlandı işaretini kaldır' : 'Tamamlandı olarak işaretle'}
+      accessibilityLabel={done ? t.misc_uncheck_done : t.misc_check_done}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       activeOpacity={0.6}
     >

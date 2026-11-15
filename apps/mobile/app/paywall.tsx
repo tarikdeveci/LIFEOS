@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { router, useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import * as WebBrowser from 'expo-web-browser'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
@@ -9,10 +9,15 @@ import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { useAuth } from '@/src/contexts/AuthContext'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
+import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
+import { aiBenefitKey, shouldShowFreeLeft } from '@/src/ai/benefit'
 import { supabase } from '@/src/lib/supabase'
 import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { useGoBack } from '@/src/navigation/useGoBack'
 
 // Apple'in standart EULA'si — ASC'de ozel bir sozlesme tanimli degil.
 const EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'
@@ -37,13 +42,25 @@ function trialDuration(trial: TrialOffer, tr: boolean): string {
 
 export default function PaywallScreen() {
   const { colors, isDark } = useTheme()
-  const { lang } = useLang()
+  const { lang, t } = useLang()
   const subscription = useSubscriptionStatus()
+  const { userId, stage } = useAuth()
+  const { requireAccount } = useRequireAccount()
   const tr = lang === 'tr'
+  const goBack = useGoBack()
   // Ekranı kim açtı: 'onboarding' (ilk açılış), 'free_limit' (ücretsiz AI
   // planlama hakkı bitti) ya da yok (profil, Pro kilidi).
-  const { source } = useLocalSearchParams<{ source?: string }>()
+  const { source, freeLeft } = useLocalSearchParams<{ source?: string; freeLeft?: string }>()
   const fromOnboarding = source === 'onboarding'
+  const accountReady = stage === 'ready'
+  // Kalan ücretsiz AI hakkı ilk AI sonucundan önce de görünür: "ücretsiz kullanamıyorum" yanlış okumasını önler.
+  const { freePlansLeft } = useFreeAiPlans(subscription.isPro, subscription.isLoading || !accountReady)
+  const freeLeftCount = freeLeft !== undefined && Number.isFinite(Number(freeLeft)) ? Number(freeLeft) : freePlansLeft
+
+  // Paywall yalnızca hesabı hazır kullanıcıya açılır; misafir ve onaysız e-posta kapıya yönlenir.
+  useEffect(() => {
+    if (stage && !accountReady) requireAccount('paywall', { replace: true })
+  }, [stage, accountReady, requireAccount])
 
   const [plans, setPlans] = useState<ProPlan[] | null>(null)
   const [selected, setSelected] = useState<ProPeriod>('annual')
@@ -52,13 +69,12 @@ export default function PaywallScreen() {
   // açılışında bir kez; ödeme tarafını RevenueCat ölçtüğü için buraya
   // yalnızca "gördü" bilgisi ve nereden açıldığı yazılıyor.
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) void track(supabase, data.user.id, 'paywall_view', { source: source ?? 'direct' })
-    })
-  }, [source])
+    if (userId && accountReady) void track(supabase, userId, 'paywall_view', { source: source ?? 'direct' })
+  }, [source, userId, accountReady])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (!accountReady) return
     let active = true
     void fetchProPlans().then((result) => {
       if (!active) return
@@ -68,7 +84,7 @@ export default function PaywallScreen() {
     return () => {
       active = false
     }
-  }, [])
+  }, [accountReady])
 
   const openLink = useCallback((url: string) => {
     void WebBrowser.openBrowserAsync(url)
@@ -76,10 +92,10 @@ export default function PaywallScreen() {
 
   async function handlePurchase() {
     const plan = plans?.find((p) => p.period === selected)
-    if (!plan) return
+    if (!plan || !userId) return
 
     setBusy(true)
-    const outcome = await purchasePlan(plan)
+    const outcome = await purchasePlan(plan, userId)
     setBusy(false)
 
     if (outcome === 'purchased') {
@@ -96,7 +112,7 @@ export default function PaywallScreen() {
               ? `Ücretsiz denemen başladı. ${trialDuration(trial, tr)} boyunca AI özellikleri açık.`
               : `Your free trial has started. AI features are unlocked for ${trialDuration(trial, tr)}.`)
           : (tr ? 'Pro üyeliğin aktif. AI özellikleri açıldı.' : 'Your Pro membership is active. AI features are unlocked.'),
-        [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
+        [{ text: tr ? 'Devam' : 'Continue', onPress: goBack }],
       )
     } else if (outcome === 'error') {
       Alert.alert(tr ? 'Satın alma tamamlanamadı' : 'Purchase failed', tr ? 'Lütfen tekrar dene.' : 'Please try again.')
@@ -106,8 +122,9 @@ export default function PaywallScreen() {
   }
 
   async function handleRestore() {
+    if (!userId) return
     setBusy(true)
-    const outcome = await restorePurchases()
+    const outcome = await restorePurchases(userId)
     setBusy(false)
 
     if (outcome === 'restored') {
@@ -116,7 +133,7 @@ export default function PaywallScreen() {
       Alert.alert(
         tr ? 'Geri yüklendi' : 'Restored',
         tr ? 'Pro üyeliğin geri yüklendi.' : 'Your Pro membership has been restored.',
-        [{ text: tr ? 'Devam' : 'Continue', onPress: () => router.back() }],
+        [{ text: tr ? 'Devam' : 'Continue', onPress: goBack }],
       )
     } else if (outcome === 'nothing') {
       Alert.alert(tr ? 'Kayıt bulunamadı' : 'Nothing to restore', tr ? 'Bu hesapta aktif bir Pro aboneliği bulunamadı.' : 'No active Pro subscription found for this account.')
@@ -164,7 +181,7 @@ export default function PaywallScreen() {
   return (
     <ScreenBackground>
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: spacing[5], paddingTop: spacing[2] }}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel={tr ? 'Kapat' : 'Close'}>
+        <TouchableOpacity onPress={goBack} hitSlop={12} accessibilityLabel={tr ? 'Kapat' : 'Close'}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
@@ -178,8 +195,15 @@ export default function PaywallScreen() {
             LifeOS Pro
           </Text>
           <Text style={{ fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing[2] }}>
-            {tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature'}
+            {source && aiBenefitKey(source) !== 'ai_benefit_default'
+              ? t[aiBenefitKey(source)]
+              : (tr ? 'AI destekli beslenme, planlama ve antrenman özelliklerinin tamamı' : 'Every AI-powered nutrition, planning and workout feature')}
           </Text>
+          {source !== 'free_limit' && shouldShowFreeLeft(subscription.isPro, freeLeftCount) && (
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
+              {t.paywall_free_left.replace('{n}', String(freeLeftCount))}
+            </Text>
+          )}
           {source === 'free_limit' && (
             <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent, textAlign: 'center', marginTop: spacing[3] }}>
               {tr ? '3 ücretsiz AI planlama hakkını kullandın.' : "You've used your 3 free AI planning requests."}
@@ -293,7 +317,7 @@ export default function PaywallScreen() {
             size="lg"
             fullWidth
             loading={busy}
-            disabled={busy || !plans || plans.length === 0}
+            disabled={busy || !plans || plans.length === 0 || !subscription.canPurchase}
             style={{ marginBottom: spacing[3] }}
           />
         )}
@@ -302,7 +326,7 @@ export default function PaywallScreen() {
             ücretsiz sürümü gerçek ve kullanıcı neyi kaçırdığını bilmeli. */}
         {fromOnboarding && !subscription.isPro && (
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={goBack}
             accessibilityRole="button"
             style={{ alignItems: 'center', paddingVertical: spacing[2], marginBottom: spacing[3] }}
           >
@@ -320,7 +344,7 @@ export default function PaywallScreen() {
           onPress={() => void handleRestore()}
           variant="ghost"
           fullWidth
-          disabled={busy}
+          disabled={busy || !subscription.canPurchase}
           style={{ marginBottom: spacing[5] }}
         />
 

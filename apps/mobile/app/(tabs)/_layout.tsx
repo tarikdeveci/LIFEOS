@@ -8,20 +8,24 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useWidgetSync } from '@/src/hooks/useWidgetSync'
 import { useBlockLiveActivity } from '@/src/hooks/useBlockLiveActivity'
 import { useRealtimeSync } from '@/src/hooks/useRealtimeSync'
+import { SwipeTabs } from '@/src/navigation/SwipeTabs'
 import { palette, radius } from '@/src/theme/tokens'
 
 const TABS = [
-  { segment: 'today',     icon: 'home-outline',             iconActive: 'home'             },
-  { segment: 'planning',  icon: 'calendar-outline',         iconActive: 'calendar'         },
-  { segment: 'tasks',     icon: 'checkmark-circle-outline', iconActive: 'checkmark-circle' },
-  { segment: 'nutrition', icon: 'restaurant-outline',       iconActive: 'restaurant'       },
-  { segment: 'workout',   icon: 'barbell-outline',          iconActive: 'barbell'          },
+  { segment: 'today',     label: 'tab_today',     icon: 'home-outline',             iconActive: 'home'             },
+  { segment: 'planning',  label: 'tab_planning',  icon: 'calendar-outline',         iconActive: 'calendar'         },
+  { segment: 'tasks',     label: 'tab_tasks',     icon: 'checkmark-circle-outline', iconActive: 'checkmark-circle' },
+  { segment: 'nutrition', label: 'tab_nutrition', icon: 'restaurant-outline',       iconActive: 'restaurant'       },
+  { segment: 'workout',   label: 'tab_workout',   icon: 'barbell-outline',          iconActive: 'barbell'          },
 ] as const
+
+const TAB_SEGMENTS = TABS.map((tab) => tab.segment)
 
 function FloatingTabBar() {
   const router = useRouter()
   const pathname = usePathname()
   const { colors, isDark } = useTheme()
+  const { t } = useLang()
   const insets = useSafeAreaInsets()
   const bottomOffset = Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 28 : 16)
 
@@ -69,6 +73,9 @@ function FloatingTabBar() {
                 key={tab.segment}
                 onPress={() => router.push(`/(tabs)/${tab.segment}` as never)}
                 activeOpacity={0.7}
+                accessibilityRole="tab"
+                accessibilityLabel={t[tab.label]}
+                accessibilityState={{ selected: isFocused }}
                 style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 52, borderRadius: 26 }}
               >
                 {isFocused && (
@@ -112,7 +119,8 @@ export default function TabsLayout() {
   useRealtimeSync()
 
   return (
-    <Tabs tabBar={() => <FloatingTabBar />} screenOptions={{ headerShown: false }}>
+    <SwipeTabs segments={TAB_SEGMENTS}>
+    <Tabs tabBar={() => <FloatingTabBar />} backBehavior="fullHistory" screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="today"     options={{ title: t.tab_today }} />
       <Tabs.Screen name="planning"  options={{ title: t.tab_planning }} />
       <Tabs.Screen name="tasks"     options={{ title: t.tab_tasks }} />
@@ -120,5 +128,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="workout"   options={{ title: t.tab_workout }} />
       <Tabs.Screen name="profile"   options={{ href: null, title: t.tab_profile }} />
     </Tabs>
+    </SwipeTabs>
   )
 }

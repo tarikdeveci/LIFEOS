@@ -1,23 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Platform } from 'react-native'
-import { Stack, router } from 'expo-router'
+import { Stack, router, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as Linking from 'expo-linking'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { Session } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
-import { emptyWidgetSnapshot, persistFocus, useFocusStore, useGoalStore } from '@lifeos/shared'
+import { persistFocus } from '@lifeos/shared'
 import { configureEvents } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, addNotificationResponseListener, handleInitialNotification } from '@/src/notifications/setup'
-import { cancelFocusNotifications } from '@/src/notifications/focus'
-import { initRevenueCat } from '@/src/utils/purchases'
-import { useHealthStore } from '@/src/stores/healthStore'
+import { bootstrapGuest, hadSession, markHadSession } from '@/src/auth/bootstrap'
+import { resetLocalUserState } from '@/src/auth/resetLocalState'
 import { hasSeenOnboarding } from '@/src/onboarding/storage'
-import { persistWidgetSnapshot } from '@/src/widgets/storage'
+import { AuthProvider, useAuth } from '@/src/contexts/AuthContext'
 import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
+import { SwipeBack } from '@/src/navigation/SwipeBack'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -28,11 +27,18 @@ configureEvents(Platform.OS)
 
 function AppNavigator() {
   const { isDark } = useTheme()
-  const [session, setSession] = useState<Session | null>(null)
-  const [initialized, setInitialized] = useState(false)
+  const { initialized, userId, isAnonymous } = useAuth()
   const notifRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null)
   const passwordRecoveryRef = useRef(false)
-  const focusPersist = useRef<{ userId: string; stop?: () => void } | null>(null)
+  const prevUserId = useRef<string | null>(null)
+  const guestBootstrapRan = useRef(false)
+
+  // Yönlendirme efekti oturum nesnesi değil kullanıcı kimliğine bağlı; güncel değerleri ref'ten okur.
+  const segments = useSegments()
+  const inRegisterRef = useRef(false)
+  inRegisterRef.current = (segments as string[]).includes('register')
+  const isAnonymousRef = useRef(isAnonymous)
+  isAnonymousRef.current = isAnonymous
 
   async function handleAuthUrl(url: string | null) {
     if (!url || !url.includes('reset-password')) return
@@ -47,62 +53,76 @@ function AppNavigator() {
   }
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      setSession(s)
-      if (event === 'INITIAL_SESSION') setInitialized(true)
-      if (s?.user) {
-        void registerForPushNotificationsAsync()
-        void initRevenueCat(s.user.id)
-        // Süren odak uygulama kapanınca kaybolmasın: kullanıcı başına bir kez bağlanır.
-        if (focusPersist.current?.userId !== s.user.id) {
-          const userId = s.user.id
-          focusPersist.current?.stop?.()
-          const entry: { userId: string; stop?: () => void } = { userId }
-          focusPersist.current = entry
-          void persistFocus(AsyncStorage, userId).then((stop) => {
-            if (focusPersist.current === entry) entry.stop = stop
-            else stop()
-          })
-        }
-      }
-      // Çıkışta başka kullanıcının sağlık verisi ve widget'ı cihazda kalmasın
-      if (event === 'SIGNED_OUT') {
-        useHealthStore.getState().reset()
-        useGoalStore.getState().reset()
-        useFocusStore.getState().reset()
-        focusPersist.current?.stop?.()
-        focusPersist.current = null
-        void cancelFocusNotifications()
-        void persistWidgetSnapshot(emptyWidgetSnapshot())
-      }
-    })
-
     notifRef.current = addNotificationResponseListener((path) => router.push(path as never))
     void Linking.getInitialURL().then(handleAuthUrl)
     const urlSubscription = Linking.addEventListener('url', ({ url }) => void handleAuthUrl(url))
 
     return () => {
-      subscription.unsubscribe()
       notifRef.current?.remove()
       urlSubscription.remove()
     }
   }, [])
 
+  // Kullanıcı kimliği değişince (çıkış, misafirden başka hesaba giriş) önceki kullanıcının
+  // cihazdaki sağlık verisi, odak ve widget'ı temizlenir. Odak bağlama efektinden önce bildirilir.
+  useEffect(() => {
+    const prev = prevUserId.current
+    prevUserId.current = userId
+    if (prev && prev !== userId) resetLocalUserState()
+  }, [userId])
+
+  // Süren odak uygulama kapanınca kaybolmasın: kullanıcı başına bir kez bağlanır.
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    let stop: (() => void) | undefined
+    void persistFocus(AsyncStorage, userId).then((s) => {
+      if (cancelled) s()
+      else stop = s
+    })
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [userId])
+
+  // Oturum (misafir dahil) açıldıysa işaretlenir: çıkış yapan kullanıcıya otomatik misafir açılmaz.
+  useEffect(() => {
+    if (userId) void markHadSession()
+  }, [userId])
+
+  // Misafir ilk açılışta izin penceresi çıkarmaz; izin anlamlı bir anda istenir (ilk kaydedilen blok, bildirim ayarları).
+  useEffect(() => {
+    if (!userId) return
+    void registerForPushNotificationsAsync({ prompt: !isAnonymous })
+  }, [userId, isAnonymous])
+
   useEffect(() => {
     if (!initialized) return
-    if (session && passwordRecoveryRef.current) {
+
+    if (!userId) {
+      // Oturum yok: cihazda hiç oturum açılmamışsa misafir başlar, aksi halde giriş ekranı.
+      let active = true
+      void (async () => {
+        if (!guestBootstrapRan.current && !(await hadSession())) {
+          guestBootstrapRan.current = true
+          if (await bootstrapGuest()) return
+        }
+        if (active) router.replace('/(auth)/login')
+      })()
+      return () => { active = false }
+    }
+
+    if (passwordRecoveryRef.current) {
       router.replace('/(auth)/reset-password' as never)
       return
     }
-    if (!session) {
-      router.replace('/(auth)/login')
-      return
-    }
+    // Hesap oluşturma ekranında oturum ortada açılır ya da güncellenir; kullanıcı akıştan atılmaz.
+    if (isAnonymousRef.current && inRegisterRef.current) return
 
     // Turu daha once gormeyen kullanici once tanitima girer. Depolama
     // okunamazsa tur gosterilir; akis hicbir durumda kilitlenmez.
     let active = true
-    const userId = session.user.id
     void hasSeenOnboarding(userId).then((seen) => {
       if (!active) return
       // /onboarding yeni bir rota; expo-router tip uretimi guncellenene kadar cast gerekiyor.
@@ -111,20 +131,23 @@ function AppNavigator() {
       void handleInitialNotification((path) => router.push(path as never))
     })
     return () => { active = false }
-  }, [session, initialized])
+  }, [userId, initialized])
 
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="exercise/[id]" />
-        <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
-      </Stack>
+      <SwipeBack>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="exercise/[id]" />
+          <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="account-gate" options={{ presentation: 'modal' }} />
+        </Stack>
+      </SwipeBack>
     </>
   )
 }
@@ -133,9 +156,11 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <LangProvider>
-        <SubscriptionProvider>
-          <AppNavigator />
-        </SubscriptionProvider>
+        <AuthProvider>
+          <SubscriptionProvider>
+            <AppNavigator />
+          </SubscriptionProvider>
+        </AuthProvider>
       </LangProvider>
     </ThemeProvider>
   )

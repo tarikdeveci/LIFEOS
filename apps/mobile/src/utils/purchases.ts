@@ -1,4 +1,5 @@
 import { Platform } from 'react-native'
+import { createLatestTargetQueue } from './identityQueue'
 
 // react-native-purchases EAS Build ile çalışır; Expo Go'da mock modda.
 // Kurulum: expo install react-native-purchases react-native-purchases-ui
@@ -11,27 +12,52 @@ async function getPurchases(): Promise<any> {
 }
 
 let revenueCatConfigured = false
-let revenueCatUserId: string | null = null
 
-export async function initRevenueCat(userId: string): Promise<void> {
+function revenueCatKey(): string | undefined {
+  return Platform.OS === 'ios'
+    ? process.env['EXPO_PUBLIC_REVENUECAT_IOS_KEY']
+    : process.env['EXPO_PUBLIC_REVENUECAT_ANDROID_KEY']
+}
+
+async function applyRevenueCatIdentity(target: string | null): Promise<void> {
   const Purchases = await getPurchases()
   if (!Purchases) return
-
-  const apiKey =
-    Platform.OS === 'ios'
-      ? process.env['EXPO_PUBLIC_REVENUECAT_IOS_KEY']
-      : process.env['EXPO_PUBLIC_REVENUECAT_ANDROID_KEY']
-
+  const apiKey = revenueCatKey()
   if (!apiKey) return
 
+  // Misafir ve çıkış yapmış kullanıcı için SDK hiç açılmaz; yalnızca açıksa kimlik bırakılır.
+  if (!target && !revenueCatConfigured) return
   if (!revenueCatConfigured) {
     await Purchases.configure({ apiKey })
     revenueCatConfigured = true
   }
 
-  if (revenueCatUserId !== userId) {
-    await Purchases.logIn(userId)
-    revenueCatUserId = userId
+  if (target) {
+    if ((await Purchases.getAppUserID()) !== target) await Purchases.logIn(target)
+  } else if (!(await Purchases.isAnonymous())) {
+    await Purchases.logOut()
+  }
+}
+
+// configure, logIn, logOut ve kimlik okuma yalnızca bu kuyruktan geçer: iki hesap değişimi iç içe girmez.
+const queueRevenueCatIdentity = createLatestTargetQueue<string | null>(async (target) => {
+  try { await applyRevenueCatIdentity(target) } catch { /* kimlik eşitlenemedi; sdkUserId güncellenmez, satın alma pasif kalır */ }
+})
+
+/** Tek giriş noktası: yalnızca stage === 'ready' kullanıcısı için id, aksi halde null verilir. */
+export function syncRevenueCatIdentity(target: string | null): Promise<void> {
+  return queueRevenueCatIdentity(target)
+}
+
+/** SDK'nın o anki kimliği; SDK kapalıysa ya da anonimse null. */
+export async function getRevenueCatUserId(): Promise<string | null> {
+  const Purchases = await getPurchases()
+  if (!Purchases || !revenueCatConfigured) return null
+  try {
+    if (await Purchases.isAnonymous()) return null
+    return (await Purchases.getAppUserID()) ?? null
+  } catch {
+    return null
   }
 }
 
@@ -184,11 +210,13 @@ async function trialEligibleIds(Purchases: any, productIds: string[]): Promise<S
 
 export type PurchaseOutcome = 'purchased' | 'cancelled' | 'unavailable' | 'error'
 
-export async function purchasePlan(plan: ProPlan): Promise<PurchaseOutcome> {
+export async function purchasePlan(plan: ProPlan, expectedUserId: string): Promise<PurchaseOutcome> {
   const Purchases = await getPurchases()
   if (!Purchases) return 'unavailable'
 
   try {
+    // Satın alma başka bir kullanıcıya yazılmasın: SDK kimliği bu kullanıcı değilse hiç başlamaz.
+    if ((await getRevenueCatUserId()) !== expectedUserId) return 'unavailable'
     if (plan.pkg) await Purchases.purchasePackage(plan.pkg)
     else await Purchases.purchaseStoreProduct(plan.product)
     return 'purchased'
@@ -200,11 +228,12 @@ export async function purchasePlan(plan: ProPlan): Promise<PurchaseOutcome> {
 
 export type RestoreOutcome = 'restored' | 'nothing' | 'unavailable' | 'error'
 
-export async function restorePurchases(): Promise<RestoreOutcome> {
+export async function restorePurchases(expectedUserId: string): Promise<RestoreOutcome> {
   const Purchases = await getPurchases()
   if (!Purchases) return 'unavailable'
 
   try {
+    if ((await getRevenueCatUserId()) !== expectedUserId) return 'unavailable'
     const info = await Purchases.restorePurchases()
     return info?.entitlements?.active?.['pro'] !== undefined ? 'restored' : 'nothing'
   } catch {

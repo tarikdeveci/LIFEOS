@@ -7,7 +7,7 @@ import { Input } from '../ui/Input'
 import { StatCard } from '../ui/StatCard'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '../../theme/tokens'
 import { ExerciseImage } from './ExerciseImage'
 import { LiveWorkout } from './LiveWorkout'
 import { StreakCard } from './StreakCard'
@@ -21,6 +21,9 @@ interface Props {
   setsExpanded: boolean
   onToggleSets: () => void
   onStart: () => void
+  /** Aktif programın sıradaki günü (`findProgramProgress`); varsa birincil eylem o günü başlatır. */
+  nextProgramDay: { program: string; day: string } | null
+  onStartNext: () => void
   onFinish: () => void
   onDelete: () => void
   onAddSet: (exercise: Exercise) => void
@@ -41,7 +44,7 @@ interface Props {
 
 /** Antrenman ekranının Bugün sekmesi: başlat ya da süren antrenman, seri, sayılar ve AI koç kartı. */
 export function TodayTab({
-  workout, userId, liveActive, setsExpanded, onToggleSets, onStart, onFinish, onDelete, onAddSet, onFocusMuscle,
+  workout, userId, liveActive, setsExpanded, onToggleSets, onStart, nextProgramDay, onStartNext, onFinish, onDelete, onAddSet, onFocusMuscle,
   search, onChangeSearch, matches, muscleCard, streak, weekCount, totalCount, isPro, isCheckingPro, onOpenCoach,
 }: Props) {
   const { colors } = useTheme()
@@ -57,17 +60,30 @@ export function TodayTab({
               <Ionicons name="barbell-outline" size={22} color={palette.workout} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.work_no_workout}</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{t.work_no_workout_hint}</Text>
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
+                {nextProgramDay ? nextProgramDay.program : t.work_no_workout}
+              </Text>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
+                {nextProgramDay ? t.ux_wk_next_day.replace('{day}', nextProgramDay.day) : t.work_no_workout_hint}
+              </Text>
             </View>
           </View>
+          {/* Aktif program varken birincil eylem sıradaki günü başlatır; boş antrenman ikincil kalır. */}
           <TouchableOpacity
-            onPress={onStart}
+            onPress={nextProgramDay ? onStartNext : onStart}
+            accessibilityRole="button"
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: radius.full, backgroundColor: palette.workout }}
           >
             <Ionicons name="play-circle-outline" size={20} color="#fff" />
-            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }}>{t.work_start}</Text>
+            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.bold, color: '#fff' }} numberOfLines={1}>
+              {nextProgramDay ? t.ux_wk_start_day.replace('{day}', nextProgramDay.day) : t.work_start}
+            </Text>
           </TouchableOpacity>
+          {nextProgramDay && (
+            <TouchableOpacity onPress={onStart} accessibilityRole="button" style={{ minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', marginTop: spacing[1] }}>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.ux_wk_empty_start}</Text>
+            </TouchableOpacity>
+          )}
         </GlassCard>
       )}
 

@@ -1,0 +1,227 @@
+import { useEffect, useState } from 'react'
+import { View, Text, TouchableOpacity } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
+import { BODY_LIMITS, caloriesFromMacros, parseBodyMetrics } from '@lifeos/shared'
+import type { BodyMetricField, BodyMetrics } from '@lifeos/shared'
+import { Input } from '@/src/components/ui/Input'
+import { Button } from '@/src/components/ui/Button'
+import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
+import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+
+// Profil ekranının düzenleme sheet'leri; profile.tsx 500 satırın altında kalsın diye ayrı dosya.
+// İkisi de kendi taslağında çalışır: Kaydet başarılı olmadan ekrandaki değerler değişmez,
+// kapatmak taslağı atar.
+
+export interface ProfileState {
+  displayName: string; email: string
+  height: string; weight: string; age: string
+  gender: 'male' | 'female'
+  fitnessGoal: string; activityLevel: string
+}
+
+export interface NutritionState {
+  calories: string; protein: string; carbs: string; fat: string; fiber: string
+}
+
+/** Taslaktaki makro gramları; önizleme ve kayıt aynı kuralı kullanır (boş ya da geçersiz alan 0). */
+export function nutritionDraftGrams(draft: NutritionState): { protein_g: number; carbs_g: number; fat_g: number; calories: number } {
+  const grams = (text: string) => { const n = parseFloat(text); return Number.isFinite(n) && n >= 0 ? n : 0 }
+  const protein_g = grams(draft.protein)
+  const carbs_g = grams(draft.carbs)
+  const fat_g = grams(draft.fat)
+  return { protein_g, carbs_g, fat_g, calories: caloriesFromMacros(protein_g, carbs_g, fat_g) }
+}
+
+interface PhysicalInfoSheetProps {
+  visible: boolean
+  onClose: () => void
+  profile: ProfileState
+  goals: { key: string; label: string; icon: string }[]
+  levels: { key: string; label: string; sub: string }[]
+  saving: boolean
+  /** Başarılıysa true döner; false dönerse sheet açık kalır ve kayıt hatası gösterilir. */
+  onSave: (draft: ProfileState, metrics: BodyMetrics) => Promise<boolean>
+}
+
+function SaveError({ text }: { text: string }) {
+  return <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.sm, color: palette.danger, textAlign: 'center' }}>{text}</Text>
+}
+
+export function PhysicalInfoSheet({ visible, onClose, profile, goals, levels, saving, onSave }: PhysicalInfoSheetProps) {
+  const { colors } = useTheme()
+  const { t } = useLang()
+  const [draft, setDraft] = useState(profile)
+  const [invalid, setInvalid] = useState<BodyMetricField[]>([])
+  const [saveFailed, setSaveFailed] = useState(false)
+
+  useEffect(() => {
+    if (!visible) return
+    setDraft(profile)
+    setInvalid([])
+    setSaveFailed(false)
+  }, [visible, profile])
+
+  function editMetric(field: BodyMetricField, value: string) {
+    setDraft((d) => ({ ...d, [field]: value }))
+    setInvalid((list) => list.filter((f) => f !== field))
+  }
+
+  function metricError(field: BodyMetricField, text: string, limits: { min: number; max: number }) {
+    if (!invalid.includes(field)) return undefined
+    return text.replace('{min}', String(limits.min)).replace('{max}', String(limits.max))
+  }
+
+  async function handleSave() {
+    const { values, invalid: bad } = parseBodyMetrics(draft)
+    setInvalid(bad)
+    setSaveFailed(false)
+    if (bad.length > 0) return
+    if (!(await onSave(draft, values))) setSaveFailed(true)
+  }
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title={t.acc_physical_info} scrollable>
+      <View style={{ gap: spacing[3] }}>
+        <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+          <Input label={t.acc_height_cm} value={draft.height} onChangeText={(v) => editMetric('height', v)} error={metricError('height', t.profile_err_height, BODY_LIMITS.heightCm)} keyboardType="decimal-pad" placeholder="175" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_weight_kg} value={draft.weight} onChangeText={(v) => editMetric('weight', v)} error={metricError('weight', t.profile_err_weight, BODY_LIMITS.weightKg)} keyboardType="decimal-pad" placeholder="75" containerStyle={{ flex: 1 }} returnKeyType="next" />
+        </View>
+        <Input label={t.acc_age_label} value={draft.age} onChangeText={(v) => editMetric('age', v)} error={metricError('age', t.profile_err_age, BODY_LIMITS.age)} keyboardType="number-pad" placeholder="22" returnKeyType="done" />
+
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_gender_label}</Text>
+        <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+          {(['male', 'female'] as const).map((gender) => (
+            <TouchableOpacity
+              key={gender}
+              onPress={() => setDraft((p) => ({ ...p, gender }))}
+              style={{ flex: 1, paddingVertical: spacing[3], borderRadius: radius.lg, alignItems: 'center', backgroundColor: draft.gender === gender ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: draft.gender === gender ? palette.accent : colors.border }}
+            >
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.gender === gender ? '#fff' : colors.textMuted }}>
+                {gender === 'female' ? t.profile_gender_female : t.profile_gender_male}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_goal_label}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+          {goals.map((g) => (
+            <TouchableOpacity key={g.key} onPress={() => setDraft((p) => ({ ...p, fitnessGoal: g.key }))}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 8, borderRadius: radius.lg, backgroundColor: draft.fitnessGoal === g.key ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: draft.fitnessGoal === g.key ? palette.accent : colors.border }}>
+              <Ionicons name={g.icon as never} size={14} color={draft.fitnessGoal === g.key ? '#fff' : colors.textMuted} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: draft.fitnessGoal === g.key ? '#fff' : colors.textMuted }}>{g.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginTop: spacing[2] }}>{t.acc_activity_label}</Text>
+        <View style={{ gap: spacing[2] }}>
+          {levels.map((a) => (
+            <TouchableOpacity key={a.key} onPress={() => setDraft((p) => ({ ...p, activityLevel: a.key }))}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing[4], borderRadius: radius.lg, backgroundColor: draft.activityLevel === a.key ? `${palette.accent}12` : colors.glassInner, borderWidth: 1, borderColor: draft.activityLevel === a.key ? palette.accent : colors.border }}>
+              <View>
+                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{a.label}</Text>
+                <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{a.sub}</Text>
+              </View>
+              {draft.activityLevel === a.key && <Ionicons name="checkmark-circle" size={20} color={palette.accent} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {saveFailed && <SaveError text={t.profile_save_failed} />}
+        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} fullWidth style={{ marginTop: spacing[3] }} />
+      </View>
+    </BottomSheet>
+  )
+}
+
+interface NutritionTargetsSheetProps {
+  visible: boolean
+  onClose: () => void
+  nutrition: NutritionState
+  saving: boolean
+  /** Fiziksel bilgilerden öneri üretir; eksik bilgi varsa null döner. */
+  onCalculate: () => NutritionState | null
+  onOpenUrl: (url: string) => Promise<void>
+  /** Başarılıysa true döner; false dönerse sheet açık kalır ve kayıt hatası gösterilir. */
+  onSave: (draft: NutritionState) => Promise<boolean>
+}
+
+export function NutritionTargetsSheet({ visible, onClose, nutrition, saving, onCalculate, onOpenUrl, onSave }: NutritionTargetsSheetProps) {
+  const { colors } = useTheme()
+  const { lang, t } = useLang()
+  const [draft, setDraft] = useState(nutrition)
+  const [saveFailed, setSaveFailed] = useState(false)
+
+  useEffect(() => {
+    if (!visible) return
+    setDraft(nutrition)
+    setSaveFailed(false)
+  }, [visible, nutrition])
+
+  function handleCalculate() {
+    const suggested = onCalculate()
+    if (suggested) setDraft(suggested)
+  }
+
+  async function handleSave() {
+    setSaveFailed(false)
+    if (!(await onSave(draft))) setSaveFailed(true)
+  }
+
+  const draftCalories = nutritionDraftGrams(draft).calories
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title={t.acc_nutrition_goals} scrollable>
+      <View style={{ gap: spacing[3] }}>
+        <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>
+            {t.acc_nutrition_calc_desc}
+          </Text>
+        </View>
+        <Button label={t.acc_auto_calculate} onPress={handleCalculate} variant="secondary" fullWidth />
+
+        {/* Kaynak / citation — App Store Guideline 1.4.1 (sağlık bilgisi kaynağı) */}
+        <View style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 18 }}>
+            {t.acc_nutrition_info}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: spacing[4], marginTop: spacing[2] }}>
+            <TouchableOpacity onPress={() => void onOpenUrl('https://en.wikipedia.org/wiki/Harris%E2%80%93Benedict_equation')}>
+              <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
+                {t.acc_source_harris}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => void onOpenUrl('https://en.wikipedia.org/wiki/Atwater_system')}>
+              <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
+                {t.acc_atwater}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+          <Input label={t.acc_protein_g} value={draft.protein} onChangeText={(v) => setDraft((n) => ({ ...n, protein: v }))} keyboardType="number-pad" placeholder="150" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_carbs_g} value={draft.carbs} onChangeText={(v) => setDraft((n) => ({ ...n, carbs: v }))} keyboardType="number-pad" placeholder="250" containerStyle={{ flex: 1 }} returnKeyType="next" />
+        </View>
+        <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+          <Input label={t.acc_fat_g} value={draft.fat} onChangeText={(v) => setDraft((n) => ({ ...n, fat: v }))} keyboardType="number-pad" placeholder="70" containerStyle={{ flex: 1 }} returnKeyType="next" />
+          <Input label={t.acc_fiber_g} value={draft.fiber} onChangeText={(v) => setDraft((n) => ({ ...n, fiber: v }))} keyboardType="number-pad" placeholder="30" containerStyle={{ flex: 1 }} returnKeyType="done" />
+        </View>
+        {/* Kalori elle girilmez: makrolardan gelir, tek doğruluk kaynağı makrolardır (#11). */}
+        <View
+          accessible
+          accessibilityLabel={`${t.acc_daily_calories_kcal}: ${draftCalories}. ${t.ux_calories_from_macros}`}
+          style={{ padding: spacing[3], borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border }}
+        >
+          <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>{t.acc_daily_calories_kcal}</Text>
+          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginTop: spacing[1] }}>{draftCalories} kcal</Text>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: spacing[1] }}>{t.ux_calories_from_macros}</Text>
+        </View>
+        {saveFailed && <SaveError text={t.profile_save_failed} />}
+        <Button label={saving ? t.acc_saving : t.acc_save} onPress={() => void handleSave()} loading={saving} disabled={draftCalories <= 0} fullWidth style={{ marginTop: spacing[3] }} />
+      </View>
+    </BottomSheet>
+  )
+}

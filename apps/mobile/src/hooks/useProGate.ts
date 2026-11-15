@@ -1,26 +1,29 @@
 import { Alert } from 'react-native'
 import { router } from 'expo-router'
+import { aiBenefitKey } from '@/src/ai/benefit'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 
 export function useProGate(_userId?: string | null) {
-  const { lang } = useLang()
+  const { t } = useLang()
   const subscription = useSubscriptionStatus()
+  const { requireAccount } = useRequireAccount()
 
   /** @param source paywall'a hangi yoldan gelindiği (ölçüm ve paywall metni için) */
   function requirePro(source?: string): boolean {
+    // Misafir ve onaysız e-posta önce hesap kapısından geçer; Pro sorusu hesap hazır olunca sorulur.
+    if (!requireAccount('ai')) return false
     if (subscription.isLoading) return false
     if (subscription.isPro) return true
 
     Alert.alert(
-      lang === 'tr' ? 'Pro gerekli' : 'Pro required',
-      lang === 'tr'
-        ? 'AI özellikleri yalnızca Pro üyeliklerde aktif.'
-        : 'AI features are only available with a Pro membership.',
+      t.misc_pro_required,
+      t[aiBenefitKey(source)],
       [
-        { text: lang === 'tr' ? 'Vazgeç' : 'Not now', style: 'cancel' },
+        { text: t.misc_not_now, style: 'cancel' },
         {
-          text: lang === 'tr' ? "Pro'ya geç" : 'Go Pro',
+          text: t.misc_go_pro,
           onPress: () => router.push({ pathname: '/paywall', params: source ? { source } : {} }),
         },
       ],

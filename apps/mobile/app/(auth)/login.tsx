@@ -3,10 +3,16 @@ import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platf
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { supabase } from '@/src/lib/supabase'
+import { registerForPushNotificationsAsync, unregisterPushTokenAsync } from '@/src/notifications/setup'
+import { bootstrapGuest } from '@/src/auth/bootstrap'
+import { loadGuestSwitchWarning } from '@/src/auth/guestData'
+import { joinCountedParts } from '@/src/auth/switchWarning'
+import { useAuth } from '@/src/contexts/AuthContext'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 // Supabase'in SMTP "minimum interval per user" ayarıyla aynı: daha erken
@@ -15,6 +21,10 @@ const RESET_COOLDOWN_SECONDS = 60
 
 export default function LoginScreen() {
   const { colors } = useTheme()
+  const { t } = useLang()
+  const { session, userId, isAnonymous } = useAuth()
+  const [guestLoading, setGuestLoading] = useState(false)
+  const [guestError, setGuestError] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,21 +36,58 @@ export default function LoginScreen() {
     return () => clearTimeout(timer)
   }, [resetCooldown])
 
-  async function handleLogin() {
-    if (!email || !password) return
+  async function signIn() {
     setLoading(true)
     try {
+      // Misafir oturumun push token'ı oturum değişmeden silinir (silme RLS altında çalışır).
+      if (isAnonymous) await unregisterPushTokenAsync()
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-      if (error) Alert.alert('Giriş Başarısız', error.message)
+      if (error) {
+        Alert.alert(t.acc_login_failed, error.message)
+        if (isAnonymous) void registerForPushNotificationsAsync({ prompt: false })
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleLogin() {
+    if (!email || !password) return
+    // Misafirken mevcut hesaba girmek misafir verisini geride bırakır: önce neyin kaybolacağı söylenir.
+    if (isAnonymous && userId) {
+      setLoading(true)
+      const warning = await loadGuestSwitchWarning(userId)
+      setLoading(false)
+      if (warning.kind !== 'none') {
+        const partLabels = { tasks: t.switch_warn_tasks, meals: t.switch_warn_meals, blocks: t.switch_warn_blocks, workouts: t.switch_warn_workouts }
+        const body = warning.kind === 'counted'
+          ? t.switch_warn_counted.replace('{items}', joinCountedParts(warning, (key, n) => partLabels[key].replace('{n}', String(n)), t.switch_warn_and))
+          : t.switch_warn_body
+        Alert.alert(t.switch_warn_title, body, [
+          { text: t.switch_warn_cancel, style: 'cancel' },
+          { text: t.switch_warn_confirm, style: 'destructive', onPress: () => void signIn() },
+        ])
+        return
+      }
+    }
+    await signIn()
+  }
+
+  async function handleGuest() {
+    setGuestLoading(true)
+    setGuestError(false)
+    try {
+      // Oturum açılınca kök yönlendirme kullanıcıyı içeri alır.
+      if (!(await bootstrapGuest())) setGuestError(true)
+    } finally {
+      setGuestLoading(false)
     }
   }
 
   async function handlePasswordReset() {
     const normalizedEmail = email.trim()
     if (!normalizedEmail) {
-      Alert.alert('E-posta gerekli', 'Şifre sıfırlama bağlantısı için e-posta adresini yaz.')
+      Alert.alert(t.acc_email_required, t.acc_reset_link_email_desc)
       return
     }
     if (resetCooldown > 0) return
@@ -51,9 +98,9 @@ export default function LoginScreen() {
       })
       if (error) throw error
       setResetCooldown(RESET_COOLDOWN_SECONDS)
-      Alert.alert('Bağlantı gönderildi', 'Şifre sıfırlama bağlantısı e-posta adresine gönderildi. Gelmezse spam klasörünü kontrol et.')
+      Alert.alert(t.acc_link_sent, t.acc_link_sent_desc)
     } catch (error: unknown) {
-      Alert.alert('Gönderilemedi', error instanceof Error ? error.message : 'Lütfen daha sonra tekrar dene.')
+      Alert.alert(t.acc_send_failed, error instanceof Error ? error.message : t.acc_try_again_later)
     } finally {
       setLoading(false)
     }
@@ -81,56 +128,68 @@ export default function LoginScreen() {
               LifeOS
             </Text>
             <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
-              Planlarını, görevlerini ve günlük ritmini tek yerde yönet.
+              {t.acc_login_subtitle}
             </Text>
           </View>
 
           {/* Card */}
           <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
             <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-              Giriş Yap
+              {t.acc_login}
             </Text>
             <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>
-              Hesabınla devam et
+              {t.acc_login_continue}
             </Text>
 
             <Input
-              label="E-posta"
+              label={t.acc_email}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
-              placeholder="ornek@email.com"
+              placeholder={t.acc_email_placeholder}
               containerStyle={{ marginBottom: spacing[3] }}
               returnKeyType="next"
             />
             <Input
-              label="Şifre"
+              label={t.acc_password}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              placeholder="••••••••"
+              placeholder={t.acc_password_placeholder}
               containerStyle={{ marginBottom: spacing[5] }}
               onSubmitEditing={handleLogin}
               returnKeyType="done"
             />
 
-            <Button label={loading ? 'Giriş yapılıyor...' : 'Giriş Yap'} onPress={handleLogin} loading={loading} fullWidth />
+            <Button label={loading ? t.acc_logging_in : t.acc_login} onPress={handleLogin} loading={loading} fullWidth />
 
             <TouchableOpacity onPress={handlePasswordReset} disabled={loading || resetCooldown > 0} style={{ marginTop: spacing[4] }}>
               <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: resetCooldown > 0 ? colors.textMuted : palette.accent, fontWeight: fontWeight.semibold }}>
-                {resetCooldown > 0 ? `Tekrar gönder (${resetCooldown}sn)` : 'Şifremi unuttum'}
+                {resetCooldown > 0 ? t.acc_resend_seconds.replace('{n}', String(resetCooldown)) : t.acc_forgot_password}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: spacing[4] }}>
               <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
-                Hesabın yok mu?{' '}
-                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>Kayıt ol</Text>
+                {t.acc_no_account}{' '}
+                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>{t.acc_register_link}</Text>
               </Text>
             </TouchableOpacity>
           </GlassCard>
+
+          {/* Oturum yoksa (çıkış yapmış ya da ilk açılış başarısız) misafir olarak da başlanabilir. */}
+          {!session && (
+            <View style={{ marginTop: spacing[4] }}>
+              <Button label={t.guest_continue} onPress={handleGuest} loading={guestLoading} variant="secondary" fullWidth />
+              {guestError && (
+                <Text accessibilityRole="alert" style={{ marginTop: spacing[2], textAlign: 'center', fontSize: fontSize.sm, color: palette.danger }}>
+                  {t.guest_start_failed}
+                </Text>
+              )}
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>

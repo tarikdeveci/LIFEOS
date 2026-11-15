@@ -4,15 +4,17 @@ import { router } from 'expo-router'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
-/** Profildeki "Entegrasyonlar" satırı; profile.tsx zaten 500 satırı aştığı için ayrı dosya. */
+/** Ayarlar ekranındaki "Entegrasyonlar" satırı. */
 export function IntegrationsLink() {
   const { colors } = useTheme()
   const { t } = useLang()
+  const { requireAccount } = useRequireAccount()
   return (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <TouchableOpacity onPress={() => router.push('/(tabs)/settings/integrations' as any)} activeOpacity={0.7}>
+    <TouchableOpacity onPress={() => { if (requireAccount('integration')) router.push('/(tabs)/settings/integrations' as any) }} activeOpacity={0.7}>
       <GlassCard style={{ marginBottom: spacing[4] }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
           <Ionicons name="git-network-outline" size={18} color={palette.accent} />

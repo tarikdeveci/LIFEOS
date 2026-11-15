@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
 import { ForgotPasswordForm } from './ForgotPasswordForm'
+import { ConfirmEmailPending } from './ConfirmEmailPending'
 
 type Tab = 'login' | 'register'
 
@@ -25,6 +26,7 @@ export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab })
   // Bu bileşen ssr:false ile yükleniyor, window burada her zaman var
   const [error, setError] = useState<string | null>(callbackError)
   const [forgotOpen, setForgotOpen] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
 
   // Login fields
   const [email, setEmail] = useState('')
@@ -103,10 +105,20 @@ export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab })
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: regEmail,
       password: regPassword,
-      options: { data: { display_name: displayName, timezone } },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        // Web kaydı şifreyle yapılır; mobil hesap aşaması bu bayrağa bakar.
+        data: { display_name: displayName, timezone, password_set: true },
+      },
     })
     if (signUpError) {
       setError(signUpError.message)
+      setLoading(false)
+      return
+    }
+    if (!data.session) {
+      // "Confirm email" açık: oturum onay bağlantısından sonra gelir.
+      setPendingEmail(regEmail)
       setLoading(false)
       return
     }
@@ -172,6 +184,10 @@ export default function AuthForm({ defaultTab = 'login' }: { defaultTab?: Tab })
 
   if (forgotOpen) {
     return <ForgotPasswordForm initialEmail={email} onBack={() => setForgotOpen(false)} />
+  }
+
+  if (pendingEmail) {
+    return <ConfirmEmailPending email={pendingEmail} onBack={() => { setPendingEmail(null); switchTab('login') }} />
   }
 
   return (

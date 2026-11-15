@@ -19,6 +19,7 @@ type Supabase = SupabaseClient<any>
 export type EventName =
   | 'paywall_view'
   | 'ai_used'
+  | 'account_gate_shown'
 
 type EventProps = Record<string, string | number | boolean | null>
 

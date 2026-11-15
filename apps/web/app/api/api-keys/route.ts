@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { randomBytes, createHash } from 'node:crypto'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requirePermanentUser } from '@/lib/api/auth'
 
 // Node runtime — node:crypto gerektirir.
 export const runtime = 'nodejs'
@@ -12,12 +13,16 @@ function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex')
 }
 
-async function getUserId(): Promise<string | null> {
+async function getUser() {
   const supabase = await createServerClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  return user?.id ?? null
+  return user
+}
+
+async function getUserId(): Promise<string | null> {
+  return (await getUser())?.id ?? null
 }
 
 // Kullanıcının anahtarlarını listele (yalnızca güvenli alanlar — key_hash asla dönmez)
@@ -42,8 +47,12 @@ export async function GET() {
 
 // Yeni anahtar oluştur — tam anahtar YALNIZCA bu yanıtta, bir kez döner
 export async function POST(req: Request) {
-  const userId = await getUserId()
-  if (!userId) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 })
+  const user = await getUser()
+  if (!user) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 })
+  // Inbox API anahtarı kalıcı hesaba ait (misafir modu, spec bölüm 9). Listeleme ve iptal açık.
+  const gate = requirePermanentUser(user)
+  if (gate) return gate
+  const userId = user.id
 
   let name = 'API Anahtarı'
   try {

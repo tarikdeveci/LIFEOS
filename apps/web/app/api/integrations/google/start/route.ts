@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { authenticateRequest } from '@/lib/api/auth'
+import { authenticateRequest, requirePermanent } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   GOOGLE_AUTH_URL, GOOGLE_RETURN, GOOGLE_SCOPES, googleCredentials, googleRedirectUri, newPkce,
@@ -16,6 +16,8 @@ export const runtime = 'nodejs'
 export async function POST(req: Request) {
   const auth = await authenticateRequest(req)
   if (!auth) return NextResponse.json({ ok: false, error: 'Oturum gerekli' }, { status: 401 })
+  const gate = requirePermanent(auth)
+  if (gate) return gate
 
   const creds = googleCredentials()
   if (!creds) return NextResponse.json({ ok: false, error: 'Google bağlantısı henüz açık değil' }, { status: 503 })

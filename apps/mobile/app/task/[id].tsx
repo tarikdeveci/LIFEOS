@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Alert, ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { useLocalSearchParams, router } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { useTaskStore, valueScoreForGoal } from '@lifeos/shared'
+import { useGoBack } from '@/src/navigation/useGoBack'
+import { hasCustomPriority, useTaskStore, valueScoreForGoal, todayDate, shiftIsoDate } from '@lifeos/shared'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
+import { priorityWord } from '@/src/components/tasks/PriorityLabel'
 import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
@@ -11,36 +13,46 @@ import { recordValueMoment } from '@/src/lib/review'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
+import { DateField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { StatusBadge } from '@/src/components/ui/Badge'
 import { useTheme } from '@/src/contexts/ThemeContext'
+import { useLang } from '@/src/contexts/LangContext'
 import { useProGate } from '@/src/hooks/useProGate'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
-const STATUS_LABELS: Record<TaskStatus, string> = { backlog: 'Backlog', planned: 'Planlandı', in_progress: 'Devam', blocked: 'Bloke', done: 'Tamam', deferred: 'Ertelendi' }
+const getStatusLabels = (t: any): Record<TaskStatus, string> => ({ backlog: t.misc_status_backlog, planned: t.misc_status_planned, in_progress: t.misc_status_in_progress, blocked: t.misc_status_blocked, done: t.misc_status_done, deferred: t.misc_status_deferred })
 const STATUS_COLORS: Record<TaskStatus, string> = { backlog: palette.backlog, planned: palette.planned, in_progress: palette.inProgress, blocked: palette.blocked, done: palette.done, deferred: palette.deferred }
 
-const WSJF_FIELDS = [
-  { key: 'value_score' as const,    label: 'Değer',   color: palette.accent },
-  { key: 'urgency_score' as const,  label: 'Aciliyet', color: palette.danger },
-  { key: 'risk_score' as const,     label: 'Risk',    color: palette.warning },
-  { key: 'effort_score' as const,   label: 'Efor',    color: palette.backlog },
-  { key: 'friction_score' as const, label: 'Engel',   color: palette.backlog },
+const getWsjfFields = (t: any) => [
+  { key: 'value_score' as const,    label: t.misc_wsjf_value,   color: palette.accent },
+  { key: 'urgency_score' as const,  label: t.misc_wsjf_urgency, color: palette.danger },
+  { key: 'risk_score' as const,     label: t.misc_wsjf_risk,    color: palette.warning },
+  { key: 'effort_score' as const,   label: t.misc_wsjf_effort,    color: palette.backlog },
+  { key: 'friction_score' as const, label: t.misc_wsjf_friction,   color: palette.backlog },
 ] as const
 
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const goBack = useGoBack()
   const { colors } = useTheme()
   const [userId, setUserId] = useState<string | null>(null)
+  const { t } = useLang()
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  const [editingDuration, setEditingDuration] = useState(false)
+  const [durationDraft, setDurationDraft] = useState('')
+  // UX.md 2: hata uyarıyla değil, ilgili alanın altında gösterilir.
+  const [inlineError, setInlineError] = useState<{ at: 'wsjf' | 'date' | 'duration'; message: string } | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiReasoning, setAiReasoning] = useState<string | null>(null)
+  // Öncelik ayarları varsayılan katlı (#21); AI önerisi gelince açılır ki değişen skor görünsün.
+  const [priorityOpen, setPriorityOpen] = useState(false)
 
   const { selectTask, updateTask, setStatus, deleteTask } = useTaskStore()
 
@@ -79,20 +91,22 @@ export default function TaskDetailScreen() {
     if (!task || !titleDraft.trim()) return
     setSaving(true)
     try {
-      await updateTask(supabase, task.id, { title: titleDraft.trim() })
-      setTask((p) => p ? { ...p, title: titleDraft.trim() } : null)
+      const updated = await updateTask(supabase, task.id, { title: titleDraft.trim() })
+      setTask(updated)
       setEditingTitle(false)
-    } catch { Alert.alert('Hata', 'Başlık kaydedilemedi') }
+    } catch { Alert.alert(t.misc_error, t.misc_title_save_error) }
     finally { setSaving(false) }
   }
 
   async function handleWsjf(field: string, value: number) {
     if (!task) return
     setSaving(true)
+    setInlineError(null)
     try {
-      await updateTask(supabase, task.id, { [field]: value })
-      setTask((p) => p ? { ...p, [field]: value } : null)
-    } finally { setSaving(false) }
+      const updated = await updateTask(supabase, task.id, { [field]: value })
+      setTask(updated)
+    } catch { setInlineError({ at: 'wsjf', message: t.misc_wsjf_save_error }) }
+    finally { setSaving(false) }
   }
 
   async function handleGoal(goalId: string | null) {
@@ -100,15 +114,15 @@ export default function TaskDetailScreen() {
     const patch = { goal_id: goalId, value_score: valueScoreForGoal(task.value_score, goalId) }
     setSaving(true)
     try {
-      await updateTask(supabase, task.id, patch)
-      setTask((p) => p ? { ...p, ...patch } : null)
-    } catch { Alert.alert('Hata', 'Hedef kaydedilemedi') }
+      const updated = await updateTask(supabase, task.id, patch)
+      setTask(updated)
+    } catch { Alert.alert(t.misc_error, t.misc_goal_save_error) }
     finally { setSaving(false) }
   }
 
   async function handleAiSuggest() {
     if (!task) return
-    if (!requirePro()) return
+    if (!requirePro('task_priority')) return
     setAiLoading(true)
     setAiReasoning(null)
     try {
@@ -122,18 +136,52 @@ export default function TaskDetailScreen() {
         const updates: Record<string, number> = {}
         for (const f of fields) { if (typeof s[f] === 'number') updates[f] = s[f] as number }
         if (Object.keys(updates).length > 0) {
-          await updateTask(supabase, task.id, updates)
-          setTask((p) => p ? { ...p, ...updates } : null)
+          const updated = await updateTask(supabase, task.id, updates)
+          setTask(updated)
+          setPriorityOpen(true)
         }
       }
-    } catch { setAiReasoning('AI önerisi alınamadı.') }
+    } catch { setAiReasoning(t.misc_ai_suggest_error) }
     finally { setAiLoading(false) }
   }
 
+  async function handleDate(dateStr: string | null) {
+    if (!task) return
+    setSaving(true)
+    setInlineError(null)
+    try {
+      const updated = await updateTask(supabase, task.id, { scheduled_date: dateStr })
+      setTask(updated)
+    } catch { setInlineError({ at: 'date', message: t.misc_date_save_error }) }
+    finally { setSaving(false) }
+  }
+
+  async function handleDurationSave() {
+    if (!task) return
+    const val = Number(durationDraft.trim())
+    if (!Number.isInteger(val) || val < 5 || val > 600) {
+      setInlineError({ at: 'duration', message: t.misc_duration_limit_error })
+      return
+    }
+    setSaving(true)
+    setInlineError(null)
+    try {
+      const updated = await updateTask(supabase, task.id, { estimated_minutes: val })
+      setTask(updated)
+      setEditingDuration(false)
+    } catch { setInlineError({ at: 'duration', message: t.misc_duration_save_error }) }
+    finally { setSaving(false) }
+  }
+
+  const errorFor = (at: 'wsjf' | 'date' | 'duration') =>
+    inlineError?.at === at
+      ? <Text style={{ fontSize: fontSize.xs, color: palette.danger, marginTop: spacing[1] }}>{inlineError.message}</Text>
+      : null
+
   function handleDelete() {
-    Alert.alert('Görevi Sil', 'Bu görevi kalıcı olarak silmek istediğine emin misin?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => { if (!task) return; await deleteTask(supabase, task.id); router.back() } },
+    Alert.alert(t.misc_task_delete_title, t.misc_task_delete_body, [
+      { text: t.misc_cancel, style: 'cancel' },
+      { text: t.misc_delete, style: 'destructive', onPress: async () => { if (!task) return; await deleteTask(supabase, task.id); goBack() } },
     ])
   }
 
@@ -144,8 +192,8 @@ export default function TaskDetailScreen() {
   if (!task) return (
     <ScreenBackground>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[4] }}>
-        <Text style={{ color: colors.textMuted }}>Görev bulunamadı</Text>
-        <Button label="Geri Dön" onPress={() => router.back()} variant="secondary" />
+        <Text style={{ color: colors.textMuted }}>{t.misc_task_not_found}</Text>
+        <Button label={t.misc_go_back} onPress={goBack} variant="secondary" />
       </View>
     </ScreenBackground>
   )
@@ -154,19 +202,19 @@ export default function TaskDetailScreen() {
     <ScreenBackground edges={['top']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <TouchableOpacity onPress={goBack} hitSlop={hitSlopFor(64, 24)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="chevron-back" size={20} color={palette.accent} />
-          <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>Geri</Text>
+          <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.misc_back}</Text>
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
           {saving && <ActivityIndicator size="small" color={palette.accent} />}
-          <TouchableOpacity onPress={handleDelete}>
+          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityRole="button" accessibilityLabel={t.misc_delete_task_a11y}>
             <Ionicons name="trash-outline" size={20} color={palette.danger} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
         <GlassCard>
@@ -174,27 +222,29 @@ export default function TaskDetailScreen() {
             <View style={{ gap: spacing[3] }}>
               <Input value={titleDraft} onChangeText={setTitleDraft} multiline autoFocus />
               <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-                <Button label="İptal" onPress={() => setEditingTitle(false)} variant="ghost" style={{ flex: 1 }} />
-                <Button label="Kaydet" onPress={handleTitleSave} style={{ flex: 1 }} />
+                <Button label={t.misc_cancel} onPress={() => setEditingTitle(false)} variant="ghost" style={{ flex: 1 }} />
+                <Button label={t.misc_save} onPress={handleTitleSave} style={{ flex: 1 }} />
               </View>
             </View>
           ) : (
             <TouchableOpacity onPress={() => { setTitleDraft(task.title); setEditingTitle(true) }}>
               <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{task.title}</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: 4 }}>Düzenlemek için dokun</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: 4 }}>{t.misc_tap_to_edit}</Text>
             </TouchableOpacity>
           )}
         </GlassCard>
 
         {/* Priority score */}
         <GlassCard>
-          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>WSJF Öncelik</Text>
-          <Text style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.extrabold, color: palette.accent }}>{task.priority_score?.toFixed(2) ?? '—'}</Text>
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, marginBottom: 4 }}>{t.task_priority}</Text>
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.extrabold, color: palette.accent }}>
+            {task.priority_score != null && hasCustomPriority(task) ? priorityWord(t, task.priority_score) : t.task_priority_unset}
+          </Text>
         </GlassCard>
 
         {/* Status */}
         <GlassCard>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Durum</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.misc_status}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
             {STATUS_OPTIONS.map((s) => {
               const active = task.status === s
@@ -202,9 +252,11 @@ export default function TaskDetailScreen() {
                 <TouchableOpacity
                   key={s}
                   onPress={() => handleStatusChange(s)}
-                  style={{ paddingHorizontal: spacing[3], paddingVertical: 7, borderRadius: radius.full, backgroundColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}18`, borderWidth: 1, borderColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}35` }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}18`, borderWidth: 1, borderColor: active ? STATUS_COLORS[s] : `${STATUS_COLORS[s]}35` }}
                 >
-                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: active ? '#fff' : STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</Text>
+                  <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: active ? '#fff' : STATUS_COLORS[s] }}>{getStatusLabels(t)[s]}</Text>
                 </TouchableOpacity>
               )
             })}
@@ -213,26 +265,41 @@ export default function TaskDetailScreen() {
 
         {/* WSJF */}
         <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-            <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>WSJF Parametreleri</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[2] }}>
+            <TouchableOpacity
+              onPress={() => setPriorityOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={t.task_priority_set}
+              accessibilityState={{ expanded: priorityOpen }}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}
+            >
+              <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.task_priority_set}</Text>
+              <Ionicons name={priorityOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAiSuggest}
               disabled={aiLoading || isCheckingPro}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[3], paddingVertical: 6, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading || !isPro ? 0.6 : 1 }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: aiLoading || isCheckingPro, busy: aiLoading }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}30`, opacity: aiLoading || !isPro ? 0.6 : 1 }}
             >
               {aiLoading ? <ActivityIndicator size="small" color={palette.accent} /> : <Ionicons name={isPro ? 'sparkles' : 'lock-closed-outline'} size={14} color={palette.accent} />}
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.accent }}>{isPro ? 'AI Öner' : 'Pro · AI Öner'}</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{isPro ? t.misc_ai_suggest : t.misc_pro_ai_suggest}</Text>
             </TouchableOpacity>
           </View>
 
+          {priorityOpen && (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, marginTop: spacing[2], marginBottom: spacing[4] }}>{t.task_priority_explain}</Text>
+          )}
           {aiReasoning && (
             <View style={{ marginBottom: spacing[4], padding: spacing[3], borderRadius: radius.lg, backgroundColor: `${palette.accent}10`, borderWidth: 1, borderColor: `${palette.accent}20` }}>
               <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>{aiReasoning}</Text>
             </View>
           )}
+          {errorFor('wsjf')}
 
-          <View style={{ gap: spacing[4] }}>
-            {WSJF_FIELDS.map((field) => {
+          {priorityOpen && <View style={{ gap: spacing[4] }}>
+            {getWsjfFields(t).map((field) => {
               const value = task[field.key] as number
               return (
                 <View key={field.key}>
@@ -245,6 +312,10 @@ export default function TaskDetailScreen() {
                       <TouchableOpacity
                         key={v}
                         onPress={() => handleWsjf(field.key, v)}
+                        hitSlop={hitSlopFor(44, 36)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${field.label} ${v}`}
+                        accessibilityState={{ selected: value === v }}
                         style={{ flex: 1, height: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: value === v ? field.color : `${field.color}18`, borderWidth: 1, borderColor: value === v ? field.color : `${field.color}30` }}
                       >
                         <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: value === v ? '#fff' : field.color }}>{v}</Text>
@@ -254,19 +325,89 @@ export default function TaskDetailScreen() {
                 </View>
               )
             })}
-          </View>
+          </View>}
         </GlassCard>
 
         {/* Details */}
         <GlassCard>
-          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>Detaylar</Text>
+          <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.misc_details}</Text>
           <View style={{ gap: spacing[3] }}>
-            {task.scheduled_date && <DetailRow label="Tarih" value={task.scheduled_date} />}
-            {task.due_date && <DetailRow label="Son Tarih" value={task.due_date} color={palette.danger} />}
-            {task.estimated_minutes && <DetailRow label="Süre" value={`${task.estimated_minutes} dk`} />}
+            {/* Tarih: hızlı seçimler ve takvimden seçme (#18) */}
+            <View>
+              <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>{t.misc_date}</Text>
+              <View style={{ flexDirection: 'row', gap: spacing[2], flexWrap: 'wrap' }}>
+                {(() => {
+                  const todayStr = todayDate()
+                  const tomorrowStr = shiftIsoDate(todayStr, 1)
+                  const isToday = task.scheduled_date === todayStr
+                  const isTomorrow = task.scheduled_date === tomorrowStr
+                  const isNone = !task.scheduled_date
+                  // Süre formu açıkken anında kayıt Kaydet/İptal ile karışmasın (UX.md 3).
+                  const chipsDisabled = editingDuration || saving
+
+                  return (
+                    <>
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(todayStr)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isToday, disabled: chipsDisabled }}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isToday ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isToday ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isToday ? '#fff' : colors.textPrimary }}>{t.misc_today}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(tomorrowStr)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isTomorrow, disabled: chipsDisabled }}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isTomorrow ? palette.accent : colors.glassInner, borderWidth: 1, borderColor: isTomorrow ? palette.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isTomorrow ? '#fff' : colors.textPrimary }}>{t.misc_tomorrow}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        disabled={chipsDisabled}
+                        onPress={() => handleDate(null)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isNone, disabled: chipsDisabled }}
+                        style={{ minWidth: 44, minHeight: 44, paddingHorizontal: spacing[3], borderRadius: radius.full, backgroundColor: isNone ? colors.bgSurface : colors.glassInner, borderWidth: 1, borderColor: isNone ? colors.border : colors.border, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: isNone ? colors.textPrimary : colors.textMuted }}>{t.misc_no_date}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )
+                })()}
+              </View>
+              <DateField
+                value={task.scheduled_date ?? ''}
+                onChange={(v) => void handleDate(v)}
+                disabled={editingDuration || saving}
+                containerStyle={{ marginTop: spacing[2] }}
+              />
+              {errorFor('date')}
+            </View>
+
+            {task.due_date && <DetailRow label={t.misc_due_date} value={task.due_date} color={palette.danger} />}
+
+            {editingDuration ? (
+              <View style={{ gap: spacing[2] }}>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{t.misc_duration_min}</Text>
+                <Input value={durationDraft} onChangeText={setDurationDraft} keyboardType="number-pad" autoFocus />
+                {errorFor('duration')}
+                <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+                  <Button label={t.misc_cancel} onPress={() => { setEditingDuration(false); setInlineError(null) }} variant="ghost" style={{ flex: 1 }} />
+                  <Button label={t.misc_save} onPress={handleDurationSave} style={{ flex: 1 }} />
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => { setDurationDraft(String(task.estimated_minutes ?? 30)); setEditingDuration(true) }} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <DetailRow label={t.misc_duration} value={task.estimated_minutes ? `${task.estimated_minutes} ${t.misc_min_short}` : t.misc_not_specified} />
+              </TouchableOpacity>
+            )}
+
             {(task.tags?.length ?? 0) > 0 && (
               <View>
-                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>Etiketler</Text>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginBottom: spacing[2] }}>{t.misc_tags}</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
                   {task.tags.map((tag) => (
                     <View key={tag} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, backgroundColor: `${palette.accent}15`, borderWidth: 1, borderColor: `${palette.accent}25` }}>
@@ -278,7 +419,7 @@ export default function TaskDetailScreen() {
             )}
             {userId && <TaskGoalPicker userId={userId} goalId={task.goal_id ?? null} onChange={(g) => void handleGoal(g)} />}
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-              Oluşturuldu: {new Date(task.created_at).toLocaleDateString('tr-TR')}
+              {t.misc_created}: {new Date(task.created_at).toLocaleDateString('tr-TR')}
             </Text>
           </View>
         </GlassCard>

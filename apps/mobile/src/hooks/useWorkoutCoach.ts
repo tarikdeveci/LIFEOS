@@ -30,7 +30,7 @@ function foldName(value: string): string {
 interface Options {
   userId: string | null
   /** Pro değilse uyarıyı gösterir ve false döner. */
-  requirePro: () => boolean
+  requirePro: (source?: string) => boolean
   /** Koçun programı kaydedildi: ekran programı açar ve planlayıcıya geçer. */
   onProgramSaved: (program: WorkoutProgram) => void
 }
@@ -78,7 +78,7 @@ export function useWorkoutCoach({ userId, requirePro, onProgramSaved }: Options)
   async function sendCoach(text: string) {
     const trimmed = text.trim()
     if (!trimmed || !userId || coachLoading) return
-    if (!requirePro()) return
+    if (!requirePro('workout_coach')) return
 
     const history = coachMsgs.slice(-8).map((m) => ({ role: m.role, text: m.content }))
     setCoachMsgs((m) => [...m, { role: 'user', content: trimmed }])

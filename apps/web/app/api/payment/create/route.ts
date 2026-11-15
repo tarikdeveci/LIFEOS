@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requirePermanentUser } from '@/lib/api/auth'
 import { createPayTRPayment, PLANS, type PlanKey } from '@/lib/paytr'
 
 function getUserIp(req: Request): string {
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 })
     }
+    const gate = requirePermanentUser(user)
+    if (gate) return gate
 
     const { planKey } = (await req.json()) as { planKey: PlanKey }
 

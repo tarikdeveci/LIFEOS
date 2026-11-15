@@ -127,14 +127,24 @@ export function MuscleBodyMap({ muscleGroups, fills, legend, gender, selectedId,
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {(['front', 'back'] as const).map((side) => (
             <View key={side} style={{ alignItems: 'center' }}>
-              <Body
-                data={data}
-                side={side}
-                gender={figureGender}
-                scale={scale}
-                border={border}
-                onBodyPartPress={handlePress}
-              />
+              {/* Paketin İngilizce SVG etiketleri yerine tek bir görsel etiketi okunur. */}
+              <View
+                accessible
+                accessibilityRole="image"
+                accessibilityLabel={side === 'front' ? t.ux_wk_body_front : t.ux_wk_body_back}
+              >
+                {/* Android'de iç etiketler ayrıca odaklanmasın diye alt ağaç gizlenir; dokunma çalışmaya devam eder. */}
+                <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+                <Body
+                  data={data}
+                  side={side}
+                  gender={figureGender}
+                  scale={scale}
+                  border={border}
+                  onBodyPartPress={handlePress}
+                />
+                </View>
+              </View>
               <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, marginTop: spacing[1] }}>
                 {side === 'front' ? t.muscle_front : t.muscle_back}
               </Text>

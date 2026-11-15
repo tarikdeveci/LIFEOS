@@ -4,6 +4,7 @@ import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../lib/supabase'
+import { getCurrentT } from '../contexts/LangContext'
 
 // Foreground notification handler
 Notifications.setNotificationHandler({
@@ -77,10 +78,20 @@ export async function enableReportOnce(userId: string, accountCreatedAt: string)
   }
 }
 
+export interface PushRegisterOptions {
+  /**
+   * false: izin penceresi açılmaz; yalnızca izin zaten verilmişse token kaydedilir.
+   * Misafir ilk açılışta ve onboarding sonunda false kullanır, izin anlamlı bir anda istenir.
+   */
+  prompt?: boolean
+}
+
 /**
  * Push notification izni iste ve token'ı Supabase'e kaydet
  */
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
+export async function registerForPushNotificationsAsync(options: PushRegisterOptions = {}): Promise<string | null> {
+  const prompt = options.prompt ?? true
+  const t = getCurrentT()
   if (!Device.isDevice) {
     console.warn('Push notifications sadece fiziksel cihazda çalışır')
     return null
@@ -96,6 +107,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   // İzin kontrol
   const { status: existingStatus } = await Notifications.getPermissionsAsync()
   let finalStatus = existingStatus
+
+  // prompt: false iken izin yoksa sessizce çıkılır, kullanıcıya hiçbir şey gösterilmez.
+  if (existingStatus !== 'granted' && !prompt) return null
 
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync()
@@ -156,18 +170,18 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   // Android kanal ayarla
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'Varsayılan',
+      name: t.misc_channel_default,
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
     })
 
     await Notifications.setNotificationChannelAsync('task-reminders', {
-      name: 'Görev Hatırlatmaları',
+      name: t.misc_channel_tasks,
       importance: Notifications.AndroidImportance.HIGH,
     })
 
     await Notifications.setNotificationChannelAsync('nutrition', {
-      name: 'Beslenme Bildirimleri',
+      name: t.misc_channel_nutrition,
       importance: Notifications.AndroidImportance.DEFAULT,
     })
   }

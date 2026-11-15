@@ -9,6 +9,7 @@
 
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.2'
+import { isAccountRequired } from '../_shared/accountGate.ts'
 import type { Lang } from '../_shared/ai/coach.ts'
 import { notifyFallbackOnce, type NoticeClient } from '../_shared/ai/fallbackNotice.ts'
 import { bindRoute, getRouter } from '../_shared/ai/llm/index.ts'
@@ -53,6 +54,8 @@ serve(async (req: Request) => {
     } = await supabase.auth.getUser()
 
     if (!user) return json({ error: 'Unauthorized' }, 401)
+    // Misafir ve onaysız e-posta: ücretsiz AI haklarına da erişemez (misafir modu, spec bölüm 9).
+    if (isAccountRequired(user)) return json({ error: 'Account required', code: 'account_required' }, 403)
 
     const body: SuggestRequest = await req.json()
     const { type, language, today: clientToday, task_id } = body

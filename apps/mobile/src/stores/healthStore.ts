@@ -20,6 +20,7 @@ import { supabase } from '@/src/lib/supabase'
 import {
   isHealthAvailable,
   requestHealthPermissions,
+  hasHealthPermissions,
   readHealthDay,
   readHealthWeight,
 } from '@/src/utils/health'
@@ -32,6 +33,8 @@ interface HealthStore {
   isSyncing: boolean
   isConnecting: boolean
   lastError: string | null
+  /** Bağlı ama okuma izni cihazda geri alınmış (Android ayarlarından) */
+  permissionDenied: boolean
 
   /** Ayarları + son verileri yükler (uygulama açılışında, izin istemeden) */
   hydrate: (userId: string) => Promise<void>
@@ -39,6 +42,8 @@ interface HealthStore {
   connect: (userId: string) => Promise<boolean>
   /** Bugünü cihazdan okuyup DB'ye yazar ve state'i tazeler */
   sync: (userId: string) => Promise<void>
+  /** İzni diyalogsuz yeniden okur; izin varsa true */
+  checkPermission: () => Promise<boolean>
   updateSettings: (userId: string, updates: HealthSettingsUpdate) => Promise<void>
   reset: () => void
 }
@@ -68,6 +73,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   isSyncing: false,
   isConnecting: false,
   lastError: null,
+  permissionDenied: false,
 
   hydrate: async (userId) => {
     try {
@@ -80,6 +86,8 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
       const range = await getHealthRange(supabase, userId, RANGE_DAYS)
       const today = range.find((d) => d.date === todayDate()) ?? null
       set({ range, today })
+
+      if (settings.enabled && available && !(await get().checkPermission())) return
 
       // Bağlıysa ve son senkron eskiyse arka planda tazele
       if (settings.enabled && available && shouldAutoSync(settings.last_synced_at)) {
@@ -121,6 +129,9 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
     set({ isSyncing: true, lastError: null })
 
     try {
+      // İzin yokken okuma hatasız boş döner; boş gün yazıp "senkronlandı" demeyelim.
+      if (!(await get().checkPermission())) return
+
       const today = todayDate()
       // Bugün + dün: gece gelen adım/uyku bir önceki güne düşebiliyor
       const dates = [shiftIsoDate(today, -1), today]
@@ -145,6 +156,12 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
     }
   },
 
+  checkPermission: async () => {
+    const granted = await hasHealthPermissions()
+    set({ permissionDenied: !granted })
+    return granted
+  },
+
   updateSettings: async (userId, updates) => {
     // Optimistic — ayar anahtarları anında yansısın
     const prev = get().settings
@@ -163,7 +180,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
     }
   },
 
-  reset: () => set({ available: null, settings: null, today: null, range: [], isSyncing: false, isConnecting: false, lastError: null }),
+  reset: () => set({ available: null, settings: null, today: null, range: [], isSyncing: false, isConnecting: false, lastError: null, permissionDenied: false }),
 }))
 
 /** Son senkrondan 30dk geçtiyse otomatik tazele */

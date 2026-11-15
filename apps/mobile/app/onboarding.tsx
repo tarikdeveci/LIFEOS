@@ -16,6 +16,7 @@ import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useSubscriptionStatus } from '@/src/contexts/SubscriptionContext'
+import { useAuth } from '@/src/contexts/AuthContext'
 import { markOnboardingSeen } from '@/src/onboarding/storage'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
@@ -30,6 +31,7 @@ export default function OnboardingScreen() {
   const { colors } = useTheme()
   const { t } = useLang()
   const subscription = useSubscriptionStatus()
+  const { isAnonymous } = useAuth()
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const scrollRef = useRef<ScrollView>(null)
@@ -51,7 +53,8 @@ export default function OnboardingScreen() {
     // Turun sonunda (atlansa da) deneme teklifi bir kez, kapatılabilir
     // biçimde gösterilir. Paywall'u yalnızca kilide dokunan görüyordu; onu
     // hiç görmeyen kullanıcı denemeden de habersiz kalıyordu.
-    if (!subscription.isPro) {
+    // Misafirde zorla açılmaz: Pro hesap ister, ilk izlenim hesap duvarı olmasın.
+    if (!subscription.isPro && !isAnonymous) {
       router.push({ pathname: '/paywall', params: { source: 'onboarding' } })
     }
   }
@@ -134,6 +137,17 @@ export default function OnboardingScreen() {
             </Text>
             {!isLast && <Ionicons name="arrow-forward" size={17} color="#fff" />}
           </TouchableOpacity>
+
+          {/* Mevcut hesabı olan misafir ilk adımda girişe geçebilir; veri uyarısı giriş ekranında. */}
+          {isAnonymous && index === 0 && (
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/login')}
+              accessibilityRole="button"
+              style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.guest_have_account}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </ScreenBackground>

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { calculateWsjf, wsjfToPriorityLabel } from '../../packages/shared/src/utils/priority.ts'
+import { calculateWsjf, hasCustomPriority, wsjfToPriorityLabel } from '../../packages/shared/src/utils/priority.ts'
 import { daysBetween, shiftIsoDate } from '../../packages/shared/src/utils/date.ts'
 import { clockToMinutes, getDayPosition, minutesToClock } from '../../packages/shared/src/utils/schedule.ts'
 import type { TimeBlock } from '../../packages/shared/src/types/planning.ts'
@@ -10,6 +10,13 @@ test('WSJF: varsayılan puanlar 1.5 verir', () => {
   const score = calculateWsjf({ value_score: 3, urgency_score: 3, risk_score: 3, effort_score: 3, friction_score: 3 })
   assert.equal(score, 1.5)
   assert.equal(wsjfToPriorityLabel(score), 'high')
+})
+
+test('öncelik: yalnız bir skor varsayılandan farklıysa ayarlanmış sayılır', () => {
+  const base = { value_score: 3, urgency_score: 3, risk_score: 3, effort_score: 3, friction_score: 3 }
+  assert.equal(hasCustomPriority(base), false)
+  assert.equal(hasCustomPriority({ ...base, friction_score: 2 }), true)
+  assert.equal(hasCustomPriority({ ...base, value_score: 5 }), true)
 })
 
 test('WSJF: payda sıfırsa 0', () => {
