@@ -66,6 +66,17 @@ export const uxEn = {
   ux_nut_portion_unknown: 'unknown',
   ux_nut_usda_label: 'USDA: {label}',
   ux_nut_usda_check: 'USDA, check it',
+  ux_tasks_filter_today: 'Today',
+  ux_tasks_filter_week: 'This week',
+  ux_tasks_filter_overdue: 'Overdue',
+  ux_tasks_filter_unscheduled: 'Unscheduled',
+  ux_tasks_filter_all: 'All',
+  ux_tasks_sort_label: 'Sort: {sort}',
+  ux_tasks_sort_priority: 'Priority',
+  ux_tasks_sort_due: 'Due date',
+  ux_tasks_sort_created: 'Created',
+  ux_tasks_empty_overdue: 'No overdue tasks',
+  ux_tasks_empty_unscheduled: 'No unscheduled tasks',
 } as const
 
 export const uxTr: Record<keyof typeof uxEn, string> = {
@@ -133,4 +144,15 @@ export const uxTr: Record<keyof typeof uxEn, string> = {
   ux_nut_portion_unknown: 'bilinmiyor',
   ux_nut_usda_label: 'USDA: {label}',
   ux_nut_usda_check: 'USDA, kontrol et',
+  ux_tasks_filter_today: 'Bugün',
+  ux_tasks_filter_week: 'Bu hafta',
+  ux_tasks_filter_overdue: 'Gecikmiş',
+  ux_tasks_filter_unscheduled: 'Tarihsiz',
+  ux_tasks_filter_all: 'Tümü',
+  ux_tasks_sort_label: 'Sırala: {sort}',
+  ux_tasks_sort_priority: 'Öncelik',
+  ux_tasks_sort_due: 'Son tarih',
+  ux_tasks_sort_created: 'Oluşturma',
+  ux_tasks_empty_overdue: 'Geciken görev yok',
+  ux_tasks_empty_unscheduled: 'Tarihsiz görev yok',
 }

@@ -17,6 +17,7 @@ import { LangProvider } from '@/src/contexts/LangContext'
 import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
 import { SwipeBack } from '@/src/navigation/SwipeBack'
+import { Celebration } from '@/src/components/Celebration'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -137,17 +138,19 @@ function AppNavigator() {
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <SwipeBack>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="onboarding" />
+        {/* İleri giden ekranlar sağdan kayar; giriş, sekmeler ve tanıtım arasındaki geçiş solar. */}
+        <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          <Stack.Screen name="index" options={{ animation: 'fade' }} />
+          <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
           <Stack.Screen name="task/[id]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="exercise/[id]" />
           <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
           <Stack.Screen name="account-gate" options={{ presentation: 'modal' }} />
         </Stack>
       </SwipeBack>
+      <Celebration />
     </>
   )
 }
