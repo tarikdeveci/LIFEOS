@@ -5,7 +5,7 @@
  * alışkanlık ilerlemesi için kullanır; gerçek satırları sunucu üretir.
  */
 
-import type { RoutineCompletion, RoutineSchedule } from '../types/routine'
+import type { Routine, RoutineCompletion, RoutineSchedule } from '../types/routine'
 import { daysBetween, fromDateString, shiftIsoDate, toDateString, weekStart } from './date'
 
 /** Pazartesi başlangıçlı hafta çapası ('YYYY-MM-DD'). Postgres date_trunc('week') ile aynı. */
@@ -175,4 +175,21 @@ export function findSimilarRoutine<T extends { id: string; title: string; kind: 
     if (bothHabits || sharesDay || habitVsDays) return r
   }
   return null
+}
+
+type HabitLinkRoutine = Pick<Routine, 'id' | 'kind' | 'title' | 'is_active' | 'habit_routine_id'>
+
+/**
+ * Blok rutininin bağlanabileceği alışkanlıklar (083): etkin alışkanlıklar, başlığa göre.
+ * Seçili bağ artık etkin olmasa da listede kalır, yoksa düzenlemede sessizce kaybolurdu.
+ */
+export function habitLinkOptions<R extends HabitLinkRoutine>(routines: readonly R[], selectedId: string | null): R[] {
+  return routines
+    .filter((r) => r.kind === 'habit' && (r.is_active || r.id === selectedId))
+    .sort((a, b) => a.title.localeCompare(b.title, 'tr'))
+}
+
+/** Alışkanlığa bağlı etkin blok rutinleri; blok bitince alışkanlık kendiliğinden işaretlenir. */
+export function blocksLinkedToHabit<R extends HabitLinkRoutine>(routines: readonly R[], habitId: string): R[] {
+  return routines.filter((r) => r.kind === 'block' && r.is_active && r.habit_routine_id === habitId)
 }

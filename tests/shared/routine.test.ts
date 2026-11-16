@@ -2,9 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  blocksLinkedToHabit,
   collapseRoutineTasks,
   findSimilarRoutine,
   habitDoneDays,
+  habitLinkOptions,
   habitWeekProgress,
   normalizeRoutineTitle,
   habitWeekStreak,
@@ -151,4 +153,31 @@ test('findSimilarRoutine: benzer başlık ve ortak gün uyarır, farklı gün ve
   assert.equal(findSimilarRoutine({ title: 'su iç', kind: 'habit', days_of_week: [] }, routines)?.id, 'c', 'iki alışkanlık gün sormaz')
   assert.equal(findSimilarRoutine({ title: 'Meditasyon', kind: 'block', days_of_week: [1] }, routines), null, 'pasif rutin')
   assert.equal(findSimilarRoutine({ title: 'Spor', kind: 'block', days_of_week: [1] }, routines, 'a'), null, 'düzenlenen rutinin kendisi')
+})
+
+// 083: alışkanlık bağı.
+const link = (id: string, kind: 'habit' | 'block' | 'task', title: string, is_active = true, habit_routine_id: string | null = null) =>
+  ({ id, kind, title, is_active, habit_routine_id })
+
+test('bağ seçenekleri: yalnız etkin alışkanlıklar, başlığa göre; seçili pasif alışkanlık kalır', () => {
+  const routines = [
+    link('h1', 'habit', 'Su'),
+    link('h2', 'habit', 'Hareket'),
+    link('h3', 'habit', 'Eski', false),
+    link('b1', 'block', 'Spor'),
+    link('t1', 'task', 'Fatura'),
+  ]
+  assert.deepEqual(habitLinkOptions(routines, null).map((r) => r.id), ['h2', 'h1'])
+  assert.deepEqual(habitLinkOptions(routines, 'h3').map((r) => r.id), ['h3', 'h2', 'h1'])
+})
+
+test('alışkanlığa bağlı bloklar: yalnız etkin ve bu alışkanlığa bağlı blok rutinleri', () => {
+  const routines = [
+    link('b1', 'block', 'Spor', true, 'h1'),
+    link('b2', 'block', 'Yürüyüş', false, 'h1'),
+    link('b3', 'block', 'Su molası', true, 'h2'),
+    link('b4', 'block', 'Bağsız'),
+  ]
+  assert.deepEqual(blocksLinkedToHabit(routines, 'h1').map((r) => r.id), ['b1'])
+  assert.deepEqual(blocksLinkedToHabit(routines, 'h9'), [])
 })

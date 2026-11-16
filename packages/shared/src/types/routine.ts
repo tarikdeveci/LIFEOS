@@ -51,6 +51,8 @@ export interface Routine {
   goal_id: string | null
   /** 079: bağlı antrenman programı (yalnızca workout bloğu). Program günü bloğun günlerine sırayla düşer. */
   workout_program_id: string | null
+  /** 083: bağlı alışkanlık (yalnız block). Blok tamamlanınca alışkanlığın o günkü sayacına bir birim eklenir. */
+  habit_routine_id: string | null
   created_at: string
   updated_at: string
 }
@@ -61,6 +63,8 @@ export interface RoutineCompletion {
   completed_on: string
   /** O günkü işaret sayısı (günde N kez alışkanlıkta sayaç). */
   count: number
+  /** 083: bağlı bloklardan gelen birimler; blok geri alınınca yalnız onun birimi çıkar. */
+  source_block_ids: string[]
   created_at: string
 }
 
@@ -97,6 +101,7 @@ export interface CreateRoutineInput {
   is_untracked?: boolean
   goal_id?: string | null
   workout_program_id?: string | null
+  habit_routine_id?: string | null
 }
 
 /** my_routine_progress RPC satırı: sayaçlı rutinin biten oturum sayısı. */
