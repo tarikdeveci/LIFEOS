@@ -1,7 +1,7 @@
 // Rutin domain types
 // Şema: supabase/migrations/054_routines.sql → routines, routine_exceptions, routine_completions
 
-import type { BlockType, LifeArea } from './planning'
+import type { BlockType, DayPart, LifeArea } from './planning'
 
 /**
  * block: saatli takvim bloğu. task: o güne planlanan görev (saat verilirse bağlı blok da).
@@ -53,6 +53,8 @@ export interface Routine {
   workout_program_id: string | null
   /** 083: bağlı alışkanlık (yalnız block). Blok tamamlanınca alışkanlığın o günkü sayacına bir birim eklenir. */
   habit_routine_id: string | null
+  /** 084: saat yerine gün bölümü (yalnız block, saat boşken). */
+  day_part: DayPart | null
   created_at: string
   updated_at: string
 }
@@ -87,8 +89,8 @@ export interface CreateRoutineInput {
   every_n_weeks?: number
   times_per_week?: number
   times_per_day?: number | null
-  start_time?: string
-  end_time?: string
+  start_time?: string | null
+  end_time?: string | null
   estimated_minutes?: number
   color?: string
   starts_on?: string
@@ -102,6 +104,7 @@ export interface CreateRoutineInput {
   goal_id?: string | null
   workout_program_id?: string | null
   habit_routine_id?: string | null
+  day_part?: DayPart | null
 }
 
 /** my_routine_progress RPC satırı: sayaçlı rutinin biten oturum sayısı. */

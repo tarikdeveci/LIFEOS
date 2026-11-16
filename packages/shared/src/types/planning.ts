@@ -5,6 +5,8 @@ export type BlockType = 'task' | 'routine' | 'break' | 'focus' | 'meal' | 'worko
 /** Yaşam alanı (065): sabah özeti ve gün raporu işleri buna göre ayırır. */
 export type LifeArea = 'career' | 'health' | 'personal' | 'spiritual' | 'social'
 export type RecurrenceType = 'daily' | 'weekly' | 'biweekly' | 'monthly'
+/** 084: saat yerine gün bölümü; varsayılan başlangıçlar 08:00, 12:00, 15:00, 19:00. */
+export type DayPart = 'morning' | 'noon' | 'afternoon' | 'evening'
 
 export interface TimeBlock {
   id: string
@@ -33,6 +35,9 @@ export interface TimeBlock {
 
   /** Kullanıcı bloğu bitirdiğini işaretlediği an; NULL = tamamlanmadı. */
   completed_at: string | null
+
+  /** 084: doluysa blok yüzer, saati yer tutucudur ve hatırlatılmaz. Saat verilince NULL olur. */
+  day_part: DayPart | null
 
   created_at: string
   updated_at: string
@@ -81,6 +86,8 @@ export interface CreateTimeBlockInput {
  */
 export type UpdateTimeBlockInput = Partial<CreateTimeBlockInput> & {
   completed_at?: string | null
+  /** NULL = yüzen bloğu verilen saate sabitle. */
+  day_part?: DayPart | null
 }
 
 export interface DayStats {

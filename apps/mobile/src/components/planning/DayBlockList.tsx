@@ -20,6 +20,7 @@ import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 import type { LocalCalendarEvent } from '../../utils/calendarSync'
 import { withProgramDay } from '../../hooks/useProgramDays'
+import { dayPartKey } from '../../planning/dayPart'
 
 interface Props {
   blocks: TimeBlock[]
@@ -259,6 +260,9 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, programDay
     ? `${formatDuration(timing.remainingMinutes, lang)} ${t.plan_remaining}`
     : isNext ? t.plan_starts_in.replace('{d}', formatDuration(timing.minutesUntilStart, lang)) : null
 
+  // Yüzen blok (084) saatle değil gün bölümüyle gösterilir; saati yer tutucudur.
+  const partLabel = block.day_part ? t[dayPartKey(block.day_part)] : null
+
   const confirmDelete = () => {
     Alert.alert(t.plan_block_delete_q, block.label ?? typeLabel, [
       { text: t.cancel, style: 'cancel' },
@@ -275,7 +279,9 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, programDay
       accessibilityRole="button"
       // Satır tek odak: tür, süre ve kalan süre de etikette okunur (simge olmadan).
       accessibilityLabel={[
-        t.ux_plan_block_a11y.replace('{name}', block.label ?? typeLabel).replace('{start}', block.start_time.slice(0, 5)).replace('{end}', block.end_time.slice(0, 5)),
+        partLabel
+          ? `${block.label ?? typeLabel}, ${partLabel}`
+          : t.ux_plan_block_a11y.replace('{name}', block.label ?? typeLabel).replace('{start}', block.start_time.slice(0, 5)).replace('{end}', block.end_time.slice(0, 5)),
         ...meta.slice(0, 2),
         ...(status ? [status] : []),
       ].join(', ')}
@@ -292,10 +298,16 @@ function BlockRow({ block, timing, isToday, isNext, color, typeLabel, programDay
       }}
     >
       <View style={{ width: TIME_COL, opacity: faded ? 0.5 : 1 }}>
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: isActive ? color : colors.textPrimary, fontVariant: ['tabular-nums'] }}>
-          {block.start_time.slice(0, 5)}
-        </Text>
-        <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontVariant: ['tabular-nums'] }}>{block.end_time.slice(0, 5)}</Text>
+        {partLabel ? (
+          <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textSecondary }}>{partLabel}</Text>
+        ) : (
+          <>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: isActive ? color : colors.textPrimary, fontVariant: ['tabular-nums'] }}>
+              {block.start_time.slice(0, 5)}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontVariant: ['tabular-nums'] }}>{block.end_time.slice(0, 5)}</Text>
+          </>
+        )}
       </View>
       <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: color, opacity: faded ? 0.35 : 1 }} />
       <View style={{ flex: 1, paddingLeft: spacing[1], opacity: faded ? 0.5 : 1 }}>
