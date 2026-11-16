@@ -3,6 +3,7 @@ import type {
   CreateRoutineInput,
   Routine,
   RoutineCompletion,
+  RoutineDayOverride,
   RoutineProgress,
   UpdateRoutineInput,
 } from '../types/routine'
@@ -28,7 +29,7 @@ export async function getRoutines(supabase: Supabase, userId: string): Promise<R
   return data as unknown as Routine[]
 }
 
-/** Sadece şablonu yazar (1 istek); örnekler `generateRoutineInstances` ile üretilir. */
+/** Sadece şablonu yazar (1 istek); örnekler `generateRoutineInstancesFor` ile üretilir. */
 export async function insertRoutine(
   supabase: Supabase,
   userId: string,
@@ -54,10 +55,54 @@ export async function insertRoutine(
  * fırlatmaz: fırlatılırsa kullanıcı tekrar dener ve ikinci seri oluşur. Bir kez daha denenir;
  * yine olmazsa gece cron'u (00:10) üretir.
  */
-export async function generateRoutineInstances(supabase: Supabase): Promise<void> {
+async function generateRoutineInstances(supabase: Supabase): Promise<void> {
   await materializeMyRoutines(supabase)
     .catch(() => materializeMyRoutines(supabase))
     .catch(() => undefined)
+}
+
+/** Rutinin güne göre farklı saat ve süreleri (082). */
+export async function getRoutineDayOverrides(supabase: Supabase, routineId: string): Promise<RoutineDayOverride[]> {
+  const { data, error } = await supabase
+    .from('routine_day_overrides')
+    .select('day_of_week, start_time, end_time, minutes')
+    .eq('routine_id', routineId)
+    .order('day_of_week')
+
+  if (error) throw error
+  return data as unknown as RoutineDayOverride[]
+}
+
+/**
+ * Override listesini tümüyle değiştirir ([] = hepsini kaldır) ve fromDate'den (en erken bugün)
+ * itibaren örnekleri yeniden üretir; elle düzenlenmiş ve bitmiş örnekler kalır.
+ */
+export async function setRoutineDayOverrides(
+  supabase: Supabase,
+  routineId: string,
+  overrides: RoutineDayOverride[],
+  fromDate?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('set_routine_day_overrides', {
+    p_routine: routineId,
+    p_overrides: overrides,
+    p_from: fromDate ?? null,
+  })
+  if (error) throw error
+}
+
+/**
+ * Override'lı yeni rutinin örneklerini üretir: RPC hem yazar hem üretir. Başarısızsa örnekler
+ * şablonla üretilir (rutin kayıtlı kalır, kullanıcı farklı günleri düzenlemede yeniden kurar).
+ */
+async function generateWithOverrides(
+  supabase: Supabase,
+  routineId: string,
+  overrides: RoutineDayOverride[] | undefined,
+): Promise<void> {
+  if (!overrides?.length) return generateRoutineInstances(supabase)
+  await setRoutineDayOverrides(supabase, routineId, overrides)
+    .catch(() => generateRoutineInstances(supabase))
 }
 
 /** Rutini kaydeder ve örneklerini hemen üretir: 2 ardışık istek (yazma, üretim). */
@@ -65,10 +110,20 @@ export async function createRoutine(
   supabase: Supabase,
   userId: string,
   input: CreateRoutineInput,
+  overrides?: RoutineDayOverride[],
 ): Promise<Routine> {
   const routine = await insertRoutine(supabase, userId, input)
-  await generateRoutineInstances(supabase)
+  await generateWithOverrides(supabase, routine.id, overrides)
   return routine
+}
+
+/** Şablon yazıldıktan sonra arka planda üretim (store'un hızlı kayıt yolu). */
+export function generateRoutineInstancesFor(
+  supabase: Supabase,
+  routineId: string,
+  overrides?: RoutineDayOverride[],
+): Promise<void> {
+  return generateWithOverrides(supabase, routineId, overrides)
 }
 
 /**
@@ -89,12 +144,14 @@ export class RoutineRegenerateError extends Error {
  * "Bu ve sonrakiler": şablonu günceller, fromDate'den (en erken bugün) itibaren
  * elle düzenlenmemiş ve bitmemiş örnekleri yeni şablonla yeniden üretir.
  * Geçmiş ve "sadece bu" ile değiştirilmiş örnekler olduğu gibi kalır.
+ * overrides verilirse güne göre saatler de değişir; yeniden üretim tek RPC'de olur.
  */
 export async function updateRoutineSeries(
   supabase: Supabase,
   routineId: string,
   input: UpdateRoutineInput,
   fromDate?: string,
+  overrides?: RoutineDayOverride[],
 ): Promise<Routine> {
   const { data, error } = await supabase
     .from('routines')
@@ -104,10 +161,16 @@ export async function updateRoutineSeries(
     .single()
 
   if (error) throw error
-  const { error: rpcError } = await supabase.rpc('regenerate_routine', {
-    p_routine: routineId,
-    p_from: fromDate ?? null,
-  })
+  const { error: rpcError } = overrides
+    ? await supabase.rpc('set_routine_day_overrides', {
+        p_routine: routineId,
+        p_overrides: overrides,
+        p_from: fromDate ?? null,
+      })
+    : await supabase.rpc('regenerate_routine', {
+        p_routine: routineId,
+        p_from: fromDate ?? null,
+      })
   if (rpcError) throw new RoutineRegenerateError(data as unknown as Routine, rpcError)
   return data as unknown as Routine
 }

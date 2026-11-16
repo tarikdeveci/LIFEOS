@@ -4,13 +4,14 @@ import type {
   CreateRoutineInput,
   Routine,
   RoutineCompletion,
+  RoutineDayOverride,
   UpdateRoutineInput,
 } from '../types/routine'
 import {
   getRoutines,
   createRoutine,
   insertRoutine,
-  generateRoutineInstances,
+  generateRoutineInstancesFor,
   updateRoutineSeries,
   deleteRoutine,
   getRoutineCompletions,
@@ -42,18 +43,22 @@ interface RoutineState {
   /**
    * `onGenerated` verilirse yalnız şablon yazımı beklenir (1 istek); örnek üretimi arka planda
    * koşar ve bitince `onGenerated` çağrılır. Verilmezse örnekler üretilmeden dönmez.
+   * `overrides`: güne göre farklı saat ve süreler (082).
    */
   addRoutine: (
     supabase: Supabase,
     userId: string,
     input: CreateRoutineInput,
     onGenerated?: () => void,
+    overrides?: RoutineDayOverride[],
   ) => Promise<Routine>
+  /** `overrides` verilirse listeyi tümüyle değiştirir ([] = kaldır); verilmezse dokunmaz. */
   updateSeries: (
     supabase: Supabase,
     routineId: string,
     input: UpdateRoutineInput,
     fromDate?: string,
+    overrides?: RoutineDayOverride[],
   ) => Promise<void>
   removeRoutine: (supabase: Supabase, routineId: string) => Promise<void>
   /** Program sayaçlarını yeniden okur; RPC hata verirse mevcut değer kalır. */
@@ -101,11 +106,11 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
 
   // Örnekleri sunucu ürettiği için burada optimistic ekleme yok: satır id'si ve
   // üretilen bloklar ancak insert dönünce belli.
-  addRoutine: async (supabase, userId, input, onGenerated) => {
+  addRoutine: async (supabase, userId, input, onGenerated, overrides) => {
     const routine = onGenerated
       ? await insertRoutine(supabase, userId, input)
-      : await createRoutine(supabase, userId, input)
-    if (onGenerated) void generateRoutineInstances(supabase).then(onGenerated)
+      : await createRoutine(supabase, userId, input, overrides)
+    if (onGenerated) void generateRoutineInstancesFor(supabase, routine.id, overrides).then(onGenerated)
     set((state) => ({
       routines: state.routines.some((r) => r.id === routine.id)
         ? state.routines
@@ -114,13 +119,13 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
     return routine
   },
 
-  updateSeries: async (supabase, routineId, input, fromDate) => {
+  updateSeries: async (supabase, routineId, input, fromDate, overrides) => {
     const previous = get().routines.find((r) => r.id === routineId)
     set((state) => ({
       routines: state.routines.map((r) => (r.id === routineId ? { ...r, ...input } as Routine : r)),
     }))
     try {
-      const updated = await updateRoutineSeries(supabase, routineId, input, fromDate)
+      const updated = await updateRoutineSeries(supabase, routineId, input, fromDate, overrides)
       set((state) => ({
         routines: state.routines.map((r) => (r.id === routineId ? updated : r)).sort(byStartTime),
       }))
