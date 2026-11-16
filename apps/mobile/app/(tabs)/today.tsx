@@ -23,6 +23,8 @@ import { useProgramDays, withProgramDay } from '@/src/hooks/useProgramDays'
 import { useMinimumDay } from '@/src/hooks/useMinimumDay'
 import { dayPartKey } from '@/src/planning/dayPart'
 import { Button } from '@/src/components/ui/Button'
+import { CoachTarget } from '@/src/onboarding/coach'
+import { useTodayCoach } from '@/src/onboarding/useTodayCoach'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 export default function TodayScreen() {
@@ -98,6 +100,7 @@ export default function TodayScreen() {
   }, [completeTask])
   const todayBlocks = minDay.active.blocks
   const programDays = useProgramDays(userId, todayBlocks)
+  useTodayCoach(userId)
   const plannedHours = Math.round(
     todayBlocks.reduce((s, b) => {
       const [sh = 0, sm = 0] = b.start_time.split(':').map(Number)
@@ -157,7 +160,7 @@ export default function TodayScreen() {
         eyebrow={t.today}
         title={dateLabel}
         left={<HeaderIconButton icon="person-circle-outline" label={t.profile_button} onPress={() => router.push('/(tabs)/profile')} />}
-        right={<HeaderIconButton icon="settings-outline" label={t.settings_open} onPress={() => router.push('/(tabs)/settings' as never)} />}
+        right={<CoachTarget id="today_settings"><HeaderIconButton icon="settings-outline" label={t.settings_open} onPress={() => router.push('/(tabs)/settings' as never)} /></CoachTarget>}
       />
       <ScrollView
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
@@ -172,7 +175,7 @@ export default function TodayScreen() {
         )}
 
         {/* Tasks */}
-        <GlassCard style={{ marginBottom: spacing[4] }}>
+        <CoachTarget id="today_tasks" style={{ marginBottom: spacing[4] }}><GlassCard>
           <SectionHeader title={t.today_tasks_section} linkLabel={t.today_all} onPress={() => router.push('/(tabs)/tasks')} />
           <TouchableOpacity accessible={false} activeOpacity={0.7} onPress={() => router.push('/(tabs)/tasks')} style={{ flexDirection: 'row', gap: spacing[3], marginBottom: spacing[4] }}>
             <StatCard label={t.today_pending} value={todayTasks.length} color={palette.accent} />
@@ -202,10 +205,10 @@ export default function TodayScreen() {
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_tasks}</Text>
           )}
           {todayTasks.length === 0 && justDoneTasks.length === 0 && <NextTaskRow tasks={tasks} />}
-        </GlassCard>
+        </GlassCard></CoachTarget>
 
         {/* Planning */}
-        <GlassCard style={{ marginBottom: spacing[4] }}>
+        <CoachTarget id="today_calendar" style={{ marginBottom: spacing[4] }}><GlassCard>
           <SectionHeader title={t.today_calendar} linkLabel={t.today_open} onPress={() => router.push('/(tabs)/planning')} />
           <TouchableOpacity accessible={false} activeOpacity={0.7} onPress={() => router.push('/(tabs)/planning')}>
           {visibleBlocks.map(({ block, timing }) => {
@@ -260,7 +263,7 @@ export default function TodayScreen() {
           )}
           </TouchableOpacity>
           <MinimumDayControls day={minDay} />
-        </GlassCard>
+        </GlassCard></CoachTarget>
 
         {/* Nutrition */}
         <GlassCard>

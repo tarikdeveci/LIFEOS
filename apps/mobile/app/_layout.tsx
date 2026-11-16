@@ -18,6 +18,7 @@ import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext'
 import { SubscriptionProvider } from '@/src/contexts/SubscriptionContext'
 import { SwipeBack } from '@/src/navigation/SwipeBack'
 import { Celebration } from '@/src/components/Celebration'
+import { CoachOverlay } from '@/src/onboarding/coach'
 import '../global.css'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -151,6 +152,7 @@ function AppNavigator() {
         </Stack>
       </SwipeBack>
       <Celebration />
+      <CoachOverlay />
     </>
   )
 }
