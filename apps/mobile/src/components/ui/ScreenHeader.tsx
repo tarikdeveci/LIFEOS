@@ -15,8 +15,6 @@ interface ScreenHeaderProps {
   back?: boolean
   /** Geri dönmeden önce iş yapan ekranlar için `BackButton onPress`. */
   onBack?: () => void
-  /** Başlığın solunda duran öğe (geri yoksa). */
-  left?: ReactNode
   /** Sağdaki eylemler: `HeaderIconButton` veya birincil eylem. */
   right?: ReactNode
   /** Başlık satırının altında sabit kalan içerik (ör. `Segmented`). */
@@ -27,7 +25,7 @@ interface ScreenHeaderProps {
  * Ekranın sabit üst bandı. Kaydırılan içeriğin dışında, `ScrollView`'un kardeşi olarak
  * çizilir: içerik kayarken başlık ve eylemler yerinde durur (kullanıcı isteği 2026-11-16).
  */
-export function ScreenHeader({ title, eyebrow, subtitle, back, onBack, left, right, children }: ScreenHeaderProps) {
+export function ScreenHeader({ title, eyebrow, subtitle, back, onBack, right, children }: ScreenHeaderProps) {
   const { colors } = useTheme()
   return (
     <View
@@ -41,8 +39,8 @@ export function ScreenHeader({ title, eyebrow, subtitle, back, onBack, left, rig
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: MIN_TOUCH }}>
-        {back ? <BackButton onPress={onBack} /> : left}
-        <View style={{ flex: 1, paddingLeft: left && !back ? spacing[1] : 0 }}>
+        {back ? <BackButton onPress={onBack} /> : null}
+        <View style={{ flex: 1 }}>
           {eyebrow ? (
             <Text
               style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}
