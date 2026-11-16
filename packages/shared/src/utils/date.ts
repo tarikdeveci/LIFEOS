@@ -156,3 +156,8 @@ export function weekStart(date: Date = new Date()): Date {
   d.setDate(d.getDate() + diff)
   return d
 }
+
+/** 'YYYY-MM-DD' gününün haftasındaki pazartesi, 'YYYY-MM-DD'. Yerel takvimle hesaplar. */
+export function weekStartOf(dateStr: string): string {
+  return toDateString(weekStart(fromDateString(dateStr)))
+}

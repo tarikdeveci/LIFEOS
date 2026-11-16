@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
-import { BLOCK_TYPE_COLORS, todayDate, minutesBetween } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, fromDateString, minutesBetween, toDateString, todayDate } from '@lifeos/shared'
 import {
   getBlocksForDateRange,
   getPlansForDateRange,
@@ -16,17 +16,10 @@ const ENERGY_EMOJI: Record<number, string> = { 1: '😴', 2: '😐', 3: '🙂', 
 const weekdayLabels = (locale: string) =>
   Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' }))
 
-function localDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function getMonthRange(year: number, month: number): { start: string; end: string } {
   return {
-    start: localDateStr(new Date(year, month, 1)),
-    end: localDateStr(new Date(year, month + 1, 0)),
+    start: toDateString(new Date(year, month, 1)),
+    end: toDateString(new Date(year, month + 1, 0)),
   }
 }
 
@@ -59,7 +52,7 @@ interface MonthViewProps {
 export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
   const { t, lang } = useLang()
   const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
-  const initial = new Date(initialDate ?? todayDate())
+  const initial = fromDateString(initialDate ?? todayDate())
   const [year, setYear] = useState(initial.getFullYear())
   const [month, setMonth] = useState(initial.getMonth())
   const [blocks, setBlocks] = useState<TimeBlock[]>([])
@@ -163,7 +156,7 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
               return <div key={`empty-${idx}`} className="h-24 bg-gray-50/50" />
             }
 
-            const dateStr = localDateStr(day)
+            const dateStr = toDateString(day)
             const isToday = dateStr === today
             const isCurrentMonth = day.getMonth() === month
             const dayBlocks = blocks.filter((b) => b.date === dateStr)

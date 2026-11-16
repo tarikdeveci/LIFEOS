@@ -12,6 +12,8 @@
  * >YYYY-AA-GG) aynen çalışır.
  */
 
+import { shiftIsoDate } from './date'
+
 export interface QuickParseResult {
   title: string
   /** Yapılacağı gün (planlanan). */
@@ -52,12 +54,6 @@ function iso(y: number, m: number, d: number): string | null {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-function addDays(dateStr: string, n: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number]
-  const date = new Date(Date.UTC(y, m - 1, d + n))
-  return date.toISOString().slice(0, 10)
-}
-
 function weekday(dateStr: string): number {
   const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number]
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
@@ -65,14 +61,14 @@ function weekday(dateStr: string): number {
 
 /** Bugünden itibaren (bugün dahil) ilk `target` günü. */
 function nextWeekday(today: string, target: number): string {
-  return addDays(today, (target - weekday(today) + 7) % 7)
+  return shiftIsoDate(today, (target - weekday(today) + 7) % 7)
 }
 
 /** Gelecek haftanın (pazartesi başlangıçlı) `target` günü. */
 function weekdayNextWeek(today: string, target: number): string {
   const mondayOffset = (weekday(today) + 6) % 7
-  const nextMonday = addDays(today, 7 - mondayOffset)
-  return addDays(nextMonday, (target + 6) % 7)
+  const nextMonday = shiftIsoDate(today, 7 - mondayOffset)
+  return shiftIsoDate(nextMonday, (target + 6) % 7)
 }
 
 /** Ay adı + gün; yıl verilmezse geçmişte kalan tarih bir sonraki yıla atılır. */
@@ -106,16 +102,16 @@ function findDate(folded: string, today: string): Match | null {
     (m) => dayMonth(today, +m[1]!, +m[2]!, m[3] ? +m[3] : undefined))
   push(new RegExp(`${W}(\\d{1,2})\\s+(${Object.keys(MONTHS).join('|')})${DATIVE}(?:\\s+(\\d{4}))?${E}`, 'u'),
     (m) => dayMonth(today, +m[1]!, MONTHS[m[2]!]!, m[3] ? +m[3] : undefined))
-  push(new RegExp(`${W}(?:obur gun|ertesi gun|yarindan sonra)${DATIVE}${E}`, 'u'), () => addDays(today, 2))
+  push(new RegExp(`${W}(?:obur gun|ertesi gun|yarindan sonra)${DATIVE}${E}`, 'u'), () => shiftIsoDate(today, 2))
   push(new RegExp(`${W}bugun${DATIVE}${E}`, 'u'), () => today)
-  push(new RegExp(`${W}yarin${DATIVE}${E}`, 'u'), () => addDays(today, 1))
+  push(new RegExp(`${W}yarin${DATIVE}${E}`, 'u'), () => shiftIsoDate(today, 1))
   push(new RegExp(`${W}(\\d{1,2})\\s+(gun|hafta)\\s+sonra${E}`, 'u'),
-    (m) => addDays(today, +m[1]! * (m[2] === 'hafta' ? 7 : 1)))
+    (m) => shiftIsoDate(today, +m[1]! * (m[2] === 'hafta' ? 7 : 1)))
   push(new RegExp(`${W}(?:haftaya|gelecek hafta|onumuzdeki hafta)\\s+(${Object.keys(WEEKDAYS).join('|')})${DATIVE}${E}`, 'u'),
     (m) => weekdayNextWeek(today, WEEKDAYS[m[1]!]!))
   push(new RegExp(`${W}(?:gelecek hafta|onumuzdeki hafta)${DATIVE}${E}(?!\\s+(?:${Object.keys(WEEKDAYS).join('|')}))`, 'u'),
     () => weekdayNextWeek(today, 1))
-  push(new RegExp(`${W}haftaya${E}(?!\\s+(?:${Object.keys(WEEKDAYS).join('|')}))`, 'u'), () => addDays(today, 7))
+  push(new RegExp(`${W}haftaya${E}(?!\\s+(?:${Object.keys(WEEKDAYS).join('|')}))`, 'u'), () => shiftIsoDate(today, 7))
   push(new RegExp(`${W}hafta\\s?sonu${DATIVE}${E}`, 'u'), () => nextWeekday(today, 6))
   push(new RegExp(`${W}ay\\s?sonu${DATIVE}${E}`, 'u'), () => {
     const [y, m] = today.split('-').map(Number) as [number, number]
