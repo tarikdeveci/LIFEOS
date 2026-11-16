@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Alert } from 'react-native'
 import { ScrollView } from 'react-native-gesture-handler'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
-import { habitDoneDays, habitWeekProgress, isRoutineActiveOn, todayDate, useRoutineStore } from '@lifeos/shared'
+import { blocksLinkedToHabit, habitDoneDays, habitWeekProgress, isRoutineActiveOn, todayDate, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { RoutineSheet } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -40,8 +40,14 @@ export function HabitsCard({ userId }: Props) {
     else await addRoutine(supabase, userId, input)
   }
 
+  // Bağlı blok varsa (083) alışkanlık blok bitince kendiliğinden işaretlenir; ipucu bunu söyler.
+  const linkedHint = (h: Routine) => {
+    const blocks = blocksLinkedToHabit(routines, h.id)
+    return blocks.length > 0 ? t.ux_habit_linked_hint.replace('{title}', blocks.map((b) => b.title).join(', ')) : undefined
+  }
+
   const showActions = (h: Routine, count: number) => {
-    Alert.alert(h.title, undefined, [
+    Alert.alert(h.title, linkedHint(h), [
       ...(count > 0 ? [{ text: t.habits_undo, onPress: () => void write(h.id, count - 1) }] : []),
       { text: t.habits_edit, onPress: () => openSheet(h) },
       { text: t.cancel, style: 'cancel' as const },
@@ -90,9 +96,10 @@ export function HabitsCard({ userId }: Props) {
               void write(h.id, perDay ? current + 1 : current >= 1 ? 0 : 1)
             }
             const counter = perDay ? `${count}/${perDay}` : `${week.done}/${week.target} ${t.habits_week}`
+            const hint = linkedHint(h)
             return (
               <TouchableOpacity key={h.id} onPress={tap} onLongPress={() => showActions(h, count)} delayLongPress={400}
-                accessibilityRole="button" accessibilityState={{ checked: doneToday }}
+                accessibilityRole="button" accessibilityState={{ checked: doneToday }} accessibilityHint={hint}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: spacing[2], paddingVertical: spacing[2], paddingLeft: spacing[2], paddingRight: spacing[3],
                   borderRadius: radius.full, borderWidth: 1,
@@ -107,6 +114,7 @@ export function HabitsCard({ userId }: Props) {
                   <Ionicons name={doneToday ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={doneToday ? palette.success : colors.textSubtle} />
                 )}
                 <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary, maxWidth: 160 }} numberOfLines={1}>{h.title}</Text>
+                {hint !== undefined && <Ionicons name="link" size={14} color={colors.textSubtle} accessibilityElementsHidden importantForAccessibility="no" />}
                 {!h.is_untracked && (
                   <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: doneToday || week.met ? palette.success : colors.textSubtle, fontVariant: ['tabular-nums'] }}>
                     {counter}

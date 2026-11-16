@@ -8,6 +8,7 @@ import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import { RoutineProgramPicker } from './RoutineProgramPicker'
+import { RoutineHabitPicker } from './RoutineHabitPicker'
 import { RoutineDayOverridesEditor, useRoutineDayOverrides } from './RoutineDayOverrides'
 import { toDayRows, toOverrides } from '@/src/planning/dayRows'
 import type { DayRows } from '@/src/planning/dayRows'
@@ -47,6 +48,8 @@ interface FormState {
   goalId: string | null
   /** Bağlı antrenman programı; yalnız blok rutininde, seçilince blok türü workout olur. */
   programId: string | null
+  /** Bağlı alışkanlık (083); yalnız blok rutininde, blok bitince alışkanlık işaretlenir. */
+  habitId: string | null
   /** Asgari günde (081) de kalır; ad AI planlayıcının dokunmadığı rutinle aynı alan. */
   isProtected: boolean
   /** Asgari günde gösterilen süre (dk); boş = blok süresi. */
@@ -69,6 +72,7 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
     goalId: r?.goal_id ?? null,
     programId: r?.workout_program_id ?? null,
+    habitId: r?.habit_routine_id ?? null,
     isProtected: r?.is_protected ?? false,
     minMinutes: r?.min_minutes ? String(r.min_minutes) : '',
     perDay: false,
@@ -116,6 +120,7 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     ...(isNew && { starts_on: todayDate() }),
     goal_id: f.kind === 'task' ? f.goalId : null,
     workout_program_id: f.kind === 'block' && blockKind === 'workout' ? f.programId : null,
+    habit_routine_id: f.kind === 'block' ? f.habitId : null,
     is_protected: f.isProtected,
     min_minutes: minMinutes,
   }
@@ -294,6 +299,9 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
         )}
         {form.kind === 'block' && (
           <RoutineProgramPicker userId={userId} programId={form.programId} onChange={(programId) => patch({ programId })} />
+        )}
+        {form.kind === 'block' && (
+          <RoutineHabitPicker habitId={form.habitId} onChange={(habitId) => patch({ habitId })} />
         )}
 
         {notice && (

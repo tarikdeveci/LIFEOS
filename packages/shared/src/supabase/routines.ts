@@ -42,6 +42,7 @@ export async function insertRoutine(
       user_id: userId,
       times_per_week: input.kind === 'habit' ? input.times_per_week : null,
       times_per_day: input.kind === 'habit' ? input.times_per_day ?? null : null,
+      habit_routine_id: input.kind === 'block' ? input.habit_routine_id ?? null : null,
     })
     .select()
     .single()

@@ -167,7 +167,7 @@ export const useRoutineStore = create<RoutineState>((set, get) => ({
     const before = get().completions.find(isKey)
     const replace = (entry: RoutineCompletion | undefined) =>
       set((state) => ({ completions: [...state.completions.filter((c) => !isKey(c)), ...(entry ? [entry] : [])] }))
-    replace(count > 0 ? { routine_id: routineId, user_id: userId, completed_on: day, count, created_at: new Date().toISOString() } : undefined)
+    replace(count > 0 ? { routine_id: routineId, user_id: userId, completed_on: day, count, source_block_ids: before?.source_block_ids ?? [], created_at: new Date().toISOString() } : undefined)
 
     // Aynı sayaca yazmalar sırayla gider: art arda 1 ve 2 gönderilince sunucunun önce 2'yi
     // sonra 1'i işlemesi ekranda 2, veritabanında 1 bırakıyordu.
