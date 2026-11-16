@@ -1391,6 +1391,38 @@ export type Database = {
           },
         ]
       }
+      routine_day_overrides: {
+        Row: {
+          day_of_week: number
+          end_time: string | null
+          minutes: number | null
+          routine_id: string
+          start_time: string | null
+        }
+        Insert: {
+          day_of_week: number
+          end_time?: string | null
+          minutes?: number | null
+          routine_id: string
+          start_time?: string | null
+        }
+        Update: {
+          day_of_week?: number
+          end_time?: string | null
+          minutes?: number | null
+          routine_id?: string
+          start_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routine_day_overrides_routine_id_fkey"
+            columns: ["routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       routine_exceptions: {
         Row: {
           created_at: string
@@ -2214,6 +2246,10 @@ export type Database = {
       }
       set_food_corpus_embeddings: { Args: { p_rows: Json }; Returns: number }
       set_food_item_embeddings: { Args: { p_rows: Json }; Returns: number }
+      set_routine_day_overrides: {
+        Args: { p_from?: string; p_overrides: Json; p_routine: string }
+        Returns: number
+      }
       settle_ai_use: {
         Args: { p_id: number; p_props: Json; p_user_id: string }
         Returns: boolean
