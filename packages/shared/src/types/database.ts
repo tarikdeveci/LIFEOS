@@ -2137,6 +2137,7 @@ export type Database = {
         Args: { p_food_id: string }
         Returns: undefined
       }
+      day_part_start: { Args: { p_part: string }; Returns: string }
       delete_future_routine_occurrences: {
         Args: { p_from: string; p_routine: string }
         Returns: number
