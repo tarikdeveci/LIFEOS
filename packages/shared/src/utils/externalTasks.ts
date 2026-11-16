@@ -8,6 +8,7 @@
  */
 
 import type { ExternalTaskInput } from '../types/integration'
+import { toDateString } from './date'
 
 export interface ExistingExternalTask {
   id: string
@@ -115,9 +116,7 @@ export function reminderToExternal(reminder: ReminderLike): ExternalTaskInput | 
   const title = (reminder.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 500)
   if (!reminder.id || !title || reminder.completed) return null
   const due = reminder.dueDate ? new Date(reminder.dueDate) : null
-  const dueDate = due && !Number.isNaN(due.getTime())
-    ? `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`
-    : undefined
+  const dueDate = due && !Number.isNaN(due.getTime()) ? toDateString(due) : undefined
   const notes = reminder.notes?.trim()
   return {
     title,

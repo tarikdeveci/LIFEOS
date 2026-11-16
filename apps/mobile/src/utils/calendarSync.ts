@@ -1,5 +1,6 @@
 import * as Calendar from 'expo-calendar'
 import { Platform } from 'react-native'
+import { toDateString } from '@lifeos/shared'
 import { getCurrentT } from '../contexts/LangContext'
 
 export async function requestCalendarPermission(): Promise<boolean> {
@@ -81,13 +82,6 @@ export interface LocalCalendarEvent {
   source: 'local_calendar'
 }
 
-function toLocalDateString(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
   const t = getCurrentT()
   const startDate = event.startDate
@@ -111,7 +105,7 @@ export function mapToLifeOSEvent(event: Calendar.Event): LocalCalendarEvent {
   // Saatli etkinliklerde iki platform da aynı: yerel gün doğru gündür.
   const localDate = isAllDay && Platform.OS === 'android'
     ? startsAt.slice(0, 10)
-    : toLocalDateString(start)
+    : toDateString(start)
 
   return {
     id: `local_${event.id}`,

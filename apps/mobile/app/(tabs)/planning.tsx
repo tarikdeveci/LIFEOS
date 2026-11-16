@@ -5,7 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
-import { getDayPosition, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
+import { getDayPosition, shiftIsoDate, todayDate, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { Button } from '@/src/components/ui/Button'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
@@ -34,10 +34,6 @@ import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 import { useProgramDays } from '@/src/hooks/useProgramDays'
 
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
-function localIsoDate(date = new Date()): string {
-  const tzOffsetMs = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
-}
 
 function getWeekDays(anchor: Date): Date[] {
   const start = new Date(anchor)
@@ -47,17 +43,12 @@ function getWeekDays(anchor: Date): Date[] {
 }
 
 
-function addDays(date: string, days: number): string {
-  const next = new Date(`${date}T00:00:00`)
-  next.setDate(next.getDate() + days)
-  return localIsoDate(next)
-}
 
 function inferRequestedDate(input: string, fallbackDate: string): string {
   const normalized = input.toLocaleLowerCase('tr-TR')
-  if (/\b(bugun|bugün|today)\b/.test(normalized)) return localIsoDate()
-  if (/\b(yarin|yarın|tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 1)
-  if (/\b(ertesi gun|ertesi gün|after tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 2)
+  if (/\b(bugun|bugün|today)\b/.test(normalized)) return todayDate()
+  if (/\b(yarin|yarın|tomorrow)\b/.test(normalized)) return shiftIsoDate(todayDate(), 1)
+  if (/\b(ertesi gun|ertesi gün|after tomorrow)\b/.test(normalized)) return shiftIsoDate(todayDate(), 2)
   return fallbackDate
 }
 
@@ -96,7 +87,7 @@ export default function PlanningScreen() {
     if (hasFreePlan) return true
     return requirePro('free_limit')
   }
-  const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
+  const [selectedDate, setSelectedDate] = useState(() => todayDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   /** null: kapalı; 'new': yeni blok; blok: düzenleme. */
@@ -115,7 +106,7 @@ export default function PlanningScreen() {
   // 30sn'de bir tazelenir — aktif blok ve kalan süre canlı kalsın
   const now = useNow()
 
-  const todayStr = localIsoDate()
+  const todayStr = todayDate()
   const weekDays = getWeekDays(weekAnchor)
 
   // Seçili güne ait local takvim etkinlikleri

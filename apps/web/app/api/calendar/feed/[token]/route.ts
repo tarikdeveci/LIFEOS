@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto'
 // Kök '@lifeos/shared' React hook'larını da içeri alır; sunucu rotası alt yoldan okur
 import { BLOCK_TYPE_LABELS } from '@lifeos/shared/constants'
 import type { BlockType } from '@lifeos/shared/types'
+import { calendarDateInTimeZone, shiftIsoDate } from '@lifeos/shared/utils'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { addDays, buildCalendar, localDate, safeTimeZone, type FeedBlock } from '@/lib/calendar/ics'
+import { buildCalendar, safeTimeZone, type FeedBlock } from '@/lib/calendar/ics'
 
 // node:crypto ve service-role client gerektirir; her istek taze veri döner.
 export const runtime = 'nodejs'
@@ -77,13 +78,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const timeZone = safeTimeZone(prefs?.timezone)
 
   const now = new Date()
-  const today = localDate(now, timeZone)
+  const today = calendarDateInTimeZone(now, timeZone)
   const { data: rows, error: blocksError } = await admin
     .from('time_blocks')
     .select('id, date, start_time, end_time, block_type, label, completed_at, updated_at, task:tasks(title)')
     .eq('user_id', userId)
-    .gte('date', addDays(today, -PAST_DAYS))
-    .lte('date', addDays(today, FUTURE_DAYS))
+    .gte('date', shiftIsoDate(today, -PAST_DAYS))
+    .lte('date', shiftIsoDate(today, FUTURE_DAYS))
     .order('date')
     .order('start_time')
 
