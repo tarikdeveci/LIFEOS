@@ -20,6 +20,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
+import { Celebration, celebrate } from '@/src/components/Celebration'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
 const getStatusLabels = (t: any): Record<TaskStatus, string> => ({ backlog: t.misc_status_backlog, planned: t.misc_status_planned, in_progress: t.misc_status_in_progress, blocked: t.misc_status_blocked, done: t.misc_status_done, deferred: t.misc_status_deferred })
@@ -77,6 +78,7 @@ export default function TaskDetailScreen() {
   async function handleStatusChange(status: TaskStatus) {
     if (!task) return
     setSaving(true)
+    if (status === 'done' && task.status !== 'done') celebrate('modal')
     try {
       await setStatus(supabase, task.id, status)
       setTask((p) => p ? { ...p, status } : null)
@@ -438,6 +440,7 @@ export default function TaskDetailScreen() {
         </GlassCard>
 
       </ScrollView>
+      <Celebration scope="modal" />
     </ScreenBackground>
   )
 }

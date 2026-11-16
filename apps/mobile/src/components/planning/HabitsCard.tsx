@@ -9,6 +9,7 @@ import { RoutineSheet } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { celebrate } from '@/src/components/Celebration'
 
 interface Props { userId: string }
 
@@ -93,7 +94,10 @@ export function HabitsCard({ userId }: Props) {
             const tap = () => {
               const current = useRoutineStore.getState().completions
                 .find((c) => c.routine_id === h.id && c.completed_on === today)?.count ?? 0
-              void write(h.id, perDay ? current + 1 : current >= 1 ? 0 : 1)
+              const next = perDay ? current + 1 : current >= 1 ? 0 : 1
+              const goal = perDay ?? 1
+              if (current < goal && next >= goal) celebrate()
+              void write(h.id, next)
             }
             const counter = perDay ? `${count}/${perDay}` : `${week.done}/${week.target} ${t.habits_week}`
             const hint = linkedHint(h)

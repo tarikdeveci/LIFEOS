@@ -1,117 +1,17 @@
-import { Tabs, useRouter, usePathname } from 'expo-router'
-import { View, TouchableOpacity, Platform } from 'react-native'
-import { BlurView } from 'expo-blur'
-import Ionicons from '@expo/vector-icons/Ionicons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useTheme } from '@/src/contexts/ThemeContext'
+import { Tabs } from 'expo-router'
+import { useReducedMotion } from 'react-native-reanimated'
 import { useLang } from '@/src/contexts/LangContext'
 import { useWidgetSync } from '@/src/hooks/useWidgetSync'
 import { useBlockLiveActivity } from '@/src/hooks/useBlockLiveActivity'
 import { useRealtimeSync } from '@/src/hooks/useRealtimeSync'
 import { SwipeTabs } from '@/src/navigation/SwipeTabs'
-import { palette, radius } from '@/src/theme/tokens'
-
-const TABS = [
-  { segment: 'today',     label: 'tab_today',     icon: 'home-outline',             iconActive: 'home'             },
-  { segment: 'planning',  label: 'tab_planning',  icon: 'calendar-outline',         iconActive: 'calendar'         },
-  { segment: 'tasks',     label: 'tab_tasks',     icon: 'checkmark-circle-outline', iconActive: 'checkmark-circle' },
-  { segment: 'nutrition', label: 'tab_nutrition', icon: 'restaurant-outline',       iconActive: 'restaurant'       },
-  { segment: 'workout',   label: 'tab_workout',   icon: 'barbell-outline',          iconActive: 'barbell'          },
-] as const
+import { FloatingTabBar, TABS } from '@/src/navigation/FloatingTabBar'
 
 const TAB_SEGMENTS = TABS.map((tab) => tab.segment)
 
-function FloatingTabBar() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const { colors, isDark } = useTheme()
-  const { t } = useLang()
-  const insets = useSafeAreaInsets()
-  const bottomOffset = Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 28 : 16)
-
-  return (
-    <View
-      style={{
-        position: 'absolute',
-        bottom: bottomOffset,
-        left: 20,
-        right: 20,
-        height: 64,
-        borderRadius: radius.full,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: colors.tabBorder,
-        ...colors.shadowSoft,
-      }}
-    >
-      <BlurView intensity={isDark ? 50 : 70} tint={isDark ? 'dark' : 'light'} style={{ flex: 1 }}>
-        <View
-          style={{
-            flex: 1,
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 6,
-            backgroundColor: colors.tabBg,
-          }}
-        >
-          {/* Top shimmer */}
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 0, left: 20, right: 20, height: 1,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,1)',
-            }}
-          />
-
-          {TABS.map((tab) => {
-            const isFocused = pathname === `/${tab.segment}` || pathname.startsWith(`/${tab.segment}/`)
-            const activeColor = isDark ? palette.accent2 : palette.accent
-
-            return (
-              <TouchableOpacity
-                key={tab.segment}
-                onPress={() => router.push(`/(tabs)/${tab.segment}` as never)}
-                activeOpacity={0.7}
-                accessibilityRole="tab"
-                accessibilityLabel={t[tab.label]}
-                accessibilityState={{ selected: isFocused }}
-                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 52, borderRadius: 26 }}
-              >
-                {isFocused && (
-                  <View
-                    style={{
-                      position: 'absolute',
-                      width: 44, height: 44,
-                      borderRadius: 22,
-                      backgroundColor: `${activeColor}18`,
-                      borderWidth: 1,
-                      borderColor: `${activeColor}30`,
-                    }}
-                  />
-                )}
-                <Ionicons
-                  name={(isFocused ? tab.iconActive : tab.icon) as never}
-                  size={22}
-                  color={isFocused ? activeColor : colors.tabInactive}
-                />
-                <View
-                  style={{
-                    marginTop: 3, width: 4, height: 4, borderRadius: 2,
-                    backgroundColor: isFocused ? activeColor : 'transparent',
-                  }}
-                />
-              </TouchableOpacity>
-            )
-          })}
-        </View>
-      </BlurView>
-    </View>
-  )
-}
-
 export default function TabsLayout() {
   const { t } = useLang()
+  const reduceMotion = useReducedMotion()
 
   // Store değişimlerini ana ekran/kilit ekranı widget'larına yansıt
   useWidgetSync()
@@ -119,8 +19,12 @@ export default function TabsLayout() {
   useRealtimeSync()
 
   return (
-    <SwipeTabs segments={TAB_SEGMENTS}>
-    <Tabs tabBar={() => <FloatingTabBar />} backBehavior="fullHistory" screenOptions={{ headerShown: false }}>
+    <SwipeTabs segments={TAB_SEGMENTS} overlay={<FloatingTabBar />}>
+    <Tabs
+      tabBar={() => null}
+      backBehavior="fullHistory"
+      screenOptions={{ headerShown: false, animation: reduceMotion ? 'none' : 'shift' }}
+    >
       <Tabs.Screen name="today"     options={{ title: t.tab_today }} />
       <Tabs.Screen name="planning"  options={{ title: t.tab_planning }} />
       <Tabs.Screen name="tasks"     options={{ title: t.tab_tasks }} />
