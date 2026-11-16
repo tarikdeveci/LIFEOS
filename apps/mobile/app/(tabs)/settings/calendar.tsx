@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { View, Text, ScrollView, Switch, ActivityIndicator, Linking } from 'react-native'
 import * as Calendar from 'expo-calendar'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { BackButton } from '@/src/components/ui/BackButton'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
@@ -50,15 +50,8 @@ export default function CalendarSettingsScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-            {t.acc_calendar_sync}
-          </Text>
-        </View>
-
+      <ScreenHeader title={t.acc_calendar_sync} back />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         {/* Açıklama */}
         <GlassCard style={{ marginBottom: spacing[5] }}>
           <Text style={{ fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 }}>

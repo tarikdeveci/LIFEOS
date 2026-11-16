@@ -10,6 +10,7 @@ import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import { recordValueMoment } from '@/src/lib/review'
+import { ScreenHeader, HeaderIconButton } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -203,21 +204,18 @@ export default function TaskDetailScreen() {
 
   return (
     <ScreenBackground edges={['top']}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={goBack} hitSlop={hitSlopFor(64, 24)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Ionicons name="chevron-back" size={20} color={palette.accent} />
-          <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.misc_back}</Text>
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
-          {saving && <ActivityIndicator size="small" color={palette.accent} />}
-          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityRole="button" accessibilityLabel={t.misc_delete_task_a11y}>
-            <Ionicons name="trash-outline" size={20} color={palette.danger} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScreenHeader
+        title=""
+        back
+        onBack={goBack}
+        right={
+          <>
+            {saving && <ActivityIndicator size="small" color={palette.accent} />}
+            <HeaderIconButton icon="trash-outline" label={t.misc_delete_task_a11y} onPress={handleDelete} color={palette.danger} />
+          </>
+        }
+      />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
         <GlassCard>

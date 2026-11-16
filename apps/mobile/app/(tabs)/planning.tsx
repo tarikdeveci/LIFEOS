@@ -7,6 +7,7 @@ import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
 import { getDayPosition, shiftIsoDate, todayDate, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { Button } from '@/src/components/ui/Button'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { NowCard } from '@/src/components/planning/NowCard'
@@ -301,26 +302,11 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
 
   return (
     <ScreenBackground>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
-        showsVerticalScrollIndicator={false}
-        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
-        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
-        keyboardShouldPersistTaps="handled"
-        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
-        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
-        automaticallyAdjustKeyboardInsets
-        keyboardDismissMode="interactive"
-      >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-          <View>
-            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
-            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{dayTitle}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+      <ScreenHeader
+        title={t.plan_title}
+        subtitle={dayTitle}
+        right={
+          <>
             <TouchableOpacity onPress={openPlanning} disabled={isCheckingPro} accessibilityRole="button" accessibilityLabel={t.ritual_start} style={{ width: MIN_TOUCH, height: MIN_TOUCH, borderRadius: MIN_TOUCH / 2, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked || isViewingToday ? 1 : 0.55 }}>
               <Ionicons name={aiUnlocked || isViewingToday ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
               {hasFreePlan && freePlansLeft !== null && (
@@ -334,9 +320,22 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
               <Ionicons name="add" size={20} color="#fff" />
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.add}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
+          </>
+        }
+      />
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
+        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
+        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
+        keyboardShouldPersistTaps="handled"
+        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
+        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+      >
         <WeekStrip
           days={weekDays}
           selectedDate={selectedDate}

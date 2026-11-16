@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { useGoBack } from '@/src/navigation/useGoBack'
 import { equipmentLabel, useWorkoutStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { ExerciseImage } from '@/src/components/workout/ExerciseImage'
@@ -46,26 +47,12 @@ export default function ExerciseDetailScreen() {
   const sectionTitle = { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing[2] } as const
   const bodyText = { fontSize: fontSize.base, color: colors.textPrimary } as const
 
-  const header = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      <TouchableOpacity
-        onPress={goBack}
-        accessibilityRole="button"
-        hitSlop={8}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-      >
-        <Ionicons name="chevron-back" size={20} color={palette.accent} />
-        <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.back}</Text>
-      </TouchableOpacity>
-    </View>
-  )
-
   if (!exercise) {
     // Katalog hiç gelmediyse "bulunamadı" demek yanlış olur: ya yükleniyor ya da yüklenemedi.
     const loadFailed = exercises.length === 0 && !libraryLoading && !!error
     return (
       <ScreenBackground edges={['top']}>
-        {header}
+        <ScreenHeader title="" back onBack={goBack} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[3], padding: spacing[5] }}>
           {loadFailed ? (
             <>
@@ -93,8 +80,8 @@ export default function ExerciseDetailScreen() {
 
   return (
     <ScreenBackground edges={['top']}>
-      {header}
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
+      <ScreenHeader title="" back onBack={goBack} />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false}>
         <ExerciseImage
           uri={exercise.image_url}
           startUri={exercise.image_start_url}
