@@ -1365,6 +1365,7 @@ export type Database = {
           count: number
           created_at: string
           routine_id: string
+          source_block_ids: string[]
           user_id: string
         }
         Insert: {
@@ -1372,6 +1373,7 @@ export type Database = {
           count?: number
           created_at?: string
           routine_id: string
+          source_block_ids?: string[]
           user_id: string
         }
         Update: {
@@ -1379,6 +1381,7 @@ export type Database = {
           count?: number
           created_at?: string
           routine_id?: string
+          source_block_ids?: string[]
           user_id?: string
         }
         Relationships: [
@@ -1463,6 +1466,7 @@ export type Database = {
           every_n_weeks: number
           friction_score: number
           goal_id: string | null
+          habit_routine_id: string | null
           id: string
           is_active: boolean
           is_protected: boolean
@@ -1496,6 +1500,7 @@ export type Database = {
           every_n_weeks?: number
           friction_score?: number
           goal_id?: string | null
+          habit_routine_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1529,6 +1534,7 @@ export type Database = {
           every_n_weeks?: number
           friction_score?: number
           goal_id?: string | null
+          habit_routine_id?: string | null
           id?: string
           is_active?: boolean
           is_protected?: boolean
@@ -1555,6 +1561,13 @@ export type Database = {
             columns: ["goal_id"]
             isOneToOne: false
             referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routines_habit_routine_id_fkey"
+            columns: ["habit_routine_id"]
+            isOneToOne: false
+            referencedRelation: "routines"
             referencedColumns: ["id"]
           },
           {
