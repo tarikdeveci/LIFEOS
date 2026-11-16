@@ -16,6 +16,7 @@ import Animated, {
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, radius } from '@/src/theme/tokens'
+import { coachRef } from '@/src/onboarding/coach'
 
 export const TABS = [
   { segment: 'today',     label: 'tab_today',     icon: 'home-outline',             iconActive: 'home'             },
@@ -129,6 +130,8 @@ export function FloatingTabBar() {
 
   return (
     <View
+      ref={coachRef('tab_bar')}
+      collapsable={false}
       pointerEvents="box-none"
       style={{
         position: 'absolute',
