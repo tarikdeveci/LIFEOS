@@ -4,7 +4,10 @@ import { router } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
 import { useTaskStore, usePlanningStore, useNutritionStore, useRoutineStore, blockTiming, formatDuration, minutesOfDay, todayDate, calorieBudget } from '@lifeos/shared'
+import type { Task } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { ScreenHeader, HeaderIconButton } from '@/src/components/ui/ScreenHeader'
+import { TaskCheckbox } from '@/src/components/ui/TaskCheckbox'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
@@ -15,6 +18,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
+import { useTaskCompletion } from '@/src/hooks/useTaskCompletion'
 import { useProgramDays, withProgramDay } from '@/src/hooks/useProgramDays'
 import { useMinimumDay } from '@/src/hooks/useMinimumDay'
 import { dayPartKey } from '@/src/planning/dayPart'
@@ -79,6 +83,19 @@ export default function TodayScreen() {
   // Asgari günde korunmayan rutinin blok ve görevleri "Bugün kapalı" altına iner (081).
   const minDay = useMinimumDay(openTasks, dayBlocks)
   const todayTasks  = minDay.active.tasks
+  // Bugün'den tamamlanan görev listeden hemen düşmez: üstü çizili kalır, kutucuğa yeniden
+  // dokunmak geri alır. Ekran yeniden açılınca yalnızca açık görevler görünür.
+  const [justDone, setJustDone] = useState<string[]>([])
+  const justDoneTasks = useMemo(
+    () => tasks.filter((x) => justDone.includes(x.id) && x.scheduled_date === todayStr && x.status === 'done'),
+    [tasks, justDone, todayStr],
+  )
+  const completeTask = useTaskCompletion()
+  const toggleTask = useCallback(async (task: Task) => {
+    const done = task.status !== 'done'
+    if (done) setJustDone((ids) => (ids.includes(task.id) ? ids : [...ids, task.id]))
+    await completeTask(task, done)
+  }, [completeTask])
   const todayBlocks = minDay.active.blocks
   const programDays = useProgramDays(userId, todayBlocks)
   const plannedHours = Math.round(
@@ -134,38 +151,19 @@ export default function TodayScreen() {
 
   return (
     <ScreenBackground>
+      {/* Başlık sabit: içerik kayarken tarih ve Profil/Ayarlar yerinde durur. Profil solda,
+          Ayarlar sağda: iki düğme tarihin yanına yığılmıyor (kullanıcı isteği 2026-11-16). */}
+      <ScreenHeader
+        eyebrow={t.today}
+        title={dateLabel}
+        left={<HeaderIconButton icon="person-circle-outline" label={t.profile_button} onPress={() => router.push('/(tabs)/profile')} />}
+        right={<HeaderIconButton icon="settings-outline" label={t.settings_open} onPress={() => router.push('/(tabs)/settings' as never)} />}
+      />
       <ScrollView
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[6] }}>
-          <View>
-            <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 }}>{t.today}</Text>
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, marginTop: 2 }}>{dateLabel}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
-            <TouchableOpacity
-              onPress={() => router.push('/(tabs)/profile')}
-              accessibilityRole="button"
-              accessibilityLabel={t.profile_button}
-              style={{ minWidth: 44, height: 44, paddingHorizontal: spacing[3], borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', gap: spacing[1], alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="person-outline" size={18} color={colors.textMuted} />
-              <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textMuted }}>{t.profile_button}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push('/(tabs)/settings' as never)}
-              accessibilityRole="button"
-              accessibilityLabel={t.settings_open}
-              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Sağlık bağlı değilken tek satırlık tanıtım kartı (Guideline 2.5.1: HealthKit
             kullanımı izin öncesinde de ilk ekranda görünmeli). Bağlanınca veriler
             Profil'deki Aktivite ve Uyku kartında; anasayfa yalnızca sekme özetlerinden oluşur. */}
@@ -181,17 +179,29 @@ export default function TodayScreen() {
             <StatCard label={t.today_done_count} value={doneTasks} color={palette.success} />
             <StatCard label={t.today_planned_hours} value={`${plannedHours}${lang === 'en' ? 'h' : 's'}`} color={palette.warning} />
           </TouchableOpacity>
-          {todayTasks.slice(0, 3).map((task) => (
-            <TouchableOpacity key={task.id} onPress={() => router.push(`/task/${task.id}` as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], paddingVertical: 6 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.accent }} />
-              <Text style={{ flex: 1, fontSize: fontSize.base, color: colors.textSecondary }} numberOfLines={1}>{task.title}</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
-            </TouchableOpacity>
-          ))}
-          {todayTasks.length === 0 && (
+          {[...todayTasks.slice(0, 3), ...justDoneTasks].map((task) => {
+            const isDone = task.status === 'done'
+            return (
+              <TouchableOpacity
+                key={task.id}
+                onPress={() => router.push(`/task/${task.id}` as never)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], minHeight: MIN_TOUCH }}
+              >
+                <TaskCheckbox done={isDone} onToggle={() => void toggleTask(task)} />
+                <Text
+                  style={{ flex: 1, fontSize: fontSize.base, color: isDone ? colors.textMuted : colors.textSecondary, textDecorationLine: isDone ? 'line-through' : 'none' }}
+                  numberOfLines={1}
+                >
+                  {task.title}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textSubtle} />
+              </TouchableOpacity>
+            )
+          })}
+          {todayTasks.length === 0 && justDoneTasks.length === 0 && (
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_tasks}</Text>
           )}
-          {todayTasks.length === 0 && <NextTaskRow tasks={tasks} />}
+          {todayTasks.length === 0 && justDoneTasks.length === 0 && <NextTaskRow tasks={tasks} />}
         </GlassCard>
 
         {/* Planning */}
