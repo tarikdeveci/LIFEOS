@@ -10,6 +10,7 @@ import { RoutineSheet, WEEKDAY_ORDER } from '@/src/components/planning/RoutineSh
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
+import { dayPartKey } from '@/src/planning/dayPart'
 
 interface Props {
   userId: string
@@ -52,7 +53,7 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
       return r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
     }
     const days = WEEKDAY_ORDER.filter((d) => r.days_of_week.includes(d)).map((d) => names[d]).join(' ')
-    const time = r.start_time ? ` · ${r.start_time.slice(0, 5)}` : ''
+    const time = r.start_time ? ` · ${r.start_time.slice(0, 5)}` : r.day_part ? ` · ${t[dayPartKey(r.day_part)]}` : ''
     const every = r.every_n_weeks > 1 ? ` · ${t.routines_biweekly}` : ''
     return `${days}${time}${every}`
   }

@@ -118,6 +118,8 @@ Deno.serve(async () => {
     .is('notification_sent_at', null)
     // Erken bitirilen blok için hatırlatma gitmez.
     .is('completed_at', null)
+    // Gün bölümlü (yüzen) bloğun saati yer tutucudur; yanlış saatte hatırlatılmaz (084).
+    .is('day_part', null)
 
   if (error) {
     return new Response(`DB error: ${error.message}`, { status: 500 })

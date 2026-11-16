@@ -75,6 +75,9 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
       start_time: draft.start_time + ':00',
       end_time: draft.end_time + ':00',
       block_type: draft.block_type,
+      // Yüzen bloğa (084) saat verilince o gün için sabitlenir; yalnız ad değişirse yüzmeye devam eder.
+      ...(editing?.day_part && (draft.start_time !== editing.start_time.slice(0, 5) || draft.end_time !== editing.end_time.slice(0, 5))
+        && { day_part: null }),
     }
     setSaving(true)
     try {

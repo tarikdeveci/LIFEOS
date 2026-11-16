@@ -4,7 +4,7 @@
 export const formsEn = {
   plan_err_name_required: 'Enter a title',
   plan_err_pick_day: 'Pick at least one day',
-  plan_err_time_required: 'Enter a start and end time',
+  plan_err_time_required: 'Pick a time or a part of the day',
   plan_err_time_invalid: 'Times must be in HH:MM format',
   plan_err_end_after_start: 'Start and end time cannot be the same',
   plan_block_add_error: 'Could not add the block. Check your connection.',
@@ -74,7 +74,7 @@ export const formsEn = {
 export const formsTr: Record<keyof typeof formsEn, string> = {
   plan_err_name_required: 'Başlık gir',
   plan_err_pick_day: 'En az bir gün seç',
-  plan_err_time_required: 'Başlangıç ve bitiş saati gir',
+  plan_err_time_required: 'Saat ya da gün bölümü seç',
   plan_err_time_invalid: 'Saat SS:DD biçiminde olmalı',
   plan_err_end_after_start: 'Başlangıç ve bitiş saati aynı olamaz',
   plan_block_add_error: 'Blok eklenemedi. Bağlantını kontrol et.',

@@ -17,6 +17,7 @@ import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useNow } from '@/src/hooks/useNow'
 import { useProgramDays, withProgramDay } from '@/src/hooks/useProgramDays'
 import { useMinimumDay } from '@/src/hooks/useMinimumDay'
+import { dayPartKey } from '@/src/planning/dayPart'
 import { Button } from '@/src/components/ui/Button'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
@@ -232,7 +233,9 @@ export default function TodayScreen() {
                     )}
                   </View>
                   <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, fontVariant: ['tabular-nums'] }}>
+                    {block.day_part ? t[dayPartKey(block.day_part)] : (<>
                     {block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}
+                    </>)}
                     {isActive ? ` · ${formatDuration(timing.remainingMinutes, lang)} ${t.plan_remaining}` : ''}
                     {timing.phase === 'upcoming' && block.id === nextBlockId
                       ? ` · ${t.plan_starts_in.replace('{d}', formatDuration(timing.minutesUntilStart, lang))}`

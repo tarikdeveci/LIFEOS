@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
-import type { BlockType, CreateRoutineInput, Routine, RoutineDayOverride, RoutineKind, Weekday } from '@lifeos/shared'
+import type { BlockType, CreateRoutineInput, DayPart, Routine, RoutineDayOverride, RoutineKind, Weekday } from '@lifeos/shared'
 import { findSimilarRoutine, todayDate, useRoutineStore } from '@lifeos/shared'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
@@ -12,9 +12,10 @@ import { RoutineHabitPicker } from './RoutineHabitPicker'
 import { RoutineDayOverridesEditor, useRoutineDayOverrides } from './RoutineDayOverrides'
 import { toDayRows, toOverrides } from '@/src/planning/dayRows'
 import type { DayRows } from '@/src/planning/dayRows'
+import { DAY_PARTS, dayPartKey } from '@/src/planning/dayPart'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 /** Ekranda Pazartesi başlangıçlı sıra. */
 export const WEEKDAY_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0]
@@ -44,6 +45,10 @@ interface FormState {
   timesPerDay: string
   start: string
   end: string
+  /** Saat yerine gün bölümü (084); yalnız blok rutininde, doluysa saat alanları gizlenir. */
+  dayPart: DayPart | null
+  /** Gün bölümlü bloğun süresi (dk). */
+  minutes: string
   /** Bağlı hedef; blok rutininde yok. */
   goalId: string | null
   /** Bağlı antrenman programı; yalnız blok rutininde, seçilince blok türü workout olur. */
@@ -70,6 +75,8 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     timesPerDay: String(r?.times_per_day ?? 1),
     start: r?.start_time?.slice(0, 5) ?? (r ? '' : '09:00'),
     end: r?.end_time?.slice(0, 5) ?? (r ? '' : '10:00'),
+    dayPart: r?.day_part ?? null,
+    minutes: String(r?.estimated_minutes ?? 30),
     goalId: r?.goal_id ?? null,
     programId: r?.workout_program_id ?? null,
     habitId: r?.habit_routine_id ?? null,
@@ -83,7 +90,7 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
 type FormError =
   | 'plan_err_name_required' | 'plan_err_pick_day' | 'plan_err_time_required'
   | 'plan_err_time_invalid' | 'plan_err_end_after_start' | 'routines_err_per_week' | 'routines_err_per_day' | 'routines_err_min_minutes'
-  | 'routines_err_day_minutes'
+  | 'routines_err_day_minutes' | 'routines_err_block_minutes'
 
 /** Formu doğrular; hata varsa çeviri anahtarı, yoksa kayda hazır girdi döner. */
 function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRoutineInput | FormError {
@@ -102,12 +109,16 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     return { title, kind: 'habit', days_of_week: [], times_per_week: 7, times_per_day: n > 1 ? n : null, goal_id: f.goalId }
   }
   if (f.days.length === 0) return 'plan_err_pick_day'
-  const hasTime = f.start !== '' || f.end !== ''
-  if (f.kind === 'block' && !hasTime) return 'plan_err_time_required'
+  // Gün bölümlü blok saatsizdir; sunucu bölümün varsayılan başlangıcına yerleştirir.
+  const floating = f.kind === 'block' && f.dayPart !== null
+  const hasTime = !floating && (f.start !== '' || f.end !== '')
+  if (f.kind === 'block' && !floating && !hasTime) return 'plan_err_time_required'
   if (hasTime && (!TIME_RE.test(f.start) || !TIME_RE.test(f.end))) return 'plan_err_time_invalid'
   if (hasTime && f.end === f.start) return 'plan_err_end_after_start'
   const minMinutes = f.isProtected && f.minMinutes !== '' ? Number(f.minMinutes) : null
   if (minMinutes !== null && (!Number.isInteger(minMinutes) || minMinutes < 1 || minMinutes > 600)) return 'routines_err_min_minutes'
+  const blockMinutes = Number(f.minutes)
+  if (floating && (!Number.isInteger(blockMinutes) || blockMinutes < 5 || blockMinutes > 600)) return 'routines_err_block_minutes'
   const blockKind: BlockType = f.kind === 'block' && f.programId ? 'workout' : blockType
   return {
     title,
@@ -116,6 +127,8 @@ function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRout
     days_of_week: [...f.days].sort(),
     every_n_weeks: f.biweekly ? 2 : 1,
     ...(hasTime && { start_time: f.start, end_time: f.end }),
+    ...(floating && { start_time: null, end_time: null, estimated_minutes: blockMinutes }),
+    day_part: floating ? f.dayPart : null,
     // İki haftalık parite starts_on'a çapalı; düzenlemede eski çapa korunur.
     ...(isNew && { starts_on: todayDate() }),
     goal_id: f.kind === 'task' ? f.goalId : null,
@@ -151,6 +164,7 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
 
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
   const names = t.routines_day_names.split(',')
+  const floating = form.kind === 'block' && form.dayPart !== null
 
   const handleSave = async () => {
     const input = toInput(form, routine === null, routine?.block_type ?? 'routine')
@@ -252,10 +266,42 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
             <TouchableOpacity onPress={() => patch({ biweekly: !form.biweekly })} style={[chip(form.biweekly), { alignSelf: 'flex-start' }]}>
               <Text style={chipText(form.biweekly)}>{t.routines_biweekly}</Text>
             </TouchableOpacity>
+            {form.kind === 'block' && (
+              <TouchableOpacity
+                onPress={() => patch(floating
+                  ? { dayPart: null, start: form.start || '09:00', end: form.end || '10:00' }
+                  : { dayPart: 'morning' })}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: floating }}
+                style={[chip(floating), { alignSelf: 'flex-start' }]}
+              >
+                <Text style={chipText(floating)}>{t.routines_day_part_toggle}</Text>
+              </TouchableOpacity>
+            )}
+            {floating ? (
+              <>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
+                  {DAY_PARTS.map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => patch({ dayPart: p })}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: form.dayPart === p }}
+                      style={[chip(form.dayPart === p), { minHeight: MIN_TOUCH, justifyContent: 'center' }]}
+                    >
+                      <Text style={chipText(form.dayPart === p)}>{t[dayPartKey(p)]}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Input label={t.routines_block_minutes} value={form.minutes} keyboardType="number-pad"
+                  onChangeText={(v) => patch({ minutes: v.replace(/\D/g, '').slice(0, 3) })} />
+              </>
+            ) : (
             <View style={{ flexDirection: 'row', gap: spacing[3] }}>
               <TimeField label={t.routines_start} value={form.start} onChange={(v) => patch({ start: v })} defaultTime="09:00" onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
               <TimeField label={t.routines_end} value={form.end} onChange={(v) => patch({ end: v })} defaultTime={form.start || '10:00'} onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
             </View>
+            )}
             {form.kind === 'task' && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_time_optional}</Text>}
             {form.days.length > 1 && dayOverrides.status === 'ready' && (
               <TouchableOpacity

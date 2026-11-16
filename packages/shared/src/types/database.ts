@@ -1458,6 +1458,7 @@ export type Database = {
           block_type: Database["public"]["Enums"]["block_type"]
           color: string | null
           created_at: string
+          day_part: string | null
           days_of_week: number[]
           effort_score: number
           end_time: string | null
@@ -1492,6 +1493,7 @@ export type Database = {
           block_type?: Database["public"]["Enums"]["block_type"]
           color?: string | null
           created_at?: string
+          day_part?: string | null
           days_of_week?: number[]
           effort_score?: number
           end_time?: string | null
@@ -1526,6 +1528,7 @@ export type Database = {
           block_type?: Database["public"]["Enums"]["block_type"]
           color?: string | null
           created_at?: string
+          day_part?: string | null
           days_of_week?: number[]
           effort_score?: number
           end_time?: string | null
@@ -1842,6 +1845,7 @@ export type Database = {
           completed_at: string | null
           created_at: string | null
           date: string
+          day_part: string | null
           end_time: string
           google_event_id: string | null
           id: string
@@ -1865,6 +1869,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           date: string
+          day_part?: string | null
           end_time: string
           google_event_id?: string | null
           id?: string
@@ -1888,6 +1893,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           date?: string
+          day_part?: string | null
           end_time?: string
           google_event_id?: string | null
           id?: string
