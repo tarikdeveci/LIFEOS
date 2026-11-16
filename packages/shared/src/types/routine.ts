@@ -64,6 +64,17 @@ export interface RoutineCompletion {
   created_at: string
 }
 
+/**
+ * 082: seçili bir gün için farklı saat aralığı ya da yalnız farklı süre (biri dolu).
+ * Süre satırında blok şablonun başlangıcında başlar. Yazma set_routine_day_overrides RPC'si ile.
+ */
+export interface RoutineDayOverride {
+  day_of_week: Weekday
+  start_time: string | null
+  end_time: string | null
+  minutes: number | null
+}
+
 export interface CreateRoutineInput {
   title: string
   kind: RoutineKind

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
-import type { BlockType, CreateRoutineInput, Routine, RoutineKind, Weekday } from '@lifeos/shared'
+import type { BlockType, CreateRoutineInput, Routine, RoutineDayOverride, RoutineKind, Weekday } from '@lifeos/shared'
 import { findSimilarRoutine, todayDate, useRoutineStore } from '@lifeos/shared'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { Input } from '@/src/components/ui/Input'
@@ -8,6 +8,9 @@ import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
 import { TaskGoalPicker } from '@/src/components/tasks/TaskGoalPicker'
 import { RoutineProgramPicker } from './RoutineProgramPicker'
+import { RoutineDayOverridesEditor, useRoutineDayOverrides } from './RoutineDayOverrides'
+import { toDayRows, toOverrides } from '@/src/planning/dayRows'
+import type { DayRows } from '@/src/planning/dayRows'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -22,7 +25,8 @@ interface Props {
   /** null = yeni rutin */
   routine: Routine | null
   onClose: () => void
-  onSave: (input: CreateRoutineInput) => Promise<void>
+  /** overrides: güne göre saatler (082); undefined = dokunma, [] = hepsini kaldır. */
+  onSave: (input: CreateRoutineInput, overrides?: RoutineDayOverride[]) => Promise<void>
   onDelete?: () => Promise<void>
   /** Yeni rutinde seçili gelen tür (alışkanlık kartından açılınca 'habit'). */
   defaultKind?: RoutineKind
@@ -47,6 +51,9 @@ interface FormState {
   isProtected: boolean
   /** Asgari günde gösterilen süre (dk); boş = blok süresi. */
   minMinutes: string
+  /** "Günlere göre farklı" açık mı; satırlar kayıtlı override'lardan dolar. */
+  perDay: boolean
+  dayRows: DayRows
 }
 
 function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
@@ -64,12 +71,15 @@ function toForm(r: Routine | null, defaultKind: RoutineKind): FormState {
     programId: r?.workout_program_id ?? null,
     isProtected: r?.is_protected ?? false,
     minMinutes: r?.min_minutes ? String(r.min_minutes) : '',
+    perDay: false,
+    dayRows: {},
   }
 }
 
 type FormError =
   | 'plan_err_name_required' | 'plan_err_pick_day' | 'plan_err_time_required'
   | 'plan_err_time_invalid' | 'plan_err_end_after_start' | 'routines_err_per_week' | 'routines_err_per_day' | 'routines_err_min_minutes'
+  | 'routines_err_day_minutes'
 
 /** Formu doğrular; hata varsa çeviri anahtarı, yoksa kayda hazır girdi döner. */
 function toInput(f: FormState, isNew: boolean, blockType: BlockType): CreateRoutineInput | FormError {
@@ -119,6 +129,7 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
   // Hata ve benzer rutin uyarısı formun içinde görünür (UX 2: bilgi için Alert açılmaz).
   const [notice, setNotice] = useState<{ text: string; warn: boolean } | null>(null)
   const [warnedId, setWarnedId] = useState<string | null>(null)
+  const dayOverrides = useRoutineDayOverrides(routine, visible)
 
   useEffect(() => {
     if (!visible) return
@@ -127,12 +138,26 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
     setWarnedId(null)
   }, [visible, routine, defaultKind])
 
+  // Kayıtlı satırlar gelince form onlarla açılır; yoksa anahtar kapalı kalır.
+  useEffect(() => {
+    if (!visible || dayOverrides.status !== 'ready' || dayOverrides.overrides.length === 0) return
+    setForm((f) => ({ ...f, perDay: true, dayRows: toDayRows(dayOverrides.overrides) }))
+  }, [visible, dayOverrides])
+
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
   const names = t.routines_day_names.split(',')
 
   const handleSave = async () => {
     const input = toInput(form, routine === null, routine?.block_type ?? 'routine')
     if (typeof input === 'string') { setNotice({ text: t[input], warn: false }); return }
+    // Yüklenemediyse ya da hâlâ yükleniyorsa kayıtlı satırlara dokunulmaz.
+    let overrides: RoutineDayOverride[] | undefined
+    if (form.kind !== 'habit' && dayOverrides.status === 'ready') {
+      const days = input.days_of_week ?? []
+      const next = form.perDay ? toOverrides(form.dayRows, days) : []
+      if (typeof next === 'string') { setNotice({ text: t[next], warn: false }); return }
+      overrides = next.length > 0 || dayOverrides.overrides.length > 0 ? next : undefined
+    }
     // Aynı iş iki kez girilmesin: benzer rutin varsa önce söylenir, ikinci Kaydet yine kaydeder.
     const similar = findSimilarRoutine(input, useRoutineStore.getState().routines, routine?.id ?? null)
     if (similar && similar.id !== warnedId) {
@@ -142,7 +167,7 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
     }
     setNotice(null)
     setSaving(true)
-    try { await onSave(input); onClose() }
+    try { await onSave(input, overrides); onClose() }
     catch { setNotice({ text: t.routines_error, warn: false }) }
     finally { setSaving(false) }
   }
@@ -227,6 +252,28 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
               <TimeField label={t.routines_end} value={form.end} onChange={(v) => patch({ end: v })} defaultTime={form.start || '10:00'} onClear={form.kind === 'task' ? () => patch({ start: '', end: '' }) : undefined} containerStyle={{ flex: 1 }} />
             </View>
             {form.kind === 'task' && <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_time_optional}</Text>}
+            {form.days.length > 1 && dayOverrides.status === 'ready' && (
+              <TouchableOpacity
+                onPress={() => patch({ perDay: !form.perDay })}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: form.perDay }}
+                style={[chip(form.perDay), { alignSelf: 'flex-start' }]}
+              >
+                <Text style={chipText(form.perDay)}>{t.routines_per_day}</Text>
+              </TouchableOpacity>
+            )}
+            {dayOverrides.status === 'error' && (
+              <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.routines_per_day_load_error}</Text>
+            )}
+            {form.perDay && form.days.length > 1 && dayOverrides.status === 'ready' && (
+              <RoutineDayOverridesEditor
+                days={WEEKDAY_ORDER.filter((d) => form.days.includes(d))}
+                rows={form.dayRows}
+                onChange={(dayRows) => patch({ dayRows })}
+                start={form.start}
+                end={form.end}
+              />
+            )}
             <TouchableOpacity
               onPress={() => patch({ isProtected: !form.isProtected })}
               accessibilityRole="switch"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import type { CreateRoutineInput, Routine } from '@lifeos/shared'
+import type { CreateRoutineInput, Routine, RoutineDayOverride } from '@lifeos/shared'
 import { useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { GlassCard } from '@/src/components/ui/GlassCard'
@@ -57,13 +57,13 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
     return `${days}${time}${every}`
   }
 
-  const handleSave = async (input: CreateRoutineInput) => {
+  const handleSave = async (input: CreateRoutineInput, overrides?: RoutineDayOverride[]) => {
     if (editing) {
-      await updateSeries(supabase, editing.id, input)
+      await updateSeries(supabase, editing.id, input, undefined, overrides)
       onChanged()
     } else {
       // Kaydet yalnız şablon yazımını bekler; örnekler arka planda üretilir, bitince gün yenilenir.
-      await addRoutine(supabase, userId, input, onChanged)
+      await addRoutine(supabase, userId, input, onChanged, overrides)
     }
   }
 
