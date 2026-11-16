@@ -39,6 +39,8 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useKeyboardScrollIntoView } from '@/src/hooks/useKeyboardScrollIntoView'
 import { useProGate } from '@/src/hooks/useProGate'
+import { useAiHint } from '@/src/hooks/useAiHint'
+import { AiHint } from '@/src/components/ai/AiHint'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 /** ai-suggest'in beslenme koçundan dönen aksiyon. */
@@ -69,7 +71,7 @@ export default function NutritionScreen() {
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const scrollRef = useKeyboardScrollIntoView()
-  const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal } = useNutritionStore()
+  const { meals, target, dailySummary, fetchDayNutrition, addMeal, editMeal, removeMeal, error: nutritionError } = useNutritionStore()
 
   const MEAL_TYPES: { key: MealType; label: string }[] = [
     { key: 'breakfast', label: t.nutr_breakfast },
@@ -80,6 +82,8 @@ export default function NutritionScreen() {
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [refreshing, setRefreshing] = useState(false)
+  // İlk okuma bitmeden gün boş görünür; ipucu o arada çıkmasın.
+  const [loaded, setLoaded] = useState(false)
 
   // Add modal
   const [showAdd, setShowAdd] = useState(false)
@@ -153,7 +157,7 @@ export default function NutritionScreen() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) { setUserId(data.user.id); void load(data.user.id) }
+      if (data.user) { setUserId(data.user.id); void load(data.user.id).finally(() => setLoaded(true)) }
     })
   }, [load])
 
@@ -625,6 +629,8 @@ export default function NutritionScreen() {
   function handleChat() { void sendChat(chatInput) }
 
   const todayMeals = meals.filter((m) => m.date === todayStr)
+  // Gün boşken tek cümleyle öğün yazmak AI sohbetinin en çok işe yaradığı an.
+  const mealHint = useAiHint('nutrition', loaded && !nutritionError && todayMeals.length === 0)
   const totalCal   = dailySummary?.calories ?? todayMeals.reduce((s, m) => s + (m.total_calories ?? 0), 0)
   const totalProt  = dailySummary?.protein  ?? todayMeals.reduce((s, m) => s + (m.total_protein ?? 0), 0)
   const totalCarbs = dailySummary?.carbs    ?? todayMeals.reduce((s, m) => s + (m.total_carbs ?? 0), 0)
@@ -663,6 +669,10 @@ export default function NutritionScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {mealHint.visible && (
+          <AiHint text={t.ai_hint_nutrition} onClose={mealHint.close} onPress={() => { mealHint.use(); if (requirePro('nutrition_chat')) setShowChat(true) }} />
+        )}
 
         {/* Summary */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
