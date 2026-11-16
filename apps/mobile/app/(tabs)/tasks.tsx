@@ -24,6 +24,7 @@ import { useLang } from '@/src/contexts/LangContext'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useProGate } from '@/src/hooks/useProGate'
 import { useAiHint } from '@/src/hooks/useAiHint'
+import { useTaskCompletion } from '@/src/hooks/useTaskCompletion'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
 import { PriorityLabel } from '@/src/components/tasks/PriorityLabel'
 
@@ -57,7 +58,7 @@ export default function TasksScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { tasks, fetchTasks, addTask, setStatus, error: tasksError } = useTaskStore()
+  const { tasks, fetchTasks, addTask, error: tasksError } = useTaskStore()
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('today')
   const [showAdd, setShowAdd] = useState(false)
@@ -138,13 +139,10 @@ export default function TasksScreen() {
 
   // Kartın üstünden tamamlama. Detay ekranına girmeden bitirilemiyordu; bir
   // görevi kapatmak üç dokunuş + iki ekran geçişi demekti, kimse yapmıyordu.
+  const completeTask = useTaskCompletion()
   const handleToggle = useCallback(async (task: Task) => {
-    try {
-      await setStatus(supabase, task.id, task.status === 'done' ? 'planned' : 'done')
-    } catch {
-      Alert.alert(t.task_save_failed, t.task_status_error)
-    }
-  }, [setStatus])
+    await completeTask(task)
+  }, [completeTask])
 
   const quickPreview = useMemo(() => {
     if (!draft.title.trim()) return null

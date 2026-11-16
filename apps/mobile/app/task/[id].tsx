@@ -84,6 +84,9 @@ export default function TaskDetailScreen() {
       // sayılıyordu ama yalnızca beslenme sekmesinde: görev/plan için gelen
       // kullanıcıya hiç puan sorulmuyordu. Beklenmez, kaydı geciktirmemeli.
       if (status === 'done') void recordValueMoment()
+    } catch {
+      // Store eski durumu geri yükledi; sessiz kalırsa kullanıcı görevi bitti sanar.
+      Alert.alert(t.task_save_failed, t.task_status_error)
     } finally { setSaving(false) }
   }
 
@@ -233,6 +236,16 @@ export default function TaskDetailScreen() {
             </TouchableOpacity>
           )}
         </GlassCard>
+
+        {/* Tamamlama ekranın birincil eylemi: durum çipleri arasında aranmıyor (kullanıcı isteği 2026-11-16). */}
+        <Button
+          label={task.status === 'done' ? t.misc_uncheck_done : t.misc_check_done}
+          icon={task.status === 'done' ? 'arrow-undo-outline' : 'checkmark-circle'}
+          variant={task.status === 'done' ? 'secondary' : 'primary'}
+          onPress={() => void handleStatusChange(task.status === 'done' ? 'planned' : 'done')}
+          disabled={saving}
+          fullWidth
+        />
 
         {/* Priority score */}
         <GlassCard>
