@@ -21,6 +21,7 @@ import { CreateProgramSheet } from '@/src/components/workout/CreateProgramSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { AiChatSheet } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -156,22 +157,22 @@ export default function WorkoutScreen() {
 
   return (
     <ScreenBackground>
+      <ScreenHeader
+        title={t.work_title}
+        right={
+          tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' ? (
+            <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
+              <Ionicons name="search-outline" size={14} color={palette.workout} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.wk_add_exercise_btn}</Text>
+            </TouchableOpacity>
+          ) : undefined
+        }
+      />
       <ScrollView
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.workout} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.work_title}</Text>
-          {tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' && (
-            <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
-              <Ionicons name="search-outline" size={14} color={palette.workout} />
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.wk_add_exercise_btn}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* Tabs */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[5] }}>
           {TABS.map((t) => (

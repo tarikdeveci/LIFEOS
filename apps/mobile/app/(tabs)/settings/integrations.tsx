@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, Alert, Platform } from 'react-native'
-import { BackButton } from '@/src/components/ui/BackButton'
 import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import type { Integration, IntegrationProvider } from '@lifeos/shared'
 import { deleteIntegration, getIntegrations, importExternalTasks } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { readOpenReminders } from '@/src/utils/remindersImport'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
@@ -142,12 +142,9 @@ export default function IntegrationsScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}
+      <ScreenHeader title={t.integ_title} back />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[2] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.integ_title}</Text>
-        </View>
         <Text style={[hint, { marginBottom: spacing[5] }]}>{t.integ_subtitle}</Text>
 
         <GlassCard style={{ marginBottom: spacing[4] }}>

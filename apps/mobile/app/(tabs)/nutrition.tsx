@@ -30,6 +30,7 @@ import { Button } from '@/src/components/ui/Button'
 import { ProgressBar } from '@/src/components/ui/ProgressBar'
 import { StatCard } from '@/src/components/ui/StatCard'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { FoodChoiceAmount } from '@/src/components/nutrition/FoodChoiceAmount'
 import { portionRungLabel } from '@/src/utils/portionRung'
 import { ManualMacroForm } from '@/src/components/nutrition/ManualMacroForm'
@@ -651,25 +652,25 @@ export default function NutritionScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.nutr_title}</Text>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+      <ScreenHeader
+        title={t.nutr_title}
+        right={
+          <>
             <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
               <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
-          </View>
-        </View>
-
+          </>
+        }
+      />
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
         {mealHint.visible && (
           <AiHint text={t.ai_hint_nutrition} onClose={mealHint.close} onPress={() => { mealHint.use(); if (requirePro('nutrition_chat')) setShowChat(true) }} />
         )}

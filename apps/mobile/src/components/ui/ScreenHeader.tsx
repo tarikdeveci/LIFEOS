@@ -9,6 +9,8 @@ interface ScreenHeaderProps {
   title: string
   /** Başlığın üstünde küçük üst satır (ör. "Bugün" ve altında tarih). */
   eyebrow?: string
+  /** Başlığın altında küçük açıklama (ör. seçili gün). */
+  subtitle?: string
   /** Ana sekme dışındaki ekranlarda sol üstte geri düğmesi (UX.md 1). */
   back?: boolean
   /** Geri dönmeden önce iş yapan ekranlar için `BackButton onPress`. */
@@ -25,7 +27,7 @@ interface ScreenHeaderProps {
  * Ekranın sabit üst bandı. Kaydırılan içeriğin dışında, `ScrollView`'un kardeşi olarak
  * çizilir: içerik kayarken başlık ve eylemler yerinde durur (kullanıcı isteği 2026-11-16).
  */
-export function ScreenHeader({ title, eyebrow, back, onBack, left, right, children }: ScreenHeaderProps) {
+export function ScreenHeader({ title, eyebrow, subtitle, back, onBack, left, right, children }: ScreenHeaderProps) {
   const { colors } = useTheme()
   return (
     <View
@@ -56,6 +58,11 @@ export function ScreenHeader({ title, eyebrow, back, onBack, left, right, childr
           >
             {title}
           </Text>
+          {subtitle ? (
+            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {right ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>{right}</View> : null}
       </View>
