@@ -154,13 +154,17 @@ export default function TodayScreen() {
 
   return (
     <ScreenBackground>
-      {/* Başlık sabit: içerik kayarken tarih ve Profil/Ayarlar yerinde durur. Profil solda,
-          Ayarlar sağda: iki düğme tarihin yanına yığılmıyor (kullanıcı isteği 2026-11-16). */}
+      {/* Başlık sabit: içerik kayarken tarih ve Profil/Ayarlar yerinde durur. Solda tarih,
+          sağda Profil ve Ayarlar: diğer sekmelerin başlıklarıyla aynı düzen (kullanıcı isteği 2026-11-16). */}
       <ScreenHeader
         eyebrow={t.today}
         title={dateLabel}
-        left={<HeaderIconButton icon="person-circle-outline" label={t.profile_button} onPress={() => router.push('/(tabs)/profile')} />}
-        right={<CoachTarget id="today_settings"><HeaderIconButton icon="settings-outline" label={t.settings_open} onPress={() => router.push('/(tabs)/settings' as never)} /></CoachTarget>}
+        right={
+          <>
+            <HeaderIconButton icon="person-circle-outline" label={t.profile_button} onPress={() => router.push('/(tabs)/profile')} />
+            <CoachTarget id="today_settings"><HeaderIconButton icon="settings-outline" label={t.settings_open} onPress={() => router.push('/(tabs)/settings' as never)} /></CoachTarget>
+          </>
+        }
       />
       <ScrollView
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
