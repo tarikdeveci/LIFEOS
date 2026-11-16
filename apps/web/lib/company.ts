@@ -37,4 +37,3 @@ export const company = {
   lastUpdated: '2026-10-28',
 } as const
 
-export type Company = typeof company

@@ -121,17 +121,6 @@ export interface UpdateWorkoutSetInput {
   completed?: boolean
 }
 
-export interface DailyWorkoutSummary {
-  date: string
-  workout_id: string | null
-  status: WorkoutStatus | null
-  total_sets: number
-  completed_sets: number
-  duration_minutes: number | null
-  calories_burned: number | null
-  muscle_groups_worked: string[]
-}
-
 // Workout Programs
 export interface WorkoutProgram {
   id: string

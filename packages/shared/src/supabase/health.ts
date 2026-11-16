@@ -59,23 +59,6 @@ export async function upsertHealthDaily(
   if (error) throw error
 }
 
-/** Tek günün özeti; kayıt yoksa null */
-export async function getHealthDay(
-  supabase: Supabase,
-  userId: string,
-  date: string = todayDate(),
-): Promise<HealthDaily | null> {
-  const { data, error } = await supabase
-    .from('health_daily')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('date', date)
-    .maybeSingle()
-
-  if (error) throw error
-  return (data as HealthDaily | null) ?? null
-}
-
 /**
  * Son `days` günün özetleri, tarihe göre artan sıralı.
  * Taban çizgisi (dinlenme nabzı) ve trend hesapları için kullanılır.

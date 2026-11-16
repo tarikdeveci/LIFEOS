@@ -175,20 +175,6 @@ export interface MacroProgress {
   status: 'low' | 'ok' | 'over'  // < 80%: low, 80-110%: ok, > 110%: over
 }
 
-export interface DailyNutritionSummary {
-  date: string
-  totals: Macros
-  target: NutritionTarget | null
-  progress: {
-    calories: MacroProgress
-    protein: MacroProgress
-    carbs: MacroProgress
-    fat: MacroProgress
-    fiber: MacroProgress
-  }
-  meals: Meal[]
-}
-
 // parse-meal edge function yanıtı
 export interface ParseMealResponse {
   items: MealItem[]
