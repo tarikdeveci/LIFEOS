@@ -250,14 +250,6 @@ export async function updateTaskStatus(
   return updateTask(supabase, taskId, updates)
 }
 
-export async function getTasksByDate(
-  supabase: Supabase,
-  userId: string,
-  date: string,
-): Promise<Task[]> {
-  return getTasks(supabase, userId, { scheduled_date: date })
-}
-
 export async function getBacklogTasks(supabase: Supabase, userId: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
@@ -281,33 +273,6 @@ export async function reorderTasks(
       if (error) throw error
     }),
   )
-}
-
-export async function getSubtasks(supabase: Supabase, parentTaskId: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('parent_task_id', parentTaskId)
-    .order('sort_order')
-
-  if (error) throw error
-  return data as unknown as Task[]
-}
-
-// Realtime subscription helper
-export function subscribeToTasks(
-  supabase: Supabase,
-  userId: string,
-  callback: (event: { eventType: string; new: unknown; old: unknown }) => void,
-) {
-  return supabase
-    .channel(`tasks:${userId}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${userId}` },
-      callback,
-    )
-    .subscribe()
 }
 
 // 7 günlük görev istatistiği — haftalık chart için

@@ -241,20 +241,3 @@ export async function restorePurchases(expectedUserId: string): Promise<RestoreO
   }
 }
 
-export async function presentPaywall(): Promise<'purchased' | 'restored' | 'cancelled' | 'error'> {
-  try {
-    const mod = await import('react-native-purchases-ui').catch(() => null)
-    if (!mod) return 'error'
-
-    const { PAYWALL_RESULT } = mod
-    const result = await mod.default.presentPaywallIfNeeded({
-      requiredEntitlementIdentifier: 'pro',
-    })
-
-    if (result === PAYWALL_RESULT.PURCHASED) return 'purchased'
-    if (result === PAYWALL_RESULT.RESTORED) return 'restored'
-    return 'cancelled'
-  } catch {
-    return 'error'
-  }
-}

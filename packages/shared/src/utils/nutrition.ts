@@ -13,14 +13,6 @@ export type ActivityLevel =
 
 export type FitnessGoal = 'general' | 'muscle_gain' | 'fat_loss'
 
-export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
-  sedentary: '🪑 Hareketsiz (Masabaşı)',
-  lightly_active: '🚶 Hafif Aktif (1-3 gün)',
-  moderately_active: '🏃 Orta Aktif (3-5 gün)',
-  very_active: '💪 Çok Aktif (6-7 gün)',
-  extra_active: '🔥 Ekstra Aktif (2x/gün)',
-}
-
 const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
   sedentary: 1.2,
   lightly_active: 1.375,
@@ -126,39 +118,6 @@ export function compareMacrosToTarget(
     fiber: calculateMacroProgress(totals.fiber, target.fiber),
   }
 }
-
-/**
- * Kalori kalan hesapla
- */
-export function remainingCalories(currentCalories: number, targetCalories: number): number {
-  return Math.max(0, targetCalories - currentCalories)
-}
-
-/**
- * Makro değerlerini topla
- */
-export function sumMacros(items: Macros[]): Macros {
-  return items.reduce(
-    (acc, item) => ({
-      calories: acc.calories + item.calories,
-      protein: acc.protein + item.protein,
-      carbs: acc.carbs + item.carbs,
-      fat: acc.fat + item.fat,
-      fiber: acc.fiber + item.fiber,
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-  )
-}
-
-/**
- * Gram → kalori dönüştürücüler (Atwater faktörleri)
- */
-export const KCAL_PER_G = {
-  protein: 4,
-  carbs: 4,
-  fat: 9,
-  fiber: 2,
-} as const
 
 // ============================
 // Kalem miktarını elle değiştirme

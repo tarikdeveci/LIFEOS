@@ -33,17 +33,3 @@ export interface UserPreferences {
   planning?: Partial<PlanningRules>
 }
 
-export interface UserProfile {
-  id: string // auth.users.id ile aynı
-  display_name: string | null
-  timezone: string // IANA timezone: 'Europe/Istanbul'
-  preferences: UserPreferences
-  created_at: string
-  updated_at: string
-}
-
-export interface UpdateProfileInput {
-  display_name?: string
-  timezone?: string
-  preferences?: Partial<UserPreferences>
-}

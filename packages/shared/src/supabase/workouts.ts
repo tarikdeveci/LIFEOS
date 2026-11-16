@@ -129,19 +129,6 @@ export async function deleteWorkout(supabase: Supabase, workoutId: string): Prom
 // Antrenman Setleri
 // -------------------------------------------------------
 
-export async function getWorkoutSets(
-  supabase: Supabase,
-  workoutId: string,
-): Promise<WorkoutSet[]> {
-  const { data, error } = await supabase
-    .from('workout_sets')
-    .select('*, exercise:exercises(*, muscle_group:muscle_groups(*))')
-    .eq('workout_id', workoutId)
-    .order('set_number', { ascending: true })
-  if (error) throw error
-  return data as WorkoutSet[]
-}
-
 export async function addWorkoutSet(
   supabase: Supabase,
   input: CreateWorkoutSetInput,
@@ -341,11 +328,6 @@ export async function createProgramDay(
 
   if (error) throw error
   return data as ProgramDay
-}
-
-export async function deleteProgramDay(supabase: Supabase, dayId: string): Promise<void> {
-  const { error } = await supabase.from('program_days').delete().eq('id', dayId)
-  if (error) throw error
 }
 
 /** Gün içindeki hareket. order_index çağıran tarafından verilir: sıra kullanıcının. */

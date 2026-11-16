@@ -18,11 +18,6 @@ export function callbackUri(req: Request, slug: string): string {
   return `${base.replace(/\/$/, '')}/api/integrations/${slug}/callback`
 }
 
-/** OAuth bitince dönülecek yerler; başka adrese yönlendirme kabul edilmez. */
-export function returnTarget(platform: 'web' | 'mobile', slug: string): string {
-  return platform === 'mobile' ? `lifeos://integrations/${slug}` : '/settings'
-}
-
 /**
  * Web akışında yetki dönüşü, bağlantıyı başlatan kullanıcının oturumunu taşıyan tarayıcıda
  * bitmeli: state tek başına tarayıcıya bağlı değil, başkasına gönderilen yetki adresi onun
