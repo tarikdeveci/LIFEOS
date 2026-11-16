@@ -38,7 +38,7 @@ export default function TaskDetailScreen() {
   const goBack = useGoBack()
   const { colors } = useTheme()
   const [userId, setUserId] = useState<string | null>(null)
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
@@ -419,7 +419,7 @@ export default function TaskDetailScreen() {
             )}
             {userId && <TaskGoalPicker userId={userId} goalId={task.goal_id ?? null} onChange={(g) => void handleGoal(g)} />}
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>
-              {t.misc_created}: {new Date(task.created_at).toLocaleDateString('tr-TR')}
+              {t.misc_created}: {new Date(task.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
             </Text>
           </View>
         </GlassCard>

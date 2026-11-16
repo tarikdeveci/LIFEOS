@@ -16,7 +16,7 @@ import { requestOrOpenSettings } from '@/src/utils/permissions'
 
 export default function CalendarSettingsScreen() {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const {
     availableCalendars,
@@ -45,7 +45,7 @@ export default function CalendarSettingsScreen() {
   }
 
   const lastSyncText = lastSyncedAt
-    ? new Date(lastSyncedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
+    ? new Date(lastSyncedAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
     : t.acc_not_synced_yet
 
   return (
