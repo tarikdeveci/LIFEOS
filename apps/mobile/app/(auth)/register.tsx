@@ -23,7 +23,7 @@ export default function RegisterScreen() {
   const { reason } = useLocalSearchParams<{ reason?: string }>()
   const { userId, session } = useAuth()
   const flow = useUpgradeFlow()
-  const scrollRef = useKeyboardScrollIntoView()
+  const scrollRef = useKeyboardScrollIntoView({ revealFormEnd: true })
   const { stage, upgraded } = flow
 
   const leave = useCallback(async () => {

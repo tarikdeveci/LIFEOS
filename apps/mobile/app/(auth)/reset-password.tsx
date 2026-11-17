@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Alert, Text, View } from 'react-native'
+import { Alert, ScrollView, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { Button } from '@/src/components/ui/Button'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { useKeyboardScrollIntoView } from '@/src/hooks/useKeyboardScrollIntoView'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { supabase } from '@/src/lib/supabase'
@@ -17,6 +18,7 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [loading, setLoading] = useState(false)
+  const scrollRef = useKeyboardScrollIntoView({ revealFormEnd: true })
 
   async function updatePassword() {
     if (password.length < 8) {
@@ -43,7 +45,13 @@ export default function ResetPasswordScreen() {
 
   return (
     <ScreenBackground edges={['top', 'bottom']}>
-      <View style={{ flex: 1, justifyContent: 'center', padding: spacing[5] }}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: spacing[5] }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.acc_create_new_password}</Text>
           <Text style={{ marginTop: spacing[2], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20 }}>{t.acc_create_new_password_desc}</Text>
@@ -53,7 +61,7 @@ export default function ResetPasswordScreen() {
             <Button label={loading ? t.acc_updating : t.acc_update_password} onPress={updatePassword} loading={loading} fullWidth style={{ marginTop: spacing[2] }} />
           </View>
         </GlassCard>
-      </View>
+      </ScrollView>
     </ScreenBackground>
   )
 }

@@ -32,7 +32,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [resetCooldown, setResetCooldown] = useState(0)
-  const scrollRef = useKeyboardScrollIntoView()
+  const scrollRef = useKeyboardScrollIntoView({ revealFormEnd: true })
 
   useEffect(() => {
     if (resetCooldown <= 0) return
