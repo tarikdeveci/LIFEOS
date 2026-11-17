@@ -4,6 +4,7 @@ import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { PRIVACY_URL, openLegalPage } from '@/src/lib/legal'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
 
 /** Dokunma alanı alt sınırı (DESIGN.md): metin bağlantıları da bu yükseklikte. */
@@ -41,6 +42,25 @@ function LinkButton({ label, onPress, disabled }: { label: string; onPress: () =
   )
 }
 
+/** Hesap açılırken gizlilik metni görünür ve açılabilir (KVKK aydınlatma, persona turu 2026-11-17). */
+function PrivacyConsent() {
+  const { t } = useLang()
+  const { colors } = useTheme()
+  return (
+    <TouchableOpacity
+      onPress={() => openLegalPage(PRIVACY_URL)}
+      accessibilityRole="link"
+      style={{ minHeight: MIN_TOUCH, justifyContent: 'center', marginTop: spacing[2] }}
+    >
+      <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center' }}>
+        {t.upgrade_consent_before}
+        <Text style={{ color: palette.accent, fontWeight: fontWeight.semibold, textDecorationLine: 'underline' }}>{t.upgrade_consent_link}</Text>
+        {t.upgrade_consent_after}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
 interface FormStepProps extends MessageProps {
   busy: boolean
   emailTaken: boolean
@@ -64,6 +84,7 @@ export function UpgradeFormStep({ busy, error, emailTaken, initialEmail, onSubmi
       <Input label={t.acc_password} value={password} onChangeText={setPassword} secureTextEntry placeholder={t.acc_password_min_placeholder} containerStyle={{ marginBottom: spacing[4] }} onSubmitEditing={submit} returnKeyType="done" />
       <Messages error={error} />
       <Button label={t.upgrade_send_code} onPress={submit} loading={busy} disabled={!ready} fullWidth />
+      <PrivacyConsent />
       {emailTaken && <LinkButton label={t.upgrade_sign_in_instead} onPress={onSignIn} />}
     </>
   )

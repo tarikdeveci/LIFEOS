@@ -18,11 +18,10 @@ import { track } from '@lifeos/shared/supabase'
 import { fetchProPlans, purchasePlan, restorePurchases, type ProPeriod, type ProPlan, type TrialOffer } from '@/src/utils/purchases'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 import { useGoBack } from '@/src/navigation/useGoBack'
+import { PRIVACY_URL, SALES_TERMS_URL } from '@/src/lib/legal'
 
 // Apple'in standart EULA'si — ASC'de ozel bir sozlesme tanimli degil.
 const EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'
-const PRIVACY_URL = 'https://lifeos.tr/gizlilik-kvkk'
-const TERMS_URL = 'https://lifeos.tr/mesafeli-satis-sozlesmesi'
 
 const BENEFITS: Array<{ icon: keyof typeof Ionicons.glyphMap; tr: string; en: string }> = [
   { icon: 'restaurant-outline', tr: 'Öğün fotoğrafını ve metnini AI ile çöz', en: 'Parse meals from free text with AI' },
@@ -363,7 +362,7 @@ export default function PaywallScreen() {
               {tr ? 'Gizlilik Politikası' : 'Privacy Policy'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => openLink(TERMS_URL)}>
+          <TouchableOpacity onPress={() => openLink(SALES_TERMS_URL)}>
             <Text style={{ fontSize: fontSize.xs, color: palette.accent, textDecorationLine: 'underline' }}>
               {tr ? 'Satış Sözleşmesi' : 'Sales Agreement'}
             </Text>

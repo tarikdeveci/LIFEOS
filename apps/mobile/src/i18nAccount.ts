@@ -2,6 +2,8 @@
 // getTranslations birleştirir. tr, en ile aynı anahtarları taşımak zorunda (Faz 4).
 
 export const accountEn = {
+  acc_privacy_title: 'Privacy Policy',
+  acc_privacy_sub: 'See how your data is handled',
   acc_login_err_credentials: 'Email or password is incorrect.',
   acc_login_err_unconfirmed: 'Confirm your email first. Check your inbox for the link.',
   acc_login_err_rate_limit: 'Too many attempts. Wait a minute and try again.',
@@ -121,6 +123,8 @@ export const accountEn = {
 }
 
 export const accountTr: Record<keyof typeof accountEn, string> = {
+  acc_privacy_title: 'Gizlilik Politikası ve KVKK',
+  acc_privacy_sub: 'Verilerinin nasıl işlendiğini incele',
   acc_login_err_credentials: 'E-posta veya şifre hatalı.',
   acc_login_err_unconfirmed: 'Önce e-postanı doğrula. Bağlantı gelen kutunda.',
   acc_login_err_rate_limit: 'Çok fazla deneme oldu. Bir dakika bekleyip tekrar dene.',
