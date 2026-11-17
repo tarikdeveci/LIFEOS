@@ -16,6 +16,7 @@ import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { BlockSheet } from '@/src/components/planning/BlockSheet'
 import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
+import { ConnectCalendarLink } from '@/src/components/planning/ConnectCalendarLink'
 import { NextTaskRow } from '@/src/components/tasks/NextTaskRow'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
@@ -391,6 +392,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
                 disabled={isCheckingPro}
                 size="sm"
               />
+              {userId && <ConnectCalendarLink userId={userId} />}
             </View>
           }
         />
