@@ -2,7 +2,11 @@
 // getTranslations birleştirir. tr, en ile aynı anahtarları taşımak zorunda (Faz 4).
 
 export const accountEn = {
-  acc_login_failed: 'Login Failed',
+  acc_login_err_credentials: 'Email or password is incorrect.',
+  acc_login_err_unconfirmed: 'Confirm your email first. Check your inbox for the link.',
+  acc_login_err_rate_limit: 'Too many attempts. Wait a minute and try again.',
+  acc_login_err_network: 'No connection. Check your internet and try again.',
+  acc_login_err_generic: 'Could not log in. Please try again.',
   acc_email_required: 'Email required',
   acc_reset_link_email_desc: 'Enter your email address for the password reset link.',
   acc_link_sent: 'Link sent',
@@ -117,7 +121,11 @@ export const accountEn = {
 }
 
 export const accountTr: Record<keyof typeof accountEn, string> = {
-  acc_login_failed: 'Giriş Başarısız',
+  acc_login_err_credentials: 'E-posta veya şifre hatalı.',
+  acc_login_err_unconfirmed: 'Önce e-postanı doğrula. Bağlantı gelen kutunda.',
+  acc_login_err_rate_limit: 'Çok fazla deneme oldu. Bir dakika bekleyip tekrar dene.',
+  acc_login_err_network: 'Bağlantı yok. İnternetini kontrol edip tekrar dene.',
+  acc_login_err_generic: 'Giriş yapılamadı. Lütfen tekrar dene.',
   acc_email_required: 'E-posta gerekli',
   acc_reset_link_email_desc: 'Şifre sıfırlama bağlantısı için e-posta adresini yaz.',
   acc_link_sent: 'Bağlantı gönderildi',

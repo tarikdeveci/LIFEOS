@@ -7,6 +7,7 @@ import { registerForPushNotificationsAsync, unregisterPushTokenAsync } from '@/s
 import { bootstrapGuest } from '@/src/auth/bootstrap'
 import { loadGuestSwitchWarning } from '@/src/auth/guestData'
 import { joinCountedParts } from '@/src/auth/switchWarning'
+import { loginErrorKey } from '@/src/auth/loginError'
 import { useAuth } from '@/src/contexts/AuthContext'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -28,6 +29,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const [resetCooldown, setResetCooldown] = useState(0)
 
   useEffect(() => {
@@ -38,12 +40,13 @@ export default function LoginScreen() {
 
   async function signIn() {
     setLoading(true)
+    setLoginError(null)
     try {
       // Misafir oturumun push token'ı oturum değişmeden silinir (silme RLS altında çalışır).
       if (isAnonymous) await unregisterPushTokenAsync()
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) {
-        Alert.alert(t.acc_login_failed, error.message)
+        setLoginError(t[loginErrorKey(error)])
         if (isAnonymous) void registerForPushNotificationsAsync({ prompt: false })
       }
     } finally {
@@ -100,7 +103,9 @@ export default function LoginScreen() {
       setResetCooldown(RESET_COOLDOWN_SECONDS)
       Alert.alert(t.acc_link_sent, t.acc_link_sent_desc)
     } catch (error: unknown) {
-      Alert.alert(t.acc_send_failed, error instanceof Error ? error.message : t.acc_try_again_later)
+      const key = loginErrorKey(error)
+      const reason = key === 'acc_login_err_rate_limit' || key === 'acc_login_err_network' ? t[key] : t.acc_try_again_later
+      Alert.alert(t.acc_send_failed, reason)
     } finally {
       setLoading(false)
     }
@@ -155,7 +160,7 @@ export default function LoginScreen() {
             <Input
               label={t.acc_password}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(value) => { setPassword(value); setLoginError(null) }}
               secureTextEntry
               placeholder={t.acc_password_placeholder}
               containerStyle={{ marginBottom: spacing[5] }}
@@ -163,6 +168,11 @@ export default function LoginScreen() {
               returnKeyType="done"
             />
 
+            {loginError && (
+              <Text accessibilityRole="alert" style={{ marginBottom: spacing[3], fontSize: fontSize.sm, color: palette.danger }}>
+                {loginError}
+              </Text>
+            )}
             <Button label={loading ? t.acc_logging_in : t.acc_login} onPress={handleLogin} loading={loading} fullWidth />
 
             <TouchableOpacity onPress={handlePasswordReset} disabled={loading || resetCooldown > 0} style={{ marginTop: spacing[4] }}>
