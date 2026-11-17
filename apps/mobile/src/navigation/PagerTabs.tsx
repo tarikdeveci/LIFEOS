@@ -207,7 +207,9 @@ function PagerNavigator({
       <View style={[styles.fill, styles.clip, { backgroundColor: colors.bg }]}>
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.fill, fadeStyle]}>
-            <Animated.View style={[styles.fill, rowStyle]}>
+            {/* Sıra tüm sayfaları kapsayacak kadar geniş olmalı: Android dokunuşu ebeveynin sınırı
+                dışındaki görünüme iletmez, dar sırada ilk sayfa dışındakiler kaydırılamıyordu. */}
+            <Animated.View style={[styles.fill, { width: pages.length * width }, rowStyle]}>
               {pages.map((name, index) => {
                 const route = state.routes.find((r) => r.name === name)
                 if (!route || !(index === page || loaded.has(index))) return null
