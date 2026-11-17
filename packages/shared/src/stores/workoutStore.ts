@@ -17,6 +17,7 @@ import {
   getMuscleGroups,
   getExercises,
   getWorkoutByDate,
+  getOpenWorkoutBefore,
   getWorkouts,
   createWorkout,
   updateWorkout,
@@ -37,6 +38,7 @@ import {
   getWorkoutEquipment,
   saveWorkoutEquipment,
 } from '../supabase/workouts'
+import type { FinishSetActions } from '../supabase/workouts'
 import { getRecentLoggedSets } from '../supabase/workoutAnalytics'
 import { getBodyProfile } from '../supabase/health'
 import { todayDate, shiftIsoDate } from '../utils/date'
@@ -68,6 +70,8 @@ interface WorkoutState {
   workoutHistory: Workout[]
   loading: boolean
   error: string | null
+  /** Bugünkü antrenman okunamadı: arayüz "antrenman yok" demek yerine hata ve Tekrar dene gösterir. */
+  todayError: boolean
 
   // Programlar
   programs: WorkoutProgram[]
@@ -103,7 +107,7 @@ interface WorkoutState {
   /** Son 60 günün loglanmış setlerini ve güncel kiloyu tazeler. Kendi hatasını yutar, `analyticsError`'a yazar. */
   fetchAnalytics: (supabase: Supabase, userId: string) => Promise<void>
   startWorkout: (supabase: Supabase, userId: string, input: CreateWorkoutInput) => Promise<Workout>
-  finishWorkout: (supabase: Supabase, workoutId: string, durationMinutes: number, caloriesBurned?: number) => Promise<void>
+  finishWorkout: (supabase: Supabase, workoutId: string, durationMinutes: number, caloriesBurned?: number, setActions?: FinishSetActions) => Promise<void>
   skipWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
   removeWorkout: (supabase: Supabase, workoutId: string) => Promise<void>
   addSet: (supabase: Supabase, input: CreateWorkoutSetInput) => Promise<WorkoutSet>
@@ -160,6 +164,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   workoutHistory: [],
   loading: false,
   error: null,
+  todayError: false,
   programs: [],
   streak: { weeks: 0, thisWeekCount: 0, bestWeeks: 0, lastWorkoutDate: null, atRisk: false },
   analyticsSets: [],
@@ -185,12 +190,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   fetchTodayWorkout: async (supabase, userId, date = todayDate()) => {
-    set({ loading: true, error: null, date })
+    set({ loading: true, error: null, todayError: false, date })
     try {
-      const todayWorkout = await getWorkoutByDate(supabase, userId, date)
+      // Bugün kayıt yoksa dünden kalan bitmemiş antrenman canlı antrenman olur.
+      const todayWorkout = (await getWorkoutByDate(supabase, userId, date))
+        ?? (await getOpenWorkoutBefore(supabase, userId, date))
       set({ todayWorkout, loading: false })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Hata', loading: false })
+      set({ error: err instanceof Error ? err.message : 'Hata', todayError: true, loading: false })
     }
   },
 
@@ -250,14 +257,20 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     return workout
   },
 
-  finishWorkout: async (supabase, workoutId, durationMinutes, caloriesBurned) => {
-    const updated = await completeWorkout(supabase, workoutId, durationMinutes, caloriesBurned)
-    // Dönen satırda setler yok: ekrandakiler korunur, hepsi tamamlanmış sayılır
-    // (completeWorkout onları veritabanında da işaretledi). Eskiden kart
-    // "0 set" gösteriyordu.
+  finishWorkout: async (supabase, workoutId, durationMinutes, caloriesBurned, setActions) => {
+    const updated = await completeWorkout(supabase, workoutId, durationMinutes, caloriesBurned, setActions)
+    // Dönen satırda setler yok: ekrandakiler korunur; yalnız istenen setler
+    // silinmiş ya da tamamlanmış olur. Eskiden kart "0 set" gösteriyordu.
+    const removed = new Set(setActions?.deleteSetIds ?? [])
+    const done = new Set(setActions?.completeSetIds ?? [])
     set((state) => ({
       todayWorkout: state.todayWorkout?.id === workoutId
-        ? { ...updated, workout_sets: state.todayWorkout.workout_sets?.map((s) => ({ ...s, completed: true })) }
+        ? {
+            ...updated,
+            workout_sets: state.todayWorkout.workout_sets
+              ?.filter((s) => !removed.has(s.id))
+              .map((s) => (done.has(s.id) ? { ...s, completed: true } : s)),
+          }
         : state.todayWorkout,
     }))
     // Antrenman biterken kas analitiğini tazele: bitmiş seansın setleri

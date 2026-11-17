@@ -441,7 +441,9 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     const meanMet = setCount > 0 ? avgMet / setCount : 5
     const estimatedCal = estimateCalories(meanMet, 75, durationMin)
 
-    await finishWorkout(supabase, todayWorkout.id, durationMin, estimatedCal > 0 ? estimatedCal : undefined)
+    // Web'de henüz "yapılmayan setler" seçimi yok: eski davranış korunur, işaretsiz setler tamamlanmış sayılır.
+    const undoneIds = (todayWorkout.workout_sets ?? []).filter((s) => !s.completed).map((s) => s.id)
+    await finishWorkout(supabase, todayWorkout.id, durationMin, estimatedCal > 0 ? estimatedCal : undefined, { completeSetIds: undoneIds })
 
     setShowFinishModal(false)
     showToast(`Antrenman tamamlandı! ${durationMin} dk · ~${estimatedCal} kcal 🎉`, 'success')

@@ -10,6 +10,7 @@ import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { AddSetSheet } from '@/src/components/workout/AddSetSheet'
 import { TodayTab } from '@/src/components/workout/TodayTab'
+import { FinishWorkoutView } from '@/src/components/workout/FinishWorkoutView'
 import { LibraryTab } from '@/src/components/workout/LibraryTab'
 import { ProgramsTab } from '@/src/components/workout/ProgramsTab'
 import { HistoryTab } from '@/src/components/workout/HistoryTab'
@@ -43,7 +44,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -107,7 +108,14 @@ export default function WorkoutScreen() {
   async function handleRefresh() {
     if (!userId) return
     // Aşağı çekince katalog da tazelenir (yeni görseller, düzeltilen adlar); açılışta önbellek yeter.
-    setRefreshing(true); await Promise.all([load(userId), fetchLibrary(supabase, { force: true })]); setRefreshing(false)
+    setRefreshing(true)
+    try {
+      await Promise.all([load(userId), fetchLibrary(supabase, { force: true })])
+    } catch {
+      // Bir okuma düşse de spinner durur; bugünkü antrenman hatası todayError ile görünür.
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   // Süzgeç yalnızca seçim varken anlamlı; seçim yokken hiçbir şey elenmez.
@@ -200,6 +208,9 @@ export default function WorkoutScreen() {
         {tab === 'today' && (
           <TodayTab
             workout={todayWorkout}
+            todayStr={todayStr}
+            loadError={todayError}
+            onRetry={() => { if (userId) void fetchTodayWorkout(supabase, userId, todayStr) }}
             userId={userId}
             liveActive={liveActive}
             setsExpanded={setsExpanded}
@@ -207,7 +218,7 @@ export default function WorkoutScreen() {
             onStart={() => session.setShowStart(true)}
             nextProgramDay={startTarget ? { program: startTarget.program.name, day: programDayLabel(startTarget.day, t), planned: startTarget.planned, summary: targetSummary } : null}
             onStartNext={() => { if (startTarget) void session.handleStartFromProgramDay(startTarget.program, startTarget.day.id) }}
-            onFinish={() => session.setShowFinish(true)}
+            onFinish={session.openFinish}
             onDelete={session.handleDeleteWorkout}
             onAddSet={openSetModal}
             onFocusMuscle={setLiveMuscleId}
@@ -271,12 +282,20 @@ export default function WorkoutScreen() {
       {/* Add set (exercise selected from library) */}
       {todayWorkout && <AddSetSheet exercise={selectedExercise} workout={todayWorkout} onClose={() => setSelectedExercise(null)} />}
 
-      {/* Finish */}
-      <BottomSheet visible={session.showFinish} onClose={() => session.setShowFinish(false)} title={t.wk_finish_title}>
-        <View style={{ gap: spacing[4] }}>
-          <Input label={t.wk_total_minutes} value={session.duration} onChangeText={session.setDuration} keyboardType="number-pad" placeholder="45" autoFocus />
-          <Button label={session.finishing ? t.wk_saving : t.wk_finish} onPress={session.handleFinish} loading={session.finishing} fullWidth />
-        </View>
+      {/* Finish: kayıttan sonra sheet'in içeriği özete döner (sheet içinde sheet yok) */}
+      <BottomSheet visible={session.showFinish} onClose={session.closeFinish} title={session.summary ? undefined : t.wk_finish_title}>
+        <FinishWorkoutView
+          unfinishedCount={(todayWorkout?.workout_sets ?? []).filter((s) => !s.completed).length}
+          choice={session.unfinishedChoice}
+          onChoice={session.setUnfinishedChoice}
+          duration={session.duration}
+          onChangeDuration={session.setDuration}
+          saving={session.finishing}
+          error={session.finishError}
+          onSave={() => void session.handleFinish()}
+          summary={session.summary}
+          onDone={session.closeFinish}
+        />
       </BottomSheet>
 
       {/*

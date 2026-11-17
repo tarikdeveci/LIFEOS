@@ -166,26 +166,55 @@ test('removeWorkout hata: antrenman kalır, harita okunmaz', async () => {
 const doneRow = { ...makeWorkout([]), status: 'completed', duration_minutes: 45 }
 delete (doneRow as Partial<Workout>).workout_sets
 
-test('finishWorkout: setler korunur ve tamamlanmış görünür, harita tazelenir', async () => {
+test('finishWorkout: setlere dokunmaz, yalnız antrenman satırını yazar ve haritayı tazeler', async () => {
   const { client, calls } = fakeSupabase((table, op) =>
     table === 'workouts' && op === 'update' ? ok(doneRow) : ok([]))
   await useWorkoutStore.getState().finishWorkout(client, 'w1', 45)
   await flush()
   const w = useWorkoutStore.getState().todayWorkout!
   assert.equal(w.status, 'completed')
-  assert.deepEqual(w.workout_sets!.map((s) => [s.id, s.completed]), [['s1', true], ['s2', true]])
-  assert.deepEqual(calls.slice(0, 2).map((c) => `${c.table}.${c.op}`), ['workout_sets.update', 'workouts.update'])
+  assert.deepEqual(w.workout_sets!.map((s) => [s.id, s.completed]), [['s1', false], ['s2', false]])
+  assert.deepEqual(calls.slice(0, 1).map((c) => `${c.table}.${c.op}`), ['workouts.update'])
+  assert.equal(calls.some((c) => c.table === 'workout_sets'), false)
   assert.equal(analyticsReads(calls), 1)
+})
+
+test('finishWorkout: istenen setler silinir ya da tamamlanır, ekran buna göre güncellenir', async () => {
+  const { client, calls } = fakeSupabase((table, op) =>
+    table === 'workouts' && op === 'update' ? ok(doneRow) : ok([]))
+  await useWorkoutStore.getState().finishWorkout(client, 'w1', 45, undefined, { completeSetIds: ['s1'], deleteSetIds: ['s2'] })
+  await flush()
+  const w = useWorkoutStore.getState().todayWorkout!
+  assert.deepEqual(w.workout_sets!.map((s) => [s.id, s.completed]), [['s1', true]])
+  assert.deepEqual(calls.slice(0, 3).map((c) => `${c.table}.${c.op}`), ['workout_sets.update', 'workout_sets.delete', 'workouts.update'])
 })
 
 test('finishWorkout: setler yazılamazsa antrenman bitmiş sayılmaz', async () => {
   const before = useWorkoutStore.getState().todayWorkout
   const { client, calls } = fakeSupabase((table) => (table === 'workout_sets' ? fail('network') : ok(doneRow)))
-  await assert.rejects(useWorkoutStore.getState().finishWorkout(client, 'w1', 45))
+  await assert.rejects(useWorkoutStore.getState().finishWorkout(client, 'w1', 45, undefined, { deleteSetIds: ['s2'] }))
   await flush()
   assert.equal(useWorkoutStore.getState().todayWorkout, before)
   assert.equal(calls.some((c) => c.table === 'workouts' && c.op === 'update'), false)
   assert.equal(analyticsReads(calls), 0)
+})
+
+test('fetchTodayWorkout: bugün kayıt yoksa dünden kalan açık antrenman gelir', async () => {
+  const open = { ...makeWorkout([makeSet('s1')]), date: '2026-09-30' }
+  let reads = 0
+  const { client } = fakeSupabase((table) => (table === 'workouts' ? ok(++reads === 1 ? [] : [open]) : ok([])))
+  await useWorkoutStore.getState().fetchTodayWorkout(client, 'u1', '2026-10-01')
+  assert.equal(useWorkoutStore.getState().todayWorkout?.date, '2026-09-30')
+  assert.equal(useWorkoutStore.getState().todayError, false)
+})
+
+test('fetchTodayWorkout hata: todayError açılır ve sonraki başarılı okumada kapanır', async () => {
+  useWorkoutStore.setState({ todayWorkout: null })
+  await useWorkoutStore.getState().fetchTodayWorkout(fakeSupabase(() => fail('network')).client, 'u1', '2026-10-01')
+  assert.equal(useWorkoutStore.getState().todayError, true)
+  await useWorkoutStore.getState().fetchTodayWorkout(fakeSupabase(() => ok([])).client, 'u1', '2026-10-01')
+  assert.equal(useWorkoutStore.getState().todayError, false)
+  assert.equal(useWorkoutStore.getState().todayWorkout, null)
 })
 
 test('finishWorkout: antrenman satırı yazılamazsa state değişmez', async () => {
