@@ -22,7 +22,7 @@ interface Props {
   onToggleSets: () => void
   onStart: () => void
   /** Aktif programın sıradaki günü (`findProgramProgress`); varsa birincil eylem o günü başlatır. */
-  nextProgramDay: { program: string; day: string } | null
+  nextProgramDay: { program: string; day: string; /** Bugüne planlı gün (rutin ya da blok); false: sıradaki gün. */ planned: boolean; /** Hareket özeti. */ summary: string } | null
   onStartNext: () => void
   onFinish: () => void
   onDelete: () => void
@@ -61,10 +61,10 @@ export function TodayTab({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                {nextProgramDay ? nextProgramDay.program : t.work_no_workout}
+                {nextProgramDay ? (nextProgramDay.planned ? t.wkf_today_program.replace('{program}', nextProgramDay.program).replace('{day}', nextProgramDay.day) : nextProgramDay.program) : t.work_no_workout}
               </Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                {nextProgramDay ? t.ux_wk_next_day.replace('{day}', nextProgramDay.day) : t.work_no_workout_hint}
+                {nextProgramDay ? (nextProgramDay.planned ? nextProgramDay.summary : t.ux_wk_next_day.replace('{day}', nextProgramDay.day)) : t.work_no_workout_hint}
               </Text>
             </View>
           </View>

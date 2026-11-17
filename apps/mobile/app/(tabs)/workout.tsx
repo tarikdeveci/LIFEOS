@@ -15,6 +15,8 @@ import { ProgramsTab } from '@/src/components/workout/ProgramsTab'
 import { HistoryTab } from '@/src/components/workout/HistoryTab'
 import { ProgramDaysView } from '@/src/components/workout/ProgramDaysView'
 import { programDayLabel } from '@/src/components/workout/programDays'
+import { exerciseName } from '@/src/components/workout/labels'
+import { useTodayProgramDay } from '@/src/hooks/useTodayProgramDay'
 import { ProgramExercisePickerView } from '@/src/components/workout/ProgramExercisePickerView'
 import { ProgramPlannerView } from '@/src/components/workout/ProgramPlannerView'
 import { CreateProgramSheet } from '@/src/components/workout/CreateProgramSheet'
@@ -39,7 +41,7 @@ type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
 
 export default function WorkoutScreen() {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
   const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
@@ -142,6 +144,18 @@ export default function WorkoutScreen() {
   // Aktif program: en son programdan başlatılan antrenman; hareketi olmayan gün başlatılamaz.
   const progress = findProgramProgress(allPrograms, workoutHistory, todayStr, (d) => programDayLabel(d, t))
   const nextReady = progress && (progress.nextDay.exercises?.length ?? 0) > 0 ? progress : null
+  // Bugüne planlı gün (rutin bağı ya da blok adı) varsa o, yoksa sıradaki gün.
+  const planned = useTodayProgramDay(userId, todayWorkout?.id ?? '')
+  const plannedReady = planned && (planned.day.exercises?.length ?? 0) > 0 ? planned : null
+  const startTarget = plannedReady
+    ? { program: plannedReady.program, day: plannedReady.day, planned: true }
+    : nextReady ? { program: nextReady.program, day: nextReady.nextDay, planned: false } : null
+  const targetNames = [...(startTarget?.day.exercises ?? [])]
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((e) => exerciseName(e.exercise, lang, t))
+  const targetSummary = targetNames.length > 3
+    ? `${targetNames.slice(0, 3).join(', ')} ${t.wkf_more_n.replace('{n}', String(targetNames.length - 3))}`
+    : targetNames.join(', ')
 
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - fromDateString(w.date).getTime()) / 86400000
@@ -191,8 +205,8 @@ export default function WorkoutScreen() {
             setsExpanded={setsExpanded}
             onToggleSets={() => setSetsExpanded((v) => !v)}
             onStart={() => session.setShowStart(true)}
-            nextProgramDay={nextReady ? { program: nextReady.program.name, day: programDayLabel(nextReady.nextDay, t) } : null}
-            onStartNext={() => { if (nextReady) void session.handleStartFromProgramDay(nextReady.program, nextReady.nextDay.id) }}
+            nextProgramDay={startTarget ? { program: startTarget.program.name, day: programDayLabel(startTarget.day, t), planned: startTarget.planned, summary: targetSummary } : null}
+            onStartNext={() => { if (startTarget) void session.handleStartFromProgramDay(startTarget.program, startTarget.day.id) }}
             onFinish={() => session.setShowFinish(true)}
             onDelete={session.handleDeleteWorkout}
             onAddSet={openSetModal}

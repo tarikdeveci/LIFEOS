@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Alert } from 'react-native'
-import { programDaySetRows, useWorkoutStore } from '@lifeos/shared'
+import { planProgramDayStart, programDaySetRows, useWorkoutStore } from '@lifeos/shared'
+import { updateWorkout } from '@lifeos/shared/supabase'
 import type { WorkoutProgram } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { useLang } from '@/src/contexts/LangContext'
@@ -103,16 +104,19 @@ export function useWorkoutSession({ userId, todayStr, onProgramDayAccepted, onPr
     setStarting(true)
     onProgramDayAccepted()  // sheet'i hemen kapat: yükleme sürerken ikinci güne basılamasın
     try {
-      // Bugün için zaten bir antrenman varsa yenisini açma, setleri onun üstüne ekle.
-      const workout = todayWorkout ?? await startWorkout(supabase, userId, {
-        name: `${program.name} · ${dayName}`,
-        date: todayStr,
-        status: 'in_progress',
-      })
+      // Aynı program günü ikinci kez başlatılınca setler ikiye katlanmaz, bkz. planProgramDayStart.
+      const fullName = `${program.name} · ${dayName}`
+      const plan = planProgramDayStart(todayWorkout, fullName, dayExercises)
+      const workout = plan.create || !todayWorkout
+        ? await startWorkout(supabase, userId, { name: fullName, date: todayStr, status: 'in_progress' })
+        : todayWorkout
+      if (plan.rename) await updateWorkout(supabase, workout.id, { name: plan.rename })
 
       // Tek bir bulk insert: eskiden her set ayrı istekti (15+ round-trip)
-      await addSets(supabase, workout.id, programDaySetRows(workout.id, dayExercises, Date.now()))
-      await fetchHistory(supabase, userId)
+      if (plan.exercises.length > 0) {
+        await addSets(supabase, workout.id, programDaySetRows(workout.id, plan.exercises, Date.now()))
+      }
+      await Promise.all([fetchTodayWorkout(supabase, userId, todayStr), fetchHistory(supabase, userId)])
       onProgramDayStarted()
     } catch {
       Alert.alert(t.error, t.wk_err_start_day)

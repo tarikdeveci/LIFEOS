@@ -4,6 +4,8 @@
 
 export const workoutFlowEn = {
   // -- bolum: bugun-ve-bitir --
+  wkf_today_program: 'Today: {program} · {day}',
+  wkf_more_n: '+{n} more',
 
   // -- bolum: set-uygula --
 
@@ -13,6 +15,8 @@ export const workoutFlowEn = {
 
 export const workoutFlowTr: typeof workoutFlowEn = {
   // -- bolum: bugun-ve-bitir --
+  wkf_today_program: 'Bugün: {program} · {day}',
+  wkf_more_n: '+{n} daha',
 
   // -- bolum: set-uygula --
 

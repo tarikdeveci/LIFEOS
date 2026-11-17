@@ -77,6 +77,67 @@ export function findProgramProgress(
   return null
 }
 
+export interface TodayProgramDay {
+  program: WorkoutProgram
+  day: ProgramDay
+  /** Günün nereden bulunduğu: rutin bağı ya da bugünkü bloğun adı. */
+  source: 'routine' | 'block'
+}
+
+/**
+ * Bugünün program günü. Öncelik: 1) programa bağlı rutinin bugünkü bloğuna
+ * `assignProgramDays` ile düşen gün (`routineDays`, bloğun saatine göre sıralı),
+ * 2) bugünkü workout bloğunun adı `${program.adı} · ${gün adı}` ise o gün, 3) null.
+ */
+export function pickTodayProgramDay(
+  programs: WorkoutProgram[],
+  routineDays: ReadonlyArray<{ program: WorkoutProgram; day: ProgramDay }>,
+  blockLabels: readonly string[],
+  dayLabel: (day: ProgramDay) => string,
+): TodayProgramDay | null {
+  const fromRoutine = routineDays[0]
+  if (fromRoutine) return { ...fromRoutine, source: 'routine' }
+  const candidates = [...programs].sort((a, b) =>
+    Number(b.user_id !== null) - Number(a.user_id !== null) || b.name.length - a.name.length)
+  for (const raw of blockLabels) {
+    const label = raw.trim()
+    const program = candidates.find((p) => label.startsWith(p.name + PROGRAM_DAY_SEPARATOR))
+    if (!program) continue
+    const suffix = label.slice(program.name.length + PROGRAM_DAY_SEPARATOR.length)
+    const day = workingDays(program).find((d) => dayLabel(d) === suffix)
+    if (day) return { program, day, source: 'block' }
+  }
+  return null
+}
+
+export interface ProgramDayStartPlan {
+  /** Bugün antrenman yok: yenisi açılır. */
+  create: boolean
+  /** Mevcut boş antrenmanın yeni adı; ad değişmeyecekse null. */
+  rename: string | null
+  /** Setleri yazılacak hareketler (mevcut antrenmanda olmayanlar). */
+  exercises: ProgramExercise[]
+}
+
+/**
+ * Program gününü bugünkü antrenmana uygular, setler ikiye katlanmaz.
+ * Antrenman yoksa açılır ve tüm hareketler yazılır. Setsiz antrenman program gününün adını alır.
+ * Aynı adlı antrenmanda hiçbir şey eklenmez; farklı adlı ve setli antrenmanda ad korunur,
+ * yalnız henüz olmayan hareketler eklenir.
+ */
+export function planProgramDayStart(
+  workout: { name: string | null; workout_sets?: ReadonlyArray<{ exercise_id: string }> } | null,
+  fullName: string,
+  dayExercises: ProgramExercise[],
+): ProgramDayStartPlan {
+  if (!workout) return { create: true, rename: null, exercises: dayExercises }
+  const present = new Set((workout.workout_sets ?? []).map((s) => s.exercise_id))
+  const sameName = workout.name?.trim() === fullName
+  if (present.size === 0) return { create: false, rename: sameName ? null : fullName, exercises: dayExercises }
+  if (sameName) return { create: false, rename: null, exercises: [] }
+  return { create: false, rename: null, exercises: dayExercises.filter((e) => !present.has(e.exercise_id)) }
+}
+
 /**
  * Bir hareketi gün içinde yeni sıraya taşır. Sıra 1'den başlayıp boşluksuz
  * yeniden numaralanır; yalnız sırası değişen satırlar döner.
