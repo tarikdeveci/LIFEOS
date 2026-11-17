@@ -45,7 +45,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError, historyStatus, programsStatus } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError, loading: todayLoading, historyStatus, programsStatus } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -216,6 +216,7 @@ export default function WorkoutScreen() {
             workout={todayWorkout}
             todayStr={todayStr}
             loadError={todayError}
+            loading={todayLoading}
             onRetry={() => { if (userId) void fetchTodayWorkout(supabase, userId, todayStr) }}
             userId={userId}
             liveActive={liveActive}

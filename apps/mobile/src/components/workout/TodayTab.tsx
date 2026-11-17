@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { Exercise, Workout, WorkoutSet, WorkoutStreak } from '@lifeos/shared'
 import { Button } from '../ui/Button'
@@ -20,6 +20,8 @@ interface Props {
   todayStr: string
   /** Bugünkü antrenman okunamadı: Başlat kartı yerine hata ve Tekrar dene görünür. */
   loadError: boolean
+  /** Bugünkü antrenman okunuyor: okuma bitmeden Başlat kartı gösterilmez (ikinci antrenman açılmasın). */
+  loading: boolean
   onRetry: () => void
   userId: string | null
   /** Süren antrenmanda en az bir set var: canlı ekran açık. */
@@ -50,7 +52,7 @@ interface Props {
 
 /** Antrenman ekranının Bugün sekmesi: başlat ya da süren antrenman, seri, sayılar ve AI koç kartı. */
 export function TodayTab({
-  workout, todayStr, loadError, onRetry, userId, liveActive, setsExpanded, onToggleSets, onStart, nextProgramDay, onStartNext, onFinish, onDelete, onAddSet, onFocusMuscle,
+  workout, todayStr, loadError, loading, onRetry, userId, liveActive, setsExpanded, onToggleSets, onStart, nextProgramDay, onStartNext, onFinish, onDelete, onAddSet, onFocusMuscle,
   search, onChangeSearch, matches, muscleCard, streak, weekCount, totalCount, isPro, isCheckingPro, onOpenCoach,
 }: Props) {
   const { colors } = useTheme()
@@ -71,8 +73,16 @@ export function TodayTab({
         </GlassCard>
       )}
 
+      {!workout && !loadError && loading && (
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ alignItems: 'center', paddingVertical: spacing[4] }}>
+            <ActivityIndicator color={palette.workout} accessibilityLabel={t.wk_loading} />
+          </View>
+        </GlassCard>
+      )}
+
       {/* Ana eylem en üstte: antrenman yoksa başlat, varsa bugünkü antrenman */}
-      {((!workout && !loadError) || emptyToday) && (
+      {((!workout && !loadError && !loading) || emptyToday) && (
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[4] }}>
             <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>

@@ -167,7 +167,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   date: todayDate(),
   todayWorkout: null,
   workoutHistory: [],
-  loading: false,
+  /** İlk okuma bitene kadar true: ekran "antrenman yok" sanıp Başlat göstermesin. */
+  loading: true,
   error: null,
   todayError: false,
   historyStatus: 'idle',
