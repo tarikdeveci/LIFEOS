@@ -96,8 +96,10 @@ export default function TodayScreen() {
   const toggleTask = useCallback(async (task: Task) => {
     const done = task.status !== 'done'
     if (done) setJustDone((ids) => (ids.includes(task.id) ? ids : [...ids, task.id]))
-    await completeTask(task, done)
-  }, [completeTask])
+    // Günün son açık işi kapanınca büyük kutlama.
+    const last = done && todayTasks.length === 1 && todayTasks[0]?.id === task.id
+    await completeTask(task, done, last ? 'big' : 'small')
+  }, [completeTask, todayTasks])
   const todayBlocks = minDay.active.blocks
   const programDays = useProgramDays(userId, todayBlocks)
   useTodayCoach(userId)
@@ -205,6 +207,14 @@ export default function TodayScreen() {
               </TouchableOpacity>
             )
           })}
+          {todayTasks.length === 0 && justDoneTasks.length > 0 && (
+            <TouchableOpacity onPress={() => router.push(`/report?date=${todayStr}` as never)} accessibilityRole="link"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: MIN_TOUCH }}>
+              <Ionicons name="sparkles" size={16} color={palette.success} />
+              <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }} numberOfLines={1}>{t.today_all_done}</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.today_day_report}</Text>
+            </TouchableOpacity>
+          )}
           {todayTasks.length === 0 && justDoneTasks.length === 0 && (
             <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>{t.today_no_tasks}</Text>
           )}

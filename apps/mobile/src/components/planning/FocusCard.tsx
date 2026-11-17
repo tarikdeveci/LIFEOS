@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { View, Text, TouchableOpacity, AppState, Alert } from 'react-native'
 import {
   focusMinutesByBlock,
@@ -14,6 +14,7 @@ import {
   type TimeBlock,
 } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
+import { celebrate } from '@/src/components/Celebration'
 import { scheduleFocusNotification, cancelFocusNotifications, FOCUS_WORK_END_ID, FOCUS_BREAK_END_ID } from '@/src/notifications/focus'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Button } from '@/src/components/ui/Button'
@@ -77,6 +78,13 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
     if (pending && !saving && !saveError) void save(supabase)
   }, [pending, saving, saveError, save])
 
+  // Çalışma turu bitip molaya ya da bitişe geçince kutlama.
+  const prevPhase = useRef(phase)
+  useEffect(() => {
+    if (prevPhase.current === 'work' && (phase === 'break' || phase === 'ready')) celebrate('root', 'medium')
+    prevPhase.current = phase
+  }, [phase])
+
   // Tur başlarken iki bitiş birden kurulur: arka planda store ilerlemediği için
   // molanın bildirimi odak bittiğinde kurulamazdı.
   const workStartedAt = active?.timer.phase === 'work' ? active.timer.phaseStartedAt : null
@@ -108,6 +116,7 @@ export function FocusCard({ userId, date, activeBlock, wrap = false }: Props) {
     if (!active) return
     try {
       await usePlanningStore.getState().setBlockDone(supabase, active.blockId, true)
+      celebrate('root', 'medium')
       handleClose()
     } catch {
       Alert.alert(t.error, t.plan_block_update_error)

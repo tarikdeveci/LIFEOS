@@ -5,7 +5,7 @@ import type { Task } from '@lifeos/shared'
 import { supabase } from '../lib/supabase'
 import { recordValueMoment } from '../lib/review'
 import { useLang } from '../contexts/LangContext'
-import { celebrate } from '../components/Celebration'
+import { celebrate, type CelebrationSize } from '../components/Celebration'
 
 /**
  * Görevi tamamla veya geri al. Bugün, Görevler ve görev ayrıntısı aynı yolu kullanır:
@@ -14,9 +14,9 @@ import { celebrate } from '../components/Celebration'
 export function useTaskCompletion() {
   const setStatus = useTaskStore((s) => s.setStatus)
   const { t } = useLang()
-  return useCallback(async (task: Pick<Task, 'id' | 'status'>, done = task.status !== 'done'): Promise<boolean> => {
+  return useCallback(async (task: Pick<Task, 'id' | 'status'>, done = task.status !== 'done', size: CelebrationSize = 'small'): Promise<boolean> => {
     // Store önce ekranı güncellediği için kutlama da beklemeden başlar.
-    if (done) celebrate()
+    if (done) celebrate('root', size)
     try {
       await setStatus(supabase, task.id, done ? 'done' : 'planned')
       if (done) void recordValueMoment()

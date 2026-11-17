@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { currentGroupIndex, groupSetsByExercise, nextSetNumbers, parseSetEntry, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
+import { best1RM, currentGroupIndex, estimate1RM, groupSetsByExercise, nextSetNumbers, parseSetEntry, recordSetId, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, ExerciseSetGroup, Workout, WorkoutSet } from '@lifeos/shared'
+import { getExerciseSessions } from '@lifeos/shared/supabase'
+import { celebrate } from '../Celebration'
 import { ExerciseImage } from './ExerciseImage'
 import { ProgressionHint } from './ProgressionHint'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -36,6 +38,8 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
   const [savingId, setSavingId] = useState<string | null>(null)
   /** Öneri uygulanırken set eklenemezse kartta görünür. */
   const [hintError, setHintError] = useState<string | null>(null)
+  /** Hareket başına önceki antrenmanların en iyi tahmini 1RM'i; null geçmiş yok, eksik anahtar okunmadı. */
+  const [prevBest, setPrevBest] = useState<Record<string, number | null>>({})
   /** Aynı karede gelen ikinci dokunuş, state güncellenmeden geçmesin. */
   const busy = useRef(false)
 
@@ -49,6 +53,23 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
   const focusMuscle = focused?.exercise?.muscle_group_id ?? null
 
   useEffect(() => { onFocusMuscle(focusMuscle) }, [focusMuscle, onFocusMuscle])
+
+  // Rekor kıyası için şimdiki hareketin geçmişi bir kez okunur. Okunamazsa etiket çıkmaz, akış sürer.
+  const focusExerciseId = focused?.exerciseId ?? null
+  useEffect(() => {
+    if (!focusExerciseId || focusExerciseId in prevBest) return
+    let cancelled = false
+    void (async () => {
+      try {
+        // Geri bakılan antrenmanların hepsi: yalnız yakın seanslara bakmak eski rekoru görmez.
+        const sessions = await getExerciseSessions(supabase, userId, focusExerciseId, 120, workout.id)
+        if (!cancelled) setPrevBest((b) => ({ ...b, [focusExerciseId]: best1RM(sessions)?.value ?? null }))
+      } catch {
+        // Rekor süs; geçmiş okunamazsa sessizce atlanır.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [focusExerciseId, prevBest, userId, workout.id])
 
   const nameOf = (e: WorkoutSet['exercise']) => (e ? (lang === 'en' ? (e.name_en ?? e.name) : e.name) : t.wk_exercise)
   const summaryOf = (g: ExerciseSetGroup) =>
@@ -79,6 +100,17 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
     try {
       await updateSet(supabase, set.id, { completed, ...entry })
       setDrafts(({ [set.id]: _saved, ...rest }) => rest)
+      // Kutlama yalnız çıta yükselince: geçmişin ve bu antrenmanda biten diğer setlerin en iyisini aşmalı.
+      const best = prevBest[group.exerciseId] ?? null
+      const weight = entry.weight_kg ?? set.weight_kg
+      const reps = entry.reps ?? set.reps
+      const value = completed && weight != null && reps != null ? estimate1RM(weight, reps) : null
+      if (best !== null && value !== null) {
+        const others = group.sets
+          .filter((s) => s.id !== set.id && s.completed && s.weight_kg != null && s.reps != null)
+          .map((s) => estimate1RM(s.weight_kg!, s.reps!) ?? 0)
+        if (value > Math.max(best, ...others)) celebrate('root', 'medium')
+      }
       // Hareketin son seti de bittiyse seçim bırakılır, kart sıradakine geçer.
       if (completed && group.sets.every((s) => s.id === set.id || s.completed)) setFocusId(null)
     } catch {
@@ -140,6 +172,7 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
     flex: 1, paddingVertical: 8, paddingHorizontal: spacing[2], borderRadius: radius.md, textAlign: 'center' as const,
     fontSize: fontSize.base, color: colors.inputText, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder,
   }
+  const focusRecordId = focused ? recordSetId(focused.sets, prevBest[focused.exerciseId] ?? null) : null
   const upcoming = groups.filter((g, i) => i !== focusIndex && g.sets.some((s) => !s.completed))
   const finished = groups.filter((g, i) => i !== focusIndex && g.sets.every((s) => s.completed))
 
@@ -179,8 +212,10 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
           </View>
           {focused.sets.map((set) => {
             const draft = draftOf(focused, set)
+            const isRecord = set.id === focusRecordId
             return (
-              <View key={set.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], opacity: set.completed ? 0.6 : 1 }}>
+              <View key={set.id}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], opacity: set.completed ? 0.6 : 1 }}>
                 <Text style={{ width: 26, textAlign: 'center', fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: palette.workout }}>{set.set_number}</Text>
                 <TextInput
                   value={set.completed ? String(set.weight_kg ?? '') : draft.weight}
@@ -212,6 +247,13 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
                 >
                   <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
                 </TouchableOpacity>
+              </View>
+              {isRecord && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 26 + spacing[2], marginTop: 2 }}>
+                  <Ionicons name="trophy" size={12} color={palette.warning} />
+                  <Text style={{ fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: palette.warning }}>{t.wk_live_record}</Text>
+                </View>
+              )}
               </View>
             )
           })}

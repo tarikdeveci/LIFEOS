@@ -33,6 +33,7 @@ import { useProGate } from '@/src/hooks/useProGate'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 import { useProgramDays } from '@/src/hooks/useProgramDays'
+import { celebrate } from '@/src/components/Celebration'
 
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
 
@@ -246,6 +247,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   async function handleToggleBlockDone(blockId: string, done: boolean) {
     try {
       await setBlockDone(supabase, blockId, done)
+      if (done) celebrate('root', 'medium')
     } catch {
       Alert.alert(t.error, t.plan_block_update_error)
     }
