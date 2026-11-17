@@ -44,7 +44,7 @@ export default function WorkoutScreen() {
   const { colors } = useTheme()
   const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError, historyStatus, programsStatus } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
@@ -257,6 +257,9 @@ export default function WorkoutScreen() {
         {tab === 'programs' && (
           <ProgramsTab
             programs={programs.sortedPrograms}
+            loading={programsStatus === 'idle' || programsStatus === 'loading'}
+            error={programsStatus === 'error' ? t.wkf_programs_error : null}
+            onRetry={async () => { if (userId) await fetchPrograms(supabase, userId) }}
             fitByProgram={programs.fitByProgram}
             equipment={equipment}
             equipmentLoaded={equipmentLoaded}
@@ -268,7 +271,14 @@ export default function WorkoutScreen() {
         )}
 
         {/* ── HISTORY ── */}
-        {tab === 'history' && <HistoryTab history={workoutHistory} />}
+        {tab === 'history' && (
+          <HistoryTab
+            history={workoutHistory}
+            loading={historyStatus === 'idle' || historyStatus === 'loading'}
+            error={historyStatus === 'error' ? t.wkf_history_error : null}
+            onRetry={async () => { if (userId) await fetchHistory(supabase, userId) }}
+          />
+        )}
       </ScrollView>
 
       {/* Start workout */}

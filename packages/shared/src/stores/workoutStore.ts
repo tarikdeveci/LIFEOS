@@ -58,6 +58,8 @@ const ANALYTICS_WINDOW_DAYS = RETENTION_WINDOW_DAYS
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supabase = SupabaseClient<any>
 
+export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+
 interface WorkoutState {
   // Kütüphane
   muscleGroups: MuscleGroup[]
@@ -72,6 +74,9 @@ interface WorkoutState {
   error: string | null
   /** Bugünkü antrenman okunamadı: arayüz "antrenman yok" demek yerine hata ve Tekrar dene gösterir. */
   todayError: boolean
+  /** Geçmiş ve program listesinin okuma durumu: boş liste ile hata ayrı gösterilir. */
+  historyStatus: LoadStatus
+  programsStatus: LoadStatus
 
   // Programlar
   programs: WorkoutProgram[]
@@ -165,6 +170,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loading: false,
   error: null,
   todayError: false,
+  historyStatus: 'idle',
+  programsStatus: 'idle',
   programs: [],
   streak: { weeks: 0, thisWeekCount: 0, bestWeeks: 0, lastWorkoutDate: null, atRisk: false },
   analyticsSets: [],
@@ -242,13 +249,16 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   fetchHistory: async (supabase, userId) => {
-    const { data } = await supabase
+    set((state) => ({ historyStatus: state.historyStatus === 'ready' ? 'ready' : 'loading' }))
+    const { data, error } = await supabase
       .from('workouts')
       .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(14)
-    set({ workoutHistory: (data ?? []) as Workout[] })
+    // Hata yutulmaz ama fırlatılmaz da: çağıranlar kayıttan sonra en iyi çaba tazeler.
+    if (error) { set({ historyStatus: 'error' }); return }
+    set({ workoutHistory: (data ?? []) as Workout[], historyStatus: 'ready' })
   },
 
   startWorkout: async (supabase, userId, input) => {
@@ -372,8 +382,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   fetchPrograms: async (supabase, userId) => {
-    const programs = await getWorkoutPrograms(supabase, userId)
-    set({ programs })
+    set((state) => ({ programsStatus: state.programsStatus === 'ready' ? 'ready' : 'loading' }))
+    try {
+      const programs = await getWorkoutPrograms(supabase, userId)
+      set({ programs, programsStatus: 'ready' })
+    } catch (err) {
+      set({ programsStatus: 'error' })
+      throw err
+    }
   },
 
   addProgram: async (supabase, userId, input) => {

@@ -17,8 +17,6 @@ interface Props {
   error?: string | null
   /** Veri sahibi hatayi temizler ve basarisizlikta reject eder. */
   onRetry?: () => Promise<void>
-  /** Ust ekran hazir program katalogunu acar. */
-  onShowTemplates?: () => void
   fitByProgram: Map<string, ProgramEquipmentFit | null>
   equipment: EquipmentKey[] | null
   equipmentLoaded: boolean
@@ -39,7 +37,7 @@ interface ProgramCardProps {
 }
 
 /** Antrenman ekranının Programlar sekmesi: ekipman kartı, kendi programını oluştur ve program listesi. */
-export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active, loading = false, error = null, onRetry, onShowTemplates }: Props) {
+export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active, loading = false, error = null, onRetry }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
   const [retryState, setRetryState] = useState({ retrying: false, failed: false })
@@ -97,8 +95,7 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
           <View style={{ alignItems: 'center', gap: spacing[3] }}>
             <Ionicons name="list-outline" size={48} color={colors.textMuted} />
             <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, textAlign: 'center' }}>{t.wkf_programs_empty}</Text>
-            <Button label={t.wkf_show_templates} onPress={() => onShowTemplates?.()} disabled={!onShowTemplates} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
-            <Button label={t.wk_create_own} onPress={onCreate} variant="secondary" style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
+            <Button label={t.wk_create_own} onPress={onCreate} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
           </View>
         </GlassCard>
       ) : (

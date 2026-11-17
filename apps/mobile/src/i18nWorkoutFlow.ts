@@ -31,12 +31,11 @@ export const workoutFlowEn = {
 
   // -- bolum: hata-durumlari --
   wkf_programs_loading: 'Loading programs...',
-  wkf_programs_error: 'Programs could not be loaded, please try again.',
-  wkf_programs_empty: 'You have no programs yet, choose a ready-made template to get started.',
-  wkf_show_templates: 'Browse templates',
+  wkf_programs_error: 'Programs could not be loaded, try again.',
+  wkf_programs_empty: 'You have no programs yet. Create your own to get started.',
   wkf_history_loading: 'Loading workout history...',
-  wkf_history_error: 'Workout history could not be loaded, please try again.',
-  wkf_history_empty: 'You have no workout history yet, start your first workout from the Today tab.',
+  wkf_history_error: 'Workout history could not be loaded, try again.',
+  wkf_history_empty: 'No workout history yet. Start your first workout from the Today tab.',
   wkf_retry: 'Try again',
 
 }
@@ -70,12 +69,11 @@ export const workoutFlowTr: typeof workoutFlowEn = {
 
   // -- bolum: hata-durumlari --
   wkf_programs_loading: 'Programlar yükleniyor...',
-  wkf_programs_error: 'Programlar yüklenemedi, lütfen tekrar deneyin.',
-  wkf_programs_empty: 'Henüz programınız yok, başlamak için hazır bir şablon seçin.',
-  wkf_show_templates: 'Hazır programları göster',
+  wkf_programs_error: 'Programlar yüklenemedi, tekrar dene.',
+  wkf_programs_empty: 'Henüz programın yok. Başlamak için kendi programını oluştur.',
   wkf_history_loading: 'Antrenman geçmişi yükleniyor...',
-  wkf_history_error: 'Antrenman geçmişi yüklenemedi, lütfen tekrar deneyin.',
-  wkf_history_empty: 'Henüz antrenman geçmişiniz yok, ilk antrenmanınızı Bugün alt sekmesinden başlatın.',
+  wkf_history_error: 'Antrenman geçmişi yüklenemedi, tekrar dene.',
+  wkf_history_empty: 'Henüz antrenman geçmişin yok. İlk antrenmanını Bugün sekmesinden başlat.',
   wkf_retry: 'Tekrar dene',
 
 }
