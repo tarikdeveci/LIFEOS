@@ -657,10 +657,10 @@ export default function NutritionScreen() {
         title={t.nutr_title}
         right={
           <>
-            <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
+            <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} accessibilityRole="button" accessibilityLabel={t.nut_chat_a11y} hitSlop={2} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
               <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity onPress={() => setShowAdd(true)} accessibilityRole="button" accessibilityLabel={t.nut_add_meal_title} hitSlop={2} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </>
@@ -1015,7 +1015,7 @@ export default function NutritionScreen() {
                     <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
                       {t.nut_save_as_own_food}
                     </Text>
-                    <TouchableOpacity onPress={() => setShowSaveRecipe(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <TouchableOpacity onPress={() => setShowSaveRecipe(false)} accessibilityRole="button" accessibilityLabel={t.close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                       <Ionicons name="close" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
                   </View>
