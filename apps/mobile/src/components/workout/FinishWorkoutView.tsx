@@ -38,7 +38,7 @@ export function FinishWorkoutView({ unfinishedCount, choice, onChoice, duration,
       ) : (
         <>
           <Input
-            label={`${t.wk_total_minutes} · ${t.wkf_minutes_unit}`}
+            label={t.wk_total_minutes}
             value={duration}
             onChangeText={onChangeDuration}
             keyboardType="number-pad"

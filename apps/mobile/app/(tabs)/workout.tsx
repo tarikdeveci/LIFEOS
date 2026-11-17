@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { useFocusEffect } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { findProgramProgress, isExerciseAvailable, todayDate, fromDateString, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise } from '@lifeos/shared'
@@ -49,6 +50,10 @@ export default function WorkoutScreen() {
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
+  /** Bugünkü plan (rutin ve bloklar) başka ekranda değişebilir: odakta, yenilemede ve planlamada yeniden okunur. */
+  const [planTick, setPlanTick] = useState(0)
+  const bumpPlan = useCallback(() => setPlanTick((n) => n + 1), [])
+  useFocusEffect(bumpPlan)
   const [setsExpanded, setSetsExpanded] = useState(false)
   /** Canlı ekrandaki hareketin ana kası; kas haritası onu seçili gösterir. */
   const [liveMuscleId, setLiveMuscleId] = useState<number | null>(null)
@@ -77,7 +82,7 @@ export default function WorkoutScreen() {
   const planner = useProgramPlanner({
     userId,
     liveProgram,
-    onScheduled: () => programs.setSelectedProgram(null),
+    onScheduled: () => { programs.setSelectedProgram(null); bumpPlan() },
   })
   const session = useWorkoutSession({
     userId,
@@ -109,6 +114,7 @@ export default function WorkoutScreen() {
     if (!userId) return
     // Aşağı çekince katalog da tazelenir (yeni görseller, düzeltilen adlar); açılışta önbellek yeter.
     setRefreshing(true)
+    bumpPlan()
     try {
       await Promise.all([load(userId), fetchLibrary(supabase, { force: true })])
     } catch {
@@ -153,7 +159,7 @@ export default function WorkoutScreen() {
   const progress = findProgramProgress(allPrograms, workoutHistory, todayStr, (d) => programDayLabel(d, t))
   const nextReady = progress && (progress.nextDay.exercises?.length ?? 0) > 0 ? progress : null
   // Bugüne planlı gün (rutin bağı ya da blok adı) varsa o, yoksa sıradaki gün.
-  const planned = useTodayProgramDay(userId, todayWorkout?.id ?? '')
+  const planned = useTodayProgramDay(userId, `${todayWorkout?.id ?? ''}:${planTick}`)
   const plannedReady = planned && (planned.day.exercises?.length ?? 0) > 0 ? planned : null
   const startTarget = plannedReady
     ? { program: plannedReady.program, day: plannedReady.day, planned: true }
