@@ -1,14 +1,20 @@
-import { View, Text } from 'react-native'
+import { useState } from 'react'
+import { ActivityIndicator, View, Text } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { fromDateString } from '@lifeos/shared'
 import type { Workout } from '@lifeos/shared'
+import { Button } from '../ui/Button'
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
-import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '../../theme/tokens'
 
 interface Props {
   history: Workout[]
+  loading?: boolean
+  error?: string | null
+  /** Veri sahibi hatayi temizler ve basarisizlikta reject eder. */
+  onRetry?: () => Promise<void>
 }
 
 const HISTORY_COLOR: Record<string, string> = {
@@ -19,9 +25,42 @@ const HISTORY_COLOR: Record<string, string> = {
 }
 
 /** Antrenman ekranının Geçmiş sekmesi: geçmiş antrenmanlar, tarih, süre ve durum rozetiyle. */
-export function HistoryTab({ history }: Props) {
+export function HistoryTab({ history, loading = false, error = null, onRetry }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
+  const [retryState, setRetryState] = useState({ retrying: false, failed: false })
+
+  async function handleRetry() {
+    if (!onRetry || retryState.retrying || loading) return
+    setRetryState({ retrying: true, failed: false })
+    try {
+      await onRetry()
+    } catch {
+      setRetryState({ retrying: false, failed: true })
+      return
+    }
+    setRetryState({ retrying: false, failed: false })
+  }
+
+  if (error !== null || retryState.failed) {
+    return (
+      <GlassCard padding={spacing[5]} noShadow>
+        <View style={{ alignItems: 'center', gap: spacing[3] }}>
+          <Text accessibilityRole="alert" style={{ fontSize: fontSize.base, color: colors.textPrimary, textAlign: 'center' }}>{t.wkf_history_error}</Text>
+          <Button label={t.wkf_retry} onPress={() => void handleRetry()} loading={retryState.retrying || loading} disabled={!onRetry} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
+        </View>
+      </GlassCard>
+    )
+  }
+
+  if (loading || retryState.retrying) {
+    return (
+      <View accessible accessibilityRole="progressbar" accessibilityLabel={t.wkf_history_loading} accessibilityState={{ busy: true }} style={{ padding: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+        <ActivityIndicator color={palette.workout} />
+        <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>{t.wkf_history_loading}</Text>
+      </View>
+    )
+  }
   const historyLabel = (s: string) => ({
     completed: t.wk_hist_completed, in_progress: t.wk_hist_in_progress, planned: t.wk_hist_planned, skipped: t.wk_hist_skipped,
   } as Record<string, string>)[s] ?? s
@@ -29,8 +68,8 @@ export function HistoryTab({ history }: Props) {
   if (history.length === 0) {
     return (
       <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
-        <Ionicons name="time-outline" size={48} color={colors.textSubtle} />
-        <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.wk_no_history}</Text>
+        <Ionicons name="time-outline" size={48} color={colors.textMuted} />
+        <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, textAlign: 'center' }}>{t.wkf_history_empty}</Text>
       </View>
     )
   }
