@@ -218,6 +218,7 @@ export default function NutritionScreen() {
   }
 
   function openManualAdd(choice: FoodSearchResult) {
+    Keyboard.dismiss()
     setAddMode('search')
     setPendingChoice(choice)
     setShowAdd(true)
@@ -667,6 +668,7 @@ export default function NutritionScreen() {
       />
       <ScrollView
         ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
