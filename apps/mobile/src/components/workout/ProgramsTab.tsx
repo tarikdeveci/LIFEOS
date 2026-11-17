@@ -40,19 +40,20 @@ interface ProgramCardProps {
 export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active, loading = false, error = null, onRetry }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
-  const [retryState, setRetryState] = useState({ retrying: false, failed: false })
-  const hasError = error !== null || retryState.failed
+  const [retrying, setRetrying] = useState(false)
+  // Hata durumu store'dan gelir: dış yenileme başarılı olunca kendiliğinden kalkar.
+  const hasError = error !== null
 
   async function handleRetry() {
-    if (!onRetry || retryState.retrying || loading) return
-    setRetryState({ retrying: true, failed: false })
+    if (!onRetry || retrying || loading) return
+    setRetrying(true)
     try {
       await onRetry()
     } catch {
-      setRetryState({ retrying: false, failed: true })
-      return
+      // Hata store'a yazıldı, error prop'u ile görünür.
+    } finally {
+      setRetrying(false)
     }
-    setRetryState({ retrying: false, failed: false })
   }
 
   const SPLIT_LABELS: Record<string, string> = {
@@ -82,10 +83,10 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
         <GlassCard padding={spacing[5]} noShadow>
           <View style={{ alignItems: 'center', gap: spacing[3] }}>
             <Text accessibilityRole="alert" style={{ fontSize: fontSize.base, color: colors.textPrimary, textAlign: 'center' }}>{t.wkf_programs_error}</Text>
-            <Button label={t.wkf_retry} onPress={() => void handleRetry()} loading={retryState.retrying || loading} disabled={!onRetry} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
+            <Button label={t.wkf_retry} onPress={() => void handleRetry()} loading={retrying || loading} disabled={!onRetry} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
           </View>
         </GlassCard>
-      ) : loading || retryState.retrying ? (
+      ) : loading || retrying ? (
         <View accessible accessibilityRole="progressbar" accessibilityLabel={t.wkf_programs_loading} accessibilityState={{ busy: true }} style={{ padding: spacing[8], alignItems: 'center', gap: spacing[3] }}>
           <ActivityIndicator color={palette.workout} />
           <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>{t.wkf_programs_loading}</Text>

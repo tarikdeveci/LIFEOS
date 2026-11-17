@@ -17,6 +17,9 @@ interface Options {
   onProgramDayStarted: () => void
 }
 
+/** Rekor kıyası için geriye bakılan seans sayısı (son 120 antrenmanla sınırlı). */
+const RECORD_LOOKBACK_SESSIONS = 120
+
 /** Bitir sheet'inin özet görünümü: kayıttan sonra aynı sheet'te gösterilir. */
 export interface FinishSummary extends WorkoutSummary {
   durationMin: number
@@ -99,6 +102,8 @@ export function useWorkoutSession({ userId, todayStr, onProgramDayAccepted, onPr
       )
     } catch {
       // Girdiler (süre, seçim) korunur; hata sheet içinde görünür.
+      // Set işlemlerinin bir kısmı yazılmış olabilir: ekran veritabanıyla yeniden eşlenir.
+      if (userId) void fetchTodayWorkout(supabase, userId, todayStr)
       setFinishError(t.wkf_err_finish)
       setFinishing(false)
       return
@@ -108,7 +113,7 @@ export function useWorkoutSession({ userId, todayStr, onProgramDayAccepted, onPr
     const exerciseIds = [...new Set(counted.map((s) => s.exercise_id))]
     const history: Record<string, ExerciseSession[]> = {}
     if (userId) {
-      const results = await Promise.allSettled(exerciseIds.map((id) => getExerciseSessions(supabase, userId, id, 8, workout.id)))
+      const results = await Promise.allSettled(exerciseIds.map((id) => getExerciseSessions(supabase, userId, id, RECORD_LOOKBACK_SESSIONS, workout.id)))
       results.forEach((r, i) => { const id = exerciseIds[i]; if (r.status === 'fulfilled' && id) history[id] = r.value })
       await Promise.allSettled([fetchHistory(supabase, userId), fetchStreak(supabase, userId)])
     }
