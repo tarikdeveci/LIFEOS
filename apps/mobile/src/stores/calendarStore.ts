@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
-  requestCalendarPermission,
   hasCalendarPermission,
   getAvailableCalendars,
   fetchLocalEvents,
@@ -24,6 +23,7 @@ interface CalendarStore {
   /** Son senkronda okunamayan takvim varsa kısa açıklama, yoksa null */
   lastSyncError: string | null
 
+  /** İzin verilmişse takvimleri yükler; diyalog açmaz, izin kullanıcı bağlarken istenir */
   initialize: () => Promise<void>
   /** Cihazdaki izni sormadan okur, saklı bayrakla farklıysa günceller */
   refreshPermission: () => Promise<void>
@@ -45,7 +45,8 @@ export const useCalendarStore = create<CalendarStore>()(
       initialize: async () => {
         if (!isCalendarSupported()) return
 
-        const granted = await requestCalendarPermission()
+        // Sekme açılır açılmaz bağlamsız izin diyaloğu çıkıyordu, kullanıcı reddediyordu (persona turu 2026-11-17).
+        const granted = await hasCalendarPermission()
         if (!granted) {
           set({ hasPermission: false })
           return

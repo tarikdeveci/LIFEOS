@@ -124,7 +124,7 @@ export default function PlanningScreen() {
   }, [fetchDayData])
 
   useEffect(() => {
-    // Takvim iznini başlat (ilk açılışta)
+    // İzin önceden verildiyse cihaz takvimini yükle (diyalog açmaz)
     void initialize()
 
     supabase.auth.getUser().then(({ data }) => {
