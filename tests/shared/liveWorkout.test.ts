@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
-  MAX_PROGRAM_SETS, currentGroupIndex, groupSetsByExercise, parseSetEntry, programDaySetRows, suggestedWeight,
+  MAX_PROGRAM_SETS, currentGroupIndex, groupSetsByExercise, lastSetOf, nextSetNumbers, parseSetEntry, programDaySetRows, suggestedWeight,
 } from '../../packages/shared/src/utils/liveWorkout.ts'
 import type { Exercise, WorkoutSet } from '../../packages/shared/src/types/workout.ts'
 
@@ -174,4 +174,19 @@ test('girdi dizisi sıralanırken değişmez', () => {
   const input = [ex('b', 2, 1), ex('a', 1, 1)]
   programDaySetRows('w', input, START)
   assert.deepEqual(input.map((e) => e.exercise_id), ['b', 'a'])
+})
+
+// nextSetNumbers, lastSetOf
+
+test('yeni set numaraları en büyük set_number devamından başlar', () => {
+  const sets = [set('a', 'x', 1), set('b', 'x', 3), set('c', 'y', 7)]
+  assert.deepEqual(nextSetNumbers(sets, 'x', 2), [4, 5])
+  assert.deepEqual(nextSetNumbers(sets, 'z', 3), [1, 2, 3])
+  assert.deepEqual(nextSetNumbers(sets, 'x', 0), [])
+})
+
+test('hareketin son seti en büyük set_number olandır', () => {
+  const sets = [set('a', 'x', 2, { weight_kg: 50 }), set('b', 'x', 1), set('c', 'y', 9)]
+  assert.equal(lastSetOf(sets, 'x')?.id, 'a')
+  assert.equal(lastSetOf(sets, 'z'), null)
 })

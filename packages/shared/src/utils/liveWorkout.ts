@@ -100,3 +100,17 @@ export function suggestedWeight(group: ExerciseSetGroup, setId: string): number 
   }
   return null
 }
+
+/** Hareketin set_number'ları: en büyüğün devamı; silinmiş set numara çakışması yaratmaz. */
+export function nextSetNumbers(sets: readonly WorkoutSet[], exerciseId: string, count: number): number[] {
+  let max = 0
+  for (const s of sets) if (s.exercise_id === exerciseId && s.set_number > max) max = s.set_number
+  return Array.from({ length: Math.max(0, Math.floor(count)) }, (_, i) => max + i + 1)
+}
+
+/** Hareketin bu antrenmandaki son seti (en büyük set_number); yoksa null. */
+export function lastSetOf(sets: readonly WorkoutSet[], exerciseId: string): WorkoutSet | null {
+  let last: WorkoutSet | null = null
+  for (const s of sets) if (s.exercise_id === exerciseId && (!last || s.set_number > last.set_number)) last = s
+  return last
+}
