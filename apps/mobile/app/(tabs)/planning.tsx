@@ -392,7 +392,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
                 disabled={isCheckingPro}
                 size="sm"
               />
-              {userId && <ConnectCalendarLink userId={userId} />}
+              <ConnectCalendarLink />
             </View>
           }
         />

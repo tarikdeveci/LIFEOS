@@ -4,24 +4,23 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { getIntegrations } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
+import { useAuth } from '@/src/contexts/AuthContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { palette, fontSize, fontWeight, spacing } from '@/src/theme/tokens'
-
-interface Props {
-  userId: string
-}
 
 /**
  * Boş gün ekranında Google Takvim bağlantısı. Bağlama yalnız Ayarlar > Entegrasyonlar'daydı,
  * planlayan kullanıcı orada aramıyordu (persona turu 2026-11-17). Bağlıysa hiç görünmez.
  */
-export function ConnectCalendarLink({ userId }: Props) {
+export function ConnectCalendarLink() {
+  const { userId } = useAuth()
   const { t } = useLang()
   const { requireAccount } = useRequireAccount()
   const [connected, setConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
+    if (!userId) return
     let alive = true
     const check = async () => {
       try {
