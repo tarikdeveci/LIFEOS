@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findProgramProgress, reorderProgramExercises, settleAll } from '../../packages/shared/src/utils/programProgress.ts'
-import type { ProgramDay, Workout, WorkoutProgram } from '../../packages/shared/src/types/workout.ts'
+import { findProgramProgress, pickTodayProgramDay, planProgramDayStart, reorderProgramExercises, settleAll } from '../../packages/shared/src/utils/programProgress.ts'
+import type { ProgramDay, ProgramExercise, Workout, WorkoutProgram } from '../../packages/shared/src/types/workout.ts'
 
 const day = (id: string, n: number, name: string, is_rest = false): ProgramDay =>
   ({ id, program_id: 'p', day_number: n, day_name: name, is_rest })
@@ -75,4 +75,42 @@ test('settleAll: bütün yazmalar bitmeden hata fırlatmaz', async () => {
   await assert.rejects(settleAll([Promise.reject(new Error('x')), late]), /x/)
   assert.equal(lateDone, true)
   await settleAll([Promise.resolve(1)])
+})
+
+test('pickTodayProgramDay: rutin bağı önceliklidir, blok adı sonra, yoksa null', () => {
+  const other = program('x', 'Alt', 'u', [day('x1', 1, 'A')])
+  const pull = ppl.days![1]!
+  const fromRoutine = pickTodayProgramDay([ppl, other], [{ program: ppl, day: pull }], ['Alt · A'], label)
+  assert.equal(fromRoutine?.source, 'routine')
+  assert.equal(fromRoutine?.day.id, 'b')
+  const fromBlock = pickTodayProgramDay([ppl, other], [], ['Spor', 'Alt · A'], label)
+  assert.equal(fromBlock?.source, 'block')
+  assert.equal(fromBlock?.program.id, 'x')
+  assert.equal(fromBlock?.day.id, 'x1')
+  assert.equal(pickTodayProgramDay([ppl], [], ['Spor', 'PPL · Yok', 'PPL · Dinlenme'], label), null)
+  assert.equal(pickTodayProgramDay([ppl], [], [], label), null)
+})
+
+const ex = (exercise_id: string): ProgramExercise =>
+  ({ id: 'pe' + exercise_id, program_day_id: 'a', exercise_id, order_index: 1, sets: 3, reps: 10, rest_seconds: 60 }) as ProgramExercise
+
+test('planProgramDayStart: antrenman yoksa açılır ve hepsi yazılır', () => {
+  const plan = planProgramDayStart(null, 'PPL · Push', [ex('e1'), ex('e2')])
+  assert.deepEqual([plan.create, plan.rename, plan.exercises.length], [true, null, 2])
+})
+
+test('planProgramDayStart: aynı gün ikinci kez başlatılınca set eklenmez', () => {
+  const plan = planProgramDayStart({ name: 'PPL · Push', workout_sets: [{ exercise_id: 'e1' }] }, 'PPL · Push', [ex('e1'), ex('e2')])
+  assert.deepEqual([plan.create, plan.rename, plan.exercises.length], [false, null, 0])
+})
+
+test('planProgramDayStart: farklı adlı setli antrenmanda ad korunur, yalnız eksik hareketler eklenir', () => {
+  const plan = planProgramDayStart({ name: 'Sabah', workout_sets: [{ exercise_id: 'e1' }] }, 'PPL · Push', [ex('e1'), ex('e2')])
+  assert.equal(plan.rename, null)
+  assert.deepEqual(plan.exercises.map((e) => e.exercise_id), ['e2'])
+})
+
+test('planProgramDayStart: setsiz boş antrenman program gününün adını alır', () => {
+  const plan = planProgramDayStart({ name: 'Antrenman', workout_sets: [] }, 'PPL · Push', [ex('e1')])
+  assert.deepEqual([plan.create, plan.rename, plan.exercises.length], [false, 'PPL · Push', 1])
 })

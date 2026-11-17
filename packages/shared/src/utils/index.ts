@@ -30,6 +30,7 @@ export * from './bodyMetrics'
 
 export * from './focus'
 export * from './liveWorkout'
+export * from './workoutSummary'
 export * from './lifeSetupMeta'
 export * from './dayReport'
 export * from './programProgress'
