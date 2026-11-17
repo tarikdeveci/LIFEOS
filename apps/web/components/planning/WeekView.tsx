@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
 import type { BlockType } from '@lifeos/shared'
 import { BLOCK_TYPE_COLORS, todayDate, shiftIsoDate, minutesBetween } from '@lifeos/shared'
+import { blockTimeText } from '@/lib/i18nFlex'
 import { useLang } from '@/lib/contexts/LangContext'
 import { getBlocksForDateRange, getPlansForDateRange } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
@@ -271,7 +272,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
                         </p>
                         {heightPx > 28 && (
                           <p className="text-[8px] text-muted/80 leading-tight">
-                            {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}
+                            {blockTimeText(block, t, '-')}
                           </p>
                         )}
                       </div>
@@ -291,7 +292,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
           style={{ left: Math.min(tooltip.x + 12, window.innerWidth - 200), top: tooltip.y - 10 }}
         >
           <p className="font-semibold text-primary">{tooltip.block.label ?? typeLabel(tooltip.block.block_type)}</p>
-          <p className="text-muted">{tooltip.block.start_time.slice(0,5)} – {tooltip.block.end_time.slice(0,5)}</p>
+          <p className="text-muted">{blockTimeText(tooltip.block, t)}</p>
           <p className="text-muted">{typeLabel(tooltip.block.block_type)}</p>
         </div>
       )}

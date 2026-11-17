@@ -1,4 +1,5 @@
 import { lifeSetupEn, lifeSetupTr, reportEn, reportTr, REVIEW_I18N } from '@lifeos/shared'
+import { FLEX_I18N } from './i18nFlex'
 
 export type Language = 'en' | 'tr'
 
@@ -1539,11 +1540,11 @@ const translations = {
 } as const
 
 // Mutable string version of translations.en shape — avoids literal type narrowing issues
-export type Translations = { [K in keyof typeof translations.en | keyof typeof REVIEW_I18N.en]: string }
+export type Translations = { [K in keyof typeof translations.en | keyof typeof REVIEW_I18N.en | keyof typeof FLEX_I18N.en]: string }
 
 const merged = {
-  en: { ...translations.en, ...REVIEW_I18N.en },
-  tr: { ...translations.tr, ...REVIEW_I18N.tr },
+  en: { ...translations.en, ...REVIEW_I18N.en, ...FLEX_I18N.en },
+  tr: { ...translations.tr, ...REVIEW_I18N.tr, ...FLEX_I18N.tr },
 }
 
 export function getTranslations(lang: Language): Translations {

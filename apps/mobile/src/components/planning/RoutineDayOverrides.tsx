@@ -8,7 +8,7 @@ import { TimeField } from '@/src/components/ui/PickerField'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
-import type { DayRow, DayRows } from '@/src/planning/dayRows'
+import type { DayRow, DayRows } from '@lifeos/shared'
 
 /**
  * Düzenlenen rutinin kayıtlı satırları. Yeni rutinde hemen hazır, boş liste. Sonuç hangi rutine

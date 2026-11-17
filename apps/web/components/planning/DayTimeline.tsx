@@ -18,6 +18,8 @@ import {
   parseClockParts,
   APP_DEFAULTS,
 } from '@lifeos/shared'
+import { blockTimeText } from '@/lib/i18nFlex'
+import { withProgramDay } from '@/lib/hooks/useProgramDays'
 import { useLang } from '@/lib/contexts/LangContext'
 
 interface DayTimelineProps {
@@ -30,6 +32,8 @@ interface DayTimelineProps {
   onBlockDrop?: (blockId: string, newStartTime: string, newEndTime: string) => void
   /** Google takvimindeki dolu aralıklar (gün içi dakika); gri, tıklanamaz. */
   busy?: { start: number; end: number }[]
+  /** Programa bağlı blokların o günkü program günü (blok id'si → gün adı). */
+  programDays?: Record<string, string>
 }
 
 /** Dakikayı "HH:MM" stringe çevirir (0-1439 arası) */
@@ -56,14 +60,15 @@ interface DraggableBlockProps {
   top: number
   height: number
   isDragging: boolean
+  programDay?: string
   onClick?: (block: TimeBlock) => void
 }
 
-function DraggableBlock({ block, top, height, isDragging, onClick }: DraggableBlockProps) {
+function DraggableBlock({ block, top, height, isDragging, programDay, onClick }: DraggableBlockProps) {
   const { t } = useLang()
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: block.id })
   const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-  const label = block.label ?? t[`review_type_${block.block_type}`]
+  const label = withProgramDay(block.label ?? t[`review_type_${block.block_type}`], programDay)
   const duration = minutesBetween(block.start_time, block.end_time)
 
   const style: React.CSSProperties = {
@@ -100,7 +105,7 @@ function DraggableBlock({ block, top, height, isDragging, onClick }: DraggableBl
       </p>
       {height > 36 && (
         <p className="text-[10px] text-muted">
-          {block.start_time.slice(0, 5)}-{block.end_time.slice(0, 5)} ({duration} {t.unit_min_short})
+          {blockTimeText(block, t, '-')}{block.day_part ? '' : ` (${duration} ${t.unit_min_short})`}
         </p>
       )}
     </div>
@@ -138,6 +143,7 @@ export function DayTimeline({
   onSlotClick,
   onBlockDrop,
   busy = [],
+  programDays,
 }: DayTimelineProps) {
   const hours = useMemo(
     () => Array.from({ length: endHour - startHour }, (_, i) => startHour + i),
@@ -264,6 +270,7 @@ export function DayTimeline({
               top={pos.top}
               height={pos.height}
               isDragging={draggingId === block.id}
+              programDay={programDays?.[block.id]}
               onClick={onBlockClick}
             />
           )

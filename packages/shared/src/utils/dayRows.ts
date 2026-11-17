@@ -1,6 +1,10 @@
 // Rutin formundaki "Günlere göre farklı" satırları ile 082 override satırları arasında
-// saf dönüşüm (React Native'siz, node testinden çağrılabilir).
-import type { RoutineDayOverride, Weekday } from '@lifeos/shared'
+// saf dönüşüm (mobil ve web formu ortak kullanır).
+import type { DayPart } from '../types/planning'
+import type { RoutineDayOverride, Weekday } from '../types/routine'
+
+/** Gün bölümleri ekrandaki sırasıyla (084). */
+export const DAY_PARTS: DayPart[] = ['morning', 'noon', 'afternoon', 'evening']
 
 /** Bir günün formdaki hali: ya saat aralığı ya yalnız süre (082). */
 export interface DayRow {

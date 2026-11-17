@@ -157,6 +157,10 @@ export function usePlanningBlockEditor({ userId, refreshAfterRoutineChange }: Us
       const updates: UpdateTimeBlockInput = {
         start_time: editBlockStart, end_time: editBlockEnd,
         block_type: editBlockType, label: editBlockLabel || undefined,
+        // Yüzen bloğa (084) saat verilince o gün için sabitlenir; yalnız ad değişirse yüzmeye devam eder.
+        ...(selectedBlock.day_part
+          && (editBlockStart !== selectedBlock.start_time.slice(0, 5) || editBlockEnd !== selectedBlock.end_time.slice(0, 5))
+          && { day_part: null }),
       }
       await updateTimeBlock(supabase, selectedBlock.id, updates)
       showToast(t.plan_block_updated, 'success')

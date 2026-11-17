@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   useWorkoutStore,
-  todayDate, relativeDateLabel, shiftIsoDate, toDateString,
+  todayDate, relativeDateLabel, shiftIsoDate, toDateString, findProgramProgress,
   WORKOUT_CATEGORY_LABELS, WORKOUT_CATEGORY_COLORS,
   WORKOUT_STATUS_LABELS, WORKOUT_STATUS_COLORS,
   BODY_REGION_LABELS,
@@ -18,6 +18,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { ProGate } from '@/components/ui/ProGate'
 import { useLang } from '@/lib/contexts/LangContext'
+import { programDayLabel } from '@/lib/i18nFlex'
 import { useLegacyProgramMigration } from '@/lib/hooks/useLegacyProgramMigration'
 import { manualProgramToPlan, targetWeightFromNotes, type ManualProgramExercise as ProgramExercise } from '@/lib/workoutPrograms'
 
@@ -442,10 +443,12 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     const estimatedCal = estimateCalories(meanMet, 75, durationMin)
 
     await finishWorkout(supabase, todayWorkout.id, durationMin, estimatedCal > 0 ? estimatedCal : undefined)
+    // Program sırası (findProgramProgress) geçmişten okunur.
+    void fetchHistory(supabase, userId).catch(() => undefined)
 
     setShowFinishModal(false)
     showToast(`Antrenman tamamlandı! ${durationMin} dk · ~${estimatedCal} kcal 🎉`, 'success')
-  }, [todayWorkout, startTime, finishWorkout, showToast])
+  }, [todayWorkout, startTime, finishWorkout, fetchHistory, userId, showToast])
 
   // ---------- Programdan başlat ----------
   const handleSaveManualProgram = useCallback(async () => {
@@ -472,7 +475,8 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     const day = (prog.days ?? []).find((d) => d.id === dayId)
     if (!day || day.is_rest) return
     const flattened = flattenProgramDayExercises(prog, dayId)
-    const dayName = day.day_name?.trim() || `Gun ${day.day_number}`
+    // Aktif program bu addan çıkarılır (findProgramProgress): gün adı mobil ile aynı yazılmalı.
+    const dayName = programDayLabel(day, t)
     const workout = await startWorkout(supabase, userId, { date: todayDate(), name: `${prog.name} · ${dayName}`, status: 'in_progress' })
     for (const pe of flattened) {
       for (let s = 1; s <= pe.sets; s++) {
@@ -481,8 +485,13 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
     }
     setStartTime(new Date())
     setActiveTab('today')
+    void fetchHistory(supabase, userId).catch(() => undefined)
     showToast(`"${prog.name}" programindan antrenman basladi`, 'success')
-  }, [startWorkout, addSet, userId, showToast])
+  }, [startWorkout, addSet, fetchHistory, userId, showToast, t])
+
+  // Aktif program: en son programdan başlatılan antrenman; hareketi olmayan gün başlatılamaz.
+  const progress = findProgramProgress(cloudPrograms, workoutHistory, todayDate(), (d) => programDayLabel(d, t))
+  const nextReady = progress && (progress.nextDay.exercises?.length ?? 0) > 0 ? progress : null
 
   // ---------- Filtrelenmiş egzersizler ----------
   const filteredExercises = exercises.filter((ex) => {
@@ -549,11 +558,25 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
           <div className="col-span-8 space-y-4">
             {!todayWorkout ? (
               <div className="rounded-2xl border border-dashed border-border py-16 text-center">
-                <p className="mt-3 font-medium text-primary">{t.work_no_workout}</p>
-                <p className="mt-1 text-sm text-muted">{t.work_no_workout_hint}</p>
-                <Button className="mt-4" onClick={() => setShowStartModal(true)}>
-                  {t.work_start}
-                </Button>
+                <p className="mt-3 font-medium text-primary">{nextReady ? nextReady.program.name : t.work_no_workout}</p>
+                <p className="mt-1 text-sm text-muted">
+                  {nextReady ? t.ux_wk_next_day.replace('{day}', programDayLabel(nextReady.nextDay, t)) : t.work_no_workout_hint}
+                </p>
+                {/* Aktif program varken birincil eylem sıradaki günü başlatır; boş antrenman ikincil kalır. */}
+                {nextReady ? (
+                  <>
+                    <Button className="mt-4" onClick={() => void handleStartFromCloudProgramDay(nextReady.program, nextReady.nextDay.id)}>
+                      {t.ux_wk_start_day.replace('{day}', programDayLabel(nextReady.nextDay, t))}
+                    </Button>
+                    <button type="button" onClick={() => setShowStartModal(true)} className="mx-auto mt-1 block min-h-[44px] text-sm font-semibold text-accent hover:underline">
+                      {t.ux_wk_empty_start}
+                    </button>
+                  </>
+                ) : (
+                  <Button className="mt-4" onClick={() => setShowStartModal(true)}>
+                    {t.work_start}
+                  </Button>
+                )}
               </div>
             ) : (
               <>
@@ -835,10 +858,16 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {cloudPrograms.map((prog) => {
+              {/* Aktif program en üstte, sıradaki günüyle (mobil ile aynı). */}
+              {[...cloudPrograms].sort((a, b) => Number(b.id === progress?.program.id) - Number(a.id === progress?.program.id)).map((prog) => {
                 const activeDays = (prog.days ?? []).filter((d) => !d.is_rest)
                 return (
                 <div key={prog.id} className="glass rounded-2xl p-4">
+                  {progress?.program.id === prog.id && (
+                    <p className="mb-2 text-sm font-semibold text-accent">
+                      {t.ux_wk_active_program} · {t.ux_wk_next_day.replace('{day}', programDayLabel(progress.nextDay, t))}
+                    </p>
+                  )}
                   <div className="flex items-start justify-between">
                     <div><h3 className="font-semibold text-primary">{prog.name}</h3>{prog.description && <p className="mt-0.5 text-xs text-muted">{prog.description}</p>}</div>
                     {prog.user_id === null
@@ -853,7 +882,7 @@ export function WorkoutView({ userId }: WorkoutViewProps) {
                         disabled={hasActiveWorkout}
                         className="flex w-full items-center justify-between rounded-lg border border-border/50 px-2 py-1.5 text-left hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <span className="text-xs font-medium text-primary">{day.day_name || `Gun ${day.day_number}`}</span>
+                        <span className="text-xs font-medium text-primary">{programDayLabel(day, t)}</span>
                         <span className="text-[10px] text-muted">{day.exercises?.length ?? 0} egzersiz</span>
                       </button>
                     ))}

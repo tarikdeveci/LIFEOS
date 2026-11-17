@@ -13,7 +13,6 @@ import {
   usePlanningStore,
   useNutritionStore,
   useWorkoutStore,
-  BLOCK_TYPE_COLORS,
   WORKOUT_STATUS_LABELS,
   APP_DEFAULTS,
 } from '@lifeos/shared'
@@ -25,12 +24,15 @@ import {
 } from '@lifeos/shared/supabase'
 import { supabase } from '@/lib/supabase/client'
 import { TaskCard } from '@/components/tasks/TaskCard'
+import { NextTaskRow } from '@/components/tasks/NextTaskRow'
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer'
 import { QuickTaskInput } from '@/components/tasks/QuickTaskInput'
 import { BrainDumpModal } from '@/components/tasks/BrainDumpModal'
 import { Button } from '@/components/ui/Button'
 import { WeeklyStatsChart } from '@/components/WeeklyStatsChart'
-import { CalendarDays, CheckSquare, BarChart2, Dumbbell, Salad, TrendingUp } from 'lucide-react'
+import { TodayPlanCard } from '@/components/planning/TodayPlanCard'
+import { useMinimumDay } from '@/lib/hooks/useMinimumDay'
+import { CheckSquare, BarChart2, Dumbbell, Salad, TrendingUp } from 'lucide-react'
 import { useLang } from '@/lib/contexts/LangContext'
 
 interface DashboardClientProps {
@@ -108,7 +110,10 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
     void fetchWeeklyStats()
   }, [fetchTasks, fetchDayData, fetchDayNutrition, fetchTodayWorkout, fetchWeeklyStats, userId, today])
 
-  const todayTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'deferred')
+  const openTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'deferred')
+  // Asgari günde korunmayan rutinlerin görevleri listeden çekilir (081).
+  const minDay = useMinimumDay(userId, openTasks, timeBlocks)
+  const todayTasks = minDay.active.tasks
   const completedTasks = tasks.filter((t) => t.status === 'done')
   const totalEffort = todayTasks.reduce((s, t) => s + t.effort_score, 0)
 
@@ -136,10 +141,6 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
     [setStatus],
   )
 
-  // Bugünün blokları — sadece bugüne ait (saat sırasıyla)
-  const todayBlocks = [...timeBlocks].sort((a, b) =>
-    a.start_time.localeCompare(b.start_time),
-  )
 
   return (
     <div className="space-y-6">
@@ -161,57 +162,7 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-12 gap-6">
-        {/* Zaman Çizelgesi — Sol */}
-        <div className="col-span-4 glass rounded-2xl p-4">
-          <h2 className="mb-4 flex items-center gap-2 font-semibold text-primary">
-            <CalendarDays size={15} className="text-accent" /> {t.dash_today_plan}
-            <span className="ml-auto text-xs font-normal text-muted">
-              {todayBlocks.length} {t.dash_blocks}
-            </span>
-          </h2>
-
-          {todayBlocks.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border py-8 text-center">
-              <p className="text-sm text-muted">{t.dash_no_blocks}</p>
-              <Link
-                href="/planning"
-                className="mt-2 block text-xs text-accent hover:underline"
-              >
-                {t.dash_go_planning}
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {todayBlocks.map((block) => {
-                const color = block.color ?? BLOCK_TYPE_COLORS[block.block_type]
-                const label = block.label ?? t[`review_type_${block.block_type}`]
-                return (
-                  <div
-                    key={block.id}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2"
-                    style={{ backgroundColor: `${color}15` }}
-                  >
-                    <div
-                      className="h-10 w-1 rounded-full shrink-0"
-                      style={{ backgroundColor: color }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-sm font-medium"
-                        style={{ color }}
-                      >
-                        {label}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {block.start_time.slice(0, 5)} – {block.end_time.slice(0, 5)}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <TodayPlanCard userId={userId} day={minDay} />
 
         {/* Bugünün görevleri — Orta */}
         <div className="col-span-5 space-y-3">
@@ -234,6 +185,9 @@ export default function DashboardClient({ userId, displayName }: DashboardClient
               <p className="mt-1 text-xs text-muted/60">
                 {t.dash_no_tasks_hint}
               </p>
+              <div className="px-4 text-left">
+                <NextTaskRow userId={userId} onOpen={(task) => { setSelectedTask(task); setDrawerOpen(true) }} />
+              </div>
             </div>
           ) : (
             <div className="space-y-2">
