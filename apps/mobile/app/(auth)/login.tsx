@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { View, Text, Image, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
+import { View, Text, Image, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import { router } from 'expo-router'
-import { LinearGradient } from 'expo-linear-gradient'
 import { supabase } from '@/src/lib/supabase'
 import { registerForPushNotificationsAsync, unregisterPushTokenAsync } from '@/src/notifications/setup'
 import { bootstrapGuest } from '@/src/auth/bootstrap'
@@ -10,6 +9,8 @@ import { joinCountedParts } from '@/src/auth/switchWarning'
 import { loginErrorKey } from '@/src/auth/loginError'
 import { useAuth } from '@/src/contexts/AuthContext'
 import { GlassCard } from '@/src/components/ui/GlassCard'
+import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { useKeyboardScrollIntoView } from '@/src/hooks/useKeyboardScrollIntoView'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
@@ -31,6 +32,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [resetCooldown, setResetCooldown] = useState(0)
+  const scrollRef = useKeyboardScrollIntoView()
 
   useEffect(() => {
     if (resetCooldown <= 0) return
@@ -112,96 +114,91 @@ export default function LoginScreen() {
   }
 
   return (
-    <LinearGradient colors={colors.gradientColors as [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1 }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <ScreenBackground edges={['top', 'bottom']}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[8] }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
       >
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing[5], paddingVertical: spacing[8] }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* Logo */}
-          <View style={{ alignItems: 'center', marginBottom: spacing[8] }}>
-            <View style={{ borderRadius: radius.xl, overflow: 'hidden', ...colors.shadowSoft }}>
-              <Image source={require('../../assets/logo.png')} style={{ width: 80, height: 80, borderRadius: radius.xl }} />
-            </View>
-            <Text style={{ marginTop: spacing[4], fontSize: fontSize['3xl'], fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>
-              LifeOS
-            </Text>
-            <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
-              {t.acc_login_subtitle}
-            </Text>
+        {/* Logo */}
+        <View style={{ alignItems: 'center', marginBottom: spacing[8] }}>
+          <View style={{ borderRadius: radius.xl, overflow: 'hidden', ...colors.shadowSoft }}>
+            <Image source={require('../../assets/logo.png')} style={{ width: 80, height: 80, borderRadius: radius.xl }} />
           </View>
+          <Text style={{ marginTop: spacing[4], fontSize: fontSize['3xl'], fontWeight: fontWeight.extrabold, color: colors.textPrimary }}>
+            LifeOS
+          </Text>
+          <Text style={{ marginTop: spacing[2], fontSize: fontSize.base, color: colors.textMuted, textAlign: 'center', maxWidth: 260 }}>
+            {t.acc_login_subtitle}
+          </Text>
+        </View>
 
-          {/* Card */}
-          <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
-              {t.acc_login}
+        {/* Card */}
+        <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
+          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>
+            {t.acc_login}
+          </Text>
+          <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>
+            {t.acc_login_continue}
+          </Text>
+
+          <Input
+            label={t.acc_email}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            placeholder={t.acc_email_placeholder}
+            containerStyle={{ marginBottom: spacing[3] }}
+            returnKeyType="next"
+          />
+          <Input
+            label={t.acc_password}
+            value={password}
+            onChangeText={(value) => { setPassword(value); setLoginError(null) }}
+            secureTextEntry
+            placeholder={t.acc_password_placeholder}
+            containerStyle={{ marginBottom: spacing[5] }}
+            onSubmitEditing={handleLogin}
+            returnKeyType="done"
+          />
+
+          {loginError && (
+            <Text accessibilityRole="alert" style={{ marginBottom: spacing[3], fontSize: fontSize.sm, color: palette.danger }}>
+              {loginError}
             </Text>
-            <Text style={{ marginTop: spacing[1], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted }}>
-              {t.acc_login_continue}
+          )}
+          <Button label={loading ? t.acc_logging_in : t.acc_login} onPress={handleLogin} loading={loading} fullWidth />
+
+          <TouchableOpacity onPress={handlePasswordReset} disabled={loading || resetCooldown > 0} style={{ marginTop: spacing[4] }}>
+            <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: resetCooldown > 0 ? colors.textMuted : palette.accent, fontWeight: fontWeight.semibold }}>
+              {resetCooldown > 0 ? t.acc_resend_seconds.replace('{n}', String(resetCooldown)) : t.acc_forgot_password}
             </Text>
+          </TouchableOpacity>
 
-            <Input
-              label={t.acc_email}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              placeholder={t.acc_email_placeholder}
-              containerStyle={{ marginBottom: spacing[3] }}
-              returnKeyType="next"
-            />
-            <Input
-              label={t.acc_password}
-              value={password}
-              onChangeText={(value) => { setPassword(value); setLoginError(null) }}
-              secureTextEntry
-              placeholder={t.acc_password_placeholder}
-              containerStyle={{ marginBottom: spacing[5] }}
-              onSubmitEditing={handleLogin}
-              returnKeyType="done"
-            />
+          <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: spacing[4] }}>
+            <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
+              {t.acc_no_account}{' '}
+              <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>{t.acc_register_link}</Text>
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
 
-            {loginError && (
-              <Text accessibilityRole="alert" style={{ marginBottom: spacing[3], fontSize: fontSize.sm, color: palette.danger }}>
-                {loginError}
+        {/* Oturum yoksa (çıkış yapmış ya da ilk açılış başarısız) misafir olarak da başlanabilir. */}
+        {!session && (
+          <View style={{ marginTop: spacing[4] }}>
+            <Button label={t.guest_continue} onPress={handleGuest} loading={guestLoading} variant="secondary" fullWidth />
+            {guestError && (
+              <Text accessibilityRole="alert" style={{ marginTop: spacing[2], textAlign: 'center', fontSize: fontSize.sm, color: palette.danger }}>
+                {t.guest_start_failed}
               </Text>
             )}
-            <Button label={loading ? t.acc_logging_in : t.acc_login} onPress={handleLogin} loading={loading} fullWidth />
-
-            <TouchableOpacity onPress={handlePasswordReset} disabled={loading || resetCooldown > 0} style={{ marginTop: spacing[4] }}>
-              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: resetCooldown > 0 ? colors.textMuted : palette.accent, fontWeight: fontWeight.semibold }}>
-                {resetCooldown > 0 ? t.acc_resend_seconds.replace('{n}', String(resetCooldown)) : t.acc_forgot_password}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={{ marginTop: spacing[4] }}>
-              <Text style={{ textAlign: 'center', fontSize: fontSize.sm, color: colors.textMuted }}>
-                {t.acc_no_account}{' '}
-                <Text style={{ color: palette.accent, fontWeight: fontWeight.bold }}>{t.acc_register_link}</Text>
-              </Text>
-            </TouchableOpacity>
-          </GlassCard>
-
-          {/* Oturum yoksa (çıkış yapmış ya da ilk açılış başarısız) misafir olarak da başlanabilir. */}
-          {!session && (
-            <View style={{ marginTop: spacing[4] }}>
-              <Button label={t.guest_continue} onPress={handleGuest} loading={guestLoading} variant="secondary" fullWidth />
-              {guestError && (
-                <Text accessibilityRole="alert" style={{ marginTop: spacing[2], textAlign: 'center', fontSize: fontSize.sm, color: palette.danger }}>
-                  {t.guest_start_failed}
-                </Text>
-              )}
-            </View>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+          </View>
+        )}
+      </ScrollView>
+    </ScreenBackground>
   )
 }

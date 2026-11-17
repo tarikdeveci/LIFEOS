@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, Text, View } from 'react-native'
+import { Alert, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { Button } from '@/src/components/ui/Button'
@@ -42,8 +42,8 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <ScreenBackground edges={['top', 'bottom']} avoidKeyboard={false}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', padding: spacing[5] }}>
+    <ScreenBackground edges={['top', 'bottom']}>
+      <View style={{ flex: 1, justifyContent: 'center', padding: spacing[5] }}>
         <GlassCard borderRadius={radius['2xl']} padding={spacing[6]}>
           <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.acc_create_new_password}</Text>
           <Text style={{ marginTop: spacing[2], marginBottom: spacing[5], fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20 }}>{t.acc_create_new_password_desc}</Text>
@@ -53,7 +53,7 @@ export default function ResetPasswordScreen() {
             <Button label={loading ? t.acc_updating : t.acc_update_password} onPress={updatePassword} loading={loading} fullWidth style={{ marginTop: spacing[2] }} />
           </View>
         </GlassCard>
-      </KeyboardAvoidingView>
+      </View>
     </ScreenBackground>
   )
 }
