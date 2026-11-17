@@ -128,18 +128,6 @@ export const BODY_REGION_LABELS: Record<BodyRegion, string> = {
   full:  'Tüm Vücut',
 }
 
-// Design tokens (Tailwind ile senkron)
-export const COLORS = {
-  primary:    '#1A1A2E',
-  accent:     '#4A90D9',
-  success:    '#34A853',
-  warning:    '#F59E0B',
-  danger:     '#EF4444',
-  muted:      '#6B7280',
-  background: '#FAFBFC',
-  surface:    '#FFFFFF',
-} as const
-
 // ============================
 // Çözümleme merdiveni etiketleri
 // ============================

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { TimeBlock, DailyPlan } from '@lifeos/shared'
 import type { BlockType } from '@lifeos/shared'
-import { BLOCK_TYPE_COLORS, todayDate, shiftIsoDate, minutesBetween } from '@lifeos/shared'
+import { BLOCK_TYPE_COLORS, fromDateString, minutesBetween, shiftIsoDate, todayDate, weekStartOf } from '@lifeos/shared'
 import { blockTimeText } from '@/lib/i18nFlex'
 import { useLang } from '@/lib/contexts/LangContext'
 import { getBlocksForDateRange, getPlansForDateRange } from '@lifeos/shared/supabase'
@@ -19,21 +19,6 @@ const ENERGY_EMOJI: Record<number, string> = { 1: '😴', 2: '😐', 3: '🙂', 
 /** Pazartesiden başlayan kısa gün adları; 1 Ocak 2024 pazartesi. */
 const weekdayLabels = (locale: string) =>
   Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' }))
-
-function localDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function getWeekStart(dateStr: string): string {
-  const d = new Date(dateStr)
-  const dow = d.getDay()
-  const diff = dow === 0 ? -6 : 1 - dow
-  d.setDate(d.getDate() + diff)
-  return localDateStr(d)
-}
 
 function timeToMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number) as [number, number]
@@ -55,7 +40,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
   const locale = lang === 'tr' ? 'tr-TR' : 'en-US'
   const typeLabel = (type: BlockType) => t[`review_type_${type}`]
   const dayLabels = weekdayLabels(locale)
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(initialDate ?? todayDate()))
+  const [weekStart, setWeekStart] = useState(() => weekStartOf(initialDate ?? todayDate()))
   const [blocks, setBlocks] = useState<TimeBlock[]>([])
   const [plans, setPlans] = useState<DailyPlan[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,7 +70,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
 
   const prevWeek = () => setWeekStart((s) => shiftIsoDate(s, -7))
   const nextWeek = () => setWeekStart((s) => shiftIsoDate(s, 7))
-  const goToday  = () => setWeekStart(getWeekStart(today))
+  const goToday  = () => setWeekStart(weekStartOf(today))
 
   // Saat ekseni etiketleri
   const hourLabels = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => HOUR_START + i)
@@ -99,8 +84,8 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
   })
 
   const weekLabel = (() => {
-    const start = new Date(weekStart)
-    const end = new Date(weekEnd)
+    const start = fromDateString(weekStart)
+    const end = fromDateString(weekEnd)
     const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' }
     if (start.getMonth() === end.getMonth()) {
       return `${start.getDate()}-${end.toLocaleDateString(locale, opts)}`
@@ -137,7 +122,7 @@ export function WeekView({ userId, initialDate, onDayClick }: WeekViewProps) {
         {weekDays.map((day, i) => {
           const isToday = day === today
           const plan = plans.find((p) => p.date === day)
-          const dayDate = new Date(day)
+          const dayDate = fromDateString(day)
           const plannedH = Math.round(totalBlockedMinutes[i]! / 60)
 
           return (

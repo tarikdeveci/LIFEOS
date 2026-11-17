@@ -6,9 +6,9 @@ import { supabase } from '@/src/lib/supabase'
 import { useCalendarStore } from '@/src/stores/calendarStore'
 import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useOnAppActive } from '@/src/hooks/useOnAppActive'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
-import { BackButton } from '@/src/components/ui/BackButton'
 import { CsvImportSheet } from '@/src/components/workout/CsvImportSheet'
 import { IntegrationsLink } from '@/src/components/settings/IntegrationsLink'
 import { SupportCard } from '@/src/components/settings/SupportCard'
@@ -60,12 +60,8 @@ export default function SettingsScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.settings_title}</Text>
-        </View>
-
+      <ScreenHeader title={t.settings_title} back />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         <GroupLabel label={t.settings_group_connections} first />
 
         <IntegrationsLink />

@@ -76,20 +76,6 @@ export function shortDateLabel(dateStr: string): string {
   return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(fromDateString(dateStr))
 }
 
-/**
- * Tarihin bugün olup olmadığını kontrol eder
- */
-export function isToday(dateStr: string): boolean {
-  return dateStr === todayDate()
-}
-
-/**
- * Tarihin geçmişte olup olmadığını kontrol eder
- */
-export function isPast(dateStr: string): boolean {
-  return dateStr < todayDate()
-}
-
 const RELATIVE_WORDS = {
   tr: { today: 'Bugün', tomorrow: 'Yarın', yesterday: 'Dün', locale: 'tr-TR' },
   en: { today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', locale: 'en-US' },
@@ -108,16 +94,6 @@ export function relativeDateLabel(dateStr: string, lang: 'tr' | 'en' = 'tr'): st
     month: 'long',
     weekday: 'short',
   }).format(fromDateString(dateStr))
-}
-
-/**
- * 'HH:MM' formatında şu anki saati döndürür
- */
-export function currentTime(): string {
-  const now = new Date()
-  const h = String(now.getHours()).padStart(2, '0')
-  const m = String(now.getMinutes()).padStart(2, '0')
-  return `${h}:${m}`
 }
 
 /**
@@ -179,4 +155,9 @@ export function weekStart(date: Date = new Date()): Date {
   const diff = day === 0 ? -6 : 1 - day // Pazartesi = 1
   d.setDate(d.getDate() + diff)
   return d
+}
+
+/** 'YYYY-MM-DD' gününün haftasındaki pazartesi, 'YYYY-MM-DD'. Yerel takvimle hesaplar. */
+export function weekStartOf(dateStr: string): string {
+  return toDateString(weekStart(fromDateString(dateStr)))
 }

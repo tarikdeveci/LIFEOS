@@ -90,14 +90,6 @@ export type UpdateTimeBlockInput = Partial<CreateTimeBlockInput> & {
   day_part?: DayPart | null
 }
 
-export interface DayStats {
-  total_tasks: number
-  completed_tasks: number
-  total_effort: number
-  total_minutes_planned: number
-  energy_level: DailyPlan['energy_level']
-}
-
 export interface WeeklyDayStat {
   date: string
   dayLabel: string

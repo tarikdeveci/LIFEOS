@@ -5,8 +5,9 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { AiAccessError, aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { applyAiActions, describeAiActions, validAiActions, type AiPlanAction } from '@/src/lib/aiPlanActions'
-import { getDayPosition, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
+import { getDayPosition, shiftIsoDate, todayDate, usePlanningStore, useTaskStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { Button } from '@/src/components/ui/Button'
 import { AiChatSheet, type AiChatMessage } from '@/src/components/ai/AiChatSheet'
 import { NowCard } from '@/src/components/planning/NowCard'
@@ -32,12 +33,9 @@ import { useProGate } from '@/src/hooks/useProGate'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useFreeAiPlans } from '@/src/hooks/useFreeAiPlans'
 import { useProgramDays } from '@/src/hooks/useProgramDays'
+import { celebrate } from '@/src/components/Celebration'
 
 const BLOCK_COLORS: Record<BlockType, string> = { task: palette.task, routine: palette.routine, break: palette.break, focus: palette.focus, meal: palette.meal, workout: palette.workout }
-function localIsoDate(date = new Date()): string {
-  const tzOffsetMs = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 10)
-}
 
 function getWeekDays(anchor: Date): Date[] {
   const start = new Date(anchor)
@@ -47,17 +45,12 @@ function getWeekDays(anchor: Date): Date[] {
 }
 
 
-function addDays(date: string, days: number): string {
-  const next = new Date(`${date}T00:00:00`)
-  next.setDate(next.getDate() + days)
-  return localIsoDate(next)
-}
 
 function inferRequestedDate(input: string, fallbackDate: string): string {
   const normalized = input.toLocaleLowerCase('tr-TR')
-  if (/\b(bugun|bugün|today)\b/.test(normalized)) return localIsoDate()
-  if (/\b(yarin|yarın|tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 1)
-  if (/\b(ertesi gun|ertesi gün|after tomorrow)\b/.test(normalized)) return addDays(localIsoDate(), 2)
+  if (/\b(bugun|bugün|today)\b/.test(normalized)) return todayDate()
+  if (/\b(yarin|yarın|tomorrow)\b/.test(normalized)) return shiftIsoDate(todayDate(), 1)
+  if (/\b(ertesi gun|ertesi gün|after tomorrow)\b/.test(normalized)) return shiftIsoDate(todayDate(), 2)
   return fallbackDate
 }
 
@@ -96,7 +89,7 @@ export default function PlanningScreen() {
     if (hasFreePlan) return true
     return requirePro('free_limit')
   }
-  const [selectedDate, setSelectedDate] = useState(() => localIsoDate())
+  const [selectedDate, setSelectedDate] = useState(() => todayDate())
   const [weekAnchor, setWeekAnchor] = useState(new Date())
   const [refreshing, setRefreshing] = useState(false)
   /** null: kapalı; 'new': yeni blok; blok: düzenleme. */
@@ -115,7 +108,7 @@ export default function PlanningScreen() {
   // 30sn'de bir tazelenir — aktif blok ve kalan süre canlı kalsın
   const now = useNow()
 
-  const todayStr = localIsoDate()
+  const todayStr = todayDate()
   const weekDays = getWeekDays(weekAnchor)
 
   // Seçili güne ait local takvim etkinlikleri
@@ -254,6 +247,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
   async function handleToggleBlockDone(blockId: string, done: boolean) {
     try {
       await setBlockDone(supabase, blockId, done)
+      if (done) celebrate('root', 'medium')
     } catch {
       Alert.alert(t.error, t.plan_block_update_error)
     }
@@ -310,26 +304,11 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
 
   return (
     <ScreenBackground>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
-        showsVerticalScrollIndicator={false}
-        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
-        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
-        keyboardShouldPersistTaps="handled"
-        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
-        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
-        automaticallyAdjustKeyboardInsets
-        keyboardDismissMode="interactive"
-      >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[4] }}>
-          <View>
-            <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.plan_title}</Text>
-            <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }}>{dayTitle}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing[2] }}>
+      <ScreenHeader
+        title={t.plan_title}
+        subtitle={dayTitle}
+        right={
+          <>
             <TouchableOpacity onPress={openPlanning} disabled={isCheckingPro} accessibilityRole="button" accessibilityLabel={t.ritual_start} style={{ width: MIN_TOUCH, height: MIN_TOUCH, borderRadius: MIN_TOUCH / 2, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: aiUnlocked || isViewingToday ? 1 : 0.55 }}>
               <Ionicons name={aiUnlocked || isViewingToday ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
               {hasFreePlan && freePlansLeft !== null && (
@@ -343,9 +322,22 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
               <Ionicons name="add" size={20} color="#fff" />
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#fff' }}>{t.add}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
+          </>
+        }
+      />
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
+        showsVerticalScrollIndicator={false}
+        // İçindeki kartların açtığı pencereler (rutin, alışkanlık, hedef) React ağacında bu
+        // listenin çocuğu: varsayılan değerde klavye açıkken ilk dokunuşu bu liste yutar.
+        keyboardShouldPersistTaps="handled"
+        // Hedef ilerlemesi gibi kartlar listenin dibinde ve sayı klavyesinde (iOS) kapatma
+        // tuşu yok: liste klavyenin üstüne kayar, aşağı sürükleyince klavye iner.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+      >
         <WeekStrip
           days={weekDays}
           selectedDate={selectedDate}

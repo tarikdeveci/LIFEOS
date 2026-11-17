@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, Switch, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { BackButton } from '@/src/components/ui/BackButton'
 import * as Notifications from 'expo-notifications'
 import {
   BLOCK_REMINDER_CHOICES,
@@ -20,6 +19,7 @@ import {
   updatePushPreferences,
 } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { ReportNotifToggle } from '@/src/components/settings/ReportNotifToggle'
@@ -267,13 +267,8 @@ export default function NotificationSettingsScreen() {
   if (unavailable) {
     return (
       <ScreenBackground>
-        <View style={{ flex: 1, padding: spacing[5], paddingTop: spacing[6] }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-            <BackButton />
-            <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1 }}>
-              {tr ? 'Bildirimler' : 'Notifications'}
-            </Text>
-          </View>
+        <ScreenHeader title={tr ? 'Bildirimler' : 'Notifications'} back />
+        <View style={{ flex: 1, paddingHorizontal: spacing[5], paddingTop: spacing[3] }}>
           <GlassCard>
             <View style={{ flexDirection: 'row', gap: spacing[3], alignItems: 'flex-start' }}>
               <Ionicons name="cloud-offline-outline" size={20} color={palette.warning} />
@@ -306,15 +301,12 @@ export default function NotificationSettingsScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[5] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1 }}>
-            {tr ? 'Bildirimler' : 'Notifications'}
-          </Text>
-          {saving && <ActivityIndicator size="small" color={palette.accent} />}
-        </View>
-
+      <ScreenHeader
+        title={tr ? 'Bildirimler' : 'Notifications'}
+        back
+        right={saving ? <ActivityIndicator size="small" color={palette.accent} /> : null}
+      />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         {/* Cihaz izni kapalıysa buradaki hiçbir ayar bildirim ürettirmez.
             Ayarları açık görüp bildirim alamamak en kafa karıştırıcı durum,
             o yüzden en üstte söylüyoruz. */}

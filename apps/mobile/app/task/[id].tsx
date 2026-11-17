@@ -10,6 +10,7 @@ import type { Task, TaskStatus } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { callAiSuggest } from '@/src/lib/ai'
 import { recordValueMoment } from '@/src/lib/review'
+import { ScreenHeader, HeaderIconButton } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { Input } from '@/src/components/ui/Input'
@@ -20,6 +21,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { useProGate } from '@/src/hooks/useProGate'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor } from '@/src/theme/tokens'
+import { Celebration, celebrate } from '@/src/components/Celebration'
 
 const STATUS_OPTIONS: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done', 'deferred']
 const getStatusLabels = (t: any): Record<TaskStatus, string> => ({ backlog: t.misc_status_backlog, planned: t.misc_status_planned, in_progress: t.misc_status_in_progress, blocked: t.misc_status_blocked, done: t.misc_status_done, deferred: t.misc_status_deferred })
@@ -77,6 +79,7 @@ export default function TaskDetailScreen() {
   async function handleStatusChange(status: TaskStatus) {
     if (!task) return
     setSaving(true)
+    if (status === 'done' && task.status !== 'done') celebrate('modal')
     try {
       await setStatus(supabase, task.id, status)
       setTask((p) => p ? { ...p, status } : null)
@@ -84,6 +87,9 @@ export default function TaskDetailScreen() {
       // sayılıyordu ama yalnızca beslenme sekmesinde: görev/plan için gelen
       // kullanıcıya hiç puan sorulmuyordu. Beklenmez, kaydı geciktirmemeli.
       if (status === 'done') void recordValueMoment()
+    } catch {
+      // Store eski durumu geri yükledi; sessiz kalırsa kullanıcı görevi bitti sanar.
+      Alert.alert(t.task_save_failed, t.task_status_error)
     } finally { setSaving(false) }
   }
 
@@ -200,21 +206,18 @@ export default function TaskDetailScreen() {
 
   return (
     <ScreenBackground edges={['top']}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[5], paddingVertical: spacing[4], borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={goBack} hitSlop={hitSlopFor(64, 24)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Ionicons name="chevron-back" size={20} color={palette.accent} />
-          <Text style={{ fontSize: fontSize.base, color: palette.accent, fontWeight: fontWeight.medium }}>{t.misc_back}</Text>
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>
-          {saving && <ActivityIndicator size="small" color={palette.accent} />}
-          <TouchableOpacity onPress={handleDelete} hitSlop={hitSlopFor(20)} accessibilityRole="button" accessibilityLabel={t.misc_delete_task_a11y}>
-            <Ionicons name="trash-outline" size={20} color={palette.danger} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: spacing[5], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScreenHeader
+        title=""
+        back
+        onBack={goBack}
+        right={
+          <>
+            {saving && <ActivityIndicator size="small" color={palette.accent} />}
+            <HeaderIconButton icon="trash-outline" label={t.misc_delete_task_a11y} onPress={handleDelete} color={palette.danger} />
+          </>
+        }
+      />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: 60, gap: spacing[4] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
         <GlassCard>
@@ -233,6 +236,16 @@ export default function TaskDetailScreen() {
             </TouchableOpacity>
           )}
         </GlassCard>
+
+        {/* Tamamlama ekranın birincil eylemi: durum çipleri arasında aranmıyor (kullanıcı isteği 2026-11-16). */}
+        <Button
+          label={task.status === 'done' ? t.misc_uncheck_done : t.misc_check_done}
+          icon={task.status === 'done' ? 'arrow-undo-outline' : 'checkmark-circle'}
+          variant={task.status === 'done' ? 'secondary' : 'primary'}
+          onPress={() => void handleStatusChange(task.status === 'done' ? 'planned' : 'done')}
+          disabled={saving}
+          fullWidth
+        />
 
         {/* Priority score */}
         <GlassCard>
@@ -425,6 +438,7 @@ export default function TaskDetailScreen() {
         </GlassCard>
 
       </ScrollView>
+      <Celebration scope="modal" />
     </ScreenBackground>
   )
 }

@@ -1,6 +1,8 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { useState } from 'react'
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { EquipmentKey, ProgramEquipmentFit, WorkoutProgram } from '@lifeos/shared'
+import { Button } from '../ui/Button'
 import { GlassCard } from '../ui/GlassCard'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
@@ -11,6 +13,10 @@ import { programDayLabel } from './programDays'
 interface Props {
   /** Ekipmana uygunluğa göre sıralanmış programlar. */
   programs: WorkoutProgram[]
+  loading?: boolean
+  error?: string | null
+  /** Veri sahibi hatayi temizler ve basarisizlikta reject eder. */
+  onRetry?: () => Promise<void>
   fitByProgram: Map<string, ProgramEquipmentFit | null>
   equipment: EquipmentKey[] | null
   equipmentLoaded: boolean
@@ -31,9 +37,24 @@ interface ProgramCardProps {
 }
 
 /** Antrenman ekranının Programlar sekmesi: ekipman kartı, kendi programını oluştur ve program listesi. */
-export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active }: Props) {
+export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded, onEditEquipment, onCreate, onOpen, active, loading = false, error = null, onRetry }: Props) {
   const { colors } = useTheme()
   const { t } = useLang()
+  const [retrying, setRetrying] = useState(false)
+  // Hata durumu store'dan gelir: dış yenileme başarılı olunca kendiliğinden kalkar.
+  const hasError = error !== null
+
+  async function handleRetry() {
+    if (!onRetry || retrying || loading) return
+    setRetrying(true)
+    try {
+      await onRetry()
+    } catch {
+      // Hata store'a yazıldı, error prop'u ile görünür.
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   const SPLIT_LABELS: Record<string, string> = {
     bro_split: 'Bro Split', push_pull_legs: 'Push Pull Legs',
@@ -55,20 +76,29 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
         />
       )}
       <EquipmentCard equipment={equipment} loaded={equipmentLoaded} onEdit={onEditEquipment} />
-      <TouchableOpacity
-        onPress={onCreate}
-        accessibilityRole="button"
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing[2], minHeight: MIN_TOUCH, borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.accent }}
-      >
-        <Ionicons name="add" size={18} color={palette.accent} />
-        <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.accent }}>{t.wk_create_own}</Text>
-      </TouchableOpacity>
-      {programs.length === 0 ? (
-        <View style={{ paddingTop: spacing[8], alignItems: 'center', gap: spacing[3] }}>
-          <Ionicons name="list-outline" size={48} color={colors.textSubtle} />
-          <Text style={{ fontSize: fontSize.base, color: colors.textSubtle }}>{t.wk_programs_failed}</Text>
-          <Text style={{ fontSize: fontSize.sm, color: colors.textSubtle, textAlign: 'center' }}>{t.wk_programs_failed_hint}</Text>
+      {programs.length > 0 && (
+        <Button label={t.wk_create_own} onPress={onCreate} variant="secondary" fullWidth style={{ minHeight: MIN_TOUCH }} />
+      )}
+      {hasError ? (
+        <GlassCard padding={spacing[5]} noShadow>
+          <View style={{ alignItems: 'center', gap: spacing[3] }}>
+            <Text accessibilityRole="alert" style={{ fontSize: fontSize.base, color: colors.textPrimary, textAlign: 'center' }}>{t.wkf_programs_error}</Text>
+            <Button label={t.wkf_retry} onPress={() => void handleRetry()} loading={retrying || loading} disabled={!onRetry} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
+          </View>
+        </GlassCard>
+      ) : loading || retrying ? (
+        <View accessible accessibilityRole="progressbar" accessibilityLabel={t.wkf_programs_loading} accessibilityState={{ busy: true }} style={{ padding: spacing[8], alignItems: 'center', gap: spacing[3] }}>
+          <ActivityIndicator color={palette.workout} />
+          <Text style={{ fontSize: fontSize.base, color: colors.textSecondary }}>{t.wkf_programs_loading}</Text>
         </View>
+      ) : programs.length === 0 ? (
+        <GlassCard padding={spacing[5]} noShadow>
+          <View style={{ alignItems: 'center', gap: spacing[3] }}>
+            <Ionicons name="list-outline" size={48} color={colors.textMuted} />
+            <Text style={{ fontSize: fontSize.base, color: colors.textSecondary, textAlign: 'center' }}>{t.wkf_programs_empty}</Text>
+            <Button label={t.wk_create_own} onPress={onCreate} style={{ minHeight: MIN_TOUCH, alignSelf: 'center' }} />
+          </View>
+        </GlassCard>
       ) : (
         others.map((prog) => (
           <ProgramCard

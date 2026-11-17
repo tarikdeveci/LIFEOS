@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRoutineStore, useWorkoutStore, assignProgramDays, todayDate } from '@lifeos/shared'
-import type { Workout } from '@lifeos/shared'
+import type { ProgramDay, Workout, WorkoutProgram } from '@lifeos/shared'
 import { getUpcomingRoutineBlocks, getProgramWorkoutHistory } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
 import { useLang } from '@/src/contexts/LangContext'
@@ -14,6 +14,15 @@ export function withProgramDay(title: string, day: string | undefined): string {
   return `${title} · ${day}`
 }
 
+/** Bir bloğa düşen program günü. */
+export interface AssignedProgramDay {
+  blockId: string
+  date: string
+  startTime: string
+  program: WorkoutProgram
+  day: ProgramDay
+}
+
 /**
  * Programa bağlı rutinlerin bloklarına o günün program gününü verir (blok id'si → gün adı).
  * Bağlı rutin yoksa hiçbir istek atılmaz. Sıra yapılan antrenmana göre ilerler, bkz. assignProgramDays.
@@ -24,6 +33,24 @@ export function useProgramDays(
   userId: string | null,
   shown: ReadonlyArray<{ id: string; routine_id: string | null }>,
 ): Record<string, string> {
+  const { t } = useLang()
+  const assigned = useAssignedProgramDays(userId, shown)
+  return useMemo(() => {
+    const result: Record<string, string> = {}
+    for (const a of assigned) result[a.blockId] = programDayLabel(a.day, t)
+    return result
+  }, [assigned, t])
+}
+
+/**
+ * `useProgramDays`in ortak parçası: blok başına program günü nesnesi (program, gün, tarih, saat).
+ * `refreshKey` değişince antrenman geçmişi ve bloklar yeniden okunur (antrenman başladı, silindi).
+ */
+export function useAssignedProgramDays(
+  userId: string | null,
+  shown: ReadonlyArray<{ id: string; routine_id: string | null }>,
+  refreshKey = '',
+): AssignedProgramDay[] {
   const { t } = useLang()
   const routines = useRoutineStore((s) => s.routines)
   const programs = useWorkoutStore((s) => s.programs)
@@ -60,18 +87,20 @@ export function useProgramDays(
     return () => { cancelled = true }
     // linked, linkedKey ile izlenir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, linkedKey, shownKey])
+  }, [userId, linkedKey, shownKey, refreshKey])
 
   return useMemo(() => {
-    const result: Record<string, string> = {}
+    const result: AssignedProgramDay[] = []
     const today = todayDate()
     const label = (d: Parameters<typeof programDayLabel>[0]) => programDayLabel(d, t)
     for (const program of programs) {
       const ids = new Set(linked.filter((r) => r.workout_program_id === program.id).map((r) => r.id))
       if (ids.size === 0) continue
       const mine = blocks.filter((b) => ids.has(b.routine_id))
+      const byId = new Map(mine.map((b) => [b.id, b]))
       for (const [blockId, day] of assignProgramDays(program, history, mine, today, label)) {
-        result[blockId] = label(day)
+        const block = byId.get(blockId)
+        if (block) result.push({ blockId, date: block.date, startTime: block.start_time, program, day })
       }
     }
     return result

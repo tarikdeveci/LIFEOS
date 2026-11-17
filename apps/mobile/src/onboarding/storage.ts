@@ -23,3 +23,23 @@ export async function markOnboardingSeen(userId: string): Promise<void> {
     // Yazılamazsa tur bir sonraki açılışta tekrar çıkar; veri kaybı yok.
   }
 }
+
+/** Gerçek ekran üstündeki ipucu turu (coach mark) da hesap başına bir kez gösterilir. */
+const COACH_PREFIX = 'lifeos_coach_seen:'
+
+export async function hasSeenCoach(userId: string): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(COACH_PREFIX + userId)) === '1'
+  } catch {
+    // Okunamıyorsa göstermeyiz: ipucu turu tanıtımın aksine zorunlu değil.
+    return true
+  }
+}
+
+export async function markCoachSeen(userId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(COACH_PREFIX + userId, '1')
+  } catch {
+    // Yazılamazsa tur bir kez daha çıkabilir; zararsız.
+  }
+}

@@ -64,16 +64,6 @@ export function zonedToUtc(date: string, time: string, timeZone: string): Date {
   return new Date(wall - offsetMs(guess, timeZone))
 }
 
-/** Bir anın o saat dilimindeki takvim günü, YYYY-MM-DD. */
-export function localDate(instant: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
-}
-
-export function addDays(date: string, days: number): string {
-  const [year = 0, month = 1, day = 1] = date.split('-').map(Number)
-  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
-}
-
 function formatUtc(instant: Date): string {
   return instant.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 }

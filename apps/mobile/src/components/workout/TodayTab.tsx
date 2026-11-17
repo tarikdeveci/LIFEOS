@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { Exercise, Workout, WorkoutSet, WorkoutStreak } from '@lifeos/shared'
+import { Button } from '../ui/Button'
 import { GlassCard } from '../ui/GlassCard'
 import { Input } from '../ui/Input'
 import { StatCard } from '../ui/StatCard'
@@ -15,6 +16,13 @@ import { categoryLabel, exerciseName, muscleGroupName } from './labels'
 
 interface Props {
   workout: Workout | null
+  /** Yerel takvim günü (YYYY-AA-GG): antrenmanın tarihi farklıysa dünden kalan olarak işaretlenir. */
+  todayStr: string
+  /** Bugünkü antrenman okunamadı: Başlat kartı yerine hata ve Tekrar dene görünür. */
+  loadError: boolean
+  /** Bugünkü antrenman okunuyor: okuma bitmeden Başlat kartı gösterilmez (ikinci antrenman açılmasın). */
+  loading: boolean
+  onRetry: () => void
   userId: string | null
   /** Süren antrenmanda en az bir set var: canlı ekran açık. */
   liveActive: boolean
@@ -22,7 +30,7 @@ interface Props {
   onToggleSets: () => void
   onStart: () => void
   /** Aktif programın sıradaki günü (`findProgramProgress`); varsa birincil eylem o günü başlatır. */
-  nextProgramDay: { program: string; day: string } | null
+  nextProgramDay: { program: string; day: string; /** Bugüne planlı gün (rutin ya da blok); false: sıradaki gün. */ planned: boolean; /** Hareket özeti. */ summary: string } | null
   onStartNext: () => void
   onFinish: () => void
   onDelete: () => void
@@ -44,16 +52,37 @@ interface Props {
 
 /** Antrenman ekranının Bugün sekmesi: başlat ya da süren antrenman, seri, sayılar ve AI koç kartı. */
 export function TodayTab({
-  workout, userId, liveActive, setsExpanded, onToggleSets, onStart, nextProgramDay, onStartNext, onFinish, onDelete, onAddSet, onFocusMuscle,
+  workout, todayStr, loadError, loading, onRetry, userId, liveActive, setsExpanded, onToggleSets, onStart, nextProgramDay, onStartNext, onFinish, onDelete, onAddSet, onFocusMuscle,
   search, onChangeSearch, matches, muscleCard, streak, weekCount, totalCount, isPro, isCheckingPro, onOpenCoach,
 }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
 
+  // Bugünkü antrenman setsizse ve gün biliniyorsa kart yine görünür: Başlat mevcut boş antrenmanı kullanır.
+  const emptyToday = !!workout && workout.date === todayStr && workout.status !== 'completed'
+    && (workout.workout_sets?.length ?? 0) === 0 && nextProgramDay !== null
+  const carriedOver = !!workout && workout.date !== todayStr && workout.status !== 'completed'
+
   return (
     <>
+      {/* Okunamayan antrenmanı "yok" sanıp ikinci antrenman açtırmamak için hata durumu */}
+      {!workout && loadError && (
+        <GlassCard style={{ marginBottom: spacing[4], gap: spacing[3] }}>
+          <Text accessibilityRole="alert" style={{ fontSize: fontSize.base, color: colors.textPrimary }}>{t.wkf_today_load_error}</Text>
+          <Button label={t.retry} onPress={onRetry} variant="secondary" fullWidth />
+        </GlassCard>
+      )}
+
+      {!workout && !loadError && loading && (
+        <GlassCard style={{ marginBottom: spacing[4] }}>
+          <View style={{ alignItems: 'center', paddingVertical: spacing[4] }}>
+            <ActivityIndicator color={palette.workout} accessibilityLabel={t.wk_loading} />
+          </View>
+        </GlassCard>
+      )}
+
       {/* Ana eylem en üstte: antrenman yoksa başlat, varsa bugünkü antrenman */}
-      {!workout && (
+      {((!workout && !loadError && !loading) || emptyToday) && (
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], marginBottom: spacing[4] }}>
             <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${palette.workout}15`, alignItems: 'center', justifyContent: 'center' }}>
@@ -61,10 +90,10 @@ export function TodayTab({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                {nextProgramDay ? nextProgramDay.program : t.work_no_workout}
+                {nextProgramDay ? (nextProgramDay.planned ? t.wkf_today_program.replace('{program}', nextProgramDay.program).replace('{day}', nextProgramDay.day) : nextProgramDay.program) : t.work_no_workout}
               </Text>
               <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>
-                {nextProgramDay ? t.ux_wk_next_day.replace('{day}', nextProgramDay.day) : t.work_no_workout_hint}
+                {nextProgramDay ? (nextProgramDay.planned ? nextProgramDay.summary : t.ux_wk_next_day.replace('{day}', nextProgramDay.day)) : t.work_no_workout_hint}
               </Text>
             </View>
           </View>
@@ -79,7 +108,7 @@ export function TodayTab({
               {nextProgramDay ? t.ux_wk_start_day.replace('{day}', nextProgramDay.day) : t.work_start}
             </Text>
           </TouchableOpacity>
-          {nextProgramDay && (
+          {nextProgramDay && !workout && (
             <TouchableOpacity onPress={onStart} accessibilityRole="button" style={{ minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', marginTop: spacing[1] }}>
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.ux_wk_empty_start}</Text>
             </TouchableOpacity>
@@ -102,6 +131,9 @@ export function TodayTab({
                     ? `${t.work_completed} · ${t.wk_sets_n.replace('{n}', String(workout.workout_sets?.length ?? 0))}`
                     : t.wk_in_progress_sets.replace('{n}', String(workout.workout_sets?.length ?? 0))}
                 </Text>
+                {carriedOver && (
+                  <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{t.wkf_from_yesterday}</Text>
+                )}
               </View>
             </View>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>

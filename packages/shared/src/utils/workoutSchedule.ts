@@ -15,10 +15,6 @@ import { addMinutesToClock, fromDateString, parseClockParts, shiftIsoDate } from
 
 /** Pazartesi ilk sırada olacak şekilde kısa Türkçe gün adları, JS indeksiyle. */
 export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const
-export const WEEKDAY_SHORT: Record<number, string> = {
-  1: 'Pzt', 2: 'Sal', 3: 'Çar', 4: 'Per', 5: 'Cum', 6: 'Cmt', 0: 'Paz',
-}
-
 export interface SchedulableExercise {
   sets: number
   rest_seconds: number

@@ -1,6 +1,6 @@
 // Supabase workout query fonksiyonları
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { toDateString } from '../utils/date'
+import { shiftIsoDate, toDateString } from '../utils/date'
 import { EQUIPMENT } from '../constants/equipment'
 import type {
   EquipmentKey,
@@ -91,6 +91,28 @@ export async function getWorkoutByDate(
   return (data?.[0] ?? null) as Workout | null
 }
 
+/**
+ * Dünden kalan, bitirilmemiş antrenman (gece yarısını geçen seans). Yalnız bir gün
+ * öncesine bakar; bugünün kaydı yoksa canlı antrenman gibi gösterilir.
+ */
+export async function getOpenWorkoutBefore(
+  supabase: Supabase,
+  userId: string,
+  today: string,
+): Promise<Workout | null> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('*, workout_sets(*, exercise:exercises(*, muscle_group:muscle_groups(*)))')
+    .eq('user_id', userId)
+    .eq('date', shiftIsoDate(today, -1))
+    .eq('status', 'in_progress')
+    .order('created_at', { ascending: true })
+    .order('created_at', { referencedTable: 'workout_sets', ascending: true })
+    .limit(1)
+  if (error) throw error
+  return (data?.[0] ?? null) as Workout | null
+}
+
 export async function createWorkout(
   supabase: Supabase,
   userId: string,
@@ -128,19 +150,6 @@ export async function deleteWorkout(supabase: Supabase, workoutId: string): Prom
 // -------------------------------------------------------
 // Antrenman Setleri
 // -------------------------------------------------------
-
-export async function getWorkoutSets(
-  supabase: Supabase,
-  workoutId: string,
-): Promise<WorkoutSet[]> {
-  const { data, error } = await supabase
-    .from('workout_sets')
-    .select('*, exercise:exercises(*, muscle_group:muscle_groups(*))')
-    .eq('workout_id', workoutId)
-    .order('set_number', { ascending: true })
-  if (error) throw error
-  return data as WorkoutSet[]
-}
 
 export async function addWorkoutSet(
   supabase: Supabase,
@@ -191,19 +200,42 @@ export async function deleteWorkoutSet(supabase: Supabase, setId: string): Promi
   if (error) throw error
 }
 
+/** Bitirirken tamamlanmamış setlere ne yapılacağı; verilmeyen setlere dokunulmaz. */
+export interface FinishSetActions {
+  /** Silinecek set id'leri (yapılmayan setler). */
+  deleteSetIds?: string[]
+  /** Tamamlandı işaretlenecek set id'leri ("yapıldı say"). */
+  completeSetIds?: string[]
+}
+
 export async function completeWorkout(
   supabase: Supabase,
   workoutId: string,
   durationMinutes: number,
   totalCaloriesBurned?: number,
+  setActions?: FinishSetActions,
 ): Promise<Workout> {
   // Setler yazılamadıysa antrenman da bitmiş sayılmasın: yoksa kas haritası
-  // bitmiş bir seansın setlerini hiç görmezdi.
-  const { error } = await supabase
-    .from('workout_sets')
-    .update({ completed: true })
-    .eq('workout_id', workoutId)
-  if (error) throw error
+  // bitmiş bir seansın setlerini hiç görmezdi. Yalnız istenen set id'lerine
+  // dokunulur: yapılmayan set sessizce "yapıldı" olmaz.
+  const completeIds = setActions?.completeSetIds ?? []
+  if (completeIds.length > 0) {
+    const { error } = await supabase
+      .from('workout_sets')
+      .update({ completed: true })
+      .eq('workout_id', workoutId)
+      .in('id', completeIds)
+    if (error) throw error
+  }
+  const deleteIds = setActions?.deleteSetIds ?? []
+  if (deleteIds.length > 0) {
+    const { error } = await supabase
+      .from('workout_sets')
+      .delete()
+      .eq('workout_id', workoutId)
+      .in('id', deleteIds)
+    if (error) throw error
+  }
 
   return updateWorkout(supabase, workoutId, {
     status: 'completed' as WorkoutStatus,
@@ -341,11 +373,6 @@ export async function createProgramDay(
 
   if (error) throw error
   return data as ProgramDay
-}
-
-export async function deleteProgramDay(supabase: Supabase, dayId: string): Promise<void> {
-  const { error } = await supabase.from('program_days').delete().eq('id', dayId)
-  if (error) throw error
 }
 
 /** Gün içindeki hareket. order_index çağıran tarafından verilir: sıra kullanıcının. */

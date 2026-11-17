@@ -13,6 +13,7 @@ import { useAuth } from '@/src/contexts/AuthContext'
 import { useRequireAccount } from '@/src/hooks/useRequireAccount'
 import { useSignOut } from '@/src/hooks/useSignOut'
 import { AccountCards } from '@/src/components/profile/AccountCards'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { HealthSettingsCard } from '@/src/components/health/HealthSettingsCard'
@@ -22,7 +23,6 @@ import { PhysicalInfoSheet, NutritionTargetsSheet, nutritionDraftGrams } from '@
 import type { ProfileState, NutritionState } from '@/src/components/profile/ProfileSheets'
 import { useHealthStore } from '@/src/stores/healthStore'
 import { Button } from '@/src/components/ui/Button'
-import { BackButton } from '@/src/components/ui/BackButton'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
@@ -311,12 +311,8 @@ export default function ProfileScreen() {
 
   return (
     <ScreenBackground>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[5] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.profile_title}</Text>
-        </View>
-
+      <ScreenHeader title={t.profile_title} back />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: bottomPadding }} showsVerticalScrollIndicator={false}>
         {/* User card */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[4] }}>

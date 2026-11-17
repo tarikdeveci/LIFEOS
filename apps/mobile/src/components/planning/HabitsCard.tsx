@@ -9,6 +9,7 @@ import { RoutineSheet } from '@/src/components/planning/RoutineSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { celebrate } from '@/src/components/Celebration'
 
 interface Props { userId: string }
 
@@ -91,11 +92,23 @@ export function HabitsCard({ userId }: Props) {
             // Günde N kez: dolana kadar her dokunuş +1. Tek işaretlide dokunuş aç/kapa. Sayaç
             // dokunuş anında store'dan okunur: hızlı ikinci dokunuş eski render'ın değerini yazmasın.
             const tap = () => {
-              const current = useRoutineStore.getState().completions
-                .find((c) => c.routine_id === h.id && c.completed_on === today)?.count ?? 0
-              void write(h.id, perDay ? current + 1 : current >= 1 ? 0 : 1)
+              const mine = useRoutineStore.getState().completions.filter((c) => c.routine_id === h.id)
+              const current = mine.find((c) => c.completed_on === today)?.count ?? 0
+              const next = perDay ? current + 1 : current >= 1 ? 0 : 1
+              const goal = perDay ?? 1
+              if (current < goal && next >= goal) {
+                // Haftalık hedef bu dokunuşla ilk kez dolduysa kutlama büyür.
+                const target = h.times_per_week ?? 1
+                const after = [...mine.filter((c) => c.completed_on !== today), { completed_on: today, count: next }]
+                const weekFilled = !habitWeekProgress(habitDoneDays(mine, perDay), target, today).met
+                  && habitWeekProgress(habitDoneDays(after, perDay), target, today).met
+                celebrate('root', weekFilled ? 'medium' : 'small')
+              }
+              void write(h.id, next)
             }
-            const counter = perDay ? `${count}/${perDay}` : `${week.done}/${week.target} ${t.habits_week}`
+            // Hafta dolunca sayaç "Hafta tamam" der; günde N kezlik alışkanlıkta gün içi sayım sürerken sayı kalır.
+            const showWeekDone = week.met && (!perDay || count === 0 || doneToday)
+            const counter = showWeekDone ? t.habits_week_done : perDay ? `${count}/${perDay}` : `${week.done}/${week.target} ${t.habits_week}`
             const hint = linkedHint(h)
             return (
               <TouchableOpacity key={h.id} onPress={tap} onLongPress={() => showActions(h, count)} delayLongPress={400}

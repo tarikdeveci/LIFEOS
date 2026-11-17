@@ -6,6 +6,7 @@ import type { GoalTask } from '@lifeos/shared/supabase'
 import { useLang } from '@/src/contexts/LangContext'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { supabase } from '@/src/lib/supabase'
+import { celebrate } from '@/src/components/Celebration'
 import { palette, fontSize, spacing, radius } from '@/src/theme/tokens'
 
 interface GoalStepsProps { goal: Goal; userId: string }
@@ -32,7 +33,15 @@ export function GoalSteps({ goal, userId }: GoalStepsProps) {
 
   const toggle = async (step: GoalTask) => {
     patch({ error: false })
-    try { await setStepDone(supabase, step.id, step.status !== 'done') } catch { patch({ error: true }) }
+    const done = step.status !== 'done'
+    try {
+      await setStepDone(supabase, step.id, done)
+      // Sayısal hedefi ya da alt hedefi olan hedef adımlar bitince kapanmaz; orada kutlama orta kalır.
+      const goalDone = goal.target === null
+        && !useGoalStore.getState().goals.some((g) => g.parent_id === goal.id)
+        && steps.every((s) => s.id === step.id || s.status === 'done')
+      if (done) celebrate('root', goalDone ? 'big' : 'medium')
+    } catch { patch({ error: true }) }
   }
 
   return (

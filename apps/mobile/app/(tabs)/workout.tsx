@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { useFocusEffect } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
 import { findProgramProgress, isExerciseAvailable, todayDate, fromDateString, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise } from '@lifeos/shared'
@@ -10,17 +11,21 @@ import { AdaptProgramView } from '@/src/components/workout/AdaptProgramView'
 import { MuscleInsightsCard } from '@/src/components/workout/MuscleInsightsCard'
 import { AddSetSheet } from '@/src/components/workout/AddSetSheet'
 import { TodayTab } from '@/src/components/workout/TodayTab'
+import { FinishWorkoutView } from '@/src/components/workout/FinishWorkoutView'
 import { LibraryTab } from '@/src/components/workout/LibraryTab'
 import { ProgramsTab } from '@/src/components/workout/ProgramsTab'
 import { HistoryTab } from '@/src/components/workout/HistoryTab'
 import { ProgramDaysView } from '@/src/components/workout/ProgramDaysView'
 import { programDayLabel } from '@/src/components/workout/programDays'
+import { exerciseName } from '@/src/components/workout/labels'
+import { useTodayProgramDay } from '@/src/hooks/useTodayProgramDay'
 import { ProgramExercisePickerView } from '@/src/components/workout/ProgramExercisePickerView'
 import { ProgramPlannerView } from '@/src/components/workout/ProgramPlannerView'
 import { CreateProgramSheet } from '@/src/components/workout/CreateProgramSheet'
 import { Input } from '@/src/components/ui/Input'
 import { Button } from '@/src/components/ui/Button'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { AiChatSheet } from '@/src/components/ai/AiChatSheet'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
@@ -38,13 +43,17 @@ type WorkoutTab = 'today' | 'library' | 'programs' | 'history'
 
 export default function WorkoutScreen() {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const bottomPadding = useBottomTabPadding()
-  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment } = useWorkoutStore()
+  const { exercises, muscleGroups, todayWorkout, workoutHistory, programs: allPrograms, streak, equipment, equipmentLoaded, analyticsSets, analyticsLoaded, analyticsError, analyticsBodyWeightKg, analyticsGender, fetchLibrary, fetchTodayWorkout, fetchHistory, fetchStreak, fetchPrograms, fetchEquipment, fetchAnalytics, saveEquipment, todayError, loading: todayLoading, historyStatus, programsStatus } = useWorkoutStore()
   const [userId, setUserId] = useState<string | null>(null)
   const { isPro, isCheckingPro, requirePro } = useProGate(userId)
   const [tab, setTab] = useState<WorkoutTab>('today')
   const [refreshing, setRefreshing] = useState(false)
+  /** Bugünkü plan (rutin ve bloklar) başka ekranda değişebilir: odakta, yenilemede ve planlamada yeniden okunur. */
+  const [planTick, setPlanTick] = useState(0)
+  const bumpPlan = useCallback(() => setPlanTick((n) => n + 1), [])
+  useFocusEffect(bumpPlan)
   const [setsExpanded, setSetsExpanded] = useState(false)
   /** Canlı ekrandaki hareketin ana kası; kas haritası onu seçili gösterir. */
   const [liveMuscleId, setLiveMuscleId] = useState<number | null>(null)
@@ -73,7 +82,7 @@ export default function WorkoutScreen() {
   const planner = useProgramPlanner({
     userId,
     liveProgram,
-    onScheduled: () => programs.setSelectedProgram(null),
+    onScheduled: () => { programs.setSelectedProgram(null); bumpPlan() },
   })
   const session = useWorkoutSession({
     userId,
@@ -104,7 +113,15 @@ export default function WorkoutScreen() {
   async function handleRefresh() {
     if (!userId) return
     // Aşağı çekince katalog da tazelenir (yeni görseller, düzeltilen adlar); açılışta önbellek yeter.
-    setRefreshing(true); await Promise.all([load(userId), fetchLibrary(supabase, { force: true })]); setRefreshing(false)
+    setRefreshing(true)
+    bumpPlan()
+    try {
+      await Promise.all([load(userId), fetchLibrary(supabase, { force: true })])
+    } catch {
+      // Bir okuma düşse de spinner durur; bugünkü antrenman hatası todayError ile görünür.
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   // Süzgeç yalnızca seçim varken anlamlı; seçim yokken hiçbir şey elenmez.
@@ -141,6 +158,18 @@ export default function WorkoutScreen() {
   // Aktif program: en son programdan başlatılan antrenman; hareketi olmayan gün başlatılamaz.
   const progress = findProgramProgress(allPrograms, workoutHistory, todayStr, (d) => programDayLabel(d, t))
   const nextReady = progress && (progress.nextDay.exercises?.length ?? 0) > 0 ? progress : null
+  // Bugüne planlı gün (rutin bağı ya da blok adı) varsa o, yoksa sıradaki gün.
+  const planned = useTodayProgramDay(userId, `${todayWorkout?.id ?? ''}:${planTick}`)
+  const plannedReady = planned && (planned.day.exercises?.length ?? 0) > 0 ? planned : null
+  const startTarget = plannedReady
+    ? { program: plannedReady.program, day: plannedReady.day, planned: true }
+    : nextReady ? { program: nextReady.program, day: nextReady.nextDay, planned: false } : null
+  const targetNames = [...(startTarget?.day.exercises ?? [])]
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((e) => exerciseName(e.exercise, lang, t))
+  const targetSummary = targetNames.length > 3
+    ? `${targetNames.slice(0, 3).join(', ')} ${t.wkf_more_n.replace('{n}', String(targetNames.length - 3))}`
+    : targetNames.join(', ')
 
   const weekCount = workoutHistory.filter((w) => {
     const diff = (Date.now() - fromDateString(w.date).getTime()) / 86400000
@@ -156,22 +185,22 @@ export default function WorkoutScreen() {
 
   return (
     <ScreenBackground>
+      <ScreenHeader
+        title={t.work_title}
+        right={
+          tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' ? (
+            <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
+              <Ionicons name="search-outline" size={14} color={palette.workout} />
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.wk_add_exercise_btn}</Text>
+            </TouchableOpacity>
+          ) : undefined
+        }
+      />
       <ScrollView
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.workout} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[5] }}>
-          <Text style={{ fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, color: colors.textPrimary }}>{t.work_title}</Text>
-          {tab === 'today' && todayWorkout && todayWorkout.status !== 'completed' && (
-            <TouchableOpacity onPress={() => setTab('library')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing[4], paddingVertical: 10, borderRadius: radius.full, backgroundColor: `${palette.workout}18`, borderWidth: 1, borderColor: `${palette.workout}30` }}>
-              <Ionicons name="search-outline" size={14} color={palette.workout} />
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>{t.wk_add_exercise_btn}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* Tabs */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.glassInner, borderRadius: radius.lg, padding: 4, marginBottom: spacing[5] }}>
           {TABS.map((t) => (
@@ -185,14 +214,18 @@ export default function WorkoutScreen() {
         {tab === 'today' && (
           <TodayTab
             workout={todayWorkout}
+            todayStr={todayStr}
+            loadError={todayError}
+            loading={todayLoading}
+            onRetry={() => { if (userId) void fetchTodayWorkout(supabase, userId, todayStr) }}
             userId={userId}
             liveActive={liveActive}
             setsExpanded={setsExpanded}
             onToggleSets={() => setSetsExpanded((v) => !v)}
             onStart={() => session.setShowStart(true)}
-            nextProgramDay={nextReady ? { program: nextReady.program.name, day: programDayLabel(nextReady.nextDay, t) } : null}
-            onStartNext={() => { if (nextReady) void session.handleStartFromProgramDay(nextReady.program, nextReady.nextDay.id) }}
-            onFinish={() => session.setShowFinish(true)}
+            nextProgramDay={startTarget ? { program: startTarget.program.name, day: programDayLabel(startTarget.day, t), planned: startTarget.planned, summary: targetSummary } : null}
+            onStartNext={() => { if (startTarget) void session.handleStartFromProgramDay(startTarget.program, startTarget.day.id) }}
+            onFinish={session.openFinish}
             onDelete={session.handleDeleteWorkout}
             onAddSet={openSetModal}
             onFocusMuscle={setLiveMuscleId}
@@ -231,6 +264,9 @@ export default function WorkoutScreen() {
         {tab === 'programs' && (
           <ProgramsTab
             programs={programs.sortedPrograms}
+            loading={programsStatus === 'idle' || programsStatus === 'loading'}
+            error={programsStatus === 'error' ? t.wkf_programs_error : null}
+            onRetry={async () => { if (userId) await fetchPrograms(supabase, userId) }}
             fitByProgram={programs.fitByProgram}
             equipment={equipment}
             equipmentLoaded={equipmentLoaded}
@@ -242,7 +278,14 @@ export default function WorkoutScreen() {
         )}
 
         {/* ── HISTORY ── */}
-        {tab === 'history' && <HistoryTab history={workoutHistory} />}
+        {tab === 'history' && (
+          <HistoryTab
+            history={workoutHistory}
+            loading={historyStatus === 'idle' || historyStatus === 'loading'}
+            error={historyStatus === 'error' ? t.wkf_history_error : null}
+            onRetry={async () => { if (userId) await fetchHistory(supabase, userId) }}
+          />
+        )}
       </ScrollView>
 
       {/* Start workout */}
@@ -256,12 +299,20 @@ export default function WorkoutScreen() {
       {/* Add set (exercise selected from library) */}
       {todayWorkout && <AddSetSheet exercise={selectedExercise} workout={todayWorkout} onClose={() => setSelectedExercise(null)} />}
 
-      {/* Finish */}
-      <BottomSheet visible={session.showFinish} onClose={() => session.setShowFinish(false)} title={t.wk_finish_title}>
-        <View style={{ gap: spacing[4] }}>
-          <Input label={t.wk_total_minutes} value={session.duration} onChangeText={session.setDuration} keyboardType="number-pad" placeholder="45" autoFocus />
-          <Button label={session.finishing ? t.wk_saving : t.wk_finish} onPress={session.handleFinish} loading={session.finishing} fullWidth />
-        </View>
+      {/* Finish: kayıttan sonra sheet'in içeriği özete döner (sheet içinde sheet yok) */}
+      <BottomSheet visible={session.showFinish} onClose={session.closeFinish} title={session.summary ? undefined : t.wk_finish_title}>
+        <FinishWorkoutView
+          unfinishedCount={(todayWorkout?.workout_sets ?? []).filter((s) => !s.completed).length}
+          choice={session.unfinishedChoice}
+          onChoice={session.setUnfinishedChoice}
+          duration={session.duration}
+          onChangeDuration={session.setDuration}
+          saving={session.finishing}
+          error={session.finishError}
+          onSave={() => void session.handleFinish()}
+          summary={session.summary}
+          onDone={session.closeFinish}
+        />
       </BottomSheet>
 
       {/*

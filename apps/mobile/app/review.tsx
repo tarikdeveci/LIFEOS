@@ -2,17 +2,16 @@ import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { BackButton } from '@/src/components/ui/BackButton'
 import { supabase } from '@/src/lib/supabase'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { ScreenHeader } from '@/src/components/ui/ScreenHeader'
 import { ScreenBackground } from '@/src/components/ui/ScreenBackground'
 import { GlassCard } from '@/src/components/ui/GlassCard'
 import { fontSize, fontWeight, spacing, radius, palette } from '@/src/theme/tokens'
 import { formatDecimal, shiftIsoDate, toDateString, useWeeklyReview, weekStart, type BlockType, type WeekReview } from '@lifeos/shared'
 import type { Translations } from '@/src/i18n'
 
-const BAR_HEIGHT = 48
 
 function formatMinutes(minutes: number, t: Translations) {
   const hours = Math.floor(minutes / 60)
@@ -243,15 +242,9 @@ function ReviewScreen() {
   return (
     <ScreenBackground>
       <View style={{ flex: 1 }}>
-        {/* Header */}
-        <View style={{ height: BAR_HEIGHT, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing[4] }}>
-          <BackButton />
-          <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary, flex: 1, textAlign: 'center' }}>{t.review_title}</Text>
-          <View style={{ width: 44 }} />
-        </View>
-
+        <ScreenHeader title={t.review_title} back />
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: spacing[4], paddingBottom: spacing[10] }}
+          contentContainerStyle={{ paddingHorizontal: spacing[4], paddingTop: spacing[3], paddingBottom: spacing[10] }}
           showsVerticalScrollIndicator={false}
         >
           {/* Week selector */}
