@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Alert } from 'react-native'
-import { parseSetEntry, useWorkoutStore } from '@lifeos/shared'
+import { View, Text } from 'react-native'
+import { lastSetOf, nextSetNumbers, parseSetEntry, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, Workout } from '@lifeos/shared'
 import { supabase } from '../../lib/supabase'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -24,38 +24,51 @@ interface Props {
 export function AddSetSheet({ exercise, workout, onClose }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const addSet = useWorkoutStore((s) => s.addSet)
+  const addSets = useWorkoutStore((s) => s.addSets)
   const [reps, setReps] = useState('10')
   const [weight, setWeight] = useState('')
   const [adding, setAdding] = useState(false)
+  /** "Uygula" ile gelen hedef set sayısı; null iken tek set eklenir. */
+  const [applySets, setApplySets] = useState<number | null>(null)
+  /** Hata formun içinde görünür, girilen değerler kaybolmaz. */
+  const [error, setError] = useState<string | null>(null)
   // State bir sonraki çizime kadar güncellenmez; aynı karedeki ikinci dokunuş çift set yazmasın.
   const busy = useRef(false)
 
-  // Her yeni hareket boş formla açılır.
-  useEffect(() => { setReps('10'); setWeight('') }, [exercise?.id])
+  // Hareket açılınca form, bu antrenmandaki son setin değerleriyle dolar; set yoksa boş.
+  useEffect(() => {
+    const last = exercise ? lastSetOf(workout.workout_sets ?? [], exercise.id) : null
+    setReps(last?.reps != null ? String(last.reps) : '10')
+    setWeight(last?.weight_kg != null ? String(last.weight_kg) : '')
+    setApplySets(null)
+    setError(null)
+    // Yalnızca hareket değişince: set eklendikçe kullanıcının yazdığı ezilmesin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercise?.id])
 
   async function handleAdd() {
     if (!exercise || busy.current) return
     // "62,5" gibi virgüllü ağırlık da geçerli; boş tekrar 10 sayılır, 0 tekrar set değildir.
     const entry = parseSetEntry(weight, reps)
     if (!entry || entry.reps === 0) {
-      Alert.alert(t.error, t.wk_err_invalid_set)
+      setError(t.wk_err_invalid_set)
       return
     }
     busy.current = true
     setAdding(true)
+    setError(null)
     try {
-      // set_number = bu egzersizin kaçıncı seti (toplam set sayısı değil)
-      const doneForExercise = workout.workout_sets?.filter((s) => s.exercise_id === exercise.id).length ?? 0
-      await addSet(supabase, {
+      // set_number: bu hareketin en büyük numarasının devamı (silinen set çakışma yaratmaz).
+      const numbers = nextSetNumbers(workout.workout_sets ?? [], exercise.id, applySets ?? 1)
+      await addSets(supabase, workout.id, numbers.map((set_number) => ({
         workout_id: workout.id,
         exercise_id: exercise.id,
         reps: entry.reps ?? 10,
         weight_kg: entry.weight_kg,
-        set_number: doneForExercise + 1,
-      })
+        set_number,
+      })))
       onClose()
-    } catch { Alert.alert(t.error, t.wk_err_add_set) }
+    } catch { setError(t.wk_err_add_set) }
     finally { busy.current = false; setAdding(false) }
   }
 
@@ -76,9 +89,11 @@ export function AddSetSheet({ exercise, workout, onClose }: Props) {
             exercise={exercise}
             userId={workout.user_id}
             excludeWorkoutId={workout.id}
-            onApply={(r, weightKg) => {
+            onApply={(sets, r, weightKg) => {
               setReps(String(r))
               setWeight(weightKg !== null ? String(weightKg) : '')
+              setApplySets(sets)
+              setError(null)
             }}
           />
         )}
@@ -88,7 +103,8 @@ export function AddSetSheet({ exercise, workout, onClose }: Props) {
             <Input label={t.wk_weight_kg} value={weight} onChangeText={setWeight} keyboardType="decimal-pad" placeholder="60" containerStyle={{ flex: 1 }} />
           )}
         </View>
-        <Button label={adding ? t.wk_adding : t.wk_add_set} onPress={handleAdd} loading={adding} fullWidth />
+        {error && <Text accessibilityRole="alert" style={{ fontSize: fontSize.sm, color: palette.danger }}>{error}</Text>}
+        <Button label={adding ? t.wk_adding : applySets !== null ? t.wkf_add_n_sets.replace('{n}', String(applySets)) : t.wk_add_set} onPress={handleAdd} loading={adding} fullWidth />
       </View>
     </BottomSheet>
   )

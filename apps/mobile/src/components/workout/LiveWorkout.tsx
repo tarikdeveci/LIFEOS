@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { currentGroupIndex, groupSetsByExercise, parseSetEntry, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
+import { currentGroupIndex, groupSetsByExercise, nextSetNumbers, parseSetEntry, suggestedWeight, useWorkoutStore } from '@lifeos/shared'
 import type { Exercise, ExerciseSetGroup, Workout, WorkoutSet } from '@lifeos/shared'
 import { ExerciseImage } from './ExerciseImage'
 import { ProgressionHint } from './ProgressionHint'
@@ -29,11 +29,13 @@ interface Draft { weight: string; reps: string }
 export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props) {
   const { colors } = useTheme()
   const { t, lang } = useLang()
-  const { updateSet, removeSet } = useWorkoutStore()
+  const { updateSet, removeSet, addSets } = useWorkoutStore()
   /** Kullanıcının seçtiği hareket; null iken sıradaki tamamlanmamış hareket. */
   const [focusId, setFocusId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
+  /** Öneri uygulanırken set eklenemezse kartta görünür. */
+  const [hintError, setHintError] = useState<string | null>(null)
   /** Aynı karede gelen ikinci dokunuş, state güncellenmeden geçmesin. */
   const busy = useRef(false)
 
@@ -87,6 +89,13 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
     }
   }
 
+  function confirmDeleteSet(set: WorkoutSet) {
+    Alert.alert(t.wkf_delete_set_title, t.wkf_delete_set_body, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.delete, style: 'destructive', onPress: () => void deleteSet(set) },
+    ])
+  }
+
   async function deleteSet(set: WorkoutSet) {
     if (busy.current) return
     busy.current = true
@@ -99,7 +108,9 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
     }
   }
 
-  function applyHint(group: ExerciseSetGroup, reps: number, weightKg: number | null) {
+  /** Öneriyi uygular: tamamlanmamış setlerin taslağı dolar, hedef set sayısına kadar eksik set eklenir. */
+  async function applyHint(group: ExerciseSetGroup, targetSets: number, reps: number, weightKg: number | null) {
+    setHintError(null)
     setDrafts((d) => {
       const next = { ...d }
       for (const s of group.sets) {
@@ -107,6 +118,22 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
       }
       return next
     })
+    const missing = targetSets - group.sets.length
+    if (missing <= 0 || busy.current) return
+    busy.current = true
+    try {
+      await addSets(supabase, workout.id, nextSetNumbers(sets, group.exerciseId, missing).map((set_number) => ({
+        workout_id: workout.id,
+        exercise_id: group.exerciseId,
+        set_number,
+        reps,
+        ...(weightKg !== null ? { weight_kg: weightKg } : {}),
+      })))
+    } catch {
+      setHintError(t.wk_err_add_set)
+    } finally {
+      busy.current = false
+    }
   }
 
   const inputStyle = {
@@ -177,7 +204,12 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
                   <Ionicons name={set.completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={32} color={set.completed ? palette.success : colors.textSubtle} />
                 </TouchableOpacity>
                 {/* Sol taraf dar kalır: hemen solundaki tamamla düğmesine taşarsa set yanlışlıkla silinir. */}
-                <TouchableOpacity onPress={() => void deleteSet(set)} hitSlop={{ ...hitSlopFor(18), left: 6 }}>
+                <TouchableOpacity
+                  onPress={() => confirmDeleteSet(set)}
+                  hitSlop={{ ...hitSlopFor(18), left: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.wkf_delete_set_label}
+                >
                   <Ionicons name="close-circle-outline" size={18} color={colors.textSubtle} />
                 </TouchableOpacity>
               </View>
@@ -189,8 +221,9 @@ export function LiveWorkout({ workout, userId, onAddSet, onFocusMuscle }: Props)
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: palette.workout }}>+ Set</Text>
             </TouchableOpacity>
           )}
+          {hintError && <Text accessibilityRole="alert" style={{ fontSize: fontSize.sm, color: palette.danger }}>{hintError}</Text>}
           {focused.exercise && (
-            <ProgressionHint exercise={focused.exercise} userId={userId} excludeWorkoutId={workout.id} onApply={(reps, kg) => applyHint(focused, reps, kg)} />
+            <ProgressionHint exercise={focused.exercise} userId={userId} excludeWorkoutId={workout.id} onApply={(n, reps, kg) => void applyHint(focused, n, reps, kg)} />
           )}
         </View>
       ) : (

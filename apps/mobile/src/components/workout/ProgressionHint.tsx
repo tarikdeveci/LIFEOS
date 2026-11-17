@@ -15,7 +15,8 @@ interface Props {
   userId: string
   /** Bugün süren antrenman: öneri kendi setleriyle kıyaslanmasın. */
   excludeWorkoutId?: string
-  onApply: (reps: number, weightKg: number | null) => void
+  /** Önerinin tamamı: hedef set sayısı, tekrar ve kilo. */
+  onApply: (sets: number, reps: number, weightKg: number | null) => void
 }
 
 type HintState =
@@ -30,7 +31,7 @@ function formatKg(value: number, lang: 'tr' | 'en'): string {
 
 /**
  * Set ekleme ekranında geçmiş seanslara göre bir sonraki hedef (utils/progression.ts).
- * Öneri yalnızca yol gösterir: "Uygula" alanları doldurur, kullanıcı yine değiştirebilir.
+ * Öneri yalnızca yol gösterir: "Uygula" alanları doldurur ve set sayısını iletir, kullanıcı yine değiştirebilir.
  */
 export function ProgressionHint({ exercise, userId, excludeWorkoutId, onApply }: Props) {
   const { colors } = useTheme()
@@ -80,7 +81,7 @@ export function ProgressionHint({ exercise, userId, excludeWorkoutId, onApply }:
         <Text style={{ flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
           {t.wk_suggestion.replace('{s}', `${target.sets} x ${target.reps}${load}`)}
         </Text>
-        <Button label={t.wk_apply} size="sm" variant="secondary" onPress={() => onApply(target.reps, target.weightKg)} />
+        <Button label={t.wk_apply} size="sm" variant="secondary" onPress={() => onApply(target.sets, target.reps, target.weightKg)} />
       </View>
       <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{target.reason}</Text>
       {best !== null && (
