@@ -42,6 +42,8 @@ const translations = {
 
     // Today
     today_no_tasks: 'No tasks for today 🎉',
+    today_all_done: "Today's work is done",
+    today_day_report: 'Day report',
     today_no_blocks_today: 'No blocks added for today',
     today_minimum_on: 'Minimum day',
     today_minimum_off: 'Back to a normal day',
@@ -320,6 +322,7 @@ const translations = {
     habits_undo: 'Undo one',
     habits_edit: 'Edit',
     habits_week: 'wk',
+    habits_week_done: 'Week done',
     plan_ai_plan: 'AI plan',
     plan_ai_planning: 'AI Planning Assistant',
 
@@ -445,6 +448,8 @@ const translations = {
     week: 'Hafta',
 
     today_no_tasks: 'Bugün için görev yok 🎉',
+    today_all_done: 'Bugünün işleri bitti',
+    today_day_report: 'Gün raporu',
     today_no_blocks_today: 'Bugün için blok eklenmemiş',
     today_minimum_on: 'Bugün asgari gün',
     today_minimum_off: 'Normal güne dön',
@@ -720,6 +725,7 @@ const translations = {
     habits_undo: 'Birini geri al',
     habits_edit: 'Düzenle',
     habits_week: 'hafta',
+    habits_week_done: 'Hafta tamam',
     plan_ai_plan: 'AI planla',
     plan_ai_planning: 'AI Planlama Asistanı',
 

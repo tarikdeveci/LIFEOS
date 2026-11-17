@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import type { Task } from '@lifeos/shared'
@@ -11,6 +11,7 @@ import { TaskCheckbox } from '@/src/components/ui/TaskCheckbox'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { celebrate } from '@/src/components/Celebration'
 
 const getEnergyLevels = (t: any) => [
   { level: 1 as const, emoji: '😴', label: 'Bitkin' },
@@ -119,8 +120,16 @@ export function RitualSheet({ userId, visible, onClose, onAiPlan, aiLabel }: Pro
     Alert.alert(msg.join('\n'))
   })
 
+  const finishing = useRef(false)
   const finish = async () => {
-    try { await completeRitual(supabase) } catch { /* kapanış yazılamazsa ritüel yarın değil bugün tekrar sorulur */ }
+    // Kayıt sürerken ikinci dokunuş ikinci isteği ve ikinci kutlamayı başlatmasın.
+    if (finishing.current) return
+    finishing.current = true
+    try {
+      await completeRitual(supabase)
+      celebrate('root', 'medium')
+    } catch { /* kapanış yazılamazsa ritüel yarın değil bugün tekrar sorulur */ }
+    finishing.current = false
     onClose()
   }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { elapsedMinutes, resolveDuration, summarizeWorkout } from '../../packages/shared/src/utils/workoutSummary.ts'
+import { elapsedMinutes, recordSetId, resolveDuration, summarizeWorkout } from '../../packages/shared/src/utils/workoutSummary.ts'
 import type { ExerciseSession } from '../../packages/shared/src/utils/progression.ts'
 
 const T0 = Date.parse('2026-11-17T10:00:00Z')
@@ -51,4 +51,27 @@ test('summarizeWorkout: geçmişi olmayan hareket rekor sayılmaz, eşitlik reko
 
 test('summarizeWorkout: set yoksa sıfır özet', () => {
   assert.deepEqual(summarizeWorkout([], {}), { setCount: 0, volumeKg: 0, records: [] })
+})
+
+test('recordSetId: geçmişi aşan en iyi yapılmış set rekordur', () => {
+  const sets = [
+    { id: 'a', reps: 5, weight_kg: 100, completed: true }, // 116.7
+    { id: 'b', reps: 5, weight_kg: 105, completed: true }, // 122.5
+    { id: 'c', reps: 5, weight_kg: 120, completed: false },
+  ]
+  assert.equal(recordSetId(sets, 110), 'b')
+  assert.equal(recordSetId(sets, 125), null)
+})
+
+test('recordSetId: geçmiş yoksa ya da kilo girilmemişse rekor yok', () => {
+  assert.equal(recordSetId([{ id: 'a', reps: 5, weight_kg: 100, completed: true }], null), null)
+  assert.equal(recordSetId([{ id: 'a', reps: 5, weight_kg: null, completed: true }], 10), null)
+})
+
+test('recordSetId: eşit 1RM de önce yapılan set tutar', () => {
+  const sets = [
+    { id: 'a', reps: 5, weight_kg: 100, completed: true },
+    { id: 'b', reps: 5, weight_kg: 100, completed: true },
+  ]
+  assert.equal(recordSetId(sets, 50), 'a')
 })

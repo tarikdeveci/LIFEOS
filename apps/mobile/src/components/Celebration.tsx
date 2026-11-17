@@ -17,25 +17,30 @@ import { palette } from '@/src/theme/tokens'
  */
 type CelebrationScope = 'root' | 'modal'
 
+/** small: tek tamamlama. medium: blok, odak, hedef adımı, ritüel. big: günün işleri ya da hedefin bitmesi. */
+export type CelebrationSize = 'small' | 'medium' | 'big'
+
 interface CelebrationState {
   /** Her patlamada artar; katman bu sayının değişimini dinler. */
   burstId: number
   scope: CelebrationScope
-  burst: (scope: CelebrationScope) => void
+  size: CelebrationSize
+  burst: (scope: CelebrationScope, size: CelebrationSize) => void
 }
 
 export const useCelebration = create<CelebrationState>((set) => ({
   burstId: 0,
   scope: 'root',
-  burst: (scope) => set((state) => ({ burstId: state.burstId + 1, scope })),
+  size: 'small',
+  burst: (scope, size) => set((state) => ({ burstId: state.burstId + 1, scope, size })),
 }))
 
 /** Görev, alışkanlık ya da rutin tamamlanınca kısa bir konfeti patlaması. */
-export function celebrate(scope: CelebrationScope = 'root'): void {
-  useCelebration.getState().burst(scope)
+export function celebrate(scope: CelebrationScope = 'root', size: CelebrationSize = 'small'): void {
+  useCelebration.getState().burst(scope, size)
 }
 
-const PIECES = 28
+const PIECES: Record<CelebrationSize, number> = { small: 28, medium: 44, big: 80 }
 const DURATION_MS = 1100
 const GRAVITY = 900
 const COLORS = [palette.accent, palette.accent2, palette.warning, palette.success, palette.meal, palette.info]
@@ -49,11 +54,12 @@ interface Piece {
   round: boolean
 }
 
-function makePieces(): Piece[] {
-  return Array.from({ length: PIECES }, (_, i) => ({
+function makePieces(size: CelebrationSize): Piece[] {
+  const boost = size === 'big' ? 1.3 : size === 'medium' ? 1.12 : 1
+  return Array.from({ length: PIECES[size] }, (_, i) => ({
     // Yukarı doğru yelpaze: -160 ile -20 derece arası.
     angle: (-160 + Math.random() * 140) * (Math.PI / 180),
-    speed: 420 + Math.random() * 380,
+    speed: (420 + Math.random() * 380) * boost,
     spin: (Math.random() - 0.5) * 720,
     size: 6 + Math.random() * 5,
     color: COLORS[i % COLORS.length] ?? palette.accent,
@@ -98,11 +104,12 @@ function ConfettiPiece({ piece, progress, originX, originY }: { piece: Piece; pr
  */
 export function Celebration({ scope = 'root' }: { scope?: CelebrationScope }) {
   const burstId = useCelebration((s) => (s.scope === scope ? s.burstId : 0))
+  const size = useCelebration((s) => s.size)
   const reduceMotion = useReducedMotion()
   const { width, height } = useWindowDimensions()
   const progress = useSharedValue(1)
   // Her patlamada yeni rastgele dağılım.
-  const pieces = useMemo(() => (burstId > 0 ? makePieces() : []), [burstId])
+  const pieces = useMemo(() => (burstId > 0 ? makePieces(size) : []), [burstId, size])
 
   useEffect(() => {
     if (burstId === 0 || reduceMotion) return

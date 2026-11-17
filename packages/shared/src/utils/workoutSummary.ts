@@ -1,6 +1,6 @@
 // Bitir akışının saf hesapları: geçen süre ve antrenman özeti.
 import type { WorkoutSet } from '../types/workout'
-import { best1RM, type ExerciseSession } from './progression'
+import { best1RM, estimate1RM, type ExerciseSession } from './progression'
 
 export const MIN_WORKOUT_MINUTES = 1
 export const MAX_WORKOUT_MINUTES = 300
@@ -64,4 +64,23 @@ export function summarizeWorkout(
     }
   }
   return { setCount: sets.length, volumeKg: Math.round(volumeKg * 10) / 10, records }
+}
+
+/**
+ * Süren antrenmanda rekor kıran set: hareketin yapılmış setleri içinde tahmini 1RM'i en yüksek olan,
+ * önceki geçmişin en iyisini (previousBest) aşıyorsa onun id'si. Geçmiş yoksa (null) kıyas yok, rekor yok.
+ * Eşit 1RM'de önce yapılan set rekoru tutar.
+ */
+export function recordSetId(
+  sets: ReadonlyArray<Pick<WorkoutSet, 'id' | 'reps' | 'weight_kg' | 'completed'>>,
+  previousBest: number | null,
+): string | null {
+  if (previousBest === null) return null
+  let top: { id: string; value: number } | null = null
+  for (const s of sets) {
+    if (!s.completed || s.weight_kg == null || s.reps == null) continue
+    const value = estimate1RM(s.weight_kg, s.reps)
+    if (value !== null && value > previousBest && (top === null || value > top.value)) top = { id: s.id, value }
+  }
+  return top?.id ?? null
 }
