@@ -1,0 +1,46 @@
+# Her akışın ilk adımı: uygulama verisi silinir, cihazda oturum olmadığı için
+# uygulama kendiliğinden misafir oturumu açar (şifre girilmez). Test misafirleri
+# 30 gün sonra purge_stale_guests ile silinir (076_guest_mode.sql).
+appId: tr.lifeos.app
+---
+# Dev client bazen "Loading from ..." ekranında takılır; açılış bir kez daha denenir.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # Dev client önce sunucu listesini açar; release build'de bu adım atlanır.
+      - runFlow:
+          when:
+            true: ${DEV_CLIENT == 'true'}
+          commands:
+            - extendedWaitUntil:
+                visible: "http://.*:8081"
+                timeout: 30000
+            - tapOn: "http://.*:8081"
+            - runFlow:
+                when:
+                  visible: "Continue"
+                commands:
+                  - tapOn: "Continue"
+            # İlk açılışta geliştirici menüsü uygulamanın önünde kalır.
+            - runFlow:
+                when:
+                  visible: "Connected to:"
+                commands:
+                  - tapOn: "Close"
+      - extendedWaitUntil:
+          visible: "Skip|Atla"
+          timeout: 60000
+- tapOn: "Skip|Atla"
+# Bugün ekranındaki ilk kullanım turu biraz gecikmeyle açılır: önce onu beklenir.
+- extendedWaitUntil:
+    visible: "1 of 4|1 / 4"
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible: "1 of 4|1 / 4"
+    commands:
+      - tapOn: "Skip|Atla"
+- assertNotVisible: "1 of 4|1 / 4"

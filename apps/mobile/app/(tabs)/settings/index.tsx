@@ -17,6 +17,7 @@ import { useTheme } from '@/src/contexts/ThemeContext'
 import type { ThemeMode } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
 import type { Language } from '@/src/i18n'
+import { PRIVACY_URL, openLegalPage } from '@/src/lib/legal'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 const THEME_OPTIONS_DEF: { mode: ThemeMode; trLabel: string; enLabel: string; icon: string }[] = [
@@ -192,6 +193,19 @@ export default function SettingsScreen() {
         <SupportCard />
 
         <GroupLabel label={t.settings_group_about} />
+
+        <TouchableOpacity onPress={() => openLegalPage(PRIVACY_URL)} accessibilityRole="link" activeOpacity={0.8}>
+          <GlassCard style={{ marginBottom: spacing[4] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3] }}>
+              <Ionicons name="shield-checkmark-outline" size={19} color={palette.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{t.acc_privacy_title}</Text>
+                <Text style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 }}>{t.acc_privacy_sub}</Text>
+              </View>
+              <Ionicons name="open-outline" size={17} color={colors.textMuted} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
 
         <DataSourcesCard />
       </ScrollView>

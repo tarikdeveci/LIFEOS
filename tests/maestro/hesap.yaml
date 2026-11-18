@@ -1,0 +1,46 @@
+# Hesap ekranlarının sad path'leri. Gerçek hesap ya da e-posta kullanılmaz:
+# kısa şifre sunucuya gitmeden reddedilir, yanlış giriş sahte adresle denenir.
+appId: tr.lifeos.app
+name: Hesap
+tags: [hesap]
+---
+- runFlow: _ortak/baslat.yaml
+- tapOn: "Profile"
+- tapOn: "Create account"
+- assertVisible: "Save your account"
+# Sad: alanlar boşken Kod gönder bir şey yapmaz.
+- tapOn: "Send code"
+- assertVisible: "Save your account"
+# Sad: 8 karakterden kısa şifre reddedilir.
+- tapOn: "Name Surname"
+- inputText: "E2E Deneme"
+- tapOn: "example@email.com"
+- inputText: "e2e@example.com"
+- tapOn: "At least 8 characters"
+- inputText: "abc"
+- pressKey: Enter
+- assertVisible: "Password must be at least 8 characters."
+- tapOn: "Already have an account.*"
+- assertVisible: "Continue with your account"
+# Sad: boş girişte Giriş yap hata metni gösterir.
+- tapOn:
+    text: "Log in"
+    below: "Password"
+- assertVisible: "Enter your email and password."
+- assertVisible: "Continue with your account"
+# Sad: e-posta yokken şifre sıfırlama uyarı verir.
+- tapOn: "Forgot password"
+- assertVisible: "Email required"
+- tapOn: "OK"
+# Sad: yanlış bilgiyle giriş hata metni gösterir, oturum değişmez.
+- tapOn: "example@email.com"
+- inputText: "e2e-yok@example.com"
+- tapOn: "••••••••"
+- inputText: "yanlis-sifre-123"
+- tapOn:
+    text: "Log in"
+    below: "Password"
+- extendedWaitUntil:
+    visible: "Email or password is incorrect."
+    timeout: 20000
+- assertVisible: "Continue with your account"

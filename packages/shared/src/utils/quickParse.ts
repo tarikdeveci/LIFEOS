@@ -134,6 +134,17 @@ function toPartOfDay(part: string, h: number): number {
   return PART_OF_DAY[part]! >= 12 && h < 12 && !(part === 'gece' && h < 5) ? h + 12 : h
 }
 
+/** "her sabah", "her pazartesi": tekrar ifadesi başlığın parçasıdır, kesilirse "Her tansiyon ilacı" kalır. */
+function afterHer(folded: string, index: number): boolean {
+  return /(?:^|\s)her\s+$/.test(folded.slice(0, index))
+}
+
+/** Gün bölümüyle başlayan eşleşmede sadece saat kısmının başı ("sabah 09:00" içinde "09:00"). */
+function digitsStart(m: RegExpExecArray): number {
+  const i = m[0].search(/(?:saat\s*)?\d/)
+  return i < 0 ? m[0].length : i
+}
+
 function cut(text: string, folded: string, start: number, end: number): [string, string] {
   return [text.slice(0, start) + ' ' + text.slice(end), folded.slice(0, start) + ' ' + folded.slice(end)]
 }
@@ -178,7 +189,7 @@ export function parseQuickTask(input: string, today: string): QuickParseResult {
     const end = date.end + (until ? until[0].length : 0)
     if (until) result.due_date = date.date
     else result.scheduled_date = date.date
-    ;[text, folded] = cut(text, folded, date.start, end)
+    if (!afterHer(folded, date.start)) [text, folded] = cut(text, folded, date.start, end)
   }
 
   // --- Saat: "15:00", "saat 15", "saat 3", "15te", "akşam 7", "cuma akşam"
@@ -208,7 +219,9 @@ export function parseQuickTask(input: string, today: string): QuickParseResult {
     }
     if (hour !== undefined && span && hour <= 23) {
       result.start_time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-      ;[text, folded] = cut(text, folded, span.index, span.index + span[0].length)
+      const keepPart = span !== saat && span !== suffixed && afterHer(folded, span.index)
+      const start = span.index + (keepPart ? digitsStart(span) : 0)
+      ;[text, folded] = cut(text, folded, start, span.index + span[0].length)
       if (!result.scheduled_date) result.scheduled_date = result.due_date ?? today
     }
   }

@@ -56,7 +56,7 @@ export function ManualMacroForm({ onAdd }: ManualMacroFormProps) {
 
   return (
     <View style={{ gap: spacing[3] }}>
-      <Input label={t.ux_manual_name} value={draft.name} onChangeText={(v) => set('name', v)} returnKeyType="next" />
+      <Input testID="manual-food-name" label={t.ux_manual_name} value={draft.name} onChangeText={(v) => set('name', v)} returnKeyType="next" />
       <View style={{ flexDirection: 'row', gap: spacing[3] }}>
         <Input label={t.acc_protein_g} value={draft.protein} onChangeText={(v) => set('protein', v)} keyboardType="decimal-pad" containerStyle={{ flex: 1 }} />
         <Input label={t.acc_carbs_g} value={draft.carbs} onChangeText={(v) => set('carbs', v)} keyboardType="decimal-pad" containerStyle={{ flex: 1 }} />

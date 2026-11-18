@@ -16,6 +16,7 @@ import { DayBlockList } from '@/src/components/planning/DayBlockList'
 import { BlockSheet } from '@/src/components/planning/BlockSheet'
 import { DayCloseCard } from '@/src/components/planning/DayCloseCard'
 import { HabitsCard } from '@/src/components/planning/HabitsCard'
+import { ConnectCalendarLink } from '@/src/components/planning/ConnectCalendarLink'
 import { NextTaskRow } from '@/src/components/tasks/NextTaskRow'
 import { RitualSheet } from '@/src/components/planning/RitualSheet'
 import { CapacityRow } from '@/src/components/planning/CapacityRow'
@@ -124,7 +125,7 @@ export default function PlanningScreen() {
   }, [fetchDayData])
 
   useEffect(() => {
-    // Takvim iznini başlat (ilk açılışta)
+    // İzin önceden verildiyse cihaz takvimini yükle (diyalog açmaz)
     void initialize()
 
     supabase.auth.getUser().then(({ data }) => {
@@ -391,6 +392,7 @@ ${describeAiActions(actions, targetBlocks ?? [])}`,
                 disabled={isCheckingPro}
                 size="sm"
               />
+              <ConnectCalendarLink />
             </View>
           }
         />

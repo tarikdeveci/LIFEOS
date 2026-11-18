@@ -114,3 +114,18 @@ test('@today ve @tomorrow kısayolları', () => {
   assert.equal(r.scheduled_date, '2026-09-30')
   assert.equal(p('rapor @today').scheduled_date, TODAY)
 })
+
+test('"her" ile başlayan tekrar ifadesi başlıktan silinmez', () => {
+  // Persona turu 2026-11-17: "Her sabah 09:00 tansiyon ilacı" başlığı "Her tansiyon ilacı" oluyordu.
+  const r = p('Her sabah 09:00 tansiyon ilacı')
+  assert.equal(r.title, 'Her sabah tansiyon ilacı')
+  assert.equal(r.start_time, '09:00')
+
+  const a = p('her akşam 9 vitamin')
+  assert.equal(a.title, 'her akşam vitamin')
+  assert.equal(a.start_time, '21:00')
+
+  const w = p('her pazartesi spor')
+  assert.equal(w.title, 'her pazartesi spor')
+  assert.equal(w.scheduled_date, '2026-10-05')
+})

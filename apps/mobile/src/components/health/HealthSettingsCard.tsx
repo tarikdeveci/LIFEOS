@@ -243,6 +243,7 @@ export function HealthSettingsCard({ userId }: Props) {
               </Text>
             </View>
             <Switch
+              accessibilityLabel={t.health_burn_to_budget}
               value={settings?.add_active_energy_to_budget ?? false}
               onValueChange={toggleBudget}
               trackColor={{ true: palette.accent, false: colors.border }}

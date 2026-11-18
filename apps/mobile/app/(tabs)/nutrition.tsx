@@ -114,6 +114,8 @@ export default function NutritionScreen() {
   // Food search
   const [foodSearch, setFoodSearch] = useState('')
   const [foodResults, setFoodResults] = useState<FoodSearchResult[]>([])
+  // Son biten aramanın sorgusu: "sonuç yok" yalnızca arama gerçekten bitince görünür.
+  const [searchedQuery, setSearchedQuery] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Elle ekleme akışı — model çağrısı yok, ücretsiz kullanıcı için de açık.
@@ -169,7 +171,11 @@ export default function NutritionScreen() {
     setRefreshing(false)
   }
 
+  const noFoodResults = foodSearch.trim().length >= 2 && searchedQuery
+ === foodSearch && foodResults.length === 0
+
   function handleFoodSearch(q: string) {
+
     setFoodSearch(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!q.trim() || !userId) { setFoodResults([]); return }
@@ -180,6 +186,7 @@ export default function NutritionScreen() {
       } catch {
         setFoodResults([])
       }
+      setSearchedQuery(q)
     }, 300)
   }
 
@@ -218,6 +225,7 @@ export default function NutritionScreen() {
   }
 
   function openManualAdd(choice: FoodSearchResult) {
+    Keyboard.dismiss()
     setAddMode('search')
     setPendingChoice(choice)
     setShowAdd(true)
@@ -656,10 +664,10 @@ export default function NutritionScreen() {
         title={t.nutr_title}
         right={
           <>
-            <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
+            <TouchableOpacity onPress={() => { if (requirePro('nutrition_chat')) setShowChat(true) }} disabled={isCheckingPro} accessibilityRole="button" accessibilityLabel={t.nut_chat_a11y} hitSlop={2} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${palette.accent}18`, borderWidth: 1, borderColor: `${palette.accent}30`, alignItems: 'center', justifyContent: 'center', opacity: isPro ? 1 : 0.55 }}>
               <Ionicons name={isPro ? 'sparkles-outline' : 'lock-closed-outline'} size={18} color={palette.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity onPress={() => setShowAdd(true)} accessibilityRole="button" accessibilityLabel={t.nut_add_meal_title} hitSlop={2} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.meal, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </>
@@ -667,6 +675,7 @@ export default function NutritionScreen() {
       />
       <ScrollView
         ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: spacing[5], paddingBottom: bottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.accent} />}
         showsVerticalScrollIndicator={false}
@@ -720,7 +729,12 @@ export default function NutritionScreen() {
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? t.nut_food_search_ph}</Text>
-          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'} />
+          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={t.nut_search_placeholder} />
+          {noFoodResults && (
+            <Text accessibilityLiveRegion="polite" style={{ marginTop: spacing[2], fontSize: fontSize.xs, color: colors.textSubtle }}>
+              {t.nut_search_no_results}
+            </Text>
+          )}
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
               {foodResults.map((food) => (
@@ -837,7 +851,7 @@ export default function NutritionScreen() {
                 label={t.nutr_search_food}
                 value={foodSearch}
                 onChangeText={handleFoodSearch}
-                placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'}
+                placeholder={t.nut_search_placeholder}
               />
 
               {pendingChoice ? (
@@ -858,10 +872,11 @@ export default function NutritionScreen() {
                   ))}
                 </View>
               ) : (
-                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
-                  {t.nutr_search_hint}
+                <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
+                  {noFoodResults ? t.nut_search_no_results : t.nutr_search_hint}
                 </Text>
               )}
+
             </View>
           )}
 
@@ -1013,7 +1028,7 @@ export default function NutritionScreen() {
                     <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
                       {t.nut_save_as_own_food}
                     </Text>
-                    <TouchableOpacity onPress={() => setShowSaveRecipe(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <TouchableOpacity onPress={() => setShowSaveRecipe(false)} accessibilityRole="button" accessibilityLabel={t.close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                       <Ionicons name="close" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
                   </View>

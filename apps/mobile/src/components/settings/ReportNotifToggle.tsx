@@ -57,6 +57,7 @@ export function ReportNotifToggle({ userId }: Props) {
         <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{t.report_notif_sub}</Text>
       </View>
       <Switch
+        accessibilityLabel={t.report_notif_title}
         value={enabled}
         onValueChange={(next) => void change(next)}
         trackColor={{ false: colors.glassBorder, true: `${palette.accent}80` }}

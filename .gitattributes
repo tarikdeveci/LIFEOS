@@ -1,0 +1,2 @@
+# Bash betikleri Windows checkout'unda da LF kalır; CRLF ile "set -o pipefail" kırılır.
+*.sh text eol=lf

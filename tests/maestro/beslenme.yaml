@@ -1,0 +1,62 @@
+# Besin ara, öğün ekle, sil. Sad path: sonuçsuz arama, 0 gram, boş elle kalem, silmeyi iptal.
+appId: tr.lifeos.app
+name: Beslenme
+tags: [beslenme]
+---
+- runFlow: _ortak/baslat.yaml
+- tapOn: "Nutrition"
+- assertVisible: "No meals logged today"
+# Sad: anlamsız arama sonuç satırı göstermez, ekran çökmez.
+- tapOn: "Eggs, bread, cheese..."
+- inputText: "zzqqxxw"
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: ".*kcal / 100 g.*"
+- assertVisible: "No foods found.*"
+# Happy: aramadan seç, öğüne ekle.
+- eraseText
+- inputText: "egg"
+- extendedWaitUntil:
+    visible: ".*kcal / 100 g.*"
+    timeout: 15000
+- tapOn: ".*kcal / 100 g.*"
+- assertVisible: "Add to meal"
+# Sad: 0 miktar 0 kalorilik kalem üretmez.
+- tapOn:
+    id: "food-amount"
+- eraseText
+- inputText: "0"
+- tapOn: "Add to meal"
+- assertVisible: "Enter an amount greater than 0."
+- assertNotVisible: "Is this wrong.*"
+# Happy: geçerli miktar girince hata kalkar, kalem eklenir.
+- tapOn:
+    id: "food-amount"
+- eraseText
+- inputText: "60"
+- assertNotVisible: "Enter an amount greater than 0."
+- tapOn: "Add to meal"
+- assertVisible: "Is this wrong.*"
+- assertNotVisible: "0 kcal"
+- tapOn: "Save"
+- assertVisible: ".*kcal · P:.*"
+- assertNotVisible: "No meals logged today"
+# Sad: silmede Vazgeç öğünü korur.
+- tapOn: "Delete meal"
+- tapOn: "Cancel"
+- assertVisible: ".*kcal · P:.*"
+- tapOn: "Delete meal"
+- tapOn: "Delete|DELETE"
+- assertVisible: "No meals logged today"
+# Sad: elle kalemde ad ve değer zorunlu, hata metni görünür.
+- tapOn: "Add Meal"
+- tapOn: ".*Manual"
+- tapOn: "Add to meal"
+- assertVisible: "Enter a food name."
+- tapOn:
+    id: "manual-food-name"
+- inputText: "E2E elle"
+- tapOn: "Add to meal"
+- assertVisible: "Enter calories or at least one macro."
+- back
+- assertVisible: "No meals logged today"

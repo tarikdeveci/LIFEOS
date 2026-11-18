@@ -162,8 +162,13 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
     setForm((f) => ({ ...f, perDay: true, dayRows: toDayRows(dayOverrides.overrides) }))
   }, [visible, dayOverrides])
 
-  const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }))
+  // Form değişince eski doğrulama hatası kalkar; benzer rutin uyarısı ikinci Kaydet'e kadar durur.
+  const patch = (p: Partial<FormState>) => {
+    setForm((f) => ({ ...f, ...p }))
+    setNotice((n) => (n && !n.warn ? null : n))
+  }
   const names = t.routines_day_names.split(',')
+  const longNames = t.routines_day_names_long.split(',')
   const floating = form.kind === 'block' && form.dayPart !== null
 
   const handleSave = async () => {
@@ -226,7 +231,8 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
           {kinds.map(([k, lbl]) => {
             const locked = routine !== null && routine.kind !== k
             return (
-              <TouchableOpacity key={k} disabled={locked} onPress={() => patch({ kind: k })} style={chip(form.kind === k, locked)}>
+              <TouchableOpacity key={k} disabled={locked} onPress={() => patch({ kind: k })} style={chip(form.kind === k, locked)}
+                accessibilityRole="radio" accessibilityState={{ checked: form.kind === k, disabled: locked }}>
                 <Text style={chipText(form.kind === k)}>{lbl}</Text>
               </TouchableOpacity>
             )
@@ -237,7 +243,8 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
           <>
             <View style={{ flexDirection: 'row', gap: spacing[2] }}>
               {(['daily', 'weekly'] as const).map((m) => (
-                <TouchableOpacity key={m} onPress={() => patch({ habitMode: m })} style={chip(form.habitMode === m)}>
+                <TouchableOpacity key={m} onPress={() => patch({ habitMode: m })} style={chip(form.habitMode === m)}
+                  accessibilityRole="radio" accessibilityState={{ checked: form.habitMode === m }}>
                   <Text style={chipText(form.habitMode === m)}>{m === 'daily' ? t.routines_habit_daily : t.routines_habit_weekly}</Text>
                 </TouchableOpacity>
               ))}
@@ -257,13 +264,16 @@ export function RoutineSheet({ userId, visible, routine, onClose, onSave, onDele
               {WEEKDAY_ORDER.map((d) => {
                 const on = form.days.includes(d)
                 return (
-                  <TouchableOpacity key={d} onPress={() => patch({ days: on ? form.days.filter((x) => x !== d) : [...form.days, d] })} style={chip(on)}>
+                  <TouchableOpacity key={d} onPress={() => patch({ days: on ? form.days.filter((x) => x !== d) : [...form.days, d] })} style={chip(on)}
+                    accessibilityRole="checkbox" accessibilityLabel={longNames[d]} accessibilityState={{ checked: on }}>
                     <Text style={chipText(on)}>{names[d]}</Text>
                   </TouchableOpacity>
                 )
               })}
             </View>
-            <TouchableOpacity onPress={() => patch({ biweekly: !form.biweekly })} style={[chip(form.biweekly), { alignSelf: 'flex-start' }]}>
+            <TouchableOpacity onPress={() => patch({ biweekly: !form.biweekly })} style={[chip(form.biweekly), { alignSelf: 'flex-start' }]}
+              accessibilityRole="switch" accessibilityState={{ checked: form.biweekly }}>
+
               <Text style={chipText(form.biweekly)}>{t.routines_biweekly}</Text>
             </TouchableOpacity>
             {form.kind === 'block' && (

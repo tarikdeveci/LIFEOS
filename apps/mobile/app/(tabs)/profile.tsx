@@ -25,6 +25,7 @@ import { useHealthStore } from '@/src/stores/healthStore'
 import { Button } from '@/src/components/ui/Button'
 import { useTheme } from '@/src/contexts/ThemeContext'
 import { useLang } from '@/src/contexts/LangContext'
+import { PRIVACY_URL } from '@/src/lib/legal'
 import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
 
 const ACTIVITY_LEVELS_DEF = [
@@ -422,10 +423,10 @@ export default function ProfileScreen() {
               {lang === 'tr' ? 'Hesap ve Gizlilik' : 'Account & Privacy'}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => void openExternalUrl('https://lifeos.tr/gizlilik-kvkk')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3] }}>
+          <TouchableOpacity onPress={() => void openExternalUrl(PRIVACY_URL)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3] }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{lang === 'tr' ? 'Gizlilik Politikası ve KVKK' : 'Privacy Policy'}</Text>
-              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{lang === 'tr' ? 'Verilerinin nasıl işlendiğini incele' : 'See how your data is handled'}</Text>
+              <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary }}>{t.acc_privacy_title}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{t.acc_privacy_sub}</Text>
             </View>
             <Ionicons name="open-outline" size={17} color={colors.textMuted} />
           </TouchableOpacity>

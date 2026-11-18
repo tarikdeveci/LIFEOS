@@ -103,6 +103,7 @@ export const nutritionEn = {
   nut_adaptive_history: 'Weigh-in history',
   nut_adaptive_del_title: 'Delete weigh-in',
   nut_adaptive_del_a11y: 'Delete weigh-in for {date}',
+  nut_chat_a11y: 'Ask the nutrition assistant',
   nut_adaptive_del_msg: 'Delete the entry for {date}?',
   nut_adaptive_del_err_msg: 'Entry could not be deleted',
   nut_adaptive_show_less: 'Show less',
@@ -135,6 +136,9 @@ export const nutritionEn = {
   nut_feedback_2: 'Wrong food',
   nut_feedback_3: 'Wrong portion',
   nut_feedback_4: 'Wrong calories',
+  nut_search_placeholder: 'Eggs, bread, cheese...',
+  nut_search_no_results: 'No foods found. Try another word or add it manually.',
+  nut_err_amount_invalid: 'Enter an amount greater than 0.',
 }
 
 export const nutritionTr: Record<keyof typeof nutritionEn, string> = {
@@ -239,6 +243,7 @@ export const nutritionTr: Record<keyof typeof nutritionEn, string> = {
   nut_adaptive_history: 'Tartı geçmişi',
   nut_adaptive_del_title: 'Tartıyı sil',
   nut_adaptive_del_a11y: '{date} tartısını sil',
+  nut_chat_a11y: 'Beslenme asistanına sor',
   nut_adaptive_del_msg: '{date} kaydı silinsin mi?',
   nut_adaptive_del_err_msg: 'Kayıt silinemedi',
   nut_adaptive_show_less: 'Daha az göster',
@@ -271,4 +276,8 @@ export const nutritionTr: Record<keyof typeof nutritionEn, string> = {
   nut_feedback_2: 'Yanlış yiyecek',
   nut_feedback_3: 'Gramaj yanlış',
   nut_feedback_4: 'Kalori yanlış',
+  nut_search_placeholder: 'Yumurta, ekmek, peynir...',
+  nut_search_no_results: 'Yiyecek bulunamadı. Başka bir kelime dene ya da elle ekle.',
+  nut_err_amount_invalid: "0'dan büyük bir miktar gir.",
 }
+
