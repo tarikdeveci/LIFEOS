@@ -240,7 +240,7 @@ export function MonthView({ userId, initialDate, onDayClick }: MonthViewProps) {
                         color: b.color ?? BLOCK_TYPE_COLORS[b.block_type],
                       }}
                     >
-                      {b.start_time.slice(0, 5)} {b.label ?? b.block_type}
+                      {b.day_part ? '' : `${b.start_time.slice(0, 5)} `}{b.label ?? b.block_type}
                     </div>
                   ))}
                   {dayBlocks.length > 2 && (

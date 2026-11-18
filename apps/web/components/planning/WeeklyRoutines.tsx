@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import type { CreateRoutineInput, Routine } from '@lifeos/shared'
+import type { CreateRoutineInput, Routine, RoutineDayOverride } from '@lifeos/shared'
 import { BLOCK_TYPE_COLORS, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
+import { dayPartKey } from '@/lib/i18nFlex'
 import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
 import { RoutineFormModal } from '@/components/planning/RoutineFormModal'
@@ -33,9 +34,9 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
     ? t.routines_habit_daily_target.replace('{n}', String(r.times_per_day))
     : r.times_per_week === 7 ? t.routines_habit_daily : t.routines_habit_target.replace('{n}', String(r.times_per_week ?? 1))
 
-  const handleSave = async (input: CreateRoutineInput) => {
-    if (editing) await updateSeries(supabase, editing.id, input)
-    else await addRoutine(supabase, userId, input)
+  const handleSave = async (input: CreateRoutineInput, overrides?: RoutineDayOverride[]) => {
+    if (editing) await updateSeries(supabase, editing.id, input, undefined, overrides)
+    else await addRoutine(supabase, userId, input, undefined, overrides)
     showToast(editing ? t.plan_routine_updated : t.plan_routine_added, 'success')
     onChanged()
   }
@@ -70,7 +71,7 @@ export function WeeklyRoutines({ userId, onChanged }: WeeklyRoutinesProps) {
                     className="w-full rounded-lg px-1.5 py-1 text-left text-[10px] leading-tight hover:opacity-80"
                     style={{ backgroundColor: `${r.color ?? BLOCK_TYPE_COLORS[r.block_type]}20`, color: r.color ?? BLOCK_TYPE_COLORS[r.block_type] }}>
                     <span className="block truncate font-semibold">{r.title}</span>
-                    {r.start_time && <span className="opacity-80">{r.start_time.slice(0, 5)}</span>}
+                    {r.start_time ? <span className="opacity-80">{r.start_time.slice(0, 5)}</span> : r.day_part && <span className="opacity-80">{t[dayPartKey(r.day_part)]}</span>}
                     {r.every_n_weeks > 1 && <span className="opacity-80"> · {t.routines_biweekly}</span>}
                   </button>
                 ))}

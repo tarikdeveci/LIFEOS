@@ -15,6 +15,7 @@ import { useSubscription } from '@/lib/hooks/useSubscription'
 import { useFreeAiPlans } from '@/lib/hooks/useFreeAiPlans'
 import { usePlanningAiChat } from '@/lib/hooks/usePlanningAiChat'
 import { usePlanningBlockEditor } from '@/lib/hooks/usePlanningBlockEditor'
+import { useProgramDays } from '@/lib/hooks/useProgramDays'
 import { useToast } from '@/components/ui/Toast'
 import { DayTimeline } from '@/components/planning/DayTimeline'
 import { WeekView } from '@/components/planning/WeekView'
@@ -45,6 +46,7 @@ export function PlanningView({ userId }: PlanningViewProps) {
 
   const { setStatus, updateTask, deleteTask, addTask } = useTaskStore()
   const { fetchRoutines } = useRoutineStore()
+  const programDays = useProgramDays(userId, timeBlocks)
   const [ritualOpen, setRitualOpen] = useState(false)
   // Rutin değişince hafta görünümü kendi verisini yeniden okusun diye anahtar.
   const [routinesVersion, setRoutinesVersion] = useState(0)
@@ -215,9 +217,10 @@ export function PlanningView({ userId }: PlanningViewProps) {
               </div>
             ) : (
               <div className="glass rounded-2xl p-4 pt-2">
-                <DayTimeline busy={busy} timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
+                <DayTimeline busy={busy} programDays={programDays} timeBlocks={timeBlocks.map((b) => (b.completed_at ? { ...b, color: '#34A853' } : b))} onSlotClick={handleSlotClick} onBlockClick={openBlockDetail}
                   onBlockDrop={(blockId, newStart, newEnd) => {
-                    updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd })
+                    // Sürüklenen yüzen blok (084) yeni saatine sabitlenir.
+                    updateTimeBlock(supabase, blockId, { start_time: newStart, end_time: newEnd, day_part: null })
                       .then(() => showToast(t.plan_block_moved, 'success'))
                       .catch(() => {
                         // Store iyimser güncelledi, yazma düştü: günü yeniden okuyup eski saate dön.

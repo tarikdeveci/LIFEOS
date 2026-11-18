@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { toDayRows, toOverrides } from '../../apps/mobile/src/planning/dayRows.ts'
+import { toDayRows, toOverrides } from '../../packages/shared/src/utils/dayRows.ts'
 
 test('toOverrides: saat ve süre satırları, seçilmeyen gün atılır', () => {
   const rows = {

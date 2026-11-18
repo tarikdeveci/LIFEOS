@@ -43,7 +43,7 @@ export function Modal({ open, onClose, children, title, size = 'md' }: ModalProp
       }}
     >
       <div
-        className={`${sizeMap[size]} mx-4 w-full animate-in fade-in zoom-in-95 rounded-2xl bg-white p-6 shadow-2xl`}
+        className={`${sizeMap[size]} mx-4 max-h-[90vh] w-full overflow-y-auto animate-in fade-in zoom-in-95 rounded-2xl bg-white p-6 shadow-2xl`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { CreateRoutineInput, Routine } from '@lifeos/shared'
-import { todayDate, habitDoneDays, habitWeekProgress, isRoutineActiveOn, useRoutineStore } from '@lifeos/shared'
+import { blocksLinkedToHabit, todayDate, habitDoneDays, habitWeekProgress, isRoutineActiveOn, useRoutineStore } from '@lifeos/shared'
 import { supabase } from '@/lib/supabase/client'
 import { useLang } from '@/lib/contexts/LangContext'
 import { useToast } from '@/components/ui/Toast'
@@ -56,14 +56,21 @@ export function HabitsToday({ userId }: HabitsTodayProps) {
             const perDay = h.times_per_day
             const doneToday = count >= (perDay ?? 1)
             const week = habitWeekProgress(habitDoneDays(own, perDay), h.times_per_week ?? 1, today)
+            // Bağlı blok varsa (083) alışkanlık blok bitince kendiliğinden işaretlenir.
+            const linked = blocksLinkedToHabit(routines, h.id)
             return (
               <div key={h.id} className="flex items-center gap-2 rounded-xl bg-background/60 px-3 py-2">
                 {perDay === null && (
                   <input type="checkbox" checked={doneToday} className="rounded" aria-label={h.title}
                     onChange={(e) => write(h.id, e.target.checked ? 1 : 0)} />
                 )}
-                <button onClick={() => openForm(h)} className="flex-1 truncate text-left text-xs font-medium text-primary hover:text-accent">
-                  {h.title}
+                <button onClick={() => openForm(h)} className="min-w-0 flex-1 text-left text-xs font-medium text-primary hover:text-accent">
+                  <span className="block truncate">{h.title}</span>
+                  {linked.length > 0 && (
+                    <span className="block truncate text-[10px] font-normal text-muted">
+                      {t.ux_habit_linked_hint.replace('{title}', linked.map((b) => b.title).join(', '))}
+                    </span>
+                  )}
                 </button>
                 <span className={`shrink-0 text-[10px] font-medium tabular-nums ${doneToday || week.met ? 'text-success' : 'text-muted'}`}>
                   {perDay

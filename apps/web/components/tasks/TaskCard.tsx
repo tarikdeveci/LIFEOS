@@ -1,7 +1,7 @@
 'use client'
 
 import type { Task, TaskStatus } from '@lifeos/shared'
-import { TASK_STATUS_COLORS, todayDate, wsjfToPriorityLabel } from '@lifeos/shared'
+import { TASK_STATUS_COLORS, todayDate, hasCustomPriority, wsjfToPriorityLabel } from '@lifeos/shared'
 import { useLang } from '@/lib/contexts/LangContext'
 import { Badge } from '@/components/ui/Badge'
 
@@ -87,7 +87,8 @@ export function TaskCard({ task, onClick, onStatusChange, compact = false, repea
         {/* Content */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <PriorityIndicator score={task.priority_score} />
+            {/* Varsayılan görev 1.5 ile "Yüksek" görünmesin: etiket yalnız öncelik ayarlanınca (mobildeki gibi). */}
+            {hasCustomPriority(task) && <PriorityIndicator score={task.priority_score} />}
             <h3 className={`text-sm font-medium ${isDone ? 'line-through text-muted' : 'text-primary'}`}>
               {task.title}
             </h3>
@@ -125,11 +126,6 @@ export function TaskCard({ task, onClick, onStatusChange, compact = false, repea
               <span className="text-xs text-muted">+{task.tags.length - 3}</span>
             )}
           </div>
-        </div>
-
-        {/* Priority score */}
-        <div className="shrink-0 text-right">
-          <span className="text-xs font-semibold text-muted">{task.priority_score.toFixed(1)}</span>
         </div>
       </div>
     </div>

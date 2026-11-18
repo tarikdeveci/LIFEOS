@@ -18,6 +18,9 @@ interface TaskDraft {
   estimatedMinutes: string
   effortScore: string
   tags: string
+  /** Metinde saat yoksa elle takvime ekleme (mobildeki gibi). */
+  addToCalendar: boolean
+  startTime: string
 }
 
 const EMPTY_DRAFT: TaskDraft = {
@@ -28,6 +31,8 @@ const EMPTY_DRAFT: TaskDraft = {
   estimatedMinutes: '',
   effortScore: '',
   tags: '',
+  addToCalendar: false,
+  startTime: '',
 }
 
 interface QuickTaskInputProps {
@@ -79,7 +84,9 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
       const parsedTitle = parsed.title
       const tags = parsed.tags
       const effortScore = parsed.effort_score
-      const scheduledDate = parsed.scheduled_date
+      // Takvime eklenen görev bir güne bağlı olmalı: tarih yoksa bugün.
+      const startTime = parsed.start_time ?? (draft.addToCalendar && draft.startTime ? draft.startTime : null)
+      const scheduledDate = parsed.scheduled_date ?? (startTime && !draft.scheduledDate ? todayDate() : undefined)
       const dueDate = parsed.due_date
 
       try {
@@ -103,12 +110,12 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
           ...(draft.estimatedMinutes && { estimated_minutes: parseInt(draft.estimatedMinutes, 10) }),
         })
         const day = draft.scheduledDate || scheduledDate
-        if (created && parsed.start_time && day) {
+        if (created && startTime && day) {
           const minutes = (draft.estimatedMinutes && parseInt(draft.estimatedMinutes, 10)) || parsed.estimated_minutes || DEFAULT_TASK_MINUTES
           // Görev yazıldı: blok düşerse taslak yine temizlenir, yoksa tekrar denemek aynı görevi ikinci kez ekler.
           try {
             await createTimeBlocks(supabase, created.user_id, [{
-              date: day, start_time: parsed.start_time, end_time: addMinutesToClock(parsed.start_time, minutes),
+              date: day, start_time: startTime, end_time: addMinutesToClock(startTime, minutes),
               block_type: 'task', label: created.title, task_id: created.id,
             }])
           } catch { showToast(t.qtask_block_error, 'error') }
@@ -123,6 +130,8 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
     },
     [draft, loading, onCreateTask, showToast, t],
   )
+
+  const showCalendarToggle = useMemo(() => !parseQuickTask(draft.title, todayDate()).start_time, [draft.title])
 
   const preview = useMemo(() => {
     if (!draft.title.trim()) return null
@@ -227,6 +236,29 @@ export function QuickTaskInput({ onCreateTask }: QuickTaskInputProps) {
                 </select>
               </div>
             </div>
+
+            {showCalendarToggle && (
+              <div className="space-y-2">
+                <label className="flex min-h-[44px] cursor-pointer items-center justify-between text-sm font-medium text-primary">
+                  {t.task_add_to_calendar}
+                  <input
+                    type="checkbox"
+                    checked={draft.addToCalendar}
+                    onChange={(e) => setDraft((d) => ({ ...d, addToCalendar: e.target.checked, startTime: e.target.checked && !d.startTime ? '09:00' : d.startTime }))}
+                    className="h-5 w-5 accent-accent"
+                  />
+                </label>
+                {draft.addToCalendar && (
+                  <input
+                    type="time"
+                    aria-label={t.plan_start}
+                    value={draft.startTime}
+                    onChange={(e) => updateDraft('startTime', e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-primary outline-none focus:border-accent focus:bg-white"
+                  />
+                )}
+              </div>
+            )}
 
             <div>
               <label className="mb-1 block text-sm font-medium text-primary">{t.qtask_tags_label}</label>
