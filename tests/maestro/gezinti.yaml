@@ -1,0 +1,51 @@
+# Sekmeler, Ayarlar ve misafir kapıları. Satın alma ya da hesap açma yapılmaz:
+# misafir için hesap isteyen ekranlar "Not now" ile kapatılır.
+appId: tr.lifeos.app
+name: Gezinti
+tags: [gezinti]
+---
+- runFlow: _ortak/baslat.yaml
+# Happy: her sekme kendi ekranını açar.
+- tapOn: "Nutrition"
+- assertVisible: "No meals logged today"
+- tapOn: "Planning"
+- assertVisible: "No time blocks"
+- tapOn: "Workout"
+- assertVisible: "Programs"
+- tapOn: "Today"
+- assertVisible: "Open settings"
+# Sad: misafir Pro'ya geçemez, hesap kapısı çıkar ve kapatılınca Profil'e döner.
+- tapOn: "Profile"
+- tapOn: "Membership.*"
+- assertVisible: "Account needed for Pro"
+- tapOn: "Not now"
+- assertVisible: "Create account"
+- back
+- assertVisible: "Open settings"
+# Sad: misafir takvim bağlayamaz, aynı kapı çıkar.
+- tapOn: "Open settings"
+- assertVisible: "Settings"
+- tapOn: ".*Integrations.*"
+- assertVisible: "Account needed to connect"
+- tapOn: "Not now"
+- assertVisible: "Settings"
+# Happy: bildirim ayarları açılır, geri dönülür.
+- tapOn: ".*Notifications.*"
+- assertVisible: "Morning digest"
+- back
+- assertVisible: "Settings"
+# Happy: dil Türkçeye geçer ve geri alınır.
+- tapOn: ".*Türkçe"
+- assertVisible: "Ayarlar"
+- tapOn: ".*English"
+- assertVisible: "Settings"
+# Happy: tema değişir ve sisteme geri alınır.
+# Yüzen sekme çubuğu satırın üstüne binmesin diye satır ortalanır.
+- scrollUntilVisible:
+    element: ".*, System"
+    centerElement: true
+- tapOn: ".*, Dark"
+- tapOn: ".*, System"
+- assertVisible: "Settings"
+- back
+- assertVisible: "Open settings"

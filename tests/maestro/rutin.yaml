@@ -1,0 +1,49 @@
+# Haftalık rutin ekle ve sil. Sad path: başlıksız kayıt, gün seçilmeden kayıt.
+appId: tr.lifeos.app
+name: Rutin
+tags: [rutin]
+---
+- runFlow: _ortak/baslat.yaml
+# Bugünün günü cihazdaki Bugün başlığından okunur (bilgisayarla cihazın saat dilimi farklı olabilir).
+- copyTextFrom: "(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, .*"
+- evalScript: ${output.bugun = maestro.copiedText.slice(0, 3)}
+- tapOn: "Planning"
+- scrollUntilVisible:
+    element: "Add routine"
+    centerElement: true
+- tapOn: "Add routine"
+# Sad: başlıksız rutin kaydedilmez.
+- tapOn: "Save"
+- assertVisible: "Enter a title"
+- tapOn: "E.g. Gym"
+- inputText: "E2E rutin"
+# Klavye Kaydet düğmesini örter; Enter klavyeyi kapatır, sayfa açık kalır.
+- pressKey: Enter
+# Sad: varsayılan gün bugündür; o da kaldırılınca kayıt olmaz.
+- tapOn: ${output.bugun}
+- tapOn: "Save"
+- assertVisible: "Pick at least one day"
+# Happy: günü geri seç, kaydet; Haftam başlığı bir rutin sayar.
+- tapOn: ${output.bugun}
+- tapOn: "Save"
+- scrollUntilVisible:
+    element: "My week, 1 routine.*"
+    centerElement: true
+- tapOn: "My week, 1 routine.*"
+# Sil: listeden aç, sil, onayla; Haftam boşa döner.
+- scrollUntilVisible:
+    element:
+      text: "E2E rutin"
+      below: "My week.*"
+    centerElement: true
+- tapOn:
+    text: "E2E rutin"
+    below: "My week.*"
+- scrollUntilVisible:
+    element: "Delete"
+    centerElement: true
+- tapOn: "Delete"
+- tapOn: "DELETE|Delete"
+- scrollUntilVisible:
+    element: "My week, None yet.*"
+    centerElement: true

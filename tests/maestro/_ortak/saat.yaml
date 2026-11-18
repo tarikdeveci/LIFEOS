@@ -1,0 +1,23 @@
+# Saat alanına elle saat yazar. Varsayılan saat o anki saatten geldiği için akışlar
+# saati her zaman bununla kurar. Parametreler: ALAN (alan etiketi, regex), SAAT, DAKIKA.
+appId: tr.lifeos.app
+---
+- tapOn: ${ALAN}
+# Android saat seçicisi kadranla açılır; yazarak giriş moduna geçilir.
+- runFlow:
+    when:
+      notVisible:
+        id: "android:id/input_hour"
+    commands:
+      - tapOn:
+          id: "android:id/toggle_mode"
+- tapOn:
+    id: "android:id/input_hour"
+- eraseText
+- inputText: ${SAAT}
+- tapOn:
+    id: "android:id/input_minute"
+- eraseText
+- inputText: ${DAKIKA}
+- tapOn:
+    id: "android:id/button1"

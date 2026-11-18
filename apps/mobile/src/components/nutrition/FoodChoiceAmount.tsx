@@ -95,6 +95,7 @@ export function FoodChoiceAmount({ choice, onAdd, onClear }: FoodChoiceAmountPro
         />
       )}
       <Input
+        testID="food-amount"
         label={unit === 'piece' ? t.ux_food_amount_piece : t.nutr_grams}
         value={value}
         onChangeText={setValue}

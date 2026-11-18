@@ -1,0 +1,69 @@
+# Görev ekle, düzenle, tamamla, sil. Sad path: boş başlık, boş düzenleme, iptal.
+appId: tr.lifeos.app
+name: Görevler
+tags: [gorev]
+---
+- runFlow: _ortak/baslat.yaml
+- tapOn: "Tasks"
+- assertVisible: "No tasks yet"
+
+# Sad: boş başlıkla Ekle görev oluşturmaz, sheet açık kalır.
+- tapOn: "New Task"
+- tapOn: "Add"
+- assertVisible: "e.g. tomorrow 3pm report 30m"
+- tapOn: "Cancel"
+- assertVisible: "No tasks yet"
+
+# Happy: görev ekle.
+- tapOn: "New Task"
+- tapOn: "e.g. tomorrow 3pm report 30m"
+- inputText: "E2E dis hekimi"
+- tapOn: "Add"
+- assertVisible: "E2E dis hekimi"
+- assertNotVisible: "No tasks yet"
+
+# Ayrıntıda başlık düzenle.
+- tapOn: "E2E dis hekimi"
+- tapOn: "E2E dis hekimi, Tap to edit"
+- eraseText
+- inputText: "E2E randevu"
+- tapOn: "Save"
+- assertVisible: "E2E randevu, Tap to edit"
+
+# Sad: düzenlemede İptal değişikliği yazmaz.
+- tapOn: "E2E randevu, Tap to edit"
+- eraseText
+- inputText: "YAZILMAMALI"
+- tapOn: "Cancel"
+- assertVisible: "E2E randevu, Tap to edit"
+- assertNotVisible: "YAZILMAMALI.*"
+
+# Sad: boş başlık kaydedilmez; İptal eski başlığı geri getirir.
+- tapOn: "E2E randevu, Tap to edit"
+- eraseText
+- tapOn: "Save"
+- assertVisible: "Save"
+- tapOn: "Cancel"
+- assertVisible: "E2E randevu, Tap to edit"
+
+# Kalıcılık: listeye dönüp tekrar açınca yeni başlık yerinde.
+- back
+- assertVisible: "E2E randevu"
+- tapOn: "E2E randevu"
+- assertVisible: "E2E randevu, Tap to edit"
+
+# Tamamla: tamamlananlar gizli olduğu için listeden düşer.
+- tapOn: ".*Mark as done"
+- tapOn: "Back"
+- assertNotVisible: "E2E randevu"
+
+# Sil: yeni görev ekle, ayrıntıdan sil, onayla; listede kalmaz.
+- tapOn: "New Task"
+- tapOn: "e.g. tomorrow 3pm report 30m"
+- inputText: "E2E silinecek"
+- tapOn: "Add"
+- tapOn: "E2E silinecek"
+- tapOn: "Delete task"
+- tapOn: "Delete|DELETE"
+- assertVisible: "Tasks"
+- assertNotVisible: "E2E silinecek"

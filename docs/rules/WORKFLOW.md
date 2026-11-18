@@ -68,7 +68,11 @@ Dokunulan her ekran Android emülatörde açılır ve şu durumlarda denenir:
 - Android donanım geri tuşu ve ekrandaki geri: açıldığı yere döner (#12, #16).
 - Açık ve koyu tema.
 - Kaydet sonrası ekranı kapatıp açma: değer yerinde mi (#7, #20, #24).
-- İlgili Maestro akışları (Faz 3'te yazılır).
+- İlgili Maestro akışları: `pnpm e2e:mobile -- <akış>` (`tests/maestro/`, cihaz dili İngilizce).
+
+Mobil yayın öncesi (her store build'inden ve dahili test build'inden önce) takımın tamamı
+koşulur: `pnpm e2e:mobile`. Bir akış kırmızıysa build alınmaz. Yeni ekran veya akış eklenince
+aynı PR'da hem happy hem sad path içeren Maestro akışı yazılır.
 
 Etiket kanıt değildir: "Bağlı", "Kaydedildi" yazısı verinin gittiğini göstermez; veri
 ekranda veya DB'de doğrulanır. Ekran görüntüsüyle tıklayan Claude ajanı açılmaz (kota);

@@ -1,0 +1,45 @@
+# Zaman bloğu ekle ve sil. Sad path: boş başlık, başlangıç ile aynı bitiş saati.
+appId: tr.lifeos.app
+name: Planlama
+tags: [planlama]
+---
+- runFlow: _ortak/baslat.yaml
+- tapOn: "Planning"
+- assertVisible: "No time blocks"
+- tapOn: "New Block"
+# Sad: başlıksız blok eklenmez, hata görünür.
+- tapOn:
+    text: "Add"
+    below: "Type"
+- assertVisible: "Enter a title"
+- tapOn: "Focus work"
+- inputText: "E2E blok"
+# Sad: bitiş başlangıçla aynı (10:00) olunca eklenmez.
+- runFlow:
+    file: _ortak/saat.yaml
+    env: { ALAN: "Start, .*", SAAT: "10", DAKIKA: "00" }
+- runFlow:
+    file: _ortak/saat.yaml
+    env: { ALAN: "End, .*", SAAT: "10", DAKIKA: "00" }
+- assertVisible: "Start, 10:00"
+- assertVisible: "End, 10:00"
+- tapOn:
+    text: "Add"
+    below: "Type"
+- assertVisible: "Start and end time cannot be the same"
+# Happy: bitişi 12:00 yap, ekle.
+- runFlow:
+    file: _ortak/saat.yaml
+    env: { ALAN: "End, .*", SAAT: "12", DAKIKA: "00" }
+- assertVisible: "End, 12:00"
+- tapOn:
+    text: "Add"
+    below: "Type"
+- assertVisible: ".*E2E blok.*"
+- assertNotVisible: "No time blocks"
+# Sil: bloğu aç, sil, onayla.
+- tapOn: "E2E blok, 10:00 to 12:00.*"
+- tapOn: "Delete"
+- assertVisible: "Delete this block.*"
+- tapOn: "DELETE|Delete"
+- assertVisible: "No time blocks"
