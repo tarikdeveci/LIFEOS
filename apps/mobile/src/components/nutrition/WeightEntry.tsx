@@ -75,6 +75,8 @@ export function WeightEntry({ initialKg, savedToday, saving, disabled, onSave }:
             value={text}
             onChangeText={setText}
             keyboardType="decimal-pad"
+            testID="weight-input"
+            accessibilityLabel={t.nut_weight_your_weight}
             placeholder="0,0"
             placeholderTextColor={colors.textSubtle}
             selectTextOnFocus

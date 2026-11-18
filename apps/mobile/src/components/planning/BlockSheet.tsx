@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
-import { addMinutesToClock, nextSlotTime, usePlanningStore, type BlockType, type TimeBlock } from '@lifeos/shared'
+import { addMinutesToClock, crossesMidnight, formatDuration, minutesBetween, nextSlotTime, usePlanningStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
 import { promptPushAfterFirstBlock } from '@/src/notifications/firstBlockPrompt'
 import { Input } from '@/src/components/ui/Input'
@@ -44,7 +44,7 @@ function draftOf(block: TimeBlock): Draft {
  */
 export function BlockSheet({ target, userId, date, blockColors, blockLabels, onClose }: Props) {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { addTimeBlock, updateTimeBlock, removeTimeBlock } = usePlanningStore()
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [saving, setSaving] = useState(false)
@@ -57,6 +57,9 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
     if (target === 'new') setDraft(emptyDraft())
     else if (target) setDraft(draftOf(target))
   }, [target])
+
+  // Alan değişince eski doğrulama hatası kalkar.
+  const edit = (p: Partial<Draft>) => { setDraft((d) => ({ ...d, ...p })); setError(null) }
 
   // Yazma sürerken kapatılmaz: geç dönen istek sonradan açılan başka bir formu kapatıyordu.
   const close = () => { if (!saving) onClose() }
@@ -114,11 +117,18 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
   return (
     <BottomSheet visible={target !== null} onClose={close} title={editing ? t.ux_plan_edit_block : t.plan_new_block} scrollable>
       <View style={{ gap: spacing[3] }}>
-        <Input label={t.field_title} value={draft.label} onChangeText={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t.plan_block_placeholder} autoFocus={!editing} />
+        <Input label={t.field_title} value={draft.label} onChangeText={(v) => edit({ label: v })} placeholder={t.plan_block_placeholder} autoFocus={!editing} />
         <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-          <TimeField label={t.field_start} value={draft.start_time} onChange={(v) => setDraft((d) => ({ ...d, start_time: v }))} defaultTime="09:00" containerStyle={{ flex: 1 }} />
-          <TimeField label={t.field_end} value={draft.end_time} onChange={(v) => setDraft((d) => ({ ...d, end_time: v }))} defaultTime={draft.start_time || '10:00'} containerStyle={{ flex: 1 }} />
+          <TimeField label={t.field_start} value={draft.start_time} onChange={(v) => edit({ start_time: v })} defaultTime="09:00" containerStyle={{ flex: 1 }} />
+          <TimeField label={t.field_end} value={draft.end_time} onChange={(v) => edit({ end_time: v })} defaultTime={draft.start_time || '10:00'} containerStyle={{ flex: 1 }} />
         </View>
+        {/* Bitiş başlangıçtan önceyse blok gece yarısını geçer (23:00 ile 07:00 uyku); bu bilinçli, açıkça söylenir. */}
+        {TIME_RE.test(draft.start_time) && TIME_RE.test(draft.end_time) && crossesMidnight(draft.start_time, draft.end_time) && (
+          <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.sm, color: colors.textMuted, marginTop: -spacing[1] }}>
+            {t.plan_block_next_day.replace('{d}', formatDuration(minutesBetween(draft.start_time, draft.end_time), lang))}
+          </Text>
+        )}
+
         <View>
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted, marginBottom: spacing[2] }}>{t.misc_type}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] }}>
@@ -127,7 +137,7 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
               return (
                 <TouchableOpacity
                   key={type}
-                  onPress={() => setDraft((d) => ({ ...d, block_type: type }))}
+                  onPress={() => edit({ block_type: type })}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                   style={{ minHeight: MIN_TOUCH, justifyContent: 'center', paddingHorizontal: spacing[3], borderRadius: radius.md, backgroundColor: selected ? blockColors[type] : colors.glassInner, borderWidth: 1, borderColor: selected ? blockColors[type] : colors.border }}

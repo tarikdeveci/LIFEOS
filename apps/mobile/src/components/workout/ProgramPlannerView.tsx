@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
-import { activeDays, programDayLabel } from './programDays'
+import { activeDays, programDayDisplay } from './programDays'
 
 interface Props {
   /** Detay sayfasında açık olan programın güncel kaydı. */
@@ -44,7 +44,7 @@ export function ProgramPlannerView({
   toBlocks, onToggleBlocks, toCalendar, onToggleCalendar, scheduling, onSchedule, onBack,
 }: Props) {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const weekdayNames = t.routines_day_names.split(',')
 
   return (
@@ -73,7 +73,7 @@ export function ProgramPlannerView({
           <View key={day.id} style={{ gap: spacing[2] }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-                {programDayLabel(day, t)}
+                {programDayDisplay(day, program, t, lang)}
               </Text>
               <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>{t.wk_approx_min.replace('{n}', String(minutes))}</Text>
             </View>

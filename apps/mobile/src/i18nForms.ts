@@ -7,6 +7,7 @@ export const formsEn = {
   plan_err_time_required: 'Pick a time or a part of the day',
   plan_err_time_invalid: 'Times must be in HH:MM format',
   plan_err_end_after_start: 'Start and end time cannot be the same',
+  plan_block_next_day: 'Ends the next day, {d} in total',
   plan_block_add_error: 'Could not add the block. Check your connection.',
   plan_refresh_error: 'Could not refresh. Check your connection.',
   routines_err_per_week: 'Enter a number from 1 to 7',
@@ -77,6 +78,8 @@ export const formsTr: Record<keyof typeof formsEn, string> = {
   plan_err_time_required: 'Saat ya da gün bölümü seç',
   plan_err_time_invalid: 'Saat SS:DD biçiminde olmalı',
   plan_err_end_after_start: 'Başlangıç ve bitiş saati aynı olamaz',
+  plan_block_next_day: 'Ertesi gün biter, toplam {d}',
+
   plan_block_add_error: 'Blok eklenemedi. Bağlantını kontrol et.',
   plan_refresh_error: 'Yenilenemedi. Bağlantını kontrol et.',
   routines_err_per_week: '1 ile 7 arasında bir sayı gir',

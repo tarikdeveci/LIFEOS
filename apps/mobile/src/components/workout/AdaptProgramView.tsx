@@ -6,6 +6,7 @@ import type { EquipmentKey, Exercise, ProgramAdaptation, WorkoutProgram } from '
 import { Button } from '../ui/Button'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
+import { programDayDisplay } from './programDays'
 import { palette, fontSize, fontWeight, spacing, radius } from '../../theme/tokens'
 
 interface Props {
@@ -49,7 +50,7 @@ export function AdaptProgramView({ program, catalog, owned, applying, onBack, on
       {adaptation.days.filter(({ day }) => !day.is_rest).map(({ day, steps }) => (
         <View key={day.id} style={{ borderRadius: radius.lg, backgroundColor: colors.glassInner, borderWidth: 1, borderColor: colors.border, padding: spacing[3], gap: spacing[2] }}>
           <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>
-            {day.day_name || t.wk_day_n.replace('{n}', String(day.day_number))}
+            {programDayDisplay(day, program, t, lang)}
           </Text>
           {steps.length === 0 && (
             <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle }}>{t.wk_day_empty}</Text>

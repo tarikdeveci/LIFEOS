@@ -16,7 +16,7 @@ import { LibraryTab } from '@/src/components/workout/LibraryTab'
 import { ProgramsTab } from '@/src/components/workout/ProgramsTab'
 import { HistoryTab } from '@/src/components/workout/HistoryTab'
 import { ProgramDaysView } from '@/src/components/workout/ProgramDaysView'
-import { programDayLabel } from '@/src/components/workout/programDays'
+import { programDayDisplay, programDayLabel, programTitle } from '@/src/components/workout/programDays'
 import { exerciseName } from '@/src/components/workout/labels'
 import { useTodayProgramDay } from '@/src/hooks/useTodayProgramDay'
 import { ProgramExercisePickerView } from '@/src/components/workout/ProgramExercisePickerView'
@@ -223,7 +223,7 @@ export default function WorkoutScreen() {
             setsExpanded={setsExpanded}
             onToggleSets={() => setSetsExpanded((v) => !v)}
             onStart={() => session.setShowStart(true)}
-            nextProgramDay={startTarget ? { program: startTarget.program.name, day: programDayLabel(startTarget.day, t), planned: startTarget.planned, summary: targetSummary } : null}
+            nextProgramDay={startTarget ? { program: programTitle(startTarget.program, lang), day: programDayDisplay(startTarget.day, startTarget.program, t, lang), planned: startTarget.planned, summary: targetSummary } : null}
             onStartNext={() => { if (startTarget) void session.handleStartFromProgramDay(startTarget.program, startTarget.day.id) }}
             onFinish={session.openFinish}
             onDelete={session.handleDeleteWorkout}
@@ -273,7 +273,7 @@ export default function WorkoutScreen() {
             onEditEquipment={() => setShowEquipment(true)}
             onCreate={programs.openCreateProgram}
             onOpen={(program) => { programs.setSelectedProgram(program); programs.setExpandedDay(null) }}
-            active={progress ? { programId: progress.program.id, nextDay: programDayLabel(progress.nextDay, t) } : null}
+            active={progress ? { programId: progress.program.id, nextDay: programDayDisplay(progress.nextDay, progress.program, t, lang) } : null}
           />
         )}
 
@@ -324,7 +324,7 @@ export default function WorkoutScreen() {
       <BottomSheet
         visible={!!programs.selectedProgram}
         onClose={() => { programs.setSelectedProgram(null); programs.setExpandedDay(null); programs.setAddingToDay(null); planner.setPlanningProgram(false); programs.setAdaptingProgram(false); editor.close() }}
-        title={editor.mode?.kind === 'names' ? t.ux_wk_edit_names : editor.mode?.kind === 'exercise' ? t.ux_wk_edit_exercise : programs.addingToDay ? t.wk_add_movement : planner.planningProgram ? t.wk_plan_program : programs.adaptingProgram ? t.wk_adapt_title : (liveProgram ? liveProgram.name : t.wk_program)}
+        title={editor.mode?.kind === 'names' ? t.ux_wk_edit_names : editor.mode?.kind === 'exercise' ? t.ux_wk_edit_exercise : programs.addingToDay ? t.wk_add_movement : planner.planningProgram ? t.wk_plan_program : programs.adaptingProgram ? t.wk_adapt_title : (liveProgram ? programTitle(liveProgram, lang) : t.wk_program)}
         scrollable
         onBack={
           editor.open ? editor.close

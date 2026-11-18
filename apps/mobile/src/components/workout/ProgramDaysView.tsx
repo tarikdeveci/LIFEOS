@@ -7,7 +7,7 @@ import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius, hitSlopFor, MIN_TOUCH } from '../../theme/tokens'
 import { Button } from '../ui/Button'
 import { exerciseName } from './labels'
-import { activeDays, programDayLabel } from './programDays'
+import { activeDays, programDayDisplay } from './programDays'
 
 interface Props {
   /** Detay sayfasında açık olan programın güncel kaydı. */
@@ -92,7 +92,7 @@ export function ProgramDaysView({
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing[3], paddingHorizontal: spacing[3] }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{programDayLabel(day, t)}</Text>
+                <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary }}>{programDayDisplay(day, program, t, lang)}</Text>
                 <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
                   {exCount === 0 ? t.wk_no_exercises_defined : t.wk_ex_sets.replace('{e}', String(exCount)).replace('{s}', String(setCount))}
                 </Text>

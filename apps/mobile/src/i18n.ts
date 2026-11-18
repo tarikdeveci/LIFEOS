@@ -135,6 +135,7 @@ const translations = {
     plan_title: 'Planning',
     routines_title: 'My week',
     routines_count: '{n} routines',
+    routines_count_one: '1 routine',
     routines_none_yet: 'None yet',
     routines_subtitle: 'Repeating blocks, tasks and habits. They fill your calendar on their own.',
     routines_add: 'Add routine',
@@ -179,6 +180,7 @@ const translations = {
     routines_save: 'Save',
     routines_error: 'Routine could not be saved',
     routines_day_names: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
+    routines_day_names_long: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
     goals_title: "Weekly goals",
     goals_summary: '{done}/{n} done',
     goals_none_yet: 'None yet',
@@ -538,6 +540,8 @@ const translations = {
     plan_title: 'Planlama',
     routines_title: 'Haftam',
     routines_count: '{n} rutin',
+    routines_count_one: '1 rutin',
+
     routines_none_yet: 'Henüz yok',
     routines_subtitle: 'Tekrarlayan bloklar, görevler ve alışkanlıklar. Takvime kendileri düşer.',
     routines_add: 'Rutin ekle',
@@ -582,6 +586,8 @@ const translations = {
     routines_save: 'Kaydet',
     routines_error: 'Rutin kaydedilemedi',
     routines_day_names: 'Pzr,Pzt,Sal,Çar,Per,Cum,Cmt',
+    routines_day_names_long: 'Pazar,Pazartesi,Salı,Çarşamba,Perşembe,Cuma,Cumartesi',
+
     goals_title: "Haftalık hedefler",
     goals_summary: '{done}/{n} tamam',
     goals_none_yet: 'Henüz yok',

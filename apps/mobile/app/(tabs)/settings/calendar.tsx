@@ -94,6 +94,7 @@ export default function CalendarSettingsScreen() {
                     </Text>
                   </View>
                   <Switch
+                    accessibilityLabel={calendar.title}
                     value={selectedCalendarIds.includes(calendar.id)}
                     onValueChange={() => void toggleCalendar(calendar.id)}
                     trackColor={{ false: colors.glassBorder, true: `${palette.accent}80` }}

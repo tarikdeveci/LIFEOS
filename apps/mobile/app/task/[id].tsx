@@ -47,6 +47,7 @@ export default function TaskDetailScreen() {
   const [saving, setSaving] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  const [titleError, setTitleError] = useState<string | null>(null)
   const [editingDuration, setEditingDuration] = useState(false)
   const [durationDraft, setDurationDraft] = useState('')
   // UX.md 2: hata uyarıyla değil, ilgili alanın altında gösterilir.
@@ -94,7 +95,11 @@ export default function TaskDetailScreen() {
   }
 
   async function handleTitleSave() {
-    if (!task || !titleDraft.trim()) return
+    if (!task) return
+    if (!titleDraft.trim()) {
+      setTitleError(t.plan_err_name_required)
+      return
+    }
     setSaving(true)
     try {
       const updated = await updateTask(supabase, task.id, { title: titleDraft.trim() })
@@ -223,9 +228,16 @@ export default function TaskDetailScreen() {
         <GlassCard>
           {editingTitle ? (
             <View style={{ gap: spacing[3] }}>
-              <Input value={titleDraft} onChangeText={setTitleDraft} multiline autoFocus />
+              <Input
+                value={titleDraft}
+                onChangeText={(v) => { setTitleDraft(v); setTitleError(null) }}
+                error={titleError ?? undefined}
+                multiline
+                autoFocus
+              />
               <View style={{ flexDirection: 'row', gap: spacing[3] }}>
-                <Button label={t.misc_cancel} onPress={() => setEditingTitle(false)} variant="ghost" style={{ flex: 1 }} />
+                <Button label={t.misc_cancel} onPress={() => { setEditingTitle(false); setTitleError(null) }} variant="ghost" style={{ flex: 1 }} />
+
                 <Button label={t.misc_save} onPress={handleTitleSave} style={{ flex: 1 }} />
               </View>
             </View>

@@ -30,7 +30,7 @@ import { useBottomTabPadding } from '@/src/hooks/useBottomTabPadding'
 import { useOnAppActive } from '@/src/hooks/useOnAppActive'
 import { requestOrOpenSettings } from '@/src/utils/permissions'
 import { registerForPushNotificationsAsync } from '@/src/notifications/setup'
-import { palette, fontSize, fontWeight, spacing, radius } from '@/src/theme/tokens'
+import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '@/src/theme/tokens'
 
 /**
  * Bildirim ayarları.
@@ -68,6 +68,7 @@ function ToggleRow({ icon, title, subtitle, value, onValueChange }: ToggleRowPro
         <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 }}>{subtitle}</Text>
       </View>
       <Switch
+        accessibilityLabel={title}
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: colors.glassBorder, true: `${palette.accent}80` }}
@@ -78,32 +79,36 @@ function ToggleRow({ icon, title, subtitle, value, onValueChange }: ToggleRowPro
 }
 
 /** Saat seçici: 0-23 arasında dolanan artır/azalt. Ek bağımlılık gerektirmez. */
-function HourStepper({ hour, onChange, disabled }: { hour: number; onChange: (h: number) => void; disabled?: boolean }) {
+function HourStepper({ hour, onChange, disabled, label }: { hour: number; onChange: (h: number) => void; disabled?: boolean; label: string }) {
   const { colors } = useTheme()
+  const { lang } = useLang()
+  const tr = lang !== 'en'
   const step = (delta: number) => onChange((hour + delta + 24) % 24)
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing[3],
+        gap: spacing[1],
         opacity: disabled ? 0.35 : 1,
         marginTop: spacing[3],
         alignSelf: 'flex-start',
         borderRadius: radius.md,
         borderWidth: 1,
         borderColor: colors.glassBorder,
-        paddingHorizontal: spacing[2],
-        paddingVertical: spacing[1],
       }}
     >
-      <TouchableOpacity onPress={() => step(-1)} disabled={disabled} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+      <TouchableOpacity onPress={() => step(-1)} disabled={disabled} style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityRole="button" accessibilityState={{ disabled }}
+        accessibilityLabel={`${label}: ${tr ? 'bir saat erken' : 'one hour earlier'}`}>
         <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
       </TouchableOpacity>
-      <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, minWidth: 52, textAlign: 'center' }}>
+      <Text accessibilityLabel={`${label}: ${hourLabel(hour)}`} style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, minWidth: 52, textAlign: 'center' }}>
         {hourLabel(hour)}
       </Text>
-      <TouchableOpacity onPress={() => step(1)} disabled={disabled} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+      <TouchableOpacity onPress={() => step(1)} disabled={disabled} style={{ width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityRole="button" accessibilityState={{ disabled }}
+        accessibilityLabel={`${label}: ${tr ? 'bir saat geç' : 'one hour later'}`}>
         <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
       </TouchableOpacity>
     </View>
@@ -346,6 +351,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchPush({ morning_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Sabah özeti' : 'Morning digest'}
             hour={push?.morning_hour ?? DEFAULT_PUSH_PREFERENCES.morning_hour}
             disabled={!push?.morning_enabled}
             onChange={(h) => void patchPush({ morning_hour: h })}
@@ -361,6 +367,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchPush({ midday_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Öğlen kontrolü' : 'Midday check-in'}
             hour={push?.midday_hour ?? DEFAULT_PUSH_PREFERENCES.midday_hour}
             disabled={!push?.midday_enabled}
             onChange={(h) => void patchPush({ midday_hour: h })}
@@ -376,6 +383,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchPush({ evening_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Gün sonu özeti' : 'Evening summary'}
             hour={push?.evening_hour ?? DEFAULT_PUSH_PREFERENCES.evening_hour}
             disabled={!push?.evening_enabled}
             onChange={(h) => void patchPush({ evening_hour: h })}
@@ -392,6 +400,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchPush({ weight_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Tartı hatırlatması' : 'Weigh-in reminder'}
             hour={push?.weight_hour ?? DEFAULT_PUSH_PREFERENCES.weight_hour}
             disabled={!push?.weight_enabled}
             onChange={(h) => void patchPush({ weight_hour: h })}
@@ -419,6 +428,8 @@ export default function NotificationSettingsScreen() {
               return (
                 <TouchableOpacity
                   key={minutes}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active, disabled: !push?.block_reminder_enabled }}
                   disabled={!push?.block_reminder_enabled}
                   onPress={() => void patchPush({ block_reminder_minutes: minutes as BlockReminderMinutes })}
                   style={{
@@ -456,6 +467,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchEmail({ morning_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Sabah e-postası' : 'Morning email'}
             hour={emailHour(email.morning_time)}
             disabled={!email.morning_enabled}
             onChange={(h) => void patchEmail({ morning_time: `${String(h).padStart(2, '0')}:00` })}
@@ -471,6 +483,7 @@ export default function NotificationSettingsScreen() {
             onValueChange={(next) => void patchEmail({ evening_enabled: next })}
           />
           <HourStepper
+            label={tr ? 'Akşam e-postası' : 'Evening email'}
             hour={emailHour(email.evening_time)}
             disabled={!email.evening_enabled}
             onChange={(h) => void patchEmail({ evening_time: `${String(h).padStart(2, '0')}:00` })}

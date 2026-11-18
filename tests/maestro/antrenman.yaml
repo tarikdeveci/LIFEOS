@@ -1,0 +1,31 @@
+# Kendi programını oluştur, aç, sil. Sad path: adsız program oluşmaz.
+appId: tr.lifeos.app
+name: Antrenman programı
+tags: [antrenman]
+---
+- runFlow: _ortak/baslat.yaml
+- tapOn: "Workout"
+- tapOn: "Programs"
+- tapOn: "Create Your Own Program"
+# Sad: ad boşken uyarı çıkar, program oluşmaz.
+- tapOn: "Create Program"
+- assertVisible: "Missing info"
+- tapOn: "OK"
+- tapOn: "E.g. Glute-focused day"
+- inputText: "E2E program"
+- pressKey: Enter
+- tapOn: "Create Program"
+- assertVisible: "Program created"
+- tapOn: "OK"
+- scrollUntilVisible:
+    element: "E2E program"
+# Program açılır, günleri görünür; sonra silinir.
+- tapOn:
+    text: ".*View Program"
+    below: "E2E program"
+- assertVisible: "Day 1"
+- scrollUntilVisible:
+    element: "Delete Program"
+- tapOn: "Delete Program"
+- tapOn: "DELETE|Delete"
+- assertNotVisible: "E2E program"
