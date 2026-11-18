@@ -114,6 +114,8 @@ export default function NutritionScreen() {
   // Food search
   const [foodSearch, setFoodSearch] = useState('')
   const [foodResults, setFoodResults] = useState<FoodSearchResult[]>([])
+  // Son biten aramanın sorgusu: "sonuç yok" yalnızca arama gerçekten bitince görünür.
+  const [searchedQuery, setSearchedQuery] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Elle ekleme akışı — model çağrısı yok, ücretsiz kullanıcı için de açık.
@@ -169,7 +171,11 @@ export default function NutritionScreen() {
     setRefreshing(false)
   }
 
+  const noFoodResults = foodSearch.trim().length >= 2 && searchedQuery
+ === foodSearch && foodResults.length === 0
+
   function handleFoodSearch(q: string) {
+
     setFoodSearch(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!q.trim() || !userId) { setFoodResults([]); return }
@@ -180,6 +186,7 @@ export default function NutritionScreen() {
       } catch {
         setFoodResults([])
       }
+      setSearchedQuery(q)
     }, 300)
   }
 
@@ -722,7 +729,12 @@ export default function NutritionScreen() {
         {/* Food quick search */}
         <GlassCard style={{ marginBottom: spacing[4] }}>
           <Text style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing[3] }}>{t.nutr_quick_search ?? t.nut_food_search_ph}</Text>
-          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'} />
+          <Input value={foodSearch} onChangeText={handleFoodSearch} placeholder={t.nut_search_placeholder} />
+          {noFoodResults && (
+            <Text accessibilityLiveRegion="polite" style={{ marginTop: spacing[2], fontSize: fontSize.xs, color: colors.textSubtle }}>
+              {t.nut_search_no_results}
+            </Text>
+          )}
           {foodResults.length > 0 && (
             <View style={{ marginTop: spacing[3], gap: 2 }}>
               {foodResults.map((food) => (
@@ -839,7 +851,7 @@ export default function NutritionScreen() {
                 label={t.nutr_search_food}
                 value={foodSearch}
                 onChangeText={handleFoodSearch}
-                placeholder={lang === 'tr' ? 'Yumurta, ekmek, peynir...' : 'Eggs, bread, cheese...'}
+                placeholder={t.nut_search_placeholder}
               />
 
               {pendingChoice ? (
@@ -860,10 +872,11 @@ export default function NutritionScreen() {
                   ))}
                 </View>
               ) : (
-                <Text style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
-                  {t.nutr_search_hint}
+                <Text accessibilityLiveRegion="polite" style={{ fontSize: fontSize.xs, color: colors.textSubtle, textAlign: 'center', paddingVertical: spacing[2] }}>
+                  {noFoodResults ? t.nut_search_no_results : t.nutr_search_hint}
                 </Text>
               )}
+
             </View>
           )}
 

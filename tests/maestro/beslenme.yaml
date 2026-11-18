@@ -12,6 +12,7 @@ tags: [beslenme]
 - waitForAnimationToEnd:
     timeout: 3000
 - assertNotVisible: ".*kcal / 100 g.*"
+- assertVisible: "No foods found.*"
 # Happy: aramadan seç, öğüne ekle.
 - eraseText
 - inputText: "egg"
@@ -25,6 +26,15 @@ tags: [beslenme]
     id: "food-amount"
 - eraseText
 - inputText: "0"
+- tapOn: "Add to meal"
+- assertVisible: "Enter an amount greater than 0."
+- assertNotVisible: "Is this wrong.*"
+# Happy: geçerli miktar girince hata kalkar, kalem eklenir.
+- tapOn:
+    id: "food-amount"
+- eraseText
+- inputText: "60"
+- assertNotVisible: "Enter an amount greater than 0."
 - tapOn: "Add to meal"
 - assertVisible: "Is this wrong.*"
 - assertNotVisible: "0 kcal"

@@ -22,10 +22,11 @@ tags: [hesap]
 - assertVisible: "Password must be at least 8 characters."
 - tapOn: "Already have an account.*"
 - assertVisible: "Continue with your account"
-# Sad: boş girişte Giriş yap bir şey yapmaz.
+# Sad: boş girişte Giriş yap hata metni gösterir.
 - tapOn:
     text: "Log in"
     below: "Password"
+- assertVisible: "Enter your email and password."
 - assertVisible: "Continue with your account"
 # Sad: e-posta yokken şifre sıfırlama uyarı verir.
 - tapOn: "Forgot password"

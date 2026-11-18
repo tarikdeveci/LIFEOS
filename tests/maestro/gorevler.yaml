@@ -42,7 +42,7 @@ tags: [gorev]
 - tapOn: "E2E randevu, Tap to edit"
 - eraseText
 - tapOn: "Save"
-- assertVisible: "Save"
+- assertVisible: "Enter a title"
 - tapOn: "Cancel"
 - assertVisible: "E2E randevu, Tap to edit"
 

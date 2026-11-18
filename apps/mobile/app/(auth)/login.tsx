@@ -57,7 +57,11 @@ export default function LoginScreen() {
   }
 
   async function handleLogin() {
-    if (!email || !password) return
+    if (!email.trim() || !password) {
+      setLoginError(t.acc_login_err_empty)
+      return
+    }
+
     // Misafirken mevcut hesaba girmek misafir verisini geride bırakır: önce neyin kaybolacağı söylenir.
     if (isAnonymous && userId) {
       setLoading(true)
@@ -147,7 +151,8 @@ export default function LoginScreen() {
           <Input
             label={t.acc_email}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => { setEmail(value); setLoginError(null) }}
+
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"

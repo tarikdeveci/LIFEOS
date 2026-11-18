@@ -31,6 +31,7 @@ export function FoodChoiceAmount({ choice, onAdd, onClear }: FoodChoiceAmountPro
   const [value, setValue] = useState(countable ? '1' : String(choice.default_grams))
   const [adding, setAdding] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [amountError, setAmountError] = useState<string | null>(null)
 
   function typedAmount(): number | null {
     const typed = Number(value.replace(',', '.'))
@@ -40,6 +41,7 @@ export function FoodChoiceAmount({ choice, onAdd, onClear }: FoodChoiceAmountPro
   /** Birim değişince girilen miktar korunur: 3 adet ↔ 3 × porsiyon gram. */
   function switchUnit(next: AmountUnit) {
     if (next === unit) return
+    setAmountError(null)
     const typed = typedAmount()
     setUnit(next)
     if (typed === null) {
@@ -51,16 +53,17 @@ export function FoodChoiceAmount({ choice, onAdd, onClear }: FoodChoiceAmountPro
     }
   }
 
-  function gramsFromInput(): number {
-    const typed = typedAmount()
-    if (typed === null) return choice.default_grams
-    return unit === 'piece' ? Math.round(typed * choice.default_grams) : typed
-  }
-
   async function handleAdd() {
     setFailed(false)
+    // Boş alan yer tutucudaki porsiyonu ekler; 0 ya da geçersiz miktar sessizce porsiyona dönmez.
+    const typed = value.trim() === '' ? (unit === 'piece' ? 1 : choice.default_grams) : typedAmount()
+    const grams = typed === null ? 0 : unit === 'piece' ? Math.round(typed * choice.default_grams) : typed
+    if (grams <= 0) {
+      setAmountError(t.nut_err_amount_invalid)
+      return
+    }
     setAdding(true)
-    const ok = await onAdd(gramsFromInput())
+    const ok = await onAdd(grams)
     setAdding(false)
     if (!ok) setFailed(true)
   }
@@ -98,7 +101,8 @@ export function FoodChoiceAmount({ choice, onAdd, onClear }: FoodChoiceAmountPro
         testID="food-amount"
         label={unit === 'piece' ? t.ux_food_amount_piece : t.nutr_grams}
         value={value}
-        onChangeText={setValue}
+        onChangeText={(next) => { setValue(next); setAmountError(null) }}
+        error={amountError ?? undefined}
         keyboardType="decimal-pad"
         placeholder={unit === 'piece' ? '1' : String(choice.default_grams)}
       />

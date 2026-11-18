@@ -79,7 +79,8 @@ export function WeeklyRoutines({ userId, blockColors, onChanged }: Props) {
   return (
     <GlassCard style={{ marginBottom: spacing[3] }}>
       <CollapsibleTitle title={t.routines_title} open={expanded} onToggle={() => setExpanded((v) => !v)}
-        summary={active.length === 0 ? t.routines_none_yet : t.routines_count.replace('{n}', String(active.length))}
+        summary={active.length === 0 ? t.routines_none_yet : active.length === 1 ? t.routines_count_one : t.routines_count.replace('{n}', String(active.length))}
+
         onAdd={() => open(null)} addLabel={t.routines_add} />
 
       {expanded && (!loading && active.length === 0 ? (

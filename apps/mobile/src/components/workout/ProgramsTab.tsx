@@ -8,7 +8,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useLang } from '../../contexts/LangContext'
 import { palette, fontSize, fontWeight, spacing, radius, MIN_TOUCH } from '../../theme/tokens'
 import { EquipmentCard, ProgramFitBadge } from './EquipmentCard'
-import { programDayLabel } from './programDays'
+import { programDayDisplay, programDescription, programTitle } from './programDays'
 
 interface Props {
   /** Ekipmana uygunluğa göre sıralanmış programlar. */
@@ -117,7 +117,7 @@ export function ProgramsTab({ programs, fitByProgram, equipment, equipmentLoaded
 
 function ProgramCard({ program, splitLabel, fit, onStart, nextDay }: ProgramCardProps) {
   const { colors } = useTheme()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const isGlobal = program.user_id === null
   const dayCount = program.days?.filter((d) => !d.is_rest).length ?? program.frequency_per_week
 
@@ -131,14 +131,14 @@ function ProgramCard({ program, splitLabel, fit, onStart, nextDay }: ProgramCard
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing[3] }}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: 4 }}>
-            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{program.name}</Text>
+            <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary }}>{programTitle(program, lang)}</Text>
             {isGlobal && (
               <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.full, backgroundColor: `${palette.accent}15` }}>
                 <Text style={{ fontSize: fontSize.xs, color: palette.accent, fontWeight: fontWeight.medium }}>{t.wk_template}</Text>
               </View>
             )}
           </View>
-          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }} numberOfLines={2}>{program.description}</Text>
+          <Text style={{ fontSize: fontSize.sm, color: colors.textMuted }} numberOfLines={2}>{programDescription(program, lang)}</Text>
         </View>
       </View>
 
@@ -158,7 +158,7 @@ function ProgramCard({ program, splitLabel, fit, onStart, nextDay }: ProgramCard
           {program.days.slice(0, 6).map((day) => (
             <View key={day.id} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: day.is_rest ? colors.glassInner : `${palette.workout}10` }}>
               <Text style={{ fontSize: fontSize.xs, color: day.is_rest ? colors.textSubtle : palette.workout }}>
-                {day.is_rest ? t.wk_rest_day : programDayLabel(day, t)}
+                {day.is_rest ? t.wk_rest_day : programDayDisplay(day, program, t, lang)}
               </Text>
             </View>
           ))}

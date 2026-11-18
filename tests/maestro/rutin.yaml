@@ -6,7 +6,8 @@ tags: [rutin]
 - runFlow: _ortak/baslat.yaml
 # Bugünün günü cihazdaki Bugün başlığından okunur (bilgisayarla cihazın saat dilimi farklı olabilir).
 - copyTextFrom: "(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, .*"
-- evalScript: ${output.bugun = maestro.copiedText.slice(0, 3)}
+# Gün çipinin erişilebilirlik etiketi günün tam adıdır (Wednesday).
+- evalScript: ${output.bugun = maestro.copiedText.split(',')[0]}
 - tapOn: "Planning"
 - scrollUntilVisible:
     element: "Add routine"
@@ -17,6 +18,8 @@ tags: [rutin]
 - assertVisible: "Enter a title"
 - tapOn: "E.g. Gym"
 - inputText: "E2E rutin"
+# Başlık yazılınca hata kalkar.
+- assertNotVisible: "Enter a title"
 # Klavye Kaydet düğmesini örter; Enter klavyeyi kapatır, sayfa açık kalır.
 - pressKey: Enter
 # Sad: varsayılan gün bugündür; o da kaldırılınca kayıt olmaz.
@@ -27,9 +30,9 @@ tags: [rutin]
 - tapOn: ${output.bugun}
 - tapOn: "Save"
 - scrollUntilVisible:
-    element: "My week, 1 routine.*"
+    element: "My week, 1 routine(,.*)?"
     centerElement: true
-- tapOn: "My week, 1 routine.*"
+- tapOn: "My week, 1 routine(,.*)?"
 # Sil: listeden aç, sil, onayla; Haftam boşa döner.
 - scrollUntilVisible:
     element:

@@ -14,6 +14,7 @@ tags: [planlama]
 - assertVisible: "Enter a title"
 - tapOn: "Focus work"
 - inputText: "E2E blok"
+- assertNotVisible: "Enter a title"
 # Sad: bitiş başlangıçla aynı (10:00) olunca eklenmez.
 - runFlow:
     file: _ortak/saat.yaml
@@ -27,11 +28,18 @@ tags: [planlama]
     text: "Add"
     below: "Type"
 - assertVisible: "Start and end time cannot be the same"
+# Bitiş başlangıçtan önceyse blok gece yarısını geçer, sheet bunu söyler.
+- runFlow:
+    file: _ortak/saat.yaml
+    env: { ALAN: "End, .*", SAAT: "08", DAKIKA: "00" }
+- assertNotVisible: "Start and end time cannot be the same"
+- assertVisible: "Ends the next day, 22h in total"
 # Happy: bitişi 12:00 yap, ekle.
 - runFlow:
     file: _ortak/saat.yaml
     env: { ALAN: "End, .*", SAAT: "12", DAKIKA: "00" }
 - assertVisible: "End, 12:00"
+- assertNotVisible: "Ends the next day.*"
 - tapOn:
     text: "Add"
     below: "Type"
