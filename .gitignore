@@ -80,5 +80,8 @@ scripts/seed-user-data.mjs
 # Ham reels videolari (GB boyutunda; EAS arsivine de giriyordu)
 marketing/reels/
 
+# Organik yayin hatti: kuyruk, metrikler ve yerel anahtarlar (repoya girmez)
+marketing/organic/data/
+
 # Persona testi ham raporlari ve ekran.mjs durum dosyasi (repoya girmez)
 .claude/skills/persona-test/raporlar/

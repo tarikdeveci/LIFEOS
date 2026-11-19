@@ -1,0 +1,79 @@
+{
+  "positioning": "Yapılacaklar listen zaten var. LifeOS gününü kurar.",
+  "tone": "Gerçek, sakin, reklam kokmayan. Kameraya konuşan ya da elde telefon. Satış dili yok, izleyicinin kendi günü var.",
+  "redLines": [
+    "Gerçek bir kişinin benzerliği izinsiz kullanılmaz (ünlü, fenomen, rastgele biri).",
+    "İzinli arkadaş çekimi bile kayıtsız girmez (characters[].consent dolu olmalı).",
+    "Sentetik insan görünen her klip etiketlenir (aiLabel).",
+    "Sayısal iddia gerçek olacak: ödünç ölçek (10K+ kullanıcı) yasak.",
+    "Sağlık ve kilo iddiası yok (App Store 1.4.1).",
+    "Tek kama: kalori, makro, antrenman içeriğin konusu olmaz."
+  ],
+  "winningPatterns": [],
+  "knownPatterns": [
+    "Tek satır soru ya da düşünce hook'u",
+    "Özellik değil sonuç ve kimlik",
+    "Aynı fikrin çok varyantı (hook x caption)"
+  ],
+  "limits": {
+    "captionMax": 2200,
+    "hashtagMax": 30,
+    "hashtagWarn": 5,
+    "hookWarn": 90
+  },
+  "patternNote": "Desenler küçük harfe çevrilmiş ve Türkçe karakterleri sadeleştirilmiş (ç->c, ğ->g, ı->i, ö->o, ş->s, ü->u) metne uygulanır; bu yüzden desenler ASCII yazılır. Bayrak: u.",
+  "patterns": {
+    "health": [
+      "kilo\\s*(ver|kayb|al\\b)",
+      "\\d+([.,]\\d+)?\\s*(kg|kilo)\\b",
+      "yag\\s*(yak|erit)",
+      "zayifl",
+      "obezite",
+      "lose\\s+weight",
+      "weight\\s*loss",
+      "burn\\s+(body\\s+)?fat",
+      "\\d+\\s*(lbs?|pounds)\\b"
+    ],
+    "scale": [
+      "\\d+([.,]\\d+)?\\s*(k|bin|m|milyon)\\s*\\+?\\s*(kullanici|user|indirme|download|kisi)",
+      "\\d+\\s*\\+\\s*(kullanici|user|indirme|download)",
+      "(binlerce|milyonlarca|yuz binlerce)\\s*(kullanici|insan|kisi)",
+      "(thousands|millions)\\s+of\\s+(users|people)",
+      "%\\s*\\d+\\s*(daha\\s*)?(verimli|hizli|fazla|basarili|uretken)",
+      "\\d+\\s*%\\s*(more|faster|better)",
+      "\\d+\\s*%\\s*(daha\\s*)?(verimli|hizli|fazla|basarili|uretken)",
+      "#\\s*1\\s*(uygulama|app)",
+      "en\\s*cok\\s*indirilen"
+    ],
+    "impersonation": [
+      "\\bunlu",
+      "fenomen",
+      "celebrit",
+      "\\bfamous\\b",
+      "\\binfluencer\\b",
+      "\\bas seen on\\b"
+    ],
+    "topics": [
+      "kalori",
+      "makro",
+      "protein",
+      "antrenman",
+      "egzersiz",
+      "workout",
+      "calorie",
+      "macros?\\b",
+      "\\bgym\\b"
+    ],
+    "cta": [
+      "indir",
+      "dene",
+      "link",
+      "profil",
+      "biyografi",
+      "\\bbio\\b",
+      "download",
+      "\\btry\\b",
+      "basla"
+    ]
+  }
+}
