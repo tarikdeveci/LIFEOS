@@ -16,6 +16,9 @@ const PUBLIC_ROUTES = [
   '/gizlilik-kvkk',
   // Hesap silme rehberi (Play Veri Guvenligi formunda beyan edilen URL — oturumsuz erisilebilmeli)
   '/hesap-silme',
+  // Paylaşım kartı görseli (app/opengraph-image.tsx). Uzantısız adres olduğu için matcher'ın
+  // dosya istisnasına girmiyor; açık değilse WhatsApp ve Meta görsel yerine login sayfası alır.
+  '/opengraph-image',
 ]
 // Sadece oturumsuz kullanıcılara açık (oturum varsa dashboard'a yönlendir)
 const AUTH_ROUTES = ['/login', '/register']

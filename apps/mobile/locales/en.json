@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "LifeOS",
+    "NSCameraUsageDescription": "Camera access is needed for your profile photo.",
+    "NSCalendarsUsageDescription": "Calendar access is needed to import your events as time blocks.",
+    "NSRemindersUsageDescription": "Access is needed to read your calendar reminders.",
+    "NSHealthShareUsageDescription": "LifeOS reads steps, distance, active energy, workouts, sleep, heart rate and weight from Apple Health to build your daily health summary, goal progress, activity-based calorie budget, weekly insights, recovery suggestions and a calorie target based on your weight trend.",
+    "NSHealthUpdateUsageDescription": "LifeOS only reads health data and never writes anything."
+  }
+}
