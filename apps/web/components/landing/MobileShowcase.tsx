@@ -3,12 +3,8 @@
 import { useRef } from 'react'
 import Image from 'next/image'
 import { motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
+import { APP_STORE_URL, GOOGLE_PLAY_URL } from './copy'
 import { MagneticLink, Reveal, SectionHeading } from './primitives'
-
-// App Store Connect kaydi: apps/mobile/eas.json -> submit.production.ios.ascAppId
-const APP_STORE_URL = 'https://apps.apple.com/tr/app/lifeos/id6789708836'
-// Play Console paket adi: apps/mobile/app.json -> android.package
-const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=tr.lifeos.app'
 
 interface MobileShowcaseProps {
   t: {
