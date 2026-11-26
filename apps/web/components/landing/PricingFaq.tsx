@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { EASE_OUT, Reveal, SectionHeading } from './primitives'
 
 export interface Plan {
@@ -106,19 +106,17 @@ export function Faq({ title, items }: { title: string; items: { q: string; a: st
                   +
                 </motion.span>
               </button>
-              <AnimatePresence initial={false}>
-                {isOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.35, ease: EASE_OUT }}
-                    className="overflow-hidden"
-                  >
-                    <p className="pb-5 text-sm leading-relaxed text-white/50">{a}</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Cevap kapalıyken de DOM'da: yalnız açılınca render edilseydi sunucu HTML'inde
+                  olmaz, arama motoru soruyu görüp cevabı göremezdi. */}
+              <motion.div
+                initial={false}
+                animate={isOpen ? { height: 'auto', opacity: 1 } : { height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: EASE_OUT }}
+                aria-hidden={!isOpen}
+                className="overflow-hidden"
+              >
+                <p className="pb-5 text-sm leading-relaxed text-white/50">{a}</p>
+              </motion.div>
             </Reveal>
           )
         })}

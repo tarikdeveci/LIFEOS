@@ -153,3 +153,19 @@ const en: LandingCopy = {
 export function getLandingCopy(lang: Language): LandingCopy {
   return lang === 'tr' ? tr : en
 }
+
+// Mağaza kayıtları ve fiyatlar. Hem görünen sayfa hem arama motoruna giden yapısal
+// veri (app/page.tsx) buradan okur; iki yerde ayrı yazılırsa fiyat değişince biri eskir.
+// Bu dosya 'use client' değil: sunucu bileşeni de değeri okuyabiliyor.
+// App Store Connect kaydı: apps/mobile/eas.json -> submit.production.ios.ascAppId
+export const APP_STORE_ID = '6789708836'
+export const APP_STORE_URL = `https://apps.apple.com/tr/app/lifeos/id${APP_STORE_ID}`
+// Play Console paket adı: apps/mobile/app.json -> android.package
+export const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=tr.lifeos.app'
+
+export const PRICE_TRY = { monthly: 99.9, annual: 790 } as const
+
+export function formatTry(amount: number): string {
+  const digits = Number.isInteger(amount) ? 0 : 2
+  return `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
+}

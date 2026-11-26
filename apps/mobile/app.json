@@ -38,8 +38,13 @@
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false,
-        "NSSupportsLiveActivities": true
+        "NSSupportsLiveActivities": true,
+        "CFBundleAllowMixedLocalizations": true
       }
+    },
+    "locales": {
+      "tr": "./locales/tr.json",
+      "en": "./locales/en.json"
     },
     "android": {
       "adaptiveIcon": {
