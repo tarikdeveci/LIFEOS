@@ -28,6 +28,7 @@ import { AI_TIP_KIND, aiTipAudience, loadAiTipFacts, type AiTipAudience, type Ai
 import { buildEveningReport } from './evening.ts'
 import { loadMorningBrief } from './morning.ts'
 import { morningBriefCopy } from './reportCopy.ts'
+import { isSecondDay, loadFirstDayFacts, secondDayCopy } from './secondDay.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -133,7 +134,7 @@ async function isMinimumDay(uid: string, date: string): Promise<boolean> {
   return data?.minimum_mode === true
 }
 
-async function buildMorning(uid: string, date: string, time: string, ctx: DayContext): Promise<Copy> {
+async function buildMorning(uid: string, date: string, time: string, ctx: DayContext, secondDay: boolean): Promise<Copy> {
   // Asgari günde öncelik listesi ve blok sayısı yerine tek, hafif bir cümle.
   if (await isMinimumDay(uid, date)) {
     return morningCopy({ blockCount: 0, firstBlock: null, topTask: null, streak: null, minimum: true }, ctx)
@@ -143,6 +144,9 @@ async function buildMorning(uid: string, date: string, time: string, ctx: DayCon
   const brief = await loadMorningBrief(supabase, uid, date)
   const briefCopy = brief ? morningBriefCopy(brief, ctx) : null
   if (briefCopy) return briefCopy
+  // Hesabın ikinci sabahı: dünkü kayıtlar ve tek bir sonraki adım. Bugüne blok varsa ilk blok söylenir.
+  const firstDay = secondDay ? await loadFirstDayFacts(supabase, uid, date, time) : null
+  if (firstDay && firstDay.blocksToday === 0) return secondDayCopy(firstDay, ctx)
 
   const { count } = await supabase
     .from('time_blocks')
@@ -372,7 +376,7 @@ Deno.serve(async () => {
     if (slot) {
       try {
         if (slot === 'morning') {
-          content = await buildMorning(uid, date, time, ctx)
+          content = await buildMorning(uid, date, time, ctx, isSecondDay(pref.created_at as string | null, tz, date))
         } else if (slot === 'midday') {
           content = await buildMidday(uid, date, time, ctx)
         } else {

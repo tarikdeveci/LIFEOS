@@ -4,6 +4,7 @@ import { elapsedMinutes, planProgramDayStart, programDaySetRows, resolveDuration
 import { getExerciseSessions, updateWorkout } from '@lifeos/shared/supabase'
 import type { Exercise, ExerciseSession, WorkoutProgram, WorkoutSummary } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
+import { promptPushAfterFirstAction } from '@/src/notifications/firstActionPrompt'
 import { useLang } from '@/src/contexts/LangContext'
 import { programDayLabel } from '@/src/components/workout/programDays'
 
@@ -109,6 +110,7 @@ export function useWorkoutSession({ userId, todayStr, onProgramDayAccepted, onPr
       return
     }
 
+    void promptPushAfterFirstAction()
     // Kayıt tamam; bundan sonrası en iyi çaba: özet ve tazeleme kaydı başarısız saymaz.
     const exerciseIds = [...new Set(counted.map((s) => s.exercise_id))]
     const history: Record<string, ExerciseSession[]> = {}
