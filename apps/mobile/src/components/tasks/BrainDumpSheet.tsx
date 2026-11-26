@@ -14,6 +14,7 @@ import {
 } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import { supabase } from '@/src/lib/supabase'
+import { promptPushAfterFirstAction } from '@/src/notifications/firstActionPrompt'
 import { aiErrorMessage, callAiSuggest } from '@/src/lib/ai'
 import { BottomSheet } from '@/src/components/ui/BottomSheet'
 import { LifeSetupSheet } from './LifeSetupSheet'
@@ -101,6 +102,7 @@ function useBrainDump(userId: string | null, errorText: string, onDone: () => vo
       }
       reset()
       onDone()
+      void promptPushAfterFirstAction()
     } catch {
       setItems(remaining)
       setError(errorText)

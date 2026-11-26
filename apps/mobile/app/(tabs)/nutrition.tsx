@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Keyboard } from 'react-native'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { supabase } from '@/src/lib/supabase'
+import { promptPushAfterFirstAction } from '@/src/notifications/firstActionPrompt'
 import { aiErrorMessage, callAiSuggest, callParseMeal } from '@/src/lib/ai'
 import { recordValueMoment } from '@/src/lib/review'
 import { rescaleItemToAmount, todayDate, useNutritionStore } from '@lifeos/shared'
@@ -463,6 +464,7 @@ export default function NutritionScreen() {
       // Öğün kaydedildi — kullanıcının uygulamadan değer gördüğü an. Beklenmez:
       // puanlama istemi kaydın tamamlanmasını geciktirmemeli.
       void recordValueMoment()
+      void promptPushAfterFirstAction()
     } catch { Alert.alert(t.nut_err_add_meal_title, t.nut_err_add_meal_msg) }
     finally { setAdding(false) }
   }
@@ -577,6 +579,7 @@ export default function NutritionScreen() {
       ...(result.trace ? { parse_trace: result.trace } : {}),
       ...(result.version ? { parse_version: result.version } : {}),
     })
+    void promptPushAfterFirstAction()
   }
 
   async function sendChat(text: string) {

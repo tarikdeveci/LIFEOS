@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert, Switch
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { router } from 'expo-router'
 import { supabase } from '@/src/lib/supabase'
+import { promptPushAfterFirstAction } from '@/src/notifications/firstActionPrompt'
 import { addMinutesToClock, DEFAULT_TASK_MINUTES, DEFAULT_WSJF_SCORES, fromDateString, hasCustomPriority, parseQuickTask, relativeDateLabel, shiftIsoDate, todayDate, toDateString, useTaskStore, weekStart } from '@lifeos/shared'
 import { createTimeBlocks } from '@lifeos/shared/supabase'
 import type { Task } from '@lifeos/shared'
@@ -194,6 +195,7 @@ export default function TasksScreen() {
       }
       setDraft(emptyDraft())
       setShowAdd(false)
+      void promptPushAfterFirstAction()
     } catch {
       Alert.alert(t.error, t.task_add_error)
     } finally {

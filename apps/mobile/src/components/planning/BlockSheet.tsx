@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text, TouchableOpacity, Alert } from 'react-native'
 import { addMinutesToClock, crossesMidnight, formatDuration, minutesBetween, nextSlotTime, usePlanningStore, type BlockType, type TimeBlock } from '@lifeos/shared'
 import { supabase } from '@/src/lib/supabase'
-import { promptPushAfterFirstBlock } from '@/src/notifications/firstBlockPrompt'
+import { promptPushAfterFirstAction } from '@/src/notifications/firstActionPrompt'
 import { Input } from '@/src/components/ui/Input'
 import { TimeField } from '@/src/components/ui/PickerField'
 import { Button } from '@/src/components/ui/Button'
@@ -87,8 +87,8 @@ export function BlockSheet({ target, userId, date, blockColors, blockLabels, onC
       if (editing) await updateTimeBlock(supabase, editing.id, values)
       else {
         await addTimeBlock(supabase, userId, { date, ...values })
-        // Bildirim izni ilk kaydedilen blokta, bir kez istenir.
-        void promptPushAfterFirstBlock()
+        // Bildirim izni ilk anlamlı kayıtta, bir kez istenir.
+        void promptPushAfterFirstAction()
       }
       onClose()
     } catch {

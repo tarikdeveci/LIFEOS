@@ -93,11 +93,12 @@ function AppNavigator() {
     if (userId) void markHadSession()
   }, [userId])
 
-  // Misafir ilk açılışta izin penceresi çıkarmaz; izin anlamlı bir anda istenir (ilk kaydedilen blok, bildirim ayarları).
+  // Açılışta izin penceresi çıkmaz (misafir ya da hesaplı); izin zaten verildiyse token tazelenir.
+  // İzin anlamlı bir anda istenir: ilk görev, öğün, blok veya antrenman (firstActionPrompt), bildirim ayarları.
   useEffect(() => {
     if (!userId) return
-    void registerForPushNotificationsAsync({ prompt: !isAnonymous })
-  }, [userId, isAnonymous])
+    void registerForPushNotificationsAsync({ prompt: false })
+  }, [userId])
 
   useEffect(() => {
     if (!initialized) return
